@@ -22,7 +22,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 CACHE = "/cache"
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
 LOCK = threading.Lock()
-os.makedirs(CACHE, exist_ok=True)
 
 
 def _start_nav():
@@ -35,7 +34,6 @@ def _start_nav():
         print("nav start failed:", e, flush=True)
 
 
-_start_nav()
 
 
 def do_nav(op, body):
@@ -229,15 +227,15 @@ def do_run_test(body):
             edit_errors.append(f"{ed['path']}: file not found"); continue
         with open(p) as f:
             cur = f.read()
-        old, new = ed["old_str"], ed["new_str"]
-        cnt = cur.count(old)
-        if cnt == 0:
-            edit_errors.append(f"{ed['path']}: old_str not found"); continue
-        if cnt > 1:
-            edit_errors.append(f"{ed['path']}: old_str matches {cnt}x (not unique)"); continue
+        updated, note = apply_edit(cur, ed["old_str"], ed["new_str"])
+        if updated is None:
+            edit_errors.append(f"{ed['path']}: {note}"); continue
         with open(p, "w") as f:
-            f.write(cur.replace(old, new))
-        applied.append(ed["path"])
+            f.write(updated)
+        # Record HOW it applied. A fix that only matched after normalising whitespace is still a real
+        # fix, but the caller should be able to see that the recorded diff is not a byte-for-byte
+        # quote of the file — silently rewriting on a fuzzy match is how a wrong patch gets published.
+        applied.append(ed["path"] + (f" ({note})" if note else ""))
 
     # 4) GREEN run (bug fixed) -> the test must RUN and PASS (reuse the JDK resolved above)
     green_started = time.time()
@@ -345,6 +343,73 @@ def prepare_fs(repo, branch):
 def _safe(base, path):
     p = os.path.normpath(os.path.join(base, (path or "").lstrip("/")))
     return p if p.startswith(base) else None
+
+
+def _ws_norm(s):
+    """Collapse every whitespace run to a single space; return (normalized, index_map).
+
+    index_map[i] is the offset in `s` of the character that produced normalized[i], so a match found
+    in normalized space can be mapped back to an exact span of the original text.
+    """
+    out, idx, prev_ws = [], [], False
+    for i, ch in enumerate(s):
+        if ch.isspace():
+            if not prev_ws:
+                out.append(" ")
+                idx.append(i)
+                prev_ws = True
+        else:
+            out.append(ch)
+            idx.append(i)
+            prev_ws = False
+    return "".join(out), idx
+
+
+def apply_edit(cur, old, new):
+    """Apply one search/replace edit. Returns (new_text, note) or (None, error).
+
+    Exact, unique match first — that is the contract, and it is what makes an edit unambiguous.
+
+    Falling back to a WHITESPACE-INSENSITIVE match is what stops the pipeline losing real fixes to
+    pure formatting. WebGoat is google-java-format'ed, so a wrapped expression puts the operator at
+    the START of the continuation line:
+
+        "select password from challenge_users where userid = '"
+            + username_login
+
+    and the model reliably quotes it back with the operator at the END of the previous line:
+
+        "select password from challenge_users where userid = '" +
+            username_login
+
+    The token sequence is identical and only the line-wrapping differs, so collapsing whitespace makes
+    the two agree. Without this, a correct fix for a genuinely reproduced bug was thrown away with
+    "old_str not found" — the red test proved the defect and no patch could ever be recorded.
+
+    The fallback still demands exactly ONE match, so it can never pick between candidates. The span
+    starts at the first non-whitespace character, so the file's own indentation is preserved and the
+    replacement is stripped to suit.
+    """
+    n = cur.count(old)
+    if n == 1:
+        return cur.replace(old, new), ""
+    if n > 1:
+        return None, "old_str matches %dx (not unique)" % n
+
+    ncur, imap = _ws_norm(cur)
+    nold = _ws_norm(old)[0].strip()
+    if not nold:
+        return None, "old_str is empty"
+    hits = ncur.count(nold)
+    if hits == 0:
+        return None, "old_str not found"
+    if hits > 1:
+        return None, ("old_str not found exactly, and the whitespace-insensitive match is ambiguous "
+                      "(%d candidates)" % hits)
+    j = ncur.index(nold)
+    start = imap[j]
+    end = imap[j + len(nold) - 1] + 1
+    return cur[:start] + new.strip() + cur[end:], "matched ignoring whitespace/line-wrapping"
 
 
 def _fix_target(ws, path, test_path):
@@ -484,7 +549,6 @@ def lease_release(body):
 LIVE_LOCK = threading.Lock()    # NOT the build LOCK — a /live post must never block behind a build
 LIVE_MAX = 60                   # cap: all 'analyzing' + most-recent finished, up to this many
 LIVE_DIR = "/cache/live"
-os.makedirs(LIVE_DIR, exist_ok=True)
 _LIVE_SEQ = [0]
 
 
@@ -592,7 +656,6 @@ def _live_load():
         _live_prune_locked()
 
 
-_live_load()
 
 
 class H(BaseHTTPRequestHandler):
@@ -661,6 +724,12 @@ class H(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    # Startup side effects live HERE, not at module scope, so `import runner` stays free of them
+    # (test_apply_edit.py imports this module; creating /cache on import made that impossible).
+    os.makedirs(CACHE, exist_ok=True)
+    os.makedirs(LIVE_DIR, exist_ok=True)
+    _live_load()
+    _start_nav()
     port = int(os.environ.get("PORT", "8090"))
     print(f"java-runner listening on :{port}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", port), H).serve_forever()
