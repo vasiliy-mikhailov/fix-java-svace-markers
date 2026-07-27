@@ -1,0 +1,1115 @@
+{
+  "id": "fjbprover00001",
+  "name": "fjb-prover",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "prove",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "p1",
+      "name": "Prove webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "fjbprovehook01"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fjb-java-runner:8090/lease",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "{\"name\": \"prover\", \"ttl_s\": 1800}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "p2",
+      "name": "Acquire lease (web)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        120,
+        -60
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "acq",
+              "leftValue": "={{ $json.acquired }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "p3",
+      "name": "Lease gate (web)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        240,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 60
+            }
+          ]
+        }
+      },
+      "id": "p4",
+      "name": "Prover schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fjb-java-runner:8090/lease",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "{\"name\": \"prover\", \"ttl_s\": 1800}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "p5",
+      "name": "Acquire lease (sched)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        120,
+        560
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "acq",
+              "leftValue": "={{ $json.acquired }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "p6",
+      "name": "Lease gate (sched)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        240,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "o17lTGMNGX0RI8wY",
+          "cachedResultName": "suspicions"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "new"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1,
+        "options": {}
+      },
+      "id": "p7",
+      "name": "Get one suspicion",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        400,
+        560
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "sus",
+              "leftValue": "={{ $json.dedup_key }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "p8",
+      "name": "Has suspicion?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        560,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fjb-java-runner:8090/lease/release",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "{\"name\": \"prover\"}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "p9",
+      "name": "Release lease",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        60
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:5678/webhook/dedup",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({}) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Connection",
+              "value": "close"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 3600000
+        }
+      },
+      "id": "p10",
+      "name": "Call dedup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        120,
+        300
+      ],
+      "onError": "continueRegularOutput",
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "o17lTGMNGX0RI8wY",
+          "cachedResultName": "suspicions"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "new"
+            }
+          ]
+        },
+        "returnAll": true,
+        "options": {}
+      },
+      "id": "p11",
+      "name": "Get new suspicions",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        220,
+        300
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "p12",
+      "name": "Loop over suspicions",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "p13",
+      "name": "Done",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        660,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const s = $json;                                  // one suspicion row from Get new suspicions\n// Resolve the repo's REAL default branch. Hardcoding 'main' silently destroyed every finding on any\n// repo that uses develop / master / 4.x / v5-master: the source fetch 404s, the reproducer is handed\n// an empty file, and the suspicion ends up 'rejected' \u2014 indistinguishable from a real false positive.\nlet branch = (s.branch || '').toString().trim(), branch_error = '';\n// the suspector already analysed a specific branch \u2014 reuse it (also avoids one API call per suspicion)\nif (!branch) try {\n  const ri = await this.helpers.httpRequest({\n    url: 'https://api.github.com/repos/' + s.repo,\n    headers: { 'User-Agent': 'n8n-fjb', Accept: 'application/vnd.github+json',\n               Authorization: 'Bearer ' + $env.GITHUB_TOKEN, Connection: 'close' },\n    json: true, timeout: 30000,\n  });\n  branch = (ri && ri.default_branch) || '';\n} catch (e) { branch_error = (e && (e.message || e.description)) ? String(e.message || e.description).slice(0, 200) : 'repo lookup failed'; }\nif (!branch) branch_error = branch_error || 'no default_branch returned';\nconst file = (s.file || '').toString();\nconst parts = file.split('/src/main/java/');\nconst module = parts.length > 1 ? parts[0] : '';\nconst pkgdir = parts.length > 1 ? parts[1].slice(0, parts[1].lastIndexOf('/')) : '';\nconst pkg = pkgdir.replace(/\\//g, '.');\nconst cls = (s.class_name || file.split('/').pop().replace('.java','')).toString().replace(/[^A-Za-z0-9_]/g,'');\nconst test_class = cls + 'FjbProofTest';\nconst test_path = (module ? module + '/' : '') + 'src/test/java/' + (pkgdir ? pkgdir + '/' : '') + test_class + '.java';\nreturn {\n  suspicion_key: s.dedup_key, repo: s.repo, branch, branch_ok: !!branch, branch_error,\n  prove_attempts: Number(s.prove_attempts) || 0, file, module, pkg,\n  class_name: cls, method: s.method, test_class, test_path,\n  category: s.category, severity: s.severity, title: s.title,\n  description: s.description, evidence: s.evidence,\n};"
+      },
+      "id": "p14",
+      "name": "Prep prover",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $json.repo }}/contents/{{ $json.file }}?ref={{ $json.branch }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "n8n-fjb"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GITHUB_TOKEN }}"
+            },
+            {
+              "name": "Connection",
+              "value": "close"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "p15",
+      "name": "Fetch source",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const j = $('Prep prover').item.json;\nlet src = '';\ntry { src = Buffer.from(($json.content || '').replace(/\\s/g,''), 'base64').toString('utf8'); } catch(e){ src = ''; }\nconst SRC_MAX = 300000;                    // past the largest main-java file in the warm repos (~259k)\nconst src_truncated = src.length > SRC_MAX;\nif (src_truncated) src = src.slice(0, SRC_MAX);\nconst agent_input =\n  \"Repository: \" + j.repo + \"   (branch \" + j.branch + \", module '\" + j.module + \"')\\n\" +\n  \"Source file: \" + j.file + \"\\n\\n\" +\n  \"SUSPECTED BUG in \" + j.class_name + \".\" + j.method + \"()  [\" + j.category + \"/\" + j.severity + \"]\\n\" +\n  j.title + \"\\n\" + (j.description||'') + \"\\nEvidence: \" + (j.evidence||'') + \"\\n\\n\" +\n  \"Write the proof test in package `\" + j.pkg + \"`, class `\" + j.test_class + \"`, at path `\" + j.test_path + \"`.\\n\" +\n  \"Only write the FAILING test \u2014 do not fix the bug.\\n\\n\" +\n  (src_truncated ? \"SOURCE FILE (TRUNCATED \u2014 you are NOT seeing the whole file):\\n```java\\n\"\n                 : \"FULL SOURCE FILE:\\n```java\\n\") + src + \"\\n```\";\nreturn { ...j, src, src_truncated, agent_input };"
+      },
+      "id": "p16",
+      "name": "Build reproduce input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "qwen-3.6-27b-fp8",
+          "cachedResultName": "qwen-3.6-27b-fp8"
+        },
+        "responsesApiEnabled": false,
+        "options": {
+          "temperature": 0.2,
+          "maxTokens": 32000
+        }
+      },
+      "id": "p17",
+      "name": "Reproducer Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1320,
+        60
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "qwenvllmcred001",
+          "name": "Qwen vLLM"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.agent_input }}",
+        "options": {
+          "systemMessage": "[pipeline P6 (2026-07-22: prover drains the queue CONCURRENTLY with the scan, one at a time under a runner lease; empty-queue lease strand fixed)]  [stage r5 (2026-07-22: a test that never compiled/ran = infra (retry), not a false not-a-bug verdict; JDK auto-detect covers release-version mismatch)]\nYou are a Java test engineer PROVING that a suspected bug is real. You are given the full source file and the suspicion. Write exactly ONE self-contained JUnit 5 test (package + imports + a single public class named EXACTLY as given) that FAILS on the current, UNPATCHED code precisely because of this bug, and would PASS once the bug is fixed. Target the bug with a specific assertion \u2014 not a trivial always-true/always-false check. PREFER asserting a general property or several representative inputs (not a single hard-coded case), so a narrow special-case patch cannot make it pass without truly fixing the bug. Use only JUnit 5 (org.junit.jupiter) plus the public API of the given file. Do NOT fix the bug and do NOT modify any source file.\n\nReturn ONLY a JSON object, no prose:\n{\"can_prove\": true|false, \"test_code\": \"<full .java test>\", \"root_cause\": \"..\", \"value_verdict\": \"real|trivial|false-positive\"}\nIf this is not a real, provable bug, return {\"can_prove\": false, \"value_verdict\": \"false-positive\", \"root_cause\": \"..\"}.",
+          "maxIterations": 3
+        }
+      },
+      "id": "p18",
+      "name": "Reproducer Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1320,
+        200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "function extractJson(text, keys) {\n  const t = String(text || '');\n  if (!t.trim()) return null;\n  const tryParse = (raw) => { try { return JSON.parse(raw); } catch (e) { return null; } };\n  const repair = (body) => {\n    const stack = []; let inS = false, esc = false; const marks = [];\n    for (let i = 0; i < body.length; i++) { const ch = body[i];\n      if (esc) { esc = false; continue; }\n      if (ch === '\\\\') { esc = true; continue; }\n      if (ch === '\"') { inS = !inS; continue; }\n      if (inS) continue;\n      if (ch === '{' || ch === '[') stack.push(ch);\n      else if (ch === '}' || ch === ']') { stack.pop(); marks.push({ i: i, s: stack.slice() }); } }\n    const close = (txt, st, q) => {\n      let out = (q ? txt.replace(/\\\\+$/, m => m.length % 2 ? m.slice(1) : m) + '\"' : txt);\n      out = out.replace(/[\\s,]+$/, ''); if (/:\\s*$/.test(out)) out += 'null';\n      for (let k = st.length - 1; k >= 0; k--) out += (st[k] === '{' ? '}' : ']'); return tryParse(out); };\n    const whole = close(body, stack, inS); if (whole) return whole;\n    for (let m = marks.length - 1, tr = 0; m >= 0 && tr < 400; m--, tr++) {\n      const r = close(body.slice(0, marks[m].i + 1), marks[m].s, false); if (r) return r; }\n    return null;\n  };\n  const usable = (o) => o && typeof o === 'object' && keys.some(k => k in o);\n  const fences = [...t.matchAll(/```(?:json)?\\s*([\\s\\S]*?)```/gi)].map(m => m[1]);\n  for (let i = fences.length - 1; i >= 0; i--) { const o = tryParse(fences[i].trim()) || repair(fences[i].trim()); if (usable(o)) return o; }\n  const starts = []; for (let i = 0; i < t.length; i++) if (t[i] === '{') starts.push(i);\n  const tryAt = (p) => { const body = t.slice(p); const last = body.lastIndexOf('}');\n    if (last > 0) { const o = tryParse(body.slice(0, last + 1)); if (usable(o)) return o; }\n    const rep = repair(body); return usable(rep) ? rep : null; };\n  const keyRe = new RegExp('^\\\\s*\"(' + keys.join('|') + ')\"\\\\s*:');\n  for (const p of starts) { if (keyRe.test(t.slice(p + 1))) { const r = tryAt(p); if (r) return r; } }\n  const order = []; for (let k = starts.length - 1; k >= 0 && starts.length - k <= 40; k--) order.push(starts[k]);\n  for (let k = 0; k < starts.length && k < 40; k++) if (order.indexOf(starts[k]) < 0) order.push(starts[k]);\n  for (const p of order) { const r = tryAt(p); if (r) return r; }\n  return null;\n}\n\nconst j = $('Prep prover').item.json;\nconst text = ($json.output || '').toString();\n// a crashed agent (onError=continueRegularOutput -> no .output) and a malformed reply both land here;\n// flag them parse_failed so neither can read as the verdict 'not-a-bug'.\nlet r = text.trim() ? extractJson(text, ['can_prove', 'test_code', 'root_cause', 'value_verdict']) : null;\nlet parse_failed = !r;\nr = r || {};\nif (!parse_failed && typeof r.can_prove !== 'boolean') parse_failed = true;\nconst test_code = (r.test_code || '').toString();\nconst can_prove = r.can_prove === true && !!test_code;\n// reproduce run: the reproducer's test with NO fix -> must go RED on the unpatched code\nconst body = {\n  repo: j.repo, branch: j.branch, jdk: '21', module: j.module,\n  test_class: j.test_class, test_path: j.test_path, test_code, fix_edits: [],\n};\nreturn { ...j, can_prove, parse_failed, test_code,\n         repro_value_verdict: r.value_verdict || '', repro_root_cause: r.root_cause || '', body };"
+      },
+      "id": "p19",
+      "name": "Parse test",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fjb-java-runner:8090/run_test",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 5400000
+        }
+      },
+      "id": "p20",
+      "name": "run_test reproduce",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const j = $('Prep prover').item.json;\nconst src = $('Build reproduce input').item.json.src || '';\nconst test_code = $('Parse test').item.json.test_code || '';\nconst repro = $json || {};                        // run_test reproduce verdict\nconst red = !!repro.red_reproduced;\nconst redOut = (repro.red_output || '').toString().slice(-2500);\nconst agent_input =\n  \"Repository: \" + j.repo + \"   (branch \" + j.branch + \", module '\" + j.module + \"')\\n\" +\n  \"Source file to fix: \" + j.file + \"\\n\\n\" +\n  \"SUSPECTED BUG in \" + j.class_name + \".\" + j.method + \"()\\n\" + j.title + \"\\n\" + (j.description||'') +\n  \"\\nEvidence: \" + (j.evidence||'') + \"\\n\\n\" +\n  \"An INDEPENDENT reproducer wrote this failing regression test \u2014 you MUST NOT modify it:\\n```java\\n\" +\n  test_code + \"\\n```\\n\\n\" +\n  (red\n    ? (\"It FAILS on the unpatched code (the bug is reproduced). Failure output:\\n```\\n\" + redOut + \"\\n```\\n\\n\")\n    : (\"NOTE: the test did not clearly reproduce the bug on unpatched code. If you cannot write a correct \" +\n       \"source-only fix that legitimately makes it pass, return can_fix:false.\\n\\n\")) +\n  \"Write the MINIMAL fix to the SOURCE FILE ONLY (path `\" + j.file + \"`) so the test passes. Do NOT touch the test.\\n\\n\" +\n  \"FULL SOURCE FILE:\\n```java\\n\" + src + \"\\n```\";\nreturn { ...j, test_code, red_reproduced: red, red_output: redOut, agent_input };"
+      },
+      "id": "p21",
+      "name": "Build fix input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "qwen-3.6-27b-fp8",
+          "cachedResultName": "qwen-3.6-27b-fp8"
+        },
+        "responsesApiEnabled": false,
+        "options": {
+          "temperature": 0.2,
+          "maxTokens": 32000
+        }
+      },
+      "id": "p22",
+      "name": "Fixer Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        2200,
+        60
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "qwenvllmcred001",
+          "name": "Qwen vLLM"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.agent_input }}",
+        "options": {
+          "systemMessage": "[pipeline P6 (2026-07-22: prover drains the queue CONCURRENTLY with the scan, one at a time under a runner lease; empty-queue lease strand fixed)]  [stage f3 (2026-07-22: robust JSON extractor for fix edits; records only edits actually APPLIED)]\nYou are a Java engineer FIXING a bug. You are given the source file, the suspicion, and an INDEPENDENTLY-AUTHORED failing regression test plus its failure output. Your job is the FIX ONLY.\n\nWrite the MINIMAL change to the SOURCE FILE so that test passes \u2014 as search/replace edits: an exact, unique `old_str` copied from the file -> `new_str`. The fix must be behaviorally correct for ALL inputs, not just the one the test checks. You MUST NOT edit, weaken, delete, or even reference the test file, and you MUST NOT change any test's expectations \u2014 you did not write the test and cannot touch it. Only edit the source file under src/main.\n\nReturn ONLY a JSON object, no prose:\n{\"can_fix\": true|false, \"fix_edits\": [{\"path\": \"<source file path>\", \"old_str\": \"..\", \"new_str\": \"..\"}], \"root_cause\": \"..\", \"pr_title\": \"..\", \"pr_body\": \"..\"}\nIf you cannot fix it correctly without touching the test, return {\"can_fix\": false, \"root_cause\": \"..\"}.",
+          "maxIterations": 3
+        }
+      },
+      "id": "p23",
+      "name": "Fixer Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        2200,
+        200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "function extractJson(text, keys) {\n  const t = String(text || '');\n  if (!t.trim()) return null;\n  const tryParse = (raw) => { try { return JSON.parse(raw); } catch (e) { return null; } };\n  const repair = (body) => {\n    const stack = []; let inS = false, esc = false; const marks = [];\n    for (let i = 0; i < body.length; i++) { const ch = body[i];\n      if (esc) { esc = false; continue; }\n      if (ch === '\\\\') { esc = true; continue; }\n      if (ch === '\"') { inS = !inS; continue; }\n      if (inS) continue;\n      if (ch === '{' || ch === '[') stack.push(ch);\n      else if (ch === '}' || ch === ']') { stack.pop(); marks.push({ i: i, s: stack.slice() }); } }\n    const close = (txt, st, q) => {\n      let out = (q ? txt.replace(/\\\\+$/, m => m.length % 2 ? m.slice(1) : m) + '\"' : txt);\n      out = out.replace(/[\\s,]+$/, ''); if (/:\\s*$/.test(out)) out += 'null';\n      for (let k = st.length - 1; k >= 0; k--) out += (st[k] === '{' ? '}' : ']'); return tryParse(out); };\n    const whole = close(body, stack, inS); if (whole) return whole;\n    for (let m = marks.length - 1, tr = 0; m >= 0 && tr < 400; m--, tr++) {\n      const r = close(body.slice(0, marks[m].i + 1), marks[m].s, false); if (r) return r; }\n    return null;\n  };\n  const usable = (o) => o && typeof o === 'object' && keys.some(k => k in o);\n  const fences = [...t.matchAll(/```(?:json)?\\s*([\\s\\S]*?)```/gi)].map(m => m[1]);\n  for (let i = fences.length - 1; i >= 0; i--) { const o = tryParse(fences[i].trim()) || repair(fences[i].trim()); if (usable(o)) return o; }\n  const starts = []; for (let i = 0; i < t.length; i++) if (t[i] === '{') starts.push(i);\n  const tryAt = (p) => { const body = t.slice(p); const last = body.lastIndexOf('}');\n    if (last > 0) { const o = tryParse(body.slice(0, last + 1)); if (usable(o)) return o; }\n    const rep = repair(body); return usable(rep) ? rep : null; };\n  const keyRe = new RegExp('^\\\\s*\"(' + keys.join('|') + ')\"\\\\s*:');\n  for (const p of starts) { if (keyRe.test(t.slice(p + 1))) { const r = tryAt(p); if (r) return r; } }\n  const order = []; for (let k = starts.length - 1; k >= 0 && starts.length - k <= 40; k--) order.push(starts[k]);\n  for (let k = 0; k < starts.length && k < 40; k++) if (order.indexOf(starts[k]) < 0) order.push(starts[k]);\n  for (const p of order) { const r = tryAt(p); if (r) return r; }\n  return null;\n}\n\nconst j = $('Prep prover').item.json;\nconst text = ($json.output || '').toString();\nlet r = text.trim() ? extractJson(text, ['can_fix', 'fix_edits', 'root_cause', 'pr_title']) : null;\nlet fix_parse_failed = !r;\nr = r || {};\nif (!fix_parse_failed && typeof r.can_fix !== 'boolean') fix_parse_failed = true;\nconst test_code = $('Parse test').item.json.test_code || '';\nconst test_path = (j.test_path || '').toString();\nconst jdk = ($('run_test reproduce').item.json.jdk || '21') + '';\n// INDEPENDENCE GUARD (ALLOWLIST): the fixer may edit ONLY the one suspected source file \u2014 never the\n// test it did not author, and never any other source/config/build file it could use to game the test.\nconst norm = s => (s == null ? '' : s).toString().replace(/^\\.?\\/+/, '');\nconst srcfile = norm(j.file);\nlet edits = Array.isArray(r.fix_edits) ? r.fix_edits : [];\nconst rejected = [];\nedits = edits.filter(e => {\n  const p = norm((e && e.path) || j.file);\n  if (p !== srcfile) { rejected.push(((e && e.path) || '') + ''); return false; }\n  return true;\n}).map(e => ({ path: j.file, old_str: e.old_str, new_str: e.new_str }));\nconst can_fix = r.can_fix === true && edits.length > 0;\n// fix run: the reproducer's test (verbatim) + the fixer's source edits -> red then GREEN\nconst body = {\n  repo: j.repo, branch: j.branch, jdk, module: j.module,\n  test_class: j.test_class, test_path, test_code, fix_edits: edits,\n};\nreturn { ...j, can_fix, fix_parse_failed, test_code, fix_edits_json: JSON.stringify(edits), fix_rejected: rejected.join(','),\n         fix_root_cause: r.root_cause || '', pr_title: r.pr_title || '', pr_body: r.pr_body || '', body };"
+      },
+      "id": "p24",
+      "name": "Parse fix",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fjb-java-runner:8090/run_test",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 5400000
+        }
+      },
+      "id": "p25",
+      "name": "run_test fix",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2640,
+        200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const j = $('Prep prover').item.json;\nconst parseTest = $('Parse test').item.json || {};\nconst parseFix = $('Parse fix').item.json || {};\nconst fixrun = $json || {};                              // run_test fix verdict flows in\nconst proven = !!fixrun.proven;\n// 'not-run' initializer is deliberate: when the skeptic block is SKIPPED (not proven / can_fix false)\n// nothing has certified this fix, and 'sound' would have claimed otherwise.\nlet verdict = 'not-run', reason = 'skeptic did not run';\nif (proven && parseFix.can_fix) {\n  // judging half a diff is not judging the change: say so rather than cutting in silence\n  const cut = (x) => { const t = String(x||''); return t.length <= 20000 ? t\n      : t.slice(0,20000) + \"\\n\u2026[TRUNCATED \" + (t.length-20000) + \" chars \u2014 reply verdict 'unknown' if you cannot judge the whole change]\"; };\n  const prompt = \"[pipeline P6 (2026-07-22: prover drains the queue CONCURRENTLY with the scan, one at a time under a runner lease; empty-queue lease strand fixed)]  [stage sk5 (2026-07-22: fail-closed whitelist; a valid verdict with no reason is not mislabelled unrecognised)]\\n\" +\n    \"A bug fix passed its regression test (the test FAILED before the fix and PASSES after). \" +\n    \"Judge whether the FIX is a genuine, general correction, or whether it is OVER-FIT \u2014 makes THIS one test \" +\n    \"pass without truly fixing the bug (e.g. special-casing the tested input) or risks regressing other behaviour.\\n\\n\" +\n    \"BUG: \" + (j.title||'') + \"\\n\" + (j.description||'') + \"\\n\\nTEST:\\n```java\\n\" + cut(parseTest.test_code||'') + \"\\n```\\n\\n\" +\n    \"FIX EDITS (search/replace on the source file):\\n\" + cut(parseFix.fix_edits_json||'[]') + \"\\n\\n\" +\n    \"Reply ONLY JSON: {\\\"verdict\\\":\\\"sound|over-fit|regression-risk\\\",\\\"reason\\\":\\\"one sentence\\\"}.\";\n  try {\n    const r = await this.helpers.httpRequest({ method:'POST', url: $env.QWEN_BASE_URL + '/chat/completions',\n      headers:{ Authorization:'Bearer '+$env.QWEN_API_KEY, 'Content-Type':'application/json', Connection:'close' },\n      body:{ model:$env.QWEN_MODEL, messages:[{role:'user',content:prompt}], temperature:0, max_tokens:32000 }, json:true, timeout:3600000 });\n    const m = (r.choices && r.choices[0] && r.choices[0].message) || {};\n    const t = ((m.content || m.reasoning_content) || '') + '';\n    const a = t.indexOf('{'), b = t.lastIndexOf('}');\n    if (a>=0 && b>a) { const jj = JSON.parse(t.slice(a,b+1));\n      const v = (jj.verdict||'')+'';\n      const known = ['sound','over-fit','regression-risk'].indexOf(v) >= 0;\n      verdict = known ? v : 'unknown';\n      reason = ((jj.reason||'')+'')\n        || (known ? '(verdict given without a reason)'\n                  : (v ? ('unrecognised verdict: ' + v) : 'skeptic reply carried no verdict field')); }\n    if (verdict === 'not-run') { verdict = 'unknown'; reason = 'skeptic returned no usable verdict'; }\n  } catch(e) { verdict = 'unknown'; reason = 'skeptic call failed: ' + ((e && (e.message || e.description)) ? String(e.message || e.description).slice(0,150) : 'error'); }\n}\nreturn { ...fixrun, skeptic_verdict: verdict, skeptic_reason: reason };"
+      },
+      "id": "p26",
+      "name": "Fix skeptic",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const j = $('Prep prover').item.json;\nconst parseTest = $('Parse test').item.json || {};\nconst parseFix = $('Parse fix').item.json || {};\nconst repro = $('run_test reproduce').item.json || {};\nconst skepticOut = $json || {};                          // Fix skeptic output (fixrun + skeptic_*)\nconst proven = !!repro.red_reproduced && !!skepticOut.proven;\nconst skepticSound = (skepticOut.skeptic_verdict || 'unknown') === 'sound';   // missing != certified\nlet pr_decision = 'n/a', pr_reason = '', pr_curated = false;\nlet pr_title = parseFix.pr_title || j.title || '', pr_body = parseFix.pr_body || '';\nif (proven && skepticSound) {\n  const prompt = \"[pipeline P6 (2026-07-22: prover drains the queue CONCURRENTLY with the scan, one at a time under a runner lease; empty-queue lease strand fixed)]  [stage pr3 (2026-07-22: an uncurated draft is banner-marked in pr_body)]\\n\" +\n    \"You are the PR curator for open-source contributions to \" + j.repo + \". A defect has a \"\n    + \"regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). \"\n    + \"Decide whether to actually OPEN A PULL REQUEST upstream \u2014 this is REPO-SPECIFIC and varies by project. \"\n    + \"Reject if: the code is internal / deprecated / test-only / example code; the fix changes public API or \"\n    + \"observable behaviour beyond the bug; it fights the project's own conventions; the 'bug' is actually \"\n    + \"intended behaviour or a doc/style nitpick a maintainer would decline; or the change is too trivial to be \"\n    + \"worth a PR. Otherwise make it, and write a crisp PR title + body (imperative, explains the bug + fix + \"\n    + \"why it matters; NO AI/tool attribution).\\n\\n\"\n    + \"FILE: \" + j.file + \"\\nBUG: \" + (j.title||'') + \"\\n\" + (j.description||'') + \"\\nRoot cause: \" + (parseFix.fix_root_cause||'') + \"\\n\\n\"\n    + \"FIX EDITS:\\n\" + (parseFix.fix_edits_json||'[]').slice(0,5000) + \"\\n\\nTEST:\\n```java\\n\" + (parseTest.test_code||'').slice(0,4000) + \"\\n```\\n\\n\"\n    + \"Reply ONLY JSON: {\\\"decision\\\":\\\"make|reject\\\",\\\"reason\\\":\\\"one or two sentences, repo-specific\\\",\\\"pr_title\\\":\\\"..\\\",\\\"pr_body\\\":\\\"..\\\"}.\";\n  try {\n    const r = await this.helpers.httpRequest({ method:'POST', url: $env.QWEN_BASE_URL + '/chat/completions',\n      headers:{ Authorization:'Bearer '+$env.QWEN_API_KEY, 'Content-Type':'application/json', Connection:'close' },\n      body:{ model:$env.QWEN_MODEL, messages:[{role:'user',content:prompt}], temperature:0.2, max_tokens:32000 }, json:true, timeout:3600000 });\n    const m = (r.choices && r.choices[0] && r.choices[0].message) || {};\n    const t = ((m.content || m.reasoning_content) || '') + '';\n    const a = t.indexOf('{'), b = t.lastIndexOf('}');\n    if (a>=0 && b>a) { const jj = JSON.parse(t.slice(a,b+1));\n      pr_decision = (jj.decision||'make')+''; pr_reason = (jj.reason||'')+''; pr_curated = true;\n      if (jj.pr_title) pr_title = jj.pr_title+''; if (jj.pr_body) pr_body = jj.pr_body+''; }\n  } catch(e) { pr_decision = 'make';\n    pr_reason = '(pr maker unavailable \u2014 defaulting to draft): ' + ((e && (e.message || e.description))\n                ? String(e.message || e.description).slice(0,150) : 'error'); }\n}\nreturn { ...skepticOut, pr_decision, pr_reason, pr_curated, pr_title, pr_body };"
+      },
+      "id": "p27",
+      "name": "PR maker",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3080,
+        200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const j = $('Prep prover').item.json;\nconst parseTest = $('Parse test').item.json || {};\nconst parseFix = $('Parse fix').item.json || {};\nconst repro = $('run_test reproduce').item.json || {};   // reproducer's independent red proof\nconst pm = $json || {};                                  // PR maker output (fix run + skeptic_* + pr_*)\nconst reproduced = !!repro.red_reproduced;               // REPRODUCER stage result\nconst green = !!pm.green_passed;                          // FIXER stage result\nconst proven = reproduced && !!pm.proven;                // fix run re-verifies red AND green\nconst skeptic = (pm.skeptic_verdict || 'unknown') + '';  // missing verdict is NOT certification\nconst decision = (pm.pr_decision || 'unknown') + '';     // a crashed PR maker must not auto-approve\n// lifecycle: suspector -> reproducer(red) -> fixer(green) -> fix-skeptic -> PR maker\nlet state;\n// infra vs verdict: only a real reproducer judgement may retire a suspicion.\nconst infra = [];\nif (j.branch_ok === false) infra.push('branch unresolved: ' + (j.branch_error || '?'));\nif (!(($('Build reproduce input').item.json || {}).src || '').trim()) infra.push('source fetch returned nothing');\nif (($('Build reproduce input').item.json || {}).src_truncated) infra.push('source file exceeded ' + 300000 + ' chars and was truncated \u2014 a verdict on it is not trustworthy');\nif (parseTest.parse_failed) infra.push('reproducer reply was not parseable JSON');\n// A test that NEVER EXECUTED (compile / build failure \u2014 e.g. a JDK-version mismatch) is NOT a verdict\n// that the bug is unreal; it means we could not test it. Mark it infra so the suspicion is retried and\n// the build failure is visible, instead of silently RETIRING a real bug as 'not_reproduced'.\nconst _rs = (repro && repro.red_summary) || {};\nif (parseTest.can_prove && repro && repro.ok && _rs.test_executed === false) {\n  const _bt = String(repro.red_output || '').match(/release version (\\d+) not supported|Java (\\d+) or higher|cannot find symbol|package [\\w.]+ does not exist|BUILD FAILURE/);\n  infra.push('reproducer test never executed (build failed, jdk ' + (repro.jdk || '?') + ')' + (_bt ? ': ' + _bt[0] : ''));\n}\nif (repro && repro.error) infra.push('run_test(reproduce): ' + String(repro.error).slice(0, 120));\nif (pm && pm.error) infra.push('run_test(fix): ' + String(pm.error).slice(0, 120));\nconst editErrors = (pm && Array.isArray(pm.edit_errors)) ? pm.edit_errors : [];\nconst appliedFiles = (pm && Array.isArray(pm.applied_files)) ? pm.applied_files : [];\n// \"no errors\" is not \"it applied\": zero edits also produces zero errors. A red->green flip on a tree\n// nothing changed is test flakiness or build state, never evidence for the diff we would publish.\nconst notApplied = editErrors.length > 0 || appliedFiles.length === 0;\nif (parseFix.fix_parse_failed) infra.push('fixer reply was not parseable JSON');\nif (parseFix.fix_rejected) infra.push('edits rejected by the source-only allowlist: ' + parseFix.fix_rejected);\nif (infra.length) state = 'infra_error';\nelse if (proven && notApplied) state = 'needs_review';\nelse if (!parseTest.can_prove) state = 'not-a-bug';\nelse if (proven && skeptic === 'sound' && decision === 'make') state = 'pr_ready';   // only an explicit 'sound' certifies\nelse if (proven && skeptic === 'sound' && decision === 'reject') state = 'pr_rejected';   // proven, but not PR-worthy for this repo\nelse if (proven) state = 'needs_review';                 // proven by execution, but the fix-skeptic flagged the fix\nelse if (reproduced && !green) state = 'fix_failed';\nelse state = 'not_reproduced';\nlet pr_title = pm.pr_title || parseFix.pr_title || j.title || '';\nlet pr_body = pm.pr_body || parseFix.pr_body || '';\nif (state === 'needs_review') {\n  const why = editErrors.length\n    ? (\"\u26a0 FIX NOT FULLY APPLIED \u2014 the recorded diff is NOT what was verified: \" + editErrors.join('; '))\n    : (appliedFiles.length === 0\n       ? \"\u26a0 NO EDIT WAS APPLIED AT ALL \u2014 the red\u2192green flip happened on an unchanged tree, so it is test flakiness or build state, not a fix\"\n       : (\"\u26a0 FIX SKEPTIC (\" + skeptic + \"): \" + (pm.skeptic_reason||'')));\n  pr_body = why + \"\\n\\n\" + pr_body;\n}\nif (state === 'pr_rejected') { pr_title = \"PR rejected\"; pr_body = \"\u26d4 NOT PR-WORTHY (\" + j.repo + \"): \" + (pm.pr_reason||''); }\nif (state === 'pr_ready' && pm.pr_curated === false) {\n  pr_body = \"\u26a0 PR CURATOR NEVER RAN \u2014 this is the fixer's own unreviewed draft (\" + (pm.pr_reason||'') + \")\\n\\n\" + pr_body;\n}\nreturn {\n  suspicion_key: j.suspicion_key, repo: j.repo, file: j.file, title: j.title,\n  jdk: (pm.jdk || repro.jdk || '') + '', test_path: j.test_path, test_code: parseTest.test_code || '',\n  fix_diff: parseFix.fix_edits_json || '[]',\n  red_verified: reproduced, green_verified: green,     // Reproducer proved red; Fixer achieved green\n  value_score: (state === 'pr_ready') ? 1 : 0, value_verdict: parseTest.repro_value_verdict || '',\n  pr_title, pr_body, state,\n  infra_reason: infra.concat(editErrors.map(e => 'edit not applied: ' + e)).join('; '),\n  attempts: (Number(j.prove_attempts) || 0) + 1,   // so a permanently-broken row stops being requeued\n  branch: j.branch || '',                          // the artifact records WHICH branch it was proven on\n  versions: \"{\\\"pipeline\\\": \\\"P6 (2026-07-22: prover drains the queue CONCURRENTLY with the scan, one at a time under a runner lease; empty-queue lease strand fixed)\\\", \\\"suspector\\\": \\\"v65 (2026-07-22: one robust verdict parser on both paths \\\\u2014 fenced + key-anchored + both-ends + backslash-safe repair)\\\", \\\"dedup\\\": \\\"d2 (2026-07-22: repo-wide clustering of `new` suspicions; marks duplicates, never deletes)\\\", \\\"reproducer\\\": \\\"r5 (2026-07-22: a test that never compiled/ran = infra (retry), not a false not-a-bug verdict; JDK auto-detect covers release-version mismatch)\\\", \\\"fixer\\\": \\\"f3 (2026-07-22: robust JSON extractor for fix edits; records only edits actually APPLIED)\\\", \\\"pr_maker\\\": \\\"pr3 (2026-07-22: an uncurated draft is banner-marked in pr_body)\\\", \\\"skeptic\\\": \\\"sk5 (2026-07-22: fail-closed whitelist; a valid verdict with no reason is not mislabelled unrecognised)\\\"}\",      // which pipeline + stage versions produced this artifact\n};"
+      },
+      "id": "p28",
+      "name": "Record outcome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "tO8quypeTL29rLAE",
+          "cachedResultName": "bugs"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "suspicion_key",
+              "condition": "eq",
+              "keyValue": "={{ $json.suspicion_key }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "suspicion_key": "={{ $json['suspicion_key'] }}",
+            "repo": "={{ $json['repo'] }}",
+            "file": "={{ $json['file'] }}",
+            "title": "={{ $json['title'] }}",
+            "jdk": "={{ $json['jdk'] }}",
+            "test_path": "={{ $json['test_path'] }}",
+            "test_code": "={{ $json['test_code'] }}",
+            "fix_diff": "={{ $json['fix_diff'] }}",
+            "red_verified": "={{ $json['red_verified'] }}",
+            "green_verified": "={{ $json['green_verified'] }}",
+            "value_score": "={{ $json['value_score'] }}",
+            "value_verdict": "={{ $json['value_verdict'] }}",
+            "pr_title": "={{ $json['pr_title'] }}",
+            "pr_body": "={{ $json['pr_body'] }}",
+            "state": "={{ $json['state'] }}",
+            "infra_reason": "={{ $json['infra_reason'] }}",
+            "branch": "={{ $json['branch'] }}",
+            "versions": "={{ $json['versions'] }}"
+          },
+          "matchingColumns": [
+            "suspicion_key"
+          ],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "p29",
+      "name": "Upsert bug",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "o17lTGMNGX0RI8wY",
+          "cachedResultName": "suspicions"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dedup_key",
+              "condition": "eq",
+              "keyValue": "={{ $('Record outcome').item.json.suspicion_key }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ $('Record outcome').item.json.state === 'infra_error' ? ($('Record outcome').item.json.attempts >= 3 ? 'infra_stuck' : 'new') : (['pr_ready','needs_review','pr_rejected'].includes($('Record outcome').item.json.state) ? 'verified' : ($('Record outcome').item.json.state === 'fix_failed' ? 'reproduced' : 'rejected')) }}",
+            "prove_attempts": "={{ $('Record outcome').item.json.attempts }}",
+            "note": "={{ $('Record outcome').item.json.state === 'infra_error' ? ('[prover] infra failure (attempt ' + $('Record outcome').item.json.attempts + '/3): ' + ($('Record outcome').item.json.infra_reason || '')) : '' }}"
+          },
+          "matchingColumns": [
+            "dedup_key"
+          ],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "p30",
+      "name": "Update suspicion",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1100,
+        440
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "p31",
+      "name": "On prover error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fjb-java-runner:8090/lease/release",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "{\"name\": \"prover\"}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "p32",
+      "name": "Release lease (err)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        760
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "On prover error": {
+      "main": [
+        [
+          {
+            "node": "Release lease (err)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prove webhook": {
+      "main": [
+        [
+          {
+            "node": "Acquire lease (web)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acquire lease (web)": {
+      "main": [
+        [
+          {
+            "node": "Lease gate (web)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lease gate (web)": {
+      "main": [
+        [
+          {
+            "node": "Call dedup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Call dedup": {
+      "main": [
+        [
+          {
+            "node": "Get new suspicions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get new suspicions": {
+      "main": [
+        [
+          {
+            "node": "Has suspicion?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prover schedule": {
+      "main": [
+        [
+          {
+            "node": "Acquire lease (sched)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acquire lease (sched)": {
+      "main": [
+        [
+          {
+            "node": "Lease gate (sched)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lease gate (sched)": {
+      "main": [
+        [
+          {
+            "node": "Get one suspicion",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Get one suspicion": {
+      "main": [
+        [
+          {
+            "node": "Has suspicion?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has suspicion?": {
+      "main": [
+        [
+          {
+            "node": "Loop over suspicions",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Release lease",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop over suspicions": {
+      "main": [
+        [
+          {
+            "node": "Release lease",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prep prover",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Release lease": {
+      "main": [
+        [
+          {
+            "node": "Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep prover": {
+      "main": [
+        [
+          {
+            "node": "Fetch source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch source": {
+      "main": [
+        [
+          {
+            "node": "Build reproduce input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build reproduce input": {
+      "main": [
+        [
+          {
+            "node": "Reproducer Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reproducer Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Reproducer Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reproducer Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse test",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse test": {
+      "main": [
+        [
+          {
+            "node": "run_test reproduce",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "run_test reproduce": {
+      "main": [
+        [
+          {
+            "node": "Build fix input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build fix input": {
+      "main": [
+        [
+          {
+            "node": "Fixer Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fixer Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Fixer Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fixer Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse fix",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse fix": {
+      "main": [
+        [
+          {
+            "node": "run_test fix",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "run_test fix": {
+      "main": [
+        [
+          {
+            "node": "Fix skeptic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fix skeptic": {
+      "main": [
+        [
+          {
+            "node": "PR maker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PR maker": {
+      "main": [
+        [
+          {
+            "node": "Record outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record outcome": {
+      "main": [
+        [
+          {
+            "node": "Upsert bug",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert bug": {
+      "main": [
+        [
+          {
+            "node": "Update suspicion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update suspicion": {
+      "main": [
+        [
+          {
+            "node": "Loop over suspicions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "fjbprover00001"
+  }
+}

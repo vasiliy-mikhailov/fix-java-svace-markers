@@ -1,0 +1,684 @@
+{
+  "id": "fjborchestr0001",
+  "name": "fjb-orchestrator",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "scan",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "o1",
+      "name": "Scan webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "fjbscanhook001"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "n4HxltR5dNFds1wb",
+          "cachedResultName": "scan_files"
+        },
+        "matchType": "anyCondition",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "repo",
+              "condition": "isNotEmpty",
+              "keyValue": ""
+            },
+            {
+              "keyName": "repo",
+              "condition": "isEmpty",
+              "keyValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "o2",
+      "name": "Clear files",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        200,
+        140
+      ],
+      "onError": "continueRegularOutput",
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "o17lTGMNGX0RI8wY",
+          "cachedResultName": "suspicions"
+        },
+        "matchType": "anyCondition",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "repo",
+              "condition": "isNotEmpty",
+              "keyValue": ""
+            },
+            {
+              "keyName": "repo",
+              "condition": "isEmpty",
+              "keyValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "o3",
+      "name": "Clear suspicions",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        400,
+        140
+      ],
+      "onError": "continueRegularOutput",
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "HsKuoBC5FPT0iJNh",
+          "cachedResultName": "method_runs"
+        },
+        "matchType": "anyCondition",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "repo",
+              "condition": "isNotEmpty",
+              "keyValue": ""
+            },
+            {
+              "keyName": "repo",
+              "condition": "isEmpty",
+              "keyValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "o4",
+      "name": "Clear methods",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        600,
+        140
+      ],
+      "onError": "continueRegularOutput",
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "tO8quypeTL29rLAE",
+          "cachedResultName": "bugs"
+        },
+        "matchType": "anyCondition",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "repo",
+              "condition": "isNotEmpty",
+              "keyValue": ""
+            },
+            {
+              "keyName": "repo",
+              "condition": "isEmpty",
+              "keyValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "o5",
+      "name": "Clear bugs",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        700,
+        140
+      ],
+      "onError": "continueRegularOutput",
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://fjb-java-runner:8090/live/clear",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "o6",
+      "name": "Clear live",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        140
+      ],
+      "onError": "continueRegularOutput",
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "r",
+              "name": "repo",
+              "value": "={{ $('Scan webhook').first().json.body.repo }}",
+              "type": "string"
+            },
+            {
+              "id": "m",
+              "name": "maxFiles",
+              "value": "={{ $('Scan webhook').first().json.body.maxFiles || 100000 }}",
+              "type": "number"
+            },
+            {
+              "id": "p",
+              "name": "pathFilter",
+              "value": "={{ $('Scan webhook').first().json.body.pathFilter || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "o7",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1000,
+        300
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $json.repo }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "n8n-fjb"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GITHUB_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "o8",
+      "name": "Repo info",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $('Config').item.json.repo }}/git/trees/{{ $json.default_branch }}?recursive=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "n8n-fjb"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GITHUB_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "o9",
+      "name": "List tree",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Config').first().json;\nconst branch = $('Repo info').first().json.default_branch;\nconst tree = ($input.first().json.tree) || [];\nconst bad = ['/test/', '/tests/', '/generated/', '/target/', 'package-info'];\nconst pf = (cfg.pathFilter || '').toString();\nconst picked = tree.filter(t =>\n  t.type === 'blob' &&\n  (t.path.includes('/src/main/java/') || t.path.startsWith('src/main/java/')) &&\n  t.path.endsWith('.java') &&\n  !bad.some(b => t.path.toLowerCase().includes(b)) &&\n  (!pf || t.path.includes(pf))\n).slice(0, cfg.maxFiles);\nreturn picked.map(t => ({ json: { repo: cfg.repo, branch, file: t.path } }));"
+      },
+      "id": "o10",
+      "name": "Pick files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const files = $('Pick files').all().map(i => i.json);\nconst tok = $env.GITHUB_TOKEN;\nconst run_id = '' + Date.now();\n\nfunction extractMethods(src, file) {\n  const s = src\n    .replace(/\\/\\*[\\s\\S]*?\\*\\//g, m => m.replace(/[^\\n]/g, ' '))\n    .replace(/\\/\\/[^\\n]*/g, m => ' '.repeat(m.length))\n    .replace(/\"(\\\\.|[^\"\\\\\\n])*\"/g, m => '\"' + ' '.repeat(Math.max(0, m.length - 2)) + '\"')\n    .replace(/'(\\\\.|[^'\\\\\\n])*'/g, m => \"'\" + ' '.repeat(Math.max(0, m.length - 2)) + \"'\");\n  const cm = s.match(/\\b(?:class|interface|enum|record)\\s+([A-Za-z_]\\w*)/);\n  const className = cm ? cm[1] : (file.split('/').pop() || 'X').replace('.java', '');\n  const skip = new Set(['if','for','while','switch','catch','synchronized','return','new','else','do','try']);\n  const sigRe = /(?:^|\\n)([ \\t]*(?:@[\\w.]+(?:\\([^)]*\\))?[ \\t\\n]*)*(?:(?:public|private|protected|static|final|abstract|synchronized|native|default)[ \\t\\n]+)*[\\w.<>\\[\\],?&\\s]+?\\s([A-Za-z_]\\w*)\\s*\\([^;{)]*\\)\\s*(?:throws[\\w.,\\s]+)?)\\{/g;\n  const methods = []; let m;\n  while ((m = sigRe.exec(s)) !== null) {\n    const name = m[2]; if (skip.has(name)) continue;\n    const braceAt = sigRe.lastIndex - 1; let depth = 0, end = -1;\n    for (let i = braceAt; i < s.length; i++) { if (s[i]==='{') depth++; else if (s[i]==='}'){depth--; if(depth===0){end=i+1;break;}} }\n    if (end < 0) continue;\n    methods.push({ name, src: src.slice(m.index, end) });\n    sigRe.lastIndex = end;\n  }\n  return { className, methods };\n}\nconst CONTRACT = new Set(['equals','hashCode','compareTo','iterator','close','clone','readObject','writeObject','readResolve']);\nfunction substantive(name, msrc) {\n  if (CONTRACT.has(name)) return true;\n  const body = msrc.slice(msrc.indexOf('{') + 1, msrc.lastIndexOf('}'));\n  if (/\\b(if|for|while|switch|catch|instanceof|new |throw)\\b|&&|\\|\\||==|!=|[+\\-*/%]=?/.test(body)) return true;\n  if (body.replace(/\\s/g, '').length > 120) return true;\n  return false;\n}\n\nconst out = [];\nconst B = 25;\nfor (let i = 0; i < files.length; i += B) {\n  const batch = files.slice(i, i + B);\n  const rs = await Promise.all(batch.map(async f => {\n    let methods = 1, className = '';\n    try {\n      const r = await this.helpers.httpRequest({\n        url: 'https://api.github.com/repos/' + f.repo + '/contents/' + f.file + '?ref=' + f.branch,\n        headers: { 'User-Agent': 'n8n-fjb', Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + tok, Connection: 'close' },\n        json: true, timeout: 30000,\n      });\n      const src = Buffer.from((r.content || '').replace(/\\s/g, ''), 'base64').toString('utf8');\n      const ex = extractMethods(src, f.file);\n      className = ex.className;\n      const subst = ex.methods.filter(m => substantive(m.name, m.src)).length;\n      methods = subst;   // 0 substantive (e.g. an interface) = 0 units: it will be skipped\n    } catch (e) { methods = 1; }\n    // module = the path before src/main/java; empty string for a root-level (single-module) repo\n    const _mod = f.file.includes('/src/main/java/') ? f.file.split('/src/main/java/')[0] : '';\n    return { file: f.file, repo: f.repo, module: _mod,\n             class_name: className, methods, status: 'queued', run_id };\n  }));\n  out.push(...rs);\n}\nreturn out.map(json => ({ json }));"
+      },
+      "id": "o11",
+      "name": "Plan methods",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "n4HxltR5dNFds1wb",
+          "cachedResultName": "scan_files"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "file",
+              "condition": "eq",
+              "keyValue": "={{ $json.file }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "o12",
+      "name": "Insert worklist",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "o13",
+      "name": "Loop over files",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:5678/webhook/suspect",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({repo: $json.repo, branch: $('Repo info').first().json.default_branch, file: $json.file}) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Connection",
+              "value": "close"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 7200000
+        }
+      },
+      "id": "o14",
+      "name": "Call suspector",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2440,
+        200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "n4HxltR5dNFds1wb",
+          "cachedResultName": "scan_files"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "file",
+              "condition": "eq",
+              "keyValue": "={{ $('Loop over files').item.json.file }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "done"
+          },
+          "matchingColumns": [
+            "file"
+          ],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "o15",
+      "name": "Mark done",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2660,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:5678/webhook/dedup",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({}) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Connection",
+              "value": "close"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 3600000
+        }
+      },
+      "id": "o16",
+      "name": "Call dedup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2440,
+        420
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "id": "o17",
+      "name": "Done",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2660,
+        420
+      ]
+    }
+  ],
+  "connections": {
+    "Scan webhook": {
+      "main": [
+        [
+          {
+            "node": "Clear files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear files": {
+      "main": [
+        [
+          {
+            "node": "Clear suspicions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear suspicions": {
+      "main": [
+        [
+          {
+            "node": "Clear methods",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear methods": {
+      "main": [
+        [
+          {
+            "node": "Clear bugs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear bugs": {
+      "main": [
+        [
+          {
+            "node": "Clear live",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear live": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Repo info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Repo info": {
+      "main": [
+        [
+          {
+            "node": "List tree",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List tree": {
+      "main": [
+        [
+          {
+            "node": "Pick files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick files": {
+      "main": [
+        [
+          {
+            "node": "Plan methods",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan methods": {
+      "main": [
+        [
+          {
+            "node": "Insert worklist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert worklist": {
+      "main": [
+        [
+          {
+            "node": "Loop over files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop over files": {
+      "main": [
+        [
+          {
+            "node": "Call dedup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Call suspector",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call dedup": {
+      "main": [
+        [
+          {
+            "node": "Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call suspector": {
+      "main": [
+        [
+          {
+            "node": "Mark done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark done": {
+      "main": [
+        [
+          {
+            "node": "Loop over files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

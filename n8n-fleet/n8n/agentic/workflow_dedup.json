@@ -1,0 +1,174 @@
+{
+  "id": "fjbdedup000001",
+  "name": "fjb-dedup",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "dedup",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "d1",
+      "name": "Dedup webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "fjbdeduphook01"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "o17lTGMNGX0RI8wY",
+          "cachedResultName": "suspicions"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "new"
+            }
+          ]
+        },
+        "returnAll": true,
+        "options": {}
+      },
+      "id": "d2",
+      "name": "Get new suspicions",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const VER = \"d2\";\nconst rows = $input.all().map(i => i.json).filter(r => r && r.dedup_key && r.title);\nif (!rows.length) return [];\n\n// Group by file: two suspicions are duplicates of one defect essentially only when they live in the\n// same file, and grouping keeps each LLM prompt small enough to stay accurate.\nconst byFile = new Map();\nfor (const r of rows) {\n  const k = (r.file || '') + '';\n  if (!byFile.has(k)) byFile.set(k, []);\n  byFile.get(k).push(r);\n}\n\nconst norm = s => (s == null ? '' : s).toString().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();\n\nasync function clusterFile(list) {\n  // --- pass 1 (free, exact): identical normalized title in the same file is always the same defect.\n  const out = [];            // {row, action:'keep'|'duplicate', canonical, reason}\n  const byTitle = new Map();\n  const remaining = [];\n  for (const r of list) {\n    const k = norm(r.title);\n    if (byTitle.has(k)) {\n      out.push({ row: r, action: 'duplicate', canonical: byTitle.get(k), reason: 'identical title in the same file' });\n    } else {\n      byTitle.set(k, r);\n      remaining.push(r);\n    }\n  }\n  if (remaining.length < 2) {\n    remaining.forEach(r => out.push({ row: r, action: 'keep' }));\n    return out;\n  }\n\n  // --- pass 2 (LLM): same ROOT CAUSE, worded differently. Conservative on purpose.\n  const listing = remaining.map((r, i) =>\n    `S${i}: [${r.severity}/${r.category}] ${r.method}() \u2014 ${r.title}\\n     ${(r.description || '').slice(0, 400)}`\n  ).join('\\n');\n  const prompt =\n    \"You are deduplicating suspected Java defects that were reported INDEPENDENTLY by per-method \"\n    + \"analysis of one file. Several methods often report the SAME underlying defect from different \"\n    + \"angles.\\n\\nFILE: \" + (remaining[0].file || '') + \"\\n\\nSUSPICIONS:\\n\" + listing + \"\\n\\n\"\n    + \"Group entries that are the SAME underlying defect \u2014 meaning ONE code change would resolve all of \"\n    + \"them (same root cause, same place in the code). Do NOT group entries that merely share a theme, a \"\n    + \"category, or a class: two different fields each missing their own null check are TWO defects, and \"\n    + \"a missing null check is not the same defect as a missing bounds check. When in doubt, keep them \"\n    + \"SEPARATE \u2014 a wrongly merged defect is never investigated again.\\n\\n\"\n    + \"For each group of 2+, pick as canonical the entry with the most precise, most actionable \"\n    + \"description. Reply ONLY JSON:\\n\"\n    + '{\"groups\":[{\"canonical\":<index>,\"duplicates\":[<index>,...],\"reason\":\"why these are one defect\"}]}\\n'\n    + \"Entries not in any group are kept automatically \u2014 omit them.\";\n\n  let groups = [];\n  try {\n    const resp = await this.helpers.httpRequest({\n      method: 'POST', url: $env.QWEN_BASE_URL + '/chat/completions',\n      headers: { Authorization: 'Bearer ' + $env.QWEN_API_KEY, 'Content-Type': 'application/json', Connection: 'close' },\n      body: { model: $env.QWEN_MODEL, messages: [{ role: 'user', content: prompt }], temperature: 0, max_tokens: 32000 },\n      json: true, timeout: 3600000,\n    });\n    const m = (resp.choices && resp.choices[0] && resp.choices[0].message) || {};\n    const t = ((m.content || m.reasoning_content) || '') + '';\n    const a = t.indexOf('{'), b = t.lastIndexOf('}');\n    if (a >= 0 && b > a) {\n      const jj = JSON.parse(t.slice(a, b + 1));\n      if (Array.isArray(jj.groups)) groups = jj.groups;\n    }\n  } catch (e) { groups = []; }   // FAIL OPEN: keep everything rather than lose a finding\n\n  const claimed = new Set();\n  for (const g of groups) {\n    const ci = Number(g && g.canonical);\n    const can = remaining[ci];\n    if (!can || claimed.has(ci)) continue;\n    const dups = Array.isArray(g.duplicates) ? g.duplicates : [];\n    for (const di of dups) {\n      const d = remaining[Number(di)];\n      if (!d || Number(di) === ci || claimed.has(Number(di))) continue;\n      claimed.add(Number(di));\n      out.push({ row: d, action: 'duplicate', canonical: can, reason: (g.reason || 'same underlying defect') + '' });\n    }\n  }\n  remaining.forEach((r, i) => { if (!claimed.has(i)) out.push({ row: r, action: 'keep' }); });\n  return out;\n}\n\n// bounded concurrency over files; one bad file must not sink the stage\nconst files = [...byFile.values()];\nconst CONC = 4;\nconst verdicts = [];\nfor (let i = 0; i < files.length; i += CONC) {\n  const settled = await Promise.allSettled(files.slice(i, i + CONC).map(f => clusterFile(f)));\n  settled.forEach((s, k) => {\n    if (s.status === 'fulfilled') verdicts.push(...s.value);\n    else files[i + k].forEach(r => verdicts.push({ row: r, action: 'keep' }));   // fail open\n  });\n}\n\n// how many duplicates each canonical absorbed, so the kept row says so on the dashboard\nconst merged = new Map();\nfor (const v of verdicts) {\n  if (v.action !== 'duplicate') continue;\n  const k = v.canonical.dedup_key;\n  merged.set(k, (merged.get(k) || 0) + 1);\n}\n\n// Only rows whose state actually changes are written back.\nconst out = [];\nfor (const v of verdicts) {\n  if (v.action === 'duplicate') {\n    out.push({ json: {\n      dedup_key: v.row.dedup_key, status: 'duplicate',\n      note: '[' + VER + '] duplicate of ' + v.canonical.method + '() \u2014 ' + v.canonical.title\n            + ' \u00b7 ' + (v.reason || ''),\n    }});\n  } else {\n    const n = merged.get(v.row.dedup_key) || 0;\n    if (n) out.push({ json: {\n      dedup_key: v.row.dedup_key, status: 'new',\n      note: '[' + VER + '] canonical \u2014 absorbed ' + n + ' duplicate' + (n === 1 ? '' : 's'),\n    }});\n  }\n}\nreturn out;"
+      },
+      "id": "d3",
+      "name": "Cluster duplicates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "o17lTGMNGX0RI8wY",
+          "cachedResultName": "suspicions"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "dedup_key",
+              "condition": "eq",
+              "keyValue": "={{ $json.dedup_key }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ $json.status }}",
+            "note": "={{ $json.note }}"
+          },
+          "matchingColumns": [
+            "dedup_key"
+          ],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "d4",
+      "name": "Apply verdict",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "d5",
+      "name": "Done",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        960,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Dedup webhook": {
+      "main": [
+        [
+          {
+            "node": "Get new suspicions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get new suspicions": {
+      "main": [
+        [
+          {
+            "node": "Cluster duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cluster duplicates": {
+      "main": [
+        [
+          {
+            "node": "Apply verdict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply verdict": {
+      "main": [
+        [
+          {
+            "node": "Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

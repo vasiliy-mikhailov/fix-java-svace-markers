@@ -1,0 +1,89 @@
+services:
+  # Stock n8n hosting the agentic Java-bug pipeline (orchestrator -> suspector -> prover -> review)
+  # plus the built-in Data Tables (suspicions, bugs).
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: fjb-n8n
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5679:5678"          # local only; public access is via Caddy + auth
+    networks:
+      - default
+      - proxy-net                       # so inference-caddy can reach it by name
+    environment:
+      - N8N_HOST=fix-java-bugs.mikhailov.tech
+      - N8N_PROTOCOL=https
+      - N8N_PORT=5678
+      - WEBHOOK_URL=https://fix-java-bugs.mikhailov.tech/
+      - N8N_EDITOR_BASE_URL=https://fix-java-bugs.mikhailov.tech/
+      - N8N_SECURE_COOKIE=true
+      # n8n keeps auth, but Caddy injects a long-lived session cookie -> no n8n login (Caddy basic_auth is the only gate)
+      - N8N_USER_MANAGEMENT_JWT_DURATION_HOURS=87600
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - GENERIC_TIMEZONE=Europe/Moscow
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false   # allow {{ $env.* }} in expressions
+      # 5-way concurrent ReAct holds several large (~500k-char) contexts at once -> raise the heaps so the
+      # task runner doesn't OOM (host has 128G, no container cap). Fixes the WorkflowCrashedError bursts.
+      - N8N_RUNNERS_MAX_OLD_SPACE_SIZE=8192
+      - NODE_OPTIONS=--max-old-space-size=8192
+      # The task runner kills any Code node at N8N_RUNNERS_TASK_TIMEOUT (default 300s) — and with
+      # onError=continueRegularOutput n8n then passes the INPUT items straight through, so a whole
+      # file's per-method ReAct analysis vanished silently (empty dialogs, zero findings, no error
+      # anywhere except the node's runData). Our agent loops are deliberately unbounded, so match the
+      # orchestrator's 2h per-file HTTP timeout.
+      - N8N_RUNNERS_TASK_TIMEOUT=7200
+      # secrets the pipeline nodes read via $env
+      - QWEN_BASE_URL=${QWEN_BASE_URL}
+      - QWEN_API_KEY=${QWEN_API_KEY}
+      - QWEN_MODEL=${QWEN_MODEL}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    volumes:
+      - ./n8n-data:/home/node/.n8n     # must be writable by uid 1000 (the node user)
+      - ../:/data                      # so n8n can import /data/n8n/*.json
+      - /home/vmihaylov/fix-java-bugs/results_n8n:/results   # pipeline writes findings here
+
+  # Co-located Java build/test service: all JDKs (8/11/17/21/25) + Maven + Gradle.
+  # The prover agent calls POST http://fjb-java-runner:8090/run_test to prove a bug
+  # (JUnit red before the fix, green after). Maven resolves through the Nexus mirror.
+  java-runner:
+    build: ../java-runner
+    image: fjb-java-runner:latest
+    container_name: fjb-java-runner
+    restart: unless-stopped
+    networks:
+      - default            # reachable by n8n as http://fjb-java-runner:8090
+      - mvn-cache          # reach the Nexus maven mirror (nexus:8081)
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - PORT=8090
+    volumes:
+      - java-runner-cache:/cache
+
+  # Live read-only dashboard: renders scan progress + suspicions/bugs Data Tables.
+  # Exposed behind the existing Caddy basic-auth at /dash on fix-java-bugs.mikhailov.tech.
+  dashboard:
+    image: python:3.11-slim
+    container_name: fjb-dashboard
+    restart: unless-stopped
+    command: python /app/dashboard.py
+    networks:
+      - default
+      - proxy-net          # so inference-caddy can reverse_proxy fjb-dashboard:8091
+    environment:
+      - PORT=8091
+      - N8N_DB=/n8n-data/database.sqlite
+      - GITHUB_TOKEN=${GITHUB_TOKEN}     # for the live repo-total file count (cached tree fetch)
+    volumes:
+      - ../dashboard/dashboard.py:/app/dashboard.py:ro
+      - ./n8n-data:/n8n-data:ro      # read-only view of the n8n DB + Data Tables
+
+networks:
+  default:
+  proxy-net:
+    external: true                     # shared with inference-caddy
+  mvn-cache:
+    external: true                     # shared with nexus
+
+volumes:
+  java-runner-cache:
