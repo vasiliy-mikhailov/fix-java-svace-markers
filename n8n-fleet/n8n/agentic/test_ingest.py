@@ -101,6 +101,21 @@ def main():
     check("3 Critical markers kept", len(crit) == 3, "got %d" % len(crit))
     check("Critical mapped to high", all(r["severity"] == "high" for r in crit))
 
+    # Insertion order is the order the prover works them in, and a full run takes over a day — so the
+    # severe markers have to come first or an interrupted run has nothing to show.
+    rank = {"Critical": 3, "Major": 2, "Normal": 1, "Minor": 0}
+    order = [rank[r["svace_severity"]] for r in rows]
+    check("ingested in descending severity", order == sorted(order, reverse=True),
+          "first 10: %s" % order[:10])
+    check("Critical markers are first", all(r["svace_severity"] == "Critical" for r in rows[:3]))
+    check("severity histogram reported", summary["by_severity"] ==
+          {"Critical": 3, "Major": 56, "Normal": 16, "Minor": 207}, str(summary["by_severity"]))
+    # Stability: within one severity the report's own order is preserved, so re-ingesting the same
+    # CSV yields the same queue and a resumed run does not reshuffle what is left.
+    majors = [r["marker_id"] for r in rows if r["svace_severity"] == "Major"]
+    again = [r["marker_id"] for r in run_parse(body) if r["svace_severity"] == "Major"]
+    check("ordering is stable across runs", majors == again)
+
     print("\ninclude_tests=true")
     allrows = run_parse({**body, "include_tests": True})
     check("356 markers when tests included", len(allrows) == 356, "got %d" % len(allrows))

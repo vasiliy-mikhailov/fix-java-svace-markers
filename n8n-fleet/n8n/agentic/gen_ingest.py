@@ -233,9 +233,20 @@ for (let r = 1; r < rows.length; r++) {
   }});
 }
 
+// INSERTION ORDER IS PRIORITY ORDER. The prover drains `status='new'` one row at a time under the
+// runner lease, taking the OLDEST first — and a full report is 282 markers at minutes each, so the
+// run lasts more than a day and will realistically be interrupted. Ingesting in CSV order would
+// spend that day on whatever the scanner happened to list first (the report opens with Minor
+// COLLECTION.WRONG_ARG_TYPE rows) and reach the 3 Critical taint markers last. Sort by severity so
+// the run is useful at every point at which it might be stopped. Array#sort is stable, so markers of
+// equal severity keep their report order.
+out.sort((a, b) => (SEVERITY_RANK[b.json.svace_severity] ?? -1) - (SEVERITY_RANK[a.json.svace_severity] ?? -1));
+
+const bySeverity = {};
+for (const o of out) bySeverity[o.json.svace_severity] = (bySeverity[o.json.svace_severity] || 0) + 1;
 const summary = {
   source, repo, branch, ingested: out.length, csv_rows: rows.length - 1,
-  skipped, unmapped_checkers: unmapped,
+  by_severity: bySeverity, skipped, unmapped_checkers: unmapped,
 };
 console.log('[ingest] ' + JSON.stringify(summary));
 if (!out.length) throw new Error('ingest: every row was filtered out — ' + JSON.stringify(summary));
