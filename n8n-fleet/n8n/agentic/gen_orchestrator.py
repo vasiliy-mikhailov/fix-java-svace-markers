@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fjb-orchestrator: PLAN then PROCESS.
+"""fsm-orchestrator: PLAN then PROCESS.
 
 POST /webhook/scan { repo, maxFiles?, pathFilter? }
 Phase 1 (plan): list all src/main/java files, fetch each (batched) and count its substantive
@@ -72,7 +72,7 @@ for (let i = 0; i < files.length; i += B) {
     try {
       const r = await this.helpers.httpRequest({
         url: 'https://api.github.com/repos/' + f.repo + '/contents/' + f.file + '?ref=' + f.branch,
-        headers: { 'User-Agent': 'n8n-fjb', Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + tok, Connection: 'close' },
+        headers: { 'User-Agent': 'n8n-fsm', Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + tok, Connection: 'close' },
         json: true, timeout: 30000,
       });
       const src = Buffer.from((r.content || '').replace(/\s/g, ''), 'base64').toString('utf8');
@@ -100,7 +100,7 @@ def node(name, ntype, params, tv, x, y=300, extra=None):
     return name
 
 GH = {"parameters": [
-    {"name": "User-Agent", "value": "n8n-fjb"},
+    {"name": "User-Agent", "value": "n8n-fsm"},
     {"name": "Accept", "value": "application/vnd.github+json"},
     {"name": "Authorization", "value": "=Bearer {{ $env.GITHUB_TOKEN }}"},
 ]}
@@ -132,14 +132,14 @@ def clear_node(label, tid, nm, x):
 
 node("Scan webhook", "n8n-nodes-base.webhook",
      {"httpMethod": "POST", "path": "scan", "responseMode": "lastNode", "options": {}},
-     2, 0, extra={"webhookId": "fjbscanhook001"})
+     2, 0, extra={"webhookId": "fsmscanhook001"})
 # clean slate BEFORE planning: prior-run files / suspicions / method dialogs / live transcripts
 clear_node("Clear files", SCAN_FILES_TABLE, "scan_files", 200)
 clear_node("Clear suspicions", SUSPICIONS_TABLE, "suspicions", 400)
 clear_node("Clear methods", METHOD_RUNS_TABLE, "method_runs", 600)
 clear_node("Clear bugs", BUGS_TABLE, "bugs", 700)
 node("Clear live", "n8n-nodes-base.httpRequest", {
-    "method": "POST", "url": "http://fjb-java-runner:8090/live/clear",
+    "method": "POST", "url": "http://fsm-java-runner:8090/live/clear",
     "sendBody": True, "contentType": "json", "specifyBody": "json", "jsonBody": "={{ JSON.stringify({}) }}",
     "options": {"timeout": 30000}}, 4.2, 900, y=140,
     extra={"onError": "continueRegularOutput", "executeOnce": True, "alwaysOutputData": True})
@@ -208,7 +208,7 @@ conns = {
     "Mark done":       {"main": [[{"node": "Loop over files", "type": "main", "index": 0}]]},
 }
 
-wf = {"id": "fjborchestr0001", "name": "fjb-orchestrator", "active": False,
+wf = {"id": "fsmorchestr0001", "name": "fsm-orchestrator", "active": False,
       "nodes": N, "connections": conns, "settings": {"executionOrder": "v1"}}
 open("workflow_orchestrator.json", "w").write(json.dumps(wf, indent=2))
 print(f"wrote workflow_orchestrator.json — {len(N)} nodes (plan + process)")

@@ -1,6 +1,6 @@
 {
-  "id": "fjbsetup00000001",
-  "name": "fjb-setup",
+  "id": "fsmsetup00000001",
+  "name": "fsm-setup",
   "active": false,
   "nodes": [
     {
@@ -18,7 +18,7 @@
         0,
         300
       ],
-      "webhookId": "fjbsetuphook01"
+      "webhookId": "fsmsetuphook01"
     },
     {
       "parameters": {
@@ -85,6 +85,38 @@
             },
             {
               "name": "method_key",
+              "type": "string"
+            },
+            {
+              "name": "prove_attempts",
+              "type": "number"
+            },
+            {
+              "name": "branch",
+              "type": "string"
+            },
+            {
+              "name": "marker_id",
+              "type": "string"
+            },
+            {
+              "name": "svace_checker",
+              "type": "string"
+            },
+            {
+              "name": "svace_severity",
+              "type": "string"
+            },
+            {
+              "name": "svace_line",
+              "type": "number"
+            },
+            {
+              "name": "anchor",
+              "type": "string"
+            },
+            {
+              "name": "anchor_status",
               "type": "string"
             }
           ]
@@ -175,6 +207,22 @@
             },
             {
               "name": "infra_reason",
+              "type": "string"
+            },
+            {
+              "name": "branch",
+              "type": "string"
+            },
+            {
+              "name": "verdict_text",
+              "type": "string"
+            },
+            {
+              "name": "verdict_kind",
+              "type": "string"
+            },
+            {
+              "name": "svace_checker",
               "type": "string"
             }
           ]

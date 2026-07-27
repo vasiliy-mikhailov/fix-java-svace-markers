@@ -16,7 +16,7 @@ flock -n 9 || { echo "dispatch: already running, skip"; exit 0; }
 
 set -a; [ -f "$DIR/.env" ] && . "$DIR/.env"; set +a   # QWEN_* + MAX_FILES/PROVE_TOP
 
-running() { docker ps --filter "name=fjbn8n-" -q | wc -l | tr -d ' '; }
+running() { docker ps --filter "name=fsmn8n-" -q | wc -l | tr -d ' '; }
 next_repo() { grep -m1 -vE '^[[:space:]]*(#|$)' "$QUEUE" || true; }
 
 launched=0
@@ -25,7 +25,7 @@ while [ "$(running)" -lt "$MAX" ]; do
   [ -z "$repo" ] && break
   # pop it from the queue
   grep -vxF "$repo" "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
-  safe="fjbn8n-$(printf '%s' "$repo" | tr '/:' '--' | tr -cd 'A-Za-z0-9-')"
+  safe="fsmn8n-$(printf '%s' "$repo" | tr '/:' '--' | tr -cd 'A-Za-z0-9-')"
   docker rm -f "$safe" >/dev/null 2>&1 || true
   docker run -d --rm --name "$safe" --network "$NET" \
     -e QWEN_API_KEY -e QWEN_BASE_URL -e QWEN_MODEL -e MAX_FILES -e PROVE_TOP \

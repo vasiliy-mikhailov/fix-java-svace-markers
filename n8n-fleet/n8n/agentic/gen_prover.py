@@ -1,38 +1,58 @@
 #!/usr/bin/env python3
-"""fjb-prover: prove & fix suspicions -> `bugs` Data Table.
+"""fsm-prover: settle Svace markers -> `bugs` Data Table.
 
 POST /webhook/prove { repo?, limit? }
-For each status='new' suspicion, TWO INDEPENDENT agents run:
+For each status='new' marker, TWO INDEPENDENT agents run:
   1) REPRODUCER writes a JUnit test that FAILS on the unpatched code (verified red on the java-runner).
   2) FIXER writes ONLY a source-file fix that makes the reproducer's test pass (verified green).
 The fixer never authors or edits the test (a structural guard drops any edit under src/test), so a fix
-cannot be self-authored to game its own test. Proven bugs land in `bugs` with a PR draft; the suspicion
-is marked verified/rejected.
+cannot be self-authored to game its own test.
+
+A marker has TWO acceptable outcomes, not one. Proven markers land in `bugs` with a PR draft. A marker
+that will NOT reproduce lands as a WRITTEN VERDICT (`verdict_text`) arguing why — that rebuttal is a
+first-class deliverable, not a shrug. Only infrastructure failures are retried.
 """
 import json
 
 # one source of truth for the lifecycle versions (see versions.py) — every stage stamps itself so a
 # stored artifact says which code produced it
-from versions import (PIPELINE_VERSION, SUSPECTOR_VERSION, REPRODUCER_VERSION, FIXER_VERSION,
-                      PR_MAKER_VERSION, SKEPTIC_VERSION, stamp, versions_json)
+from versions import (PIPELINE_VERSION, INGESTER_VERSION, REPRODUCER_VERSION, FIXER_VERSION,
+                      PR_MAKER_VERSION, SKEPTIC_VERSION, VERDICT_VERSION, ANCHOR_VERSION,
+                      stamp, versions_json)
+from tables import SUSPICIONS_TABLE, BUGS_TABLE, check as _check_tables
 
-SUSPICIONS_TABLE = "o17lTGMNGX0RI8wY"
-BUGS_TABLE = "tO8quypeTL29rLAE"
+_check_tables()
+
+# How many prove attempts a marker gets before a non-reproduction is written up as a verdict.
+# One reproducer sample is a weak basis for "this marker is wrong": the agent may simply have failed to
+# find an angle. Markers whose checker can only ever be settled by argument (settle_by=argue: dead code,
+# a hard-coded secret) skip the retry — a second identical failure buys nothing but ~10 minutes of build.
+VERDICT_MIN_ATTEMPTS = 2
 
 REPRODUCER_SYS = (
     "__REPVER__\n"
-    "You are a Java test engineer PROVING that a suspected bug is real. You are given the full source "
-    "file and the suspicion. Write exactly ONE self-contained JUnit 5 test (package + imports + a single "
+    "You are a Java test engineer adjudicating ONE static-analysis marker reported by Svace. You are "
+    "given the full source file, the checker that fired, the exact claim it makes, and the location. "
+    "Your job is to settle that specific claim — not to look for other bugs in the file.\n\n"
+    "If the claim holds, write exactly ONE self-contained JUnit 5 test (package + imports + a single "
     "public class named EXACTLY as given) that FAILS on the current, UNPATCHED code precisely because of "
-    "this bug, and would PASS once the bug is fixed. Target the bug with a specific assertion — not a "
+    "this defect, and would PASS once it is fixed. Target it with a specific assertion — not a "
     "trivial always-true/always-false check. PREFER asserting a general property or several "
     "representative inputs (not a single hard-coded case), so a narrow special-case patch cannot make it "
-    "pass without truly fixing the bug. Use only JUnit 5 (org.junit.jupiter) plus the public API of the "
-    "given file. Do NOT fix the bug and do NOT modify any source file.\n\n"
+    "pass without truly fixing the defect. Use only JUnit 5 (org.junit.jupiter) plus the public API of "
+    "the given file. Do NOT fix the defect and do NOT modify any source file.\n\n"
+    "LINE NUMBERS MAY HAVE DRIFTED. The commit Svace scanned is not known, so the reported line is a "
+    "hint, not an address. Find the construct the checker DESCRIBES; if it is not in this file at all, "
+    "say so via can_prove:false rather than testing something else.\n\n"
+    "Returning can_prove:false is a legitimate, useful answer — a marker that does not hold is a result, "
+    "not a failure. Do NOT invent a test that passes on unpatched code just to have written one: a test "
+    "that goes green before any fix proves nothing and is worse than no test. Say WHY in root_cause, "
+    "concretely (the guard already present, the branch that cannot be reached, the sanitizer upstream, "
+    "or that the construct is intentional).\n\n"
     "Return ONLY a JSON object, no prose:\n"
     '{\"can_prove\": true|false, \"test_code\": \"<full .java test>\", '
     '\"root_cause\": \"..\", \"value_verdict\": \"real|trivial|false-positive\"}\n'
-    "If this is not a real, provable bug, return "
+    "If the marker does not describe a real, provable defect here, return "
     '{\"can_prove\": false, \"value_verdict\": \"false-positive\", \"root_cause\": \"..\"}.'
 )
 
@@ -63,7 +83,7 @@ let branch = (s.branch || '').toString().trim(), branch_error = '';
 if (!branch) try {
   const ri = await this.helpers.httpRequest({
     url: 'https://api.github.com/repos/' + s.repo,
-    headers: { 'User-Agent': 'n8n-fjb', Accept: 'application/vnd.github+json',
+    headers: { 'User-Agent': 'n8n-fsm', Accept: 'application/vnd.github+json',
                Authorization: 'Bearer ' + $env.GITHUB_TOKEN, Connection: 'close' },
     json: true, timeout: 30000,
   });
@@ -71,23 +91,47 @@ if (!branch) try {
 } catch (e) { branch_error = (e && (e.message || e.description)) ? String(e.message || e.description).slice(0, 200) : 'repo lookup failed'; }
 if (!branch) branch_error = branch_error || 'no default_branch returned';
 const file = (s.file || '').toString();
-const parts = file.split('/src/main/java/');
-const module = parts.length > 1 ? parts[0] : '';
-const pkgdir = parts.length > 1 ? parts[1].slice(0, parts[1].lastIndexOf('/')) : '';
+// Split on 'src/main/java/' WITHOUT a leading slash. The parent split on '/src/main/java/', which only
+// matches when a module directory precedes it — true of its suspector's paths, false of the Svace
+// ingester's repo-relative ones. On a single-module repo like WebGoat every path starts with
+// 'src/main/java/', so the separator never matched: module, package and package directory all came out
+// empty and every generated test was written to the default package at the root of src/test/java.
+const MARK = 'src/main/java/';
+const at = file.indexOf(MARK);
+const module = at > 0 ? file.slice(0, at).replace(/\/+$/, '') : '';
+const rest = at >= 0 ? file.slice(at + MARK.length) : '';
+// lastIndexOf('/') is -1 for a class directly under src/main/java, and slice(0, -1) would silently
+// truncate the FILENAME's last character into a bogus package. Test for the separator instead.
+const pkgdir = rest.indexOf('/') >= 0 ? rest.slice(0, rest.lastIndexOf('/')) : '';
 const pkg = pkgdir.replace(/\//g, '.');
 const cls = (s.class_name || file.split('/').pop().replace('.java','')).toString().replace(/[^A-Za-z0-9_]/g,'');
-const test_class = cls + 'FjbProofTest';
+const test_class = cls + 'FsmProofTest';
 const test_path = (module ? module + '/' : '') + 'src/test/java/' + (pkgdir ? pkgdir + '/' : '') + test_class + '.java';
+// Svace provenance. `settle_by` comes from the ingester's checker map: 'test' = a JUnit test can
+// exhibit this, 'argue' = nothing observable at runtime distinguishes the flagged code (dead store,
+// hard-coded secret), so the only honest outcome is a written verdict. It decides whether a
+// non-reproduction is worth a second prove attempt.
+const ev = (s.evidence || '').toString();
+const sb = ev.match(/Settle-by:\s*(\w+)/);
 return {
   suspicion_key: s.dedup_key, repo: s.repo, branch, branch_ok: !!branch, branch_error,
   prove_attempts: Number(s.prove_attempts) || 0, file, module, pkg,
   class_name: cls, method: s.method, test_class, test_path,
   category: s.category, severity: s.severity, title: s.title,
-  description: s.description, evidence: s.evidence,
+  description: s.description, evidence: ev,
+  marker_id: s.marker_id || '', svace_checker: s.svace_checker || '',
+  svace_severity: s.svace_severity || '',
+  svace_line: Number(s.svace_line) || Number(s.line) || 0,
+  settle_by: sb ? sb[1] : 'test',
 };
 """
 
-# ---- REPRODUCER: build input asking for the failing test ONLY -----------------------------------
+# ---- REPRODUCER: re-anchor the marker, then ask for the failing test ONLY ------------------------
+# ANCHORING (see ANCHOR_VERSION). The commit Svace scanned is unknown, so `File:Line` is resolved
+# against upstream HEAD and the line has almost certainly moved. Handing the model a bare line number
+# it cannot trust is how a marker gets adjudicated against the WRONG code — and a confident verdict on
+# the wrong lines is worse than no verdict. So we resolve the line to its ENCLOSING METHOD by brace
+# matching and hand over that whole method, labelled with how much we trust the location.
 BUILD_REPRODUCE_INPUT = r"""
 const j = $('Prep prover').item.json;
 let src = '';
@@ -95,16 +139,116 @@ try { src = Buffer.from(($json.content || '').replace(/\s/g,''), 'base64').toStr
 const SRC_MAX = 300000;                    // past the largest main-java file in the warm repos (~259k)
 const src_truncated = src.length > SRC_MAX;
 if (src_truncated) src = src.slice(0, SRC_MAX);
+
+// Blank out comments and string/char literals, preserving length AND newlines, so a brace or quote
+// inside them cannot desynchronise the body scan. Offsets stay valid against the original source.
+function mask(s) {
+  return s
+    .replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, ' '))
+    .replace(/\/\/[^\n]*/g, m => ' '.repeat(m.length))
+    .replace(/"(\\.|[^"\\\n])*"/g, m => '"' + ' '.repeat(Math.max(0, m.length - 2)) + '"')
+    .replace(/'(\\.|[^'\\\n])*'/g, m => "'" + ' '.repeat(Math.max(0, m.length - 2)) + "'");
+}
+
+// -> { name, startLine, endLine, text } for the method containing `line`, or null.
+//
+// The parameter list is scanned with a paren BALANCER, not matched by a regex. The parent's extractor
+// used `\([^;{)]*\)`, which stops at the first `)` — so on a Spring codebase like WebGoat, every method
+// with an annotated parameter (`@Value("${webgoat.user.directory}") final String home`,
+// `@RequestParam("x") String x`) failed to match and its whole body became invisible. Those methods
+// then reported "not inside any method", which reads as drift when it is really a parser gap.
+function enclosingMethod(source, line) {
+  const s = mask(source);
+  const skip = new Set(['if','for','while','switch','catch','synchronized','return','new','else','do','try']);
+  // matches up to (and including) the method name's opening paren
+  const sigRe = /(?:^|\n)([ \t]*(?:@[\w$.]+(?:\([^)]*\))?[ \t\n]*)*(?:(?:public|private|protected|static|final|abstract|synchronized|native|default|strictfp)[ \t\n]+)*[\w$.<>\[\],?&\s]+?\s([A-Za-z_$][\w$]*)\s*)\(/g;
+  // offset -> 1-based line, without an O(n) scan per lookup
+  const nl = []; for (let i = 0; i < source.length; i++) if (source[i] === '\n') nl.push(i);
+  const lineOf = (off) => { let lo = 0, hi = nl.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (nl[mid] < off) lo = mid + 1; else hi = mid; } return lo + 1; };
+  let m;
+  while ((m = sigRe.exec(s)) !== null) {
+    const name = m[2];
+    if (skip.has(name)) continue;
+    // 1) balance the parameter list
+    let depth = 0, close = -1;
+    for (let i = sigRe.lastIndex - 1; i < s.length; i++) {
+      if (s[i] === '(') depth++;
+      else if (s[i] === ')') { depth--; if (depth === 0) { close = i; break; } }
+    }
+    if (close < 0) continue;
+    // 2) optional throws clause, then the body's opening brace. No brace = an abstract/interface
+    //    declaration or (far more often) an ordinary method CALL that happened to look like a signature.
+    let k = close + 1;
+    while (k < s.length && /\s/.test(s[k])) k++;
+    if (s.startsWith('throws', k)) { while (k < s.length && s[k] !== '{' && s[k] !== ';') k++; }
+    if (s[k] !== '{') continue;
+    // 3) balance the body
+    let d2 = 0, end = -1;
+    for (let i = k; i < s.length; i++) {
+      if (s[i] === '{') d2++;
+      else if (s[i] === '}') { d2--; if (d2 === 0) { end = i + 1; break; } }
+    }
+    if (end < 0) continue;
+    const startLine = lineOf(m.index + 1), endLine = lineOf(end);
+    if (line >= startLine && line <= endLine) {
+      return { name, startLine, endLine, text: source.slice(m.index, end) };
+    }
+    sigRe.lastIndex = end;
+  }
+  return null;
+}
+
+const lines = src.split('\n');
+const svLine = Number(j.svace_line) || 0;
+let anchor = '', anchor_status = 'unresolved', anchor_note = '', method_text = '', line_text = '';
+if (!src.trim()) {
+  anchor_note = 'source file could not be fetched';
+} else if (svLine < 1 || svLine > lines.length) {
+  // The file got SHORTER than the marker's line: the drift is proven, not merely suspected.
+  anchor_status = 'unresolved';
+  anchor_note = 'line ' + svLine + ' is past the end of the file as checked out (' + lines.length +
+                ' lines) — the file changed since the scan';
+} else {
+  line_text = lines[svLine - 1];
+  const em = enclosingMethod(src, svLine);
+  if (em) {
+    anchor = em.name;
+    anchor_status = 'exact';
+    method_text = em.text;
+    anchor_note = 'line ' + svLine + ' falls inside ' + em.name + '() (lines ' + em.startLine + '-' + em.endLine + ')';
+  } else {
+    // Every remaining unanchored marker in the WebGoat report lands on a field or a Lombok annotation.
+    // That is not drift and not a parser gap: Svace analysed the COMPILED code, where Lombok had
+    // already generated the getter/setter/constructor it is complaining about. There is no source
+    // method to point at, and an agent told only "not inside any method" will conclude the marker is
+    // stale and wrongly clear it. Name the real situation instead.
+    anchor_status = 'no-method';
+    const lombok = /@(Getter|Setter|Data|Value|AllArgsConstructor|RequiredArgsConstructor|NoArgsConstructor|Builder|With)\b/.test(src);
+    anchor_note = 'line ' + svLine + ' is not inside any method body (it is a field, annotation or import)'
+      + (lombok
+         ? ' — and this class uses Lombok, so the accessor or constructor the checker flagged is GENERATED at compile time and has no source form. Settle the claim against the generated API (for example the getter for this field), not against the annotation.'
+         : '');
+  }
+}
+
+const loc = j.file + ':' + svLine;
 const agent_input =
   "Repository: " + j.repo + "   (branch " + j.branch + ", module '" + j.module + "')\n" +
   "Source file: " + j.file + "\n\n" +
-  "SUSPECTED BUG in " + j.class_name + "." + j.method + "()  [" + j.category + "/" + j.severity + "]\n" +
-  j.title + "\n" + (j.description||'') + "\nEvidence: " + (j.evidence||'') + "\n\n" +
-  "Write the proof test in package `" + j.pkg + "`, class `" + j.test_class + "`, at path `" + j.test_path + "`.\n" +
-  "Only write the FAILING test — do not fix the bug.\n\n" +
+  "SVACE MARKER  [" + (j.svace_severity || '?') + "]  " + (j.svace_checker || '?') + "\n" +
+  "Location as reported: " + loc + "\n" +
+  "The checker's claim: " + (j.description || '') + "\n\n" +
+  "LOCATION CONFIDENCE: " + anchor_status + " — " + anchor_note + "\n" +
+  (line_text ? "Line " + svLine + " as it reads in the checked-out tree:\n```java\n" + line_text + "\n```\n" : "") +
+  (method_text
+    ? "\nThe enclosing method (this is where the claim should be settled):\n```java\n" + method_text + "\n```\n"
+    : "\nNo enclosing method could be resolved — locate the construct the checker describes yourself.\n") +
+  "\nWrite the proof test in package `" + j.pkg + "`, class `" + j.test_class + "`, at path `" + j.test_path + "`.\n" +
+  "Only write the FAILING test — do not fix the defect.\n\n" +
   (src_truncated ? "SOURCE FILE (TRUNCATED — you are NOT seeing the whole file):\n```java\n"
                  : "FULL SOURCE FILE:\n```java\n") + src + "\n```";
-return { ...j, src, src_truncated, agent_input };
+return { ...j, src, src_truncated, agent_input,
+         anchor, anchor_status, anchor_note, line_text, method_text };
 """
 
 # Robust JSON extractor, ported from the suspector's parseVerdict. The reproducer/fixer embed a full
@@ -183,8 +327,10 @@ const redOut = (repro.red_output || '').toString().slice(-2500);
 const agent_input =
   "Repository: " + j.repo + "   (branch " + j.branch + ", module '" + j.module + "')\n" +
   "Source file to fix: " + j.file + "\n\n" +
-  "SUSPECTED BUG in " + j.class_name + "." + j.method + "()\n" + j.title + "\n" + (j.description||'') +
-  "\nEvidence: " + (j.evidence||'') + "\n\n" +
+  "SVACE MARKER  [" + (j.svace_severity || '?') + "]  " + (j.svace_checker || '?') +
+  "  at " + j.file + ":" + (j.svace_line || '?') +
+  ((j.anchor) ? "  (in " + j.anchor + "())" : "") + "\n" +
+  "The checker's claim: " + (j.description || '') + "\n\n" +
   "An INDEPENDENT reproducer wrote this failing regression test — you MUST NOT modify it:\n```java\n" +
   test_code + "\n```\n\n" +
   (red
@@ -386,8 +532,154 @@ return {
 };
 """
 
+# ---- VERDICT: the second first-class output ------------------------------------------------------
+# A marker that will not reproduce must still produce something a human can act on. This stage turns
+# `not_reproduced` into an ARGUED REBUTTAL and classifies it.
+#
+# It runs AFTER Record outcome deliberately: Record outcome is the one place that separates a genuine
+# non-reproduction from an infrastructure failure (build never compiled, source never fetched, reply
+# unparseable). Those are retried, and must never be written up as "Svace was wrong" — a verdict
+# derived from a build that never ran is a fabrication.
+VERDICT = REL_JSON_FN + r"""
+const rec = $json;                                  // Record outcome
+const j = $('Prep prover').item.json;
+const parseTest = $('Parse test').item.json || {};
+const repro = $('run_test reproduce').item.json || {};
+const bri = $('Build reproduce input').item.json || {};
+
+let verdict_text = '', verdict_kind = '', verdict_confidence = '', retry = false;
+let state = rec.state;
+
+// --- Svace marker-detail enrichment (PLUGGABLE STUB) ------------------------------------------
+// No Svace endpoint exists for this deployment, so the rebuttal is argued from the checker's claim
+// plus the actual source. If an endpoint is added later, set SVACE_BASE_URL (and optionally
+// SVACE_TOKEN) in the environment and implement the response mapping below: the prompt already has a
+// slot for the message + taint trace, so the argument starts engaging Svace's own reasoning without
+// any other change to this pipeline. An arrow function so `this.helpers` stays bound.
+const svaceDetail = async (markerId) => {
+  const base = ($env.SVACE_BASE_URL || '').trim();
+  if (!base || !markerId) return null;
+  try {
+    const hdrs = { Accept: 'application/json', Connection: 'close' };
+    if ($env.SVACE_TOKEN) hdrs.Authorization = 'Bearer ' + $env.SVACE_TOKEN;
+    const r = await this.helpers.httpRequest({
+      url: base.replace(/\/+$/, '') + '/markers/' + encodeURIComponent(markerId),
+      headers: hdrs, json: true, timeout: 60000 });
+    if (!r) return null;
+    return { message: (r.message || r.msg || '') + '', trace: JSON.stringify(r.trace || r.path || []) };
+  } catch (e) { return null; }
+};
+
+if (state === 'not_reproduced') {
+  const attempts = Number(rec.attempts) || 1;
+  const argueOnly = (j.settle_by || 'test') === 'argue';
+  const testRan = !!((repro.red_summary || {}).test_executed);
+  // A checker that can only be settled by argument gets no retry — a second reproducer sample cannot
+  // write a runtime test for a dead store or a hard-coded constant, so it would only burn a build.
+  if (!argueOnly && attempts < __MIN_ATTEMPTS__) {
+    retry = true;
+    console.log('[verdict] ' + j.suspicion_key + ' attempt ' + attempts + ' — retrying before writing a verdict');
+  } else {
+    const detail = await svaceDetail(j.marker_id);
+    const code = bri.method_text
+      ? ("The method the marker points into:\n```java\n" + String(bri.method_text).slice(0, 20000) + "\n```")
+      : ("Source file:\n```java\n" + String(bri.src || '').slice(0, 20000) + "\n```");
+    const whatHappened = !parseTest.can_prove
+      ? ("The reproducer declined to write a test. Its stated reason: "
+         + (parseTest.repro_root_cause || '(none given)'))
+      : (testRan
+         ? ("The reproducer wrote a test targeting this marker. It COMPILED AND RAN against the "
+            + "unpatched code and PASSED — so the code did not exhibit the defect the checker claims. "
+            + "The reproducer's reasoning was: " + (parseTest.repro_root_cause || '(none given)'))
+         : ("The reproducer wrote a test, but it did not demonstrate the defect. Reasoning: "
+            + (parseTest.repro_root_cause || '(none given)')));
+    const prompt = "__VDVER__\n" +
+      "You are adjudicating ONE static-analysis marker that could not be demonstrated by an executable "
+      + "test, after " + attempts + " attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. "
+      + "It must be specific enough to accept or reject on its merits — name the guard, the branch, the "
+      + "call, or the intent. A generic 'this appears to be a false positive' is worthless.\n\n"
+      + "REPOSITORY: " + j.repo + "\nFILE: " + j.file + "\n"
+      + "MARKER: " + (j.svace_checker || '?') + "  [" + (j.svace_severity || '?') + "]  at line " + (j.svace_line || '?') + "\n"
+      + "THE CHECKER'S CLAIM: " + (j.description || '') + "\n"
+      + "LOCATION CONFIDENCE: " + (bri.anchor_status || '?') + " — " + (bri.anchor_note || '') + "\n"
+      + (detail ? ("SVACE DETAIL: " + detail.message + "\nSVACE TRACE: " + detail.trace + "\n")
+                : "SVACE DETAIL: unavailable (no Svace endpoint is configured for this deployment; argue from the code).\n")
+      + "\n" + code + "\n\n"
+      + "WHAT THE PIPELINE OBSERVED: " + whatHappened + "\n\n"
+      + "Classify into exactly one kind:\n"
+      + "  false-positive — the claim does not hold on this code. Cite the guard, the validation, the "
+      + "branch that cannot be reached, or the upstream sanitizer that makes it safe.\n"
+      + "  by-design — the claim DOES hold, but the code is deliberately written this way and fixing it "
+      + "would defeat its purpose (for example a deliberately vulnerable teaching example that exists to "
+      + "demonstrate this very weakness). Say what makes it intentional. Do NOT use this kind merely "
+      + "because the code looks old or awkward.\n"
+      + "  unprovable — the claim may well be correct, but no runtime test can demonstrate a DEFECT "
+      + "(a dead store, an unread field, a hard-coded constant, a style rule). Say what a human should "
+      + "check instead, and whether it is worth fixing.\n\n"
+      + "If the location confidence is not 'exact', consider that the marker may point at code that has "
+      + "since moved or been deleted, and say so rather than arguing about the wrong lines.\n\n"
+      + "Reply ONLY JSON: {\"kind\":\"false-positive|by-design|unprovable\","
+      + "\"verdict\":\"3-8 sentences, specific, citing the code\",\"confidence\":\"high|medium|low\"}.";
+    try {
+      const r = await this.helpers.httpRequest({ method:'POST', url: $env.QWEN_BASE_URL + '/chat/completions',
+        headers:{ Authorization:'Bearer '+$env.QWEN_API_KEY, 'Content-Type':'application/json', Connection:'close' },
+        body:{ model:$env.QWEN_MODEL, messages:[{role:'user',content:prompt}], temperature:0.2, max_tokens:32000 },
+        json:true, timeout:3600000 });
+      const m = (r.choices && r.choices[0] && r.choices[0].message) || {};
+      const t = ((m.content || m.reasoning_content) || '') + '';
+      // the robust extractor, not indexOf('{')..lastIndexOf('}'): verdict prose routinely contains
+      // braces (generics, `{@code}`), and the naive scan then discards a perfectly good verdict.
+      const jj = extractJson(t, ['kind', 'verdict', 'confidence']) || {};
+      const kind = (jj.kind || '') + '';
+      verdict_kind = ['false-positive','by-design','unprovable'].indexOf(kind) >= 0 ? kind : 'false-positive';
+      verdict_text = (jj.verdict || '') + '';
+      verdict_confidence = (jj.confidence || '') + '';
+    } catch (e) {
+      verdict_text = '';
+      verdict_confidence = 'error: ' + ((e && (e.message || e.description))
+        ? String(e.message || e.description).slice(0,200) : 'verdict call failed');
+    }
+    if (verdict_text.trim()) {
+      state = 'false_positive';
+    } else {
+      // No text = no verdict. Leaving state='not_reproduced' is the honest outcome: an EMPTY
+      // false_positive row would claim the marker was argued away when nothing was written.
+      console.log('[verdict] ' + j.suspicion_key + ' — verdict call produced no text; left not_reproduced');
+    }
+  }
+}
+// The suspicion's next status is decided HERE, in code, rather than as a nested ternary inside an
+// n8n {{ }} expression. The parent's version was a single 300-character expression; one wrong branch
+// there silently retires a marker, and it cannot be tested.
+const attempts = Number(rec.attempts) || 0;
+let suspicion_status, suspicion_note = '';
+if (state === 'infra_error') {
+  // Never a verdict about the code: retry, but not forever. Past MAX it becomes infra_stuck, which
+  // no run selects, so a permanently broken row stops occupying the queue.
+  suspicion_status = attempts >= 3 ? 'infra_stuck' : 'new';
+  suspicion_note = '[prover] infra failure (attempt ' + attempts + '/3): ' + (rec.infra_reason || '');
+} else if (retry) {
+  suspicion_status = 'new';
+  suspicion_note = '[prover] did not reproduce on attempt ' + attempts + '; retrying before a verdict is written';
+} else if (['pr_ready', 'needs_review', 'pr_rejected'].indexOf(state) >= 0) {
+  suspicion_status = 'verified';
+} else if (state === 'fix_failed') {
+  suspicion_status = 'reproduced';
+} else if (state === 'false_positive') {
+  suspicion_status = 'false_positive';
+  suspicion_note = '[verdict/' + verdict_kind + '] ' + verdict_text.slice(0, 300);
+} else {
+  suspicion_status = 'rejected';
+}
+return { ...rec, state, retry, verdict_text, verdict_kind, verdict_confidence,
+         suspicion_status, suspicion_note,
+         anchor: bri.anchor || '', anchor_status: bri.anchor_status || '',
+         svace_checker: j.svace_checker || '' };
+"""
+
 # Resolve the version stamps into the generated prompts / Code nodes. Done here (once) so the four
 # lifecycle stages can never drift out of sync with versions.py.
+VERDICT = VERDICT.replace("__VDVER__", stamp(VERDICT_VERSION)).replace("__MIN_ATTEMPTS__", str(VERDICT_MIN_ATTEMPTS))
 REPRODUCER_SYS = REPRODUCER_SYS.replace("__REPVER__", stamp(REPRODUCER_VERSION))
 FIXER_SYS = FIXER_SYS.replace("__FIXVER__", stamp(FIXER_VERSION))
 FIX_SKEPTIC = FIX_SKEPTIC.replace("__SKEPVER__", stamp(SKEPTIC_VERSION))
@@ -424,7 +716,7 @@ def agent(name, sys, x, y):
 
 def run_test_node(name, x, y):
     return node(name, "n8n-nodes-base.httpRequest",
-                {"method": "POST", "url": "http://fjb-java-runner:8090/run_test",
+                {"method": "POST", "url": "http://fsm-java-runner:8090/run_test",
                  "sendBody": True, "contentType": "json", "specifyBody": "json",
                  "jsonBody": "={{ JSON.stringify($json.body) }}",
                  "options": {"timeout": 5400000}}, 4.2, x, y,   # 90 min: clone + RED + GREEN, each build up to 20 min
@@ -435,7 +727,7 @@ def lease_node(name, path, body, x, y):
     # onError=continue + alwaysOutputData + fail-CLOSED gate: if the runner is unreachable, `acquired`
     # is undefined -> the gate's boolean-true test is false -> the prover simply does not run this tick.
     return node(name, "n8n-nodes-base.httpRequest",
-                {"method": "POST", "url": "http://fjb-java-runner:8090" + path,
+                {"method": "POST", "url": "http://fsm-java-runner:8090" + path,
                  "sendBody": True, "contentType": "json", "specifyBody": "json",
                  "jsonBody": json.dumps(body), "options": {"timeout": 30000}}, 4.2, x, y,
                 extra={"onError": "continueRegularOutput", "alwaysOutputData": True, "executeOnce": True})
@@ -453,7 +745,7 @@ def gate_node(name, x, y):
 # (/cache, separate from the suspector's read-only /cache/fs) and never piles up n8n executions.
 node("Prove webhook", "n8n-nodes-base.webhook",
      {"httpMethod": "POST", "path": "prove", "responseMode": "lastNode", "options": {}},
-     2, 0, extra={"webhookId": "fjbprovehook01"})
+     2, 0, extra={"webhookId": "fsmprovehook01"})
 lease_node("Acquire lease (web)", "/lease", {"name": "prover", "ttl_s": 1800}, 120, y=-60)
 gate_node("Lease gate (web)", 240, y=-60)
 # every ~60s: if no other prove drain holds the lease, work exactly ONE oldest `new` suspicion, then
@@ -476,18 +768,14 @@ node("Has suspicion?", "n8n-nodes-base.if",
                       "operator": {"type": "string", "operation": "notEmpty", "singleValue": True}}],
       "combinator": "and"}}, 2.2, 560, y=560)
 node("Release lease", "n8n-nodes-base.httpRequest",
-     {"method": "POST", "url": "http://fjb-java-runner:8090/lease/release",
+     {"method": "POST", "url": "http://fsm-java-runner:8090/lease/release",
       "sendBody": True, "contentType": "json", "specifyBody": "json",
       "jsonBody": json.dumps({"name": "prover"}), "options": {"timeout": 30000}}, 4.2, 440, y=60,
      extra={"onError": "continueRegularOutput", "alwaysOutputData": True, "executeOnce": True})
-# DEDUP STAGE first: the reproducer must never burn a cycle on a defect another row already covers.
-# onError=continue so an unavailable dedup degrades to "prove the raw backlog", never blocks proving.
-node("Call dedup", "n8n-nodes-base.httpRequest", {
-    "method": "POST", "url": "http://127.0.0.1:5678/webhook/dedup",
-    "sendBody": True, "contentType": "json", "specifyBody": "json", "jsonBody": "={{ JSON.stringify({}) }}",
-    "sendHeaders": True, "headerParameters": {"parameters": [{"name": "Connection", "value": "close"}]},
-    "options": {"timeout": 3600000}}, 4.2, 120,
-    extra={"onError": "continueRegularOutput", "executeOnce": True, "alwaysOutputData": True})
+# NO DEDUP STAGE. The parent ran one here because its LLM suspector reported the same defect from
+# several methods. Svace de-duplicates its own markers, so the only repeats are two markers on one
+# line — which are two distinct obligations, not a duplicate — and the ingester keeps them apart with
+# an occurrence index. Clustering them here would silently retire real findings.
 node("Get new suspicions", "n8n-nodes-base.dataTable",
      {"resource": "row", "operation": "get", "dataTableId": dt(SUSPICIONS_TABLE, "suspicions"),
       "filters": {"conditions": [{"keyName": "status", "condition": "eq", "keyValue": "new"}]},
@@ -501,7 +789,7 @@ node("Fetch source", "n8n-nodes-base.httpRequest",
      {"url": "=https://api.github.com/repos/{{ $json.repo }}/contents/{{ $json.file }}?ref={{ $json.branch }}",
       "sendHeaders": True,
       "headerParameters": {"parameters": [
-          {"name": "User-Agent", "value": "n8n-fjb"},
+          {"name": "User-Agent", "value": "n8n-fsm"},
           {"name": "Accept", "value": "application/vnd.github+json"},
           {"name": "Authorization", "value": "=Bearer {{ $env.GITHUB_TOKEN }}"},
           {"name": "Connection", "value": "close"}]},
@@ -529,12 +817,19 @@ node("Fix skeptic", "n8n-nodes-base.code", code(FIX_SKEPTIC, per_item=True), 2, 
 node("PR maker", "n8n-nodes-base.code", code(PR_MAKER, per_item=True), 2, 3080, y=200,
      extra={"onError": "continueRegularOutput"})
 node("Record outcome", "n8n-nodes-base.code", code(RECORD, per_item=True), 2, 660, y=440)
+# The verdict stage sits BETWEEN Record outcome and the writes, so `state` is final by the time either
+# table is touched: a marker that gets a written rebuttal is stored as false_positive, and one that is
+# only being retried never reaches a terminal status. onError=continue — a dead verdict LLM must leave
+# the row as not_reproduced, never fail the prove and strand the lease.
+node("Verdict", "n8n-nodes-base.code", code(VERDICT, per_item=True), 2, 660, y=620,
+     extra={"onError": "continueRegularOutput"})
 # EXPLICIT mapping, not autoMapInputData: Record outcome also emits `attempts` (which Update suspicion
 # needs) but the bugs table has no such column, and n8n REJECTS an unknown column on autoMap — every
 # prove used to crash here, so no bug was ever recorded. Map only the columns that exist in `bugs`.
 _BUG_COLS = ["suspicion_key", "repo", "file", "title", "jdk", "test_path", "test_code", "fix_diff",
              "red_verified", "green_verified", "value_score", "value_verdict", "pr_title", "pr_body",
-             "state", "infra_reason", "branch", "versions"]
+             "state", "infra_reason", "branch", "versions",
+             "verdict_text", "verdict_kind", "svace_checker"]
 node("Upsert bug", "n8n-nodes-base.dataTable",
      {"resource": "row", "operation": "upsert", "dataTableId": dt(BUGS_TABLE, "bugs"),
       "filters": {"conditions": [{"keyName": "suspicion_key", "condition": "eq", "keyValue": "={{ $json.suspicion_key }}"}]},
@@ -546,13 +841,16 @@ node("Upsert bug", "n8n-nodes-base.dataTable",
 node("Update suspicion", "n8n-nodes-base.dataTable",
      {"resource": "row", "operation": "update", "dataTableId": dt(SUSPICIONS_TABLE, "suspicions"),
       "filters": {"conditions": [{"keyName": "dedup_key", "condition": "eq",
-                                  "keyValue": "={{ $('Record outcome').item.json.suspicion_key }}"}]},
+                                  "keyValue": "={{ $('Verdict').item.json.suspicion_key }}"}]},
+      # The next status is computed in the Verdict Code node, not as a nested ternary in an expression:
+      # infra_error retries (up to 3, then infra_stuck), a pending retry goes back to 'new', a written
+      # rebuttal lands as 'false_positive', and only a real judgement retires the marker.
       "columns": {"mappingMode": "defineBelow",
-                  # infra_error must not RETIRE the suspicion (it is not a verdict) but must not retry
-                  # forever either: past MAX it becomes 'infra_stuck', which no run selects.
-                  "value": {"status": "={{ $('Record outcome').item.json.state === 'infra_error' ? ($('Record outcome').item.json.attempts >= 3 ? 'infra_stuck' : 'new') : (['pr_ready','needs_review','pr_rejected'].includes($('Record outcome').item.json.state) ? 'verified' : ($('Record outcome').item.json.state === 'fix_failed' ? 'reproduced' : 'rejected')) }}",
-                            "prove_attempts": "={{ $('Record outcome').item.json.attempts }}",
-                            "note": "={{ $('Record outcome').item.json.state === 'infra_error' ? ('[prover] infra failure (attempt ' + $('Record outcome').item.json.attempts + '/3): ' + ($('Record outcome').item.json.infra_reason || '')) : '' }}"},
+                  "value": {"status": "={{ $('Verdict').item.json.suspicion_status }}",
+                            "prove_attempts": "={{ $('Verdict').item.json.attempts }}",
+                            "note": "={{ $('Verdict').item.json.suspicion_note }}",
+                            "anchor": "={{ $('Verdict').item.json.anchor }}",
+                            "anchor_status": "={{ $('Verdict').item.json.anchor_status }}"},
                   "matchingColumns": ["dedup_key"], "schema": [], "attemptToConvertTypes": False,
                   "convertFieldsToString": True},
       "options": {}}, 1.1, 1100, y=440)
@@ -562,18 +860,17 @@ node("Update suspicion", "n8n-nodes-base.dataTable",
 # immediately. Requires settings.errorWorkflow = this workflow's own id (set below).
 node("On prover error", "n8n-nodes-base.errorTrigger", {}, 1, 0, y=760)
 node("Release lease (err)", "n8n-nodes-base.httpRequest",
-     {"method": "POST", "url": "http://fjb-java-runner:8090/lease/release",
+     {"method": "POST", "url": "http://fsm-java-runner:8090/lease/release",
       "sendBody": True, "contentType": "json", "specifyBody": "json",
       "jsonBody": json.dumps({"name": "prover"}), "options": {"timeout": 30000}}, 4.2, 240, y=760,
      extra={"onError": "continueRegularOutput"})
 
 conns = {
     "On prover error":      {"main": [[{"node": "Release lease (err)", "type": "main", "index": 0}]]},
-    # webhook path: lease -> gate -> (dedup -> all new) -> loop
+    # webhook path: lease -> gate -> all new -> loop
     "Prove webhook":        {"main": [[{"node": "Acquire lease (web)", "type": "main", "index": 0}]]},
     "Acquire lease (web)":  {"main": [[{"node": "Lease gate (web)", "type": "main", "index": 0}]]},
-    "Lease gate (web)":     {"main": [[{"node": "Call dedup", "type": "main", "index": 0}], []]},
-    "Call dedup":           {"main": [[{"node": "Get new suspicions", "type": "main", "index": 0}]]},
+    "Lease gate (web)":     {"main": [[{"node": "Get new suspicions", "type": "main", "index": 0}], []]},
     "Get new suspicions":   {"main": [[{"node": "Has suspicion?", "type": "main", "index": 0}]]},
     # scheduled path: lease -> gate -> ONE oldest new -> has-suspicion? -> loop  (no dedup; end-of-scan handles it)
     "Prover schedule":      {"main": [[{"node": "Acquire lease (sched)", "type": "main", "index": 0}]]},
@@ -601,14 +898,21 @@ conns = {
     "run_test fix":         {"main": [[{"node": "Fix skeptic", "type": "main", "index": 0}]]},
     "Fix skeptic":          {"main": [[{"node": "PR maker", "type": "main", "index": 0}]]},
     "PR maker":             {"main": [[{"node": "Record outcome", "type": "main", "index": 0}]]},
-    "Record outcome":       {"main": [[{"node": "Upsert bug", "type": "main", "index": 0}]]},
+    "Record outcome":       {"main": [[{"node": "Verdict", "type": "main", "index": 0}]]},
+    "Verdict":              {"main": [[{"node": "Upsert bug", "type": "main", "index": 0}]]},
     "Upsert bug":           {"main": [[{"node": "Update suspicion", "type": "main", "index": 0}]]},
     "Update suspicion":     {"main": [[{"node": "Loop over suspicions", "type": "main", "index": 0}]]},
 }
 
-wf = {"id": "fjbprover00001", "name": "fjb-prover", "active": True,   # schedule trigger must be active to fire
+wf = {"id": "fsmprover00001", "name": "fsm-prover", "active": True,   # schedule trigger must be active to fire
       "nodes": N, "connections": conns,
       # errorWorkflow = itself: a hard failure fires "On prover error" -> releases the lease
-      "settings": {"executionOrder": "v1", "errorWorkflow": "fjbprover00001"}}
-open("workflow_prover.json", "w").write(json.dumps(wf, indent=2))
-print(f"wrote workflow_prover.json — {len(N)} nodes (independent Reproducer + Fixer)")
+      "settings": {"executionOrder": "v1", "errorWorkflow": "fsmprover00001"}}
+# Writing the artifact is a SIDE EFFECT OF RUNNING, never of importing. The test harnesses import this
+# module to reach PREP / BUILD_REPRODUCE_INPUT, and they stub the table ids first — so while this write
+# ran at import time, `python3 test_prep.py` silently rewrote workflow_prover.json with the stub id
+# 'test0000000000'. That file then got deployed, and every prove died on
+# "Could not find the data table: 'test0000000000'".
+if __name__ == "__main__":
+    open("workflow_prover.json", "w").write(json.dumps(wf, indent=2))
+    print(f"wrote workflow_prover.json — {len(N)} nodes (independent Reproducer + Fixer)")

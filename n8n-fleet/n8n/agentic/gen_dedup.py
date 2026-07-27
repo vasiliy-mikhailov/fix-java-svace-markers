@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fjb-dedup: the DEDUPLICATION stage — sits between the suspector and the reproducer.
+"""fsm-dedup: the DEDUPLICATION stage — sits between the suspector and the reproducer.
 
 POST /webhook/dedup { repo?, limit? }
 
@@ -168,7 +168,7 @@ def dt():
 
 node("Dedup webhook", "n8n-nodes-base.webhook",
      {"httpMethod": "POST", "path": "dedup", "responseMode": "lastNode", "options": {}},
-     2, 0, extra={"webhookId": "fjbdeduphook01"})
+     2, 0, extra={"webhookId": "fsmdeduphook01"})
 # only rows still awaiting proof: already-proven or already-duplicate rows must not be re-judged
 node("Get new suspicions", "n8n-nodes-base.dataTable",
      {"resource": "row", "operation": "get", "dataTableId": dt(),
@@ -195,7 +195,7 @@ conns = {
     "Apply verdict":      {"main": [[{"node": "Done", "type": "main", "index": 0}]]},
 }
 
-wf = {"id": "fjbdedup000001", "name": "fjb-dedup", "active": False,
+wf = {"id": "fsmdedup000001", "name": "fsm-dedup", "active": False,
       "nodes": N, "connections": conns, "settings": {"executionOrder": "v1"}}
 open("workflow_dedup.json", "w").write(json.dumps(wf, indent=2))
 print(f"wrote workflow_dedup.json — {len(N)} nodes ({stamp(DEDUP_VERSION)})")

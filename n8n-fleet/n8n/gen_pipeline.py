@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the fully node-based single-repo n8n pipeline workflow (fjb-pipeline)."""
+"""Generate the fully node-based single-repo n8n pipeline workflow (fsm-pipeline)."""
 import json
 
 # ---- Code-node bodies (the "steps pulled out of python", now visible n8n nodes) ----
@@ -109,7 +109,7 @@ return [{ json: out, binary: { data: { data: b64, mimeType: 'application/json', 
 """
 
 GH_HEADERS = {"parameters": [
-    {"name": "User-Agent", "value": "n8n-fjb"},
+    {"name": "User-Agent", "value": "n8n-fsm"},
     {"name": "Accept", "value": "application/vnd.github+json"},
     {"name": "Authorization", "value": "=Bearer {{ $env.GITHUB_TOKEN }}"},
 ]}
@@ -204,7 +204,7 @@ for n in N:
         n["maxTries"] = 3
         n["waitBetweenTries"] = 5000
     if n["name"] == "Webhook":
-        n["webhookId"] = "fjbrunhook0001"   # required for the production /webhook/run endpoint
+        n["webhookId"] = "fsmrunhook0001"   # required for the production /webhook/run endpoint
 
 def to(*nodes):
     return [{"node": n, "type": "main", "index": 0} for n in nodes]
@@ -226,8 +226,8 @@ conns = {
 }
 
 wf = {
-    "id": "fjbpipeline0001",
-    "name": "fjb-pipeline",
+    "id": "fsmpipeline0001",
+    "name": "fsm-pipeline",
     "active": False,
     "nodes": N,
     "connections": conns,

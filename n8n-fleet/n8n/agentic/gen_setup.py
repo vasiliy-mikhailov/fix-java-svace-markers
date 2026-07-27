@@ -1,23 +1,36 @@
 #!/usr/bin/env python3
-"""Generate fjb-setup: creates the `suspicions` and `bugs` n8n Data Tables (idempotent)."""
+"""Generate fsm-setup: creates the `suspicions` and `bugs` n8n Data Tables (idempotent)."""
 import json
 
 SUSPICIONS = [
-    ("dedup_key", "string"),   # repo|file|method|category (normalized) -> dedup / upsert key
+    ("dedup_key", "string"),   # repo|file|line|checker (normalized) -> upsert key; the prover's row id
     ("repo", "string"),
     ("file", "string"),
     ("class_name", "string"),
     ("method", "string"),
-    ("line", "number"),
-    ("category", "string"),     # correctness|npe|resource-leak|contract-violation|data-corruption
-    ("severity", "string"),     # high|medium|low
+    ("line", "number"),         # line in the tree we actually check out (may differ from svace_line)
+    ("category", "string"),     # command-injection|resource-leak|npe|path-traversal|... (see CHECKER_MAP)
+    ("severity", "string"),     # high|medium|low  (mapped from svace_severity)
     ("title", "string"),
     ("description", "string"),
-    ("evidence", "string"),     # concrete input -> wrong output
+    ("evidence", "string"),     # the checker's one-line meaning + the flagged source line
     ("status", "string"),       # new|reproducing|reproduced|fixed|verified|rejected|pr_ready
     ("note", "string"),         # free-form progress / rejection reason
-    ("version", "string"),      # suspector version that produced this finding (see versions.py)
+    ("version", "string"),      # ingester version that produced this row (see versions.py)
     ("method_key", "string"),   # the method_runs row that produced it (transcript lookup key)
+    # --- columns the PROVER reads/writes that the parent's spec never declared. The live fix-java-bugs
+    # tables have them (added out-of-band), so the parent works; a table created fresh from this spec
+    # did NOT, and the prover's first `Update suspicion` (which writes prove_attempts) rejects the
+    # unknown column and crashes every prove. Declared here so a clean setup is actually runnable.
+    ("prove_attempts", "number"),
+    ("branch", "string"),
+    # --- Svace marker provenance -------------------------------------------------------------
+    ("marker_id", "string"),      # stable id for this marker within the report
+    ("svace_checker", "string"),  # e.g. FB.EI_EXPOSE_REP2, HANDLE_LEAK, TAINTED_PTR
+    ("svace_severity", "string"), # Critical|Major|Normal|Minor, verbatim from the report
+    ("svace_line", "number"),     # the line Svace reported, BEFORE re-anchoring
+    ("anchor", "string"),         # enclosing symbol we re-anchored onto
+    ("anchor_status", "string"),  # exact | relocated | unresolved  (see the ingester)
 ]
 
 METHOD_RUNS = [
@@ -57,9 +70,17 @@ BUGS = [
     ("value_verdict", "string"),
     ("pr_title", "string"),
     ("pr_body", "string"),
-    ("state", "string"),           # verified|pr_ready|pr_open|rejected
-    ("versions", "string"),        # JSON: pipeline + suspector/reproducer/fixer/pr_maker versions
+    ("state", "string"),           # pr_ready|needs_review|pr_rejected|fix_failed|false_positive|
+                                   # not_reproduced|infra_error
+    ("versions", "string"),        # JSON: pipeline + ingester/reproducer/fixer/pr_maker versions
     ("infra_reason", "string"),    # why state=infra_error (never a verdict about the code)
+    ("branch", "string"),          # which branch the artifact was proven on (parent writes it; see above)
+    # --- the second first-class output: a written rebuttal for a marker that will not reproduce.
+    # This is a DELIVERABLE, not a footnote — a marker that yields no PR must still yield an argued
+    # verdict a human can accept or reject.
+    ("verdict_text", "string"),
+    ("verdict_kind", "string"),    # false-positive | by-design | unprovable  (see the verdict stage)
+    ("svace_checker", "string"),   # carried onto the artifact so verdicts group by checker
 ]
 
 
@@ -88,7 +109,7 @@ nodes = [
     {
         "parameters": {"httpMethod": "POST", "path": "setup", "responseMode": "onReceived", "options": {}},
         "id": "wh", "name": "Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 2,
-        "position": [0, 300], "webhookId": "fjbsetuphook01",
+        "position": [0, 300], "webhookId": "fsmsetuphook01",
     },
     dt_node("Create suspicions", "suspicions", SUSPICIONS, 240),
     dt_node("Create bugs", "bugs", BUGS, 480),
@@ -104,12 +125,14 @@ conns = {
 }
 
 wf = {
-    "id": "fjbsetup00000001",
-    "name": "fjb-setup",
+    "id": "fsmsetup00000001",
+    "name": "fsm-setup",
     "active": False,
     "nodes": nodes,
     "connections": conns,
     "settings": {"executionOrder": "v1"},
 }
-open("workflow_setup.json", "w").write(json.dumps(wf, indent=2))
-print(f"wrote workflow_setup.json — suspicions({len(SUSPICIONS)} cols) + bugs({len(BUGS)} cols)")
+# Write on RUN only, for the same reason as the other generators (see gen_prover.py).
+if __name__ == "__main__":
+    open("workflow_setup.json", "w").write(json.dumps(wf, indent=2))
+    print(f"wrote workflow_setup.json — suspicions({len(SUSPICIONS)} cols) + bugs({len(BUGS)} cols)")

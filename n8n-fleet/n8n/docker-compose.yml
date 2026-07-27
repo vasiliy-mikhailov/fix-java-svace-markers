@@ -1,21 +1,28 @@
+# Compose project name. WITHOUT this, Compose derives the project from the directory basename —
+# which is `n8n` for this stack AND for fix-java-bugs' stack. Both would then resolve the same
+# `n8n_java-runner-cache` volume and the same `n8n_default` network, so the two pipelines would
+# silently share one build workspace. Naming the project is what actually keeps them apart;
+# renaming the containers alone does not.
+name: fsm
+
 services:
-  # Stock n8n hosting the agentic Java-bug pipeline (orchestrator -> suspector -> prover -> review)
-  # plus the built-in Data Tables (suspicions, bugs).
+  # Stock n8n hosting the Svace-marker pipeline (ingester -> prover -> verdict) plus the built-in
+  # Data Tables (suspicions, bugs).
   n8n:
     image: n8nio/n8n:latest
-    container_name: fjb-n8n
+    container_name: fsm-n8n
     restart: unless-stopped
     ports:
-      - "127.0.0.1:5679:5678"          # local only; public access is via Caddy + auth
+      - "127.0.0.1:5680:5678"          # 5679 is fix-java-bugs' n8n; local only, public access via Caddy + auth
     networks:
       - default
       - proxy-net                       # so inference-caddy can reach it by name
     environment:
-      - N8N_HOST=fix-java-bugs.mikhailov.tech
+      - N8N_HOST=fix-java-svace-markers.mikhailov.tech
       - N8N_PROTOCOL=https
       - N8N_PORT=5678
-      - WEBHOOK_URL=https://fix-java-bugs.mikhailov.tech/
-      - N8N_EDITOR_BASE_URL=https://fix-java-bugs.mikhailov.tech/
+      - WEBHOOK_URL=https://fix-java-svace-markers.mikhailov.tech/
+      - N8N_EDITOR_BASE_URL=https://fix-java-svace-markers.mikhailov.tech/
       - N8N_SECURE_COOKIE=true
       # n8n keeps auth, but Caddy injects a long-lived session cookie -> no n8n login (Caddy basic_auth is the only gate)
       - N8N_USER_MANAGEMENT_JWT_DURATION_HOURS=87600
@@ -23,15 +30,18 @@ services:
       - GENERIC_TIMEZONE=Europe/Moscow
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=false   # allow {{ $env.* }} in expressions
-      # 5-way concurrent ReAct holds several large (~500k-char) contexts at once -> raise the heaps so the
-      # task runner doesn't OOM (host has 128G, no container cap). Fixes the WorkflowCrashedError bursts.
+      # The marker ingester reads the Svace CSV off the mounted repo. Code nodes cannot require any
+      # builtin unless it is allowlisted here — without this the ingester throws
+      # "Cannot find module 'fs'" and, under onError=continue, silently forwards its input instead.
+      - NODE_FUNCTION_ALLOW_BUILTIN=fs
+      # Large source files + full LLM replies are held in memory by the task runner; keep the parent's
+      # generous heaps (host has 128G, no container cap).
       - N8N_RUNNERS_MAX_OLD_SPACE_SIZE=8192
       - NODE_OPTIONS=--max-old-space-size=8192
       # The task runner kills any Code node at N8N_RUNNERS_TASK_TIMEOUT (default 300s) — and with
-      # onError=continueRegularOutput n8n then passes the INPUT items straight through, so a whole
-      # file's per-method ReAct analysis vanished silently (empty dialogs, zero findings, no error
-      # anywhere except the node's runData). Our agent loops are deliberately unbounded, so match the
-      # orchestrator's 2h per-file HTTP timeout.
+      # onError=continueRegularOutput n8n then passes the INPUT items straight through, so the failure
+      # is invisible except in the node's runData. The verdict stage makes an unbounded LLM call, so
+      # keep the parent's 2h ceiling.
       - N8N_RUNNERS_TASK_TIMEOUT=7200
       # secrets the pipeline nodes read via $env
       - QWEN_BASE_URL=${QWEN_BASE_URL}
@@ -40,36 +50,37 @@ services:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
     volumes:
       - ./n8n-data:/home/node/.n8n     # must be writable by uid 1000 (the node user)
-      - ../:/data                      # so n8n can import /data/n8n/*.json
-      - /home/vmihaylov/fix-java-bugs/results_n8n:/results   # pipeline writes findings here
+      - ../../:/data                   # repo root, so n8n imports /data/n8n-fleet/n8n/agentic/*.json
+                                       # and the ingester reads /data/data/svace/*.csv
+      - /home/vmihaylov/fix-java-svace-markers/results_n8n:/results
 
   # Co-located Java build/test service: all JDKs (8/11/17/21/25) + Maven + Gradle.
-  # The prover agent calls POST http://fjb-java-runner:8090/run_test to prove a bug
+  # The prover calls POST http://fsm-java-runner:8090/run_test to prove a marker
   # (JUnit red before the fix, green after). Maven resolves through the Nexus mirror.
   java-runner:
     build: ../java-runner
-    image: fjb-java-runner:latest
-    container_name: fjb-java-runner
+    image: fsm-java-runner:latest
+    container_name: fsm-java-runner
     restart: unless-stopped
     networks:
-      - default            # reachable by n8n as http://fjb-java-runner:8090
+      - default            # reachable by n8n as http://fsm-java-runner:8090
       - mvn-cache          # reach the Nexus maven mirror (nexus:8081)
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - PORT=8090
     volumes:
-      - java-runner-cache:/cache
+      - fsm-java-runner-cache:/cache
 
-  # Live read-only dashboard: renders scan progress + suspicions/bugs Data Tables.
-  # Exposed behind the existing Caddy basic-auth at /dash on fix-java-bugs.mikhailov.tech.
+  # Live read-only dashboard: renders marker ingest progress + suspicions/bugs Data Tables.
+  # Exposed behind Caddy basic-auth on fix-java-svace-markers.mikhailov.tech.
   dashboard:
     image: python:3.11-slim
-    container_name: fjb-dashboard
+    container_name: fsm-dashboard
     restart: unless-stopped
     command: python /app/dashboard.py
     networks:
       - default
-      - proxy-net          # so inference-caddy can reverse_proxy fjb-dashboard:8091
+      - proxy-net          # so inference-caddy can reverse_proxy fsm-dashboard:8091
     environment:
       - PORT=8091
       - N8N_DB=/n8n-data/database.sqlite
@@ -86,4 +97,4 @@ networks:
     external: true                     # shared with nexus
 
 volumes:
-  java-runner-cache:
+  fsm-java-runner-cache:

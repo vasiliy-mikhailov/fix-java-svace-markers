@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fjb java-runner: run a JUnit test red (bug present) -> apply fix -> green (bug gone).
+"""fsm java-runner: run a JUnit test red (bug present) -> apply fix -> green (bug gone).
 
 POST /run_test
 {
@@ -289,7 +289,7 @@ def prepare_fs(repo, branch):
     import shutil
     key = hashlib.sha1(f"{repo}@{branch}".encode()).hexdigest()[:12]
     base = f"{FSCACHE}/{key}"
-    done = os.path.join(base, ".fjb_clone_complete")
+    done = os.path.join(base, ".fsm_clone_complete")
     if os.path.exists(done):
         return base
     with _fs_keylock(key):
@@ -374,7 +374,7 @@ def fs_read_file(b):
             "truncated": len(content) > 80000}
 
 
-FJB_INTERNAL = (".git", ".fjb_clone_complete")
+FSM_INTERNAL = (".git", ".fsm_clone_complete")
 
 
 def fs_list_directory(b):
@@ -386,7 +386,7 @@ def fs_list_directory(b):
         return {"error": "dir not found: " + b.get("path", "")}
     entries = []
     for e in sorted(os.listdir(p)):
-        if e in FJB_INTERNAL:      # our own cache marker is not part of the upstream checkout
+        if e in FSM_INTERNAL:      # our own cache marker is not part of the upstream checkout
             continue
         entries.append({"name": e, "type": "dir" if os.path.isdir(os.path.join(p, e)) else "file"})
     return {"path": b.get("path", ""), "entries": entries}

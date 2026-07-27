@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fjb-suspector: METHOD-BY-METHOD Java bug suspector with a MANUAL ReAct tool loop.
+"""fsm-suspector: METHOD-BY-METHOD Java bug suspector with a MANUAL ReAct tool loop.
 
 Input (POST /webhook/suspect): { repo, branch, file }
 Each substantive method is analyzed by a hand-rolled ReAct loop (a Code node, NOT n8n's ToolsAgent):
@@ -212,7 +212,7 @@ if (j.skip) {   // entry points are METHODS: a file with none is recorded and sk
                    status: j.extractor_gap ? 'error' : 'skipped', dialog: d, candidates: [] } };
 }
 const rootSrc = j.method_src || '';
-const RUNNER = 'http://fjb-java-runner:8090';
+const RUNNER = 'http://fsm-java-runner:8090';
 // NO fixed tool-call limit (operator: don't cap investigation). The loop runs until the model's
 // context is nearly full, then forces the verdict — Qwen never stops calling tools on its own,
 // so a context-budget terminator + forced final answer is the only bound. HARD_CAP is an
@@ -857,7 +857,7 @@ const repo = first.repo || wh.repo;
 const file = first.file || wh.file;
 const branch = (wh.branch || '') + '';   // recorded on each finding so the prover proves the same branch
 const cls = first.class_name || (file || '').split('/').pop().replace('.java','');
-const RUNNER = 'http://fjb-java-runner:8090';
+const RUNNER = 'http://fsm-java-runner:8090';
 const self = this;
 const SYS = __CSYS__;
 let fullClass = '';
@@ -1112,12 +1112,12 @@ MR = lambda: {"__rl": True, "mode": "list", "value": METHOD_RUNS_TABLE, "cachedR
 
 node("Suspect webhook", "n8n-nodes-base.webhook",
      {"httpMethod": "POST", "path": "suspect", "responseMode": "lastNode", "options": {}},
-     2, 0, extra={"webhookId": "fjbsuspecthook1"})
+     2, 0, extra={"webhookId": "fsmsuspecthook1"})
 node("Fetch file", "n8n-nodes-base.httpRequest",
      {"url": "=https://api.github.com/repos/{{ $json.body.repo }}/contents/{{ $json.body.file }}?ref={{ $json.body.branch }}",
       "sendHeaders": True,
       "headerParameters": {"parameters": [
-          {"name": "User-Agent", "value": "n8n-fjb"},
+          {"name": "User-Agent", "value": "n8n-fsm"},
           {"name": "Accept", "value": "application/vnd.github+json"},
           {"name": "Authorization", "value": "=Bearer {{ $env.GITHUB_TOKEN }}"},
           {"name": "Connection", "value": "close"}]},
@@ -1204,7 +1204,7 @@ conns = {
     "Dedup audit":         {"main": [[{"node": "Upsert audit", "type": "main", "index": 0}]]},
 }
 
-wf = {"id": "fjbsuspector0001", "name": "fjb-suspector", "active": False,
+wf = {"id": "fsmsuspector0001", "name": "fsm-suspector", "active": False,
       "nodes": N, "connections": conns, "settings": {"executionOrder": "v1"}}
 open("workflow_suspector.json", "w").write(json.dumps(wf, indent=2))
 print(f"wrote workflow_suspector.json — {len(N)} nodes (manual ReAct tool loop)")

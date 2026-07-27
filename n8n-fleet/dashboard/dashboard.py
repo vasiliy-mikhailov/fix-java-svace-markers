@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fjb live dashboard: reads the n8n sqlite DB (read-only) + Data Tables and serves a
+"""fsm live dashboard: reads the n8n sqlite DB (read-only) + Data Tables and serves a
 live view of the agentic pipeline — scan progress (per-file, elapsed, ETA), suspicions,
 and (once the Prover exists) proven bugs."""
 import os, json, re, sqlite3, urllib.request
@@ -16,7 +16,7 @@ def gh_repo_files(repo):
     if repo in _TREE_CACHE:
         return _TREE_CACHE[repo]
     tok = os.environ.get("GITHUB_TOKEN", "")
-    hdr = {"User-Agent": "fjb", "Accept": "application/vnd.github+json"}
+    hdr = {"User-Agent": "fsm", "Accept": "application/vnd.github+json"}
     if tok:
         hdr["Authorization"] = "Bearer " + tok
     try:
@@ -33,9 +33,9 @@ def gh_repo_files(repo):
         return []
 
 DB = os.environ.get("N8N_DB", "/n8n-data/database.sqlite")
-SUS_WF = "fjbsuspector0001"
-ORCH_WF = "fjborchestr0001"
-PROVER_WF = "fjbprover00001"
+SUS_WF = "fsmsuspector0001"
+ORCH_WF = "fsmorchestr0001"
+PROVER_WF = "fsmprover00001"
 FILE_RE = re.compile(r'[A-Za-z0-9_.-]+/src/main/java/[A-Za-z0-9_./$-]+\.java')
 
 
@@ -282,7 +282,7 @@ def errors(limit=25):
         c.close()
 
 
-PAGE = r"""<!doctype html><html><head><meta charset=utf-8><title>fix-java-bugs · live</title>
+PAGE = r"""<!doctype html><html><head><meta charset=utf-8><title>fix-java-svace-markers · live</title>
 <meta name=viewport content="width=device-width,initial-scale=1">
 <style>
 :root{--bg:#0d1117;--panel:#161b22;--line:#30363d;--fg:#e6edf3;--dim:#8b949e;--hi:#58a6ff;
@@ -406,31 +406,28 @@ pre.dlg b{color:var(--hi2)}
 .diff-hdr{color:var(--dim);font-size:11px;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.05em}
 </style></head><body>
 <header>
-  <h1>fix-java-bugs · live</h1>
+  <h1>fix-java-svace-markers · live</h1>
   <div id=scanmeta class=muted>connecting…</div>
   <div class=clock id=timers style=color:var(--dim)></div>
   <div class=muted style=margin-left:auto id=ts></div>
 </header>
 <div class=wrap>
   <div class="card full">
-    <h2><span>scan progress</span><span id=scanrepo class=tiny></span></h2>
+    <h2><span>marker progress</span><span id=scanrepo class=tiny></span></h2>
     <div class=stats id=stats></div>
     <div class=bar><i id=progbar style=width:0%></i></div>
     <div class=tiny style="padding:0 12px 10px" id=current></div>
   </div>
 
+  <!-- Verdicts are a first-class output, not a footnote: a marker that yields no PR must still yield
+       an argued rebuttal, and this is where a reviewer reads it. -->
   <div class="card full">
-    <h2><span>live dialogs — analysis in flight</span><span id=livecount class=tiny></span></h2>
-    <div class=scroll id=live></div>
+    <h2><span>verdicts — markers settled by argument</span><span id=verdictcount class=tiny></span></h2>
+    <div class=scroll id=verdicts></div>
   </div>
 
   <div class="card full">
-    <h2><span>files</span><span id=filecount class=tiny></span></h2>
-    <div class=scroll id=files></div>
-  </div>
-
-  <div class="card full">
-    <h2><span>suspicions</span><span id=suscount class=tiny></span></h2>
+    <h2><span>markers</span><span id=suscount class=tiny></span></h2>
     <div class=scroll id=suspicions></div>
   </div>
 
@@ -514,52 +511,48 @@ async function tick(){
   document.getElementById('timers').innerHTML =
     (sc.elapsed!=null?'⏱ elapsed <b class=clock>'+dur(sc.elapsed)+'</b>':'') +
     (sc.status==='running'&&sc.eta!=null?'   ·   ⏳ ~<b class=clock>'+dur(sc.eta)+'</b> left':'');
-  const done=sc.done||0, run=sc.running||0, q=sc.queued||0, tot=sc.total||0;
-  // suspicion rows, computed HERE because the stats bar below counts them. `all` is a const, so any
-  // reference above its declaration is a TemporalDeadZone ReferenceError that aborts the whole render
-  // (files/suspicions/bugs/activity go blank while renderLive/renderErrors, being separate, survive).
-  // in-flight: reported by a finished METHOD, not yet written by its batch
-  const persisted=new Set(s.suspicions.map(x=>(x.file||'')+'|'+(x.method||'')+'|'+(x.title||'')));
-  const inflight=[];
-  for(const d of (window.__LIVE||[])){
-    for(const c of (d.candidates||[])){
-      const k=(c.file||'')+'|'+(c.method||'')+'|'+(c.title||'');
-      if(!persisted.has(k)) inflight.push(Object.assign({}, c, {status:'in-flight'}));
-    }
-  }
-  const all=inflight.concat(s.suspicions);
-  const ndup=s.suspicions.filter(x=>x.status==='duplicate').length;
+  // Markers, not a file scan: the backlog is the Svace report, so progress is "how many markers are
+  // still status=new" rather than files walked. There is no suspector and no dedup stage any more.
+  const all=s.suspicions;
+  const byStatus=(st)=>all.filter(x=>x.status===st).length;
+  const pending=byStatus('new')+byStatus('infra_stuck');
+  const settled=all.length-byStatus('new');
   document.getElementById('stats').innerHTML=
-    stat(done+' / '+tot,'files done')+stat((sc.methods_done||0)+' / '+(sc.total_methods||0),'methods done')
-    +stat(run,'scanning')+stat(q,'queued')
-    +stat(all.filter(x=>x.status!=='duplicate').length,'suspicions')
-    +stat(s.suspicions.filter(x=>x.status==='duplicate').length,'dedup merged')
-    +stat(s.bugs.filter(b=>String(b.red_verified)==='1'&&String(b.green_verified)==='1').length,'proven bugs')
-    +stat(s.bugs.filter(b=>!(String(b.red_verified)==='1'&&String(b.green_verified)==='1')).length,'prove attempts');
-  document.getElementById('progbar').style.width=(sc.total_methods?Math.round((sc.methods_done||0)/sc.total_methods*100):0)+'%';
-  document.getElementById('current').innerHTML = sc.planning ? '▶ planning — enumerating all files &amp; methods…'
-    : (sc.current_file?('▶ analyzing <code>'+esc(sc.current_file)+'</code>'+(sc.current_elapsed!=null?' · '+dur(sc.current_elapsed):'')):'');
+    stat(all.length,'markers')
+    +stat(byStatus('new'),'queued')
+    +stat(byStatus('verified'),'proven')
+    +stat(byStatus('false_positive'),'verdicts')
+    +stat(byStatus('rejected'),'not reproduced')
+    +stat(byStatus('infra_stuck'),'infra stuck')
+    +stat(s.bugs.filter(b=>String(b.red_verified)==='1'&&String(b.green_verified)==='1').length,'red→green')
+    +stat(s.bugs.filter(b=>b.state==='infra_error').length,'infra retries');
+  document.getElementById('progbar').style.width=(all.length?Math.round(settled/all.length*100):0)+'%';
+  document.getElementById('current').innerHTML = pending
+    ? ('▶ '+pending+' marker(s) still to settle — the prover takes them one at a time under the runner lease')
+    : (all.length?'✓ every marker settled':'no markers ingested yet — POST /webhook/ingest');
+  document.getElementById('scanrepo').innerHTML=(all.length?'<code>'+esc(all[0].repo||'')+'</code>':'');
 
-  // files table (full worklist, planned up front)
-  document.getElementById('filecount').textContent=(done+' / '+tot+' files')+(sc.total_methods?(' · '+(sc.methods_done||0)+' / '+sc.total_methods+' methods'):'');
-  document.getElementById('files').innerHTML=s.files.length? tbl(['file','methods','status','time','findings'],
-    s.files.map(f=>[ pkg(f.path), '<span class=tiny>'+(f.methods||0)+'</span>',
-      '<span class="dot d-'+esc(f.status)+'"></span><span class=st-'+esc(f.status)+'>'+(f.status==='running'?'scanning':esc(f.status))+'</span>',
-      dur(f.dur), f.suspicions?('<b>'+f.suspicions+'</b>'):'<span class=tiny>—</span>' ]),
-      i=>"showFile(DASH.files["+i+"].path)")
-    : empty(sc.planning?'planning — enumerating files & methods…':'no worklist yet');
+  // verdicts — the written rebuttals, shown in full rather than summarised away
+  const verdicts=s.bugs.filter(b=>(b.verdict_text||'').trim());
+  document.getElementById('verdictcount').textContent=verdicts.length+(verdicts.length===1?' verdict':' verdicts');
+  document.getElementById('verdicts').innerHTML=verdicts.length? tbl(
+    ['kind','checker','file','verdict'],
+    verdicts.map(v=>['<span class=pill-state style="background:var(--amber);color:#231a04">'+esc(v.verdict_kind||'?')+'</span>',
+      '<span class=tiny>'+esc(v.svace_checker||'')+'</span>', pkg(v.file),
+      '<div style="white-space:pre-wrap">'+esc(v.verdict_text)+'</div>']))
+    : empty('no written verdicts yet — a marker that will not reproduce gets one here');
 
-  // suspicions (persisted + in-flight merged into `all` up next to the stats bar that also counts them)
-  document.getElementById('suscount').textContent=all.length+' rows'
-    +(inflight.length?' · '+inflight.length+' in flight':'')+(ndup?' · '+ndup+' merged by dedup':'');
+  // markers table
+  document.getElementById('suscount').textContent=all.length+' rows';
   document.getElementById('suspicions').innerHTML=all.length? tbl(
-    ['sev','category','file','method','title','status'],
-    all.map(x=>{const d=x.status==='duplicate';
-      return ['<span class=sev-'+esc(x.severity)+'>'+esc(x.severity)+'</span>',esc(x.category),
-      pkg(x.file),esc(x.method),
-      esc(x.title)+((x.note&&/^\[d\d/.test(x.note))?'<div class=dedupnote>'+esc(x.note)+'</div>':''),
-      '<span class=st-'+esc(x.status)+'>'+esc(x.status)+'</span>'].map(c=>d?'<span class=dimrow>'+c+'</span>':c);}),
-      i=>"showInvestigation((DASH.__all||DASH.suspicions)["+i+"])") : empty('no suspicions yet');
+    ['sev','checker','category','file:line','anchor','status'],
+    all.map(x=>['<span class=sev-'+esc(x.severity)+'>'+esc(x.svace_severity||x.severity)+'</span>',
+      '<span class=tiny>'+esc(x.svace_checker||'')+'</span>', esc(x.category),
+      pkg(x.file)+'<span class=tiny>:'+esc(x.svace_line||x.line)+'</span>',
+      '<span class=tiny>'+esc(x.anchor?x.anchor+'()':(x.anchor_status||''))+'</span>',
+      '<span class=st-'+esc(x.status)+'>'+esc(x.status)+'</span>'
+      +((x.note||'').trim()?'<div class=dedupnote>'+esc(String(x.note).slice(0,180))+'</div>':'')]),
+      i=>"showInvestigation(DASH.suspicions["+i+"])") : empty('no markers ingested yet');
   DASH.__all=all;
 
   // bugs
@@ -856,6 +849,10 @@ function tbl(head,rows,rowclick){if(!rows.length)return empty('—');
     rows.map((r,i)=>'<tr'+(rowclick?' class=clickrow onclick="'+rowclick(i)+'"':'')+'>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</tbody></table>';}
 function livecls(st){return st==='analyzing'?'running':(st==='error'||st==='stale'||st==='gone')?'error':'done';}
 async function renderLive(){
+  // The live-dialog panel belonged to the LLM suspector, which the Svace ingester replaced — nothing
+  // streams ReAct transcripts any more, so the card is gone from the page. Bail before touching it:
+  // getElementById returns null here and the TypeError would kill this 3s interval every tick.
+  if(!document.getElementById('live')) return;
   const d=await jget('api/live'); const rows=(d&&d.dialogs)||[]; window.__LIVE=rows;
   const na=rows.filter(r=>r.status==='analyzing').length;
   document.getElementById('livecount').textContent=rows.length?(na+' analyzing · '+rows.length+' recent'):'idle';
@@ -927,10 +924,10 @@ class H(BaseHTTPRequestHandler):
             if p.endswith("/api/live"):            # in-flight ReAct transcripts, proxied from java-runner
                 from urllib.parse import quote
                 key = q.get("key", "")
-                url = ("http://fjb-java-runner:8090/live/dialog?key=" + quote(key)) if key \
-                    else "http://fjb-java-runner:8090/live/dialogs"
+                url = ("http://fsm-java-runner:8090/live/dialog?key=" + quote(key)) if key \
+                    else "http://fsm-java-runner:8090/live/dialogs"
                 try:
-                    req = urllib.request.Request(url, headers={"User-Agent": "fjb"})
+                    req = urllib.request.Request(url, headers={"User-Agent": "fsm"})
                     data = json.load(urllib.request.urlopen(req, timeout=3))
                 except Exception:                  # a down runner degrades gracefully, never 500s the poller
                     data = {"dialog": "(runner unreachable)"} if key else {"dialogs": []}

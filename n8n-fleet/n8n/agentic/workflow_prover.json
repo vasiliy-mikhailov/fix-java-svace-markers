@@ -1,6 +1,6 @@
 {
-  "id": "fjbprover00001",
-  "name": "fjb-prover",
+  "id": "fsmprover00001",
+  "name": "fsm-prover",
   "active": true,
   "nodes": [
     {
@@ -18,12 +18,12 @@
         0,
         300
       ],
-      "webhookId": "fjbprovehook01"
+      "webhookId": "fsmprovehook01"
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "http://fjb-java-runner:8090/lease",
+        "url": "http://fsm-java-runner:8090/lease",
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
@@ -98,7 +98,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://fjb-java-runner:8090/lease",
+        "url": "http://fsm-java-runner:8090/lease",
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
@@ -157,7 +157,7 @@
         "dataTableId": {
           "__rl": true,
           "mode": "list",
-          "value": "o17lTGMNGX0RI8wY",
+          "value": "kC7PYCiSwfxNtfiC",
           "cachedResultName": "suspicions"
         },
         "filters": {
@@ -217,7 +217,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://fjb-java-runner:8090/lease/release",
+        "url": "http://fsm-java-runner:8090/lease/release",
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
@@ -240,45 +240,12 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "http://127.0.0.1:5678/webhook/dedup",
-        "sendBody": true,
-        "contentType": "json",
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({}) }}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Connection",
-              "value": "close"
-            }
-          ]
-        },
-        "options": {
-          "timeout": 3600000
-        }
-      },
-      "id": "p10",
-      "name": "Call dedup",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        120,
-        300
-      ],
-      "onError": "continueRegularOutput",
-      "executeOnce": true,
-      "alwaysOutputData": true
-    },
-    {
-      "parameters": {
         "resource": "row",
         "operation": "get",
         "dataTableId": {
           "__rl": true,
           "mode": "list",
-          "value": "o17lTGMNGX0RI8wY",
+          "value": "kC7PYCiSwfxNtfiC",
           "cachedResultName": "suspicions"
         },
         "filters": {
@@ -293,7 +260,7 @@
         "returnAll": true,
         "options": {}
       },
-      "id": "p11",
+      "id": "p10",
       "name": "Get new suspicions",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
@@ -308,7 +275,7 @@
         "batchSize": 1,
         "options": {}
       },
-      "id": "p12",
+      "id": "p11",
       "name": "Loop over suspicions",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
@@ -319,7 +286,7 @@
     },
     {
       "parameters": {},
-      "id": "p13",
+      "id": "p12",
       "name": "Done",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
@@ -331,9 +298,9 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const s = $json;                                  // one suspicion row from Get new suspicions\n// Resolve the repo's REAL default branch. Hardcoding 'main' silently destroyed every finding on any\n// repo that uses develop / master / 4.x / v5-master: the source fetch 404s, the reproducer is handed\n// an empty file, and the suspicion ends up 'rejected' \u2014 indistinguishable from a real false positive.\nlet branch = (s.branch || '').toString().trim(), branch_error = '';\n// the suspector already analysed a specific branch \u2014 reuse it (also avoids one API call per suspicion)\nif (!branch) try {\n  const ri = await this.helpers.httpRequest({\n    url: 'https://api.github.com/repos/' + s.repo,\n    headers: { 'User-Agent': 'n8n-fjb', Accept: 'application/vnd.github+json',\n               Authorization: 'Bearer ' + $env.GITHUB_TOKEN, Connection: 'close' },\n    json: true, timeout: 30000,\n  });\n  branch = (ri && ri.default_branch) || '';\n} catch (e) { branch_error = (e && (e.message || e.description)) ? String(e.message || e.description).slice(0, 200) : 'repo lookup failed'; }\nif (!branch) branch_error = branch_error || 'no default_branch returned';\nconst file = (s.file || '').toString();\nconst parts = file.split('/src/main/java/');\nconst module = parts.length > 1 ? parts[0] : '';\nconst pkgdir = parts.length > 1 ? parts[1].slice(0, parts[1].lastIndexOf('/')) : '';\nconst pkg = pkgdir.replace(/\\//g, '.');\nconst cls = (s.class_name || file.split('/').pop().replace('.java','')).toString().replace(/[^A-Za-z0-9_]/g,'');\nconst test_class = cls + 'FjbProofTest';\nconst test_path = (module ? module + '/' : '') + 'src/test/java/' + (pkgdir ? pkgdir + '/' : '') + test_class + '.java';\nreturn {\n  suspicion_key: s.dedup_key, repo: s.repo, branch, branch_ok: !!branch, branch_error,\n  prove_attempts: Number(s.prove_attempts) || 0, file, module, pkg,\n  class_name: cls, method: s.method, test_class, test_path,\n  category: s.category, severity: s.severity, title: s.title,\n  description: s.description, evidence: s.evidence,\n};"
+        "jsCode": "const s = $json;                                  // one suspicion row from Get new suspicions\n// Resolve the repo's REAL default branch. Hardcoding 'main' silently destroyed every finding on any\n// repo that uses develop / master / 4.x / v5-master: the source fetch 404s, the reproducer is handed\n// an empty file, and the suspicion ends up 'rejected' \u2014 indistinguishable from a real false positive.\nlet branch = (s.branch || '').toString().trim(), branch_error = '';\n// the suspector already analysed a specific branch \u2014 reuse it (also avoids one API call per suspicion)\nif (!branch) try {\n  const ri = await this.helpers.httpRequest({\n    url: 'https://api.github.com/repos/' + s.repo,\n    headers: { 'User-Agent': 'n8n-fsm', Accept: 'application/vnd.github+json',\n               Authorization: 'Bearer ' + $env.GITHUB_TOKEN, Connection: 'close' },\n    json: true, timeout: 30000,\n  });\n  branch = (ri && ri.default_branch) || '';\n} catch (e) { branch_error = (e && (e.message || e.description)) ? String(e.message || e.description).slice(0, 200) : 'repo lookup failed'; }\nif (!branch) branch_error = branch_error || 'no default_branch returned';\nconst file = (s.file || '').toString();\n// Split on 'src/main/java/' WITHOUT a leading slash. The parent split on '/src/main/java/', which only\n// matches when a module directory precedes it \u2014 true of its suspector's paths, false of the Svace\n// ingester's repo-relative ones. On a single-module repo like WebGoat every path starts with\n// 'src/main/java/', so the separator never matched: module, package and package directory all came out\n// empty and every generated test was written to the default package at the root of src/test/java.\nconst MARK = 'src/main/java/';\nconst at = file.indexOf(MARK);\nconst module = at > 0 ? file.slice(0, at).replace(/\\/+$/, '') : '';\nconst rest = at >= 0 ? file.slice(at + MARK.length) : '';\n// lastIndexOf('/') is -1 for a class directly under src/main/java, and slice(0, -1) would silently\n// truncate the FILENAME's last character into a bogus package. Test for the separator instead.\nconst pkgdir = rest.indexOf('/') >= 0 ? rest.slice(0, rest.lastIndexOf('/')) : '';\nconst pkg = pkgdir.replace(/\\//g, '.');\nconst cls = (s.class_name || file.split('/').pop().replace('.java','')).toString().replace(/[^A-Za-z0-9_]/g,'');\nconst test_class = cls + 'FsmProofTest';\nconst test_path = (module ? module + '/' : '') + 'src/test/java/' + (pkgdir ? pkgdir + '/' : '') + test_class + '.java';\n// Svace provenance. `settle_by` comes from the ingester's checker map: 'test' = a JUnit test can\n// exhibit this, 'argue' = nothing observable at runtime distinguishes the flagged code (dead store,\n// hard-coded secret), so the only honest outcome is a written verdict. It decides whether a\n// non-reproduction is worth a second prove attempt.\nconst ev = (s.evidence || '').toString();\nconst sb = ev.match(/Settle-by:\\s*(\\w+)/);\nreturn {\n  suspicion_key: s.dedup_key, repo: s.repo, branch, branch_ok: !!branch, branch_error,\n  prove_attempts: Number(s.prove_attempts) || 0, file, module, pkg,\n  class_name: cls, method: s.method, test_class, test_path,\n  category: s.category, severity: s.severity, title: s.title,\n  description: s.description, evidence: ev,\n  marker_id: s.marker_id || '', svace_checker: s.svace_checker || '',\n  svace_severity: s.svace_severity || '',\n  svace_line: Number(s.svace_line) || Number(s.line) || 0,\n  settle_by: sb ? sb[1] : 'test',\n};"
       },
-      "id": "p14",
+      "id": "p13",
       "name": "Prep prover",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -350,7 +317,7 @@
           "parameters": [
             {
               "name": "User-Agent",
-              "value": "n8n-fjb"
+              "value": "n8n-fsm"
             },
             {
               "name": "Accept",
@@ -370,7 +337,7 @@
           "timeout": 60000
         }
       },
-      "id": "p15",
+      "id": "p14",
       "name": "Fetch source",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -386,9 +353,9 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const j = $('Prep prover').item.json;\nlet src = '';\ntry { src = Buffer.from(($json.content || '').replace(/\\s/g,''), 'base64').toString('utf8'); } catch(e){ src = ''; }\nconst SRC_MAX = 300000;                    // past the largest main-java file in the warm repos (~259k)\nconst src_truncated = src.length > SRC_MAX;\nif (src_truncated) src = src.slice(0, SRC_MAX);\nconst agent_input =\n  \"Repository: \" + j.repo + \"   (branch \" + j.branch + \", module '\" + j.module + \"')\\n\" +\n  \"Source file: \" + j.file + \"\\n\\n\" +\n  \"SUSPECTED BUG in \" + j.class_name + \".\" + j.method + \"()  [\" + j.category + \"/\" + j.severity + \"]\\n\" +\n  j.title + \"\\n\" + (j.description||'') + \"\\nEvidence: \" + (j.evidence||'') + \"\\n\\n\" +\n  \"Write the proof test in package `\" + j.pkg + \"`, class `\" + j.test_class + \"`, at path `\" + j.test_path + \"`.\\n\" +\n  \"Only write the FAILING test \u2014 do not fix the bug.\\n\\n\" +\n  (src_truncated ? \"SOURCE FILE (TRUNCATED \u2014 you are NOT seeing the whole file):\\n```java\\n\"\n                 : \"FULL SOURCE FILE:\\n```java\\n\") + src + \"\\n```\";\nreturn { ...j, src, src_truncated, agent_input };"
+        "jsCode": "const j = $('Prep prover').item.json;\nlet src = '';\ntry { src = Buffer.from(($json.content || '').replace(/\\s/g,''), 'base64').toString('utf8'); } catch(e){ src = ''; }\nconst SRC_MAX = 300000;                    // past the largest main-java file in the warm repos (~259k)\nconst src_truncated = src.length > SRC_MAX;\nif (src_truncated) src = src.slice(0, SRC_MAX);\n\n// Blank out comments and string/char literals, preserving length AND newlines, so a brace or quote\n// inside them cannot desynchronise the body scan. Offsets stay valid against the original source.\nfunction mask(s) {\n  return s\n    .replace(/\\/\\*[\\s\\S]*?\\*\\//g, m => m.replace(/[^\\n]/g, ' '))\n    .replace(/\\/\\/[^\\n]*/g, m => ' '.repeat(m.length))\n    .replace(/\"(\\\\.|[^\"\\\\\\n])*\"/g, m => '\"' + ' '.repeat(Math.max(0, m.length - 2)) + '\"')\n    .replace(/'(\\\\.|[^'\\\\\\n])*'/g, m => \"'\" + ' '.repeat(Math.max(0, m.length - 2)) + \"'\");\n}\n\n// -> { name, startLine, endLine, text } for the method containing `line`, or null.\n//\n// The parameter list is scanned with a paren BALANCER, not matched by a regex. The parent's extractor\n// used `\\([^;{)]*\\)`, which stops at the first `)` \u2014 so on a Spring codebase like WebGoat, every method\n// with an annotated parameter (`@Value(\"${webgoat.user.directory}\") final String home`,\n// `@RequestParam(\"x\") String x`) failed to match and its whole body became invisible. Those methods\n// then reported \"not inside any method\", which reads as drift when it is really a parser gap.\nfunction enclosingMethod(source, line) {\n  const s = mask(source);\n  const skip = new Set(['if','for','while','switch','catch','synchronized','return','new','else','do','try']);\n  // matches up to (and including) the method name's opening paren\n  const sigRe = /(?:^|\\n)([ \\t]*(?:@[\\w$.]+(?:\\([^)]*\\))?[ \\t\\n]*)*(?:(?:public|private|protected|static|final|abstract|synchronized|native|default|strictfp)[ \\t\\n]+)*[\\w$.<>\\[\\],?&\\s]+?\\s([A-Za-z_$][\\w$]*)\\s*)\\(/g;\n  // offset -> 1-based line, without an O(n) scan per lookup\n  const nl = []; for (let i = 0; i < source.length; i++) if (source[i] === '\\n') nl.push(i);\n  const lineOf = (off) => { let lo = 0, hi = nl.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (nl[mid] < off) lo = mid + 1; else hi = mid; } return lo + 1; };\n  let m;\n  while ((m = sigRe.exec(s)) !== null) {\n    const name = m[2];\n    if (skip.has(name)) continue;\n    // 1) balance the parameter list\n    let depth = 0, close = -1;\n    for (let i = sigRe.lastIndex - 1; i < s.length; i++) {\n      if (s[i] === '(') depth++;\n      else if (s[i] === ')') { depth--; if (depth === 0) { close = i; break; } }\n    }\n    if (close < 0) continue;\n    // 2) optional throws clause, then the body's opening brace. No brace = an abstract/interface\n    //    declaration or (far more often) an ordinary method CALL that happened to look like a signature.\n    let k = close + 1;\n    while (k < s.length && /\\s/.test(s[k])) k++;\n    if (s.startsWith('throws', k)) { while (k < s.length && s[k] !== '{' && s[k] !== ';') k++; }\n    if (s[k] !== '{') continue;\n    // 3) balance the body\n    let d2 = 0, end = -1;\n    for (let i = k; i < s.length; i++) {\n      if (s[i] === '{') d2++;\n      else if (s[i] === '}') { d2--; if (d2 === 0) { end = i + 1; break; } }\n    }\n    if (end < 0) continue;\n    const startLine = lineOf(m.index + 1), endLine = lineOf(end);\n    if (line >= startLine && line <= endLine) {\n      return { name, startLine, endLine, text: source.slice(m.index, end) };\n    }\n    sigRe.lastIndex = end;\n  }\n  return null;\n}\n\nconst lines = src.split('\\n');\nconst svLine = Number(j.svace_line) || 0;\nlet anchor = '', anchor_status = 'unresolved', anchor_note = '', method_text = '', line_text = '';\nif (!src.trim()) {\n  anchor_note = 'source file could not be fetched';\n} else if (svLine < 1 || svLine > lines.length) {\n  // The file got SHORTER than the marker's line: the drift is proven, not merely suspected.\n  anchor_status = 'unresolved';\n  anchor_note = 'line ' + svLine + ' is past the end of the file as checked out (' + lines.length +\n                ' lines) \u2014 the file changed since the scan';\n} else {\n  line_text = lines[svLine - 1];\n  const em = enclosingMethod(src, svLine);\n  if (em) {\n    anchor = em.name;\n    anchor_status = 'exact';\n    method_text = em.text;\n    anchor_note = 'line ' + svLine + ' falls inside ' + em.name + '() (lines ' + em.startLine + '-' + em.endLine + ')';\n  } else {\n    // Every remaining unanchored marker in the WebGoat report lands on a field or a Lombok annotation.\n    // That is not drift and not a parser gap: Svace analysed the COMPILED code, where Lombok had\n    // already generated the getter/setter/constructor it is complaining about. There is no source\n    // method to point at, and an agent told only \"not inside any method\" will conclude the marker is\n    // stale and wrongly clear it. Name the real situation instead.\n    anchor_status = 'no-method';\n    const lombok = /@(Getter|Setter|Data|Value|AllArgsConstructor|RequiredArgsConstructor|NoArgsConstructor|Builder|With)\\b/.test(src);\n    anchor_note = 'line ' + svLine + ' is not inside any method body (it is a field, annotation or import)'\n      + (lombok\n         ? ' \u2014 and this class uses Lombok, so the accessor or constructor the checker flagged is GENERATED at compile time and has no source form. Settle the claim against the generated API (for example the getter for this field), not against the annotation.'\n         : '');\n  }\n}\n\nconst loc = j.file + ':' + svLine;\nconst agent_input =\n  \"Repository: \" + j.repo + \"   (branch \" + j.branch + \", module '\" + j.module + \"')\\n\" +\n  \"Source file: \" + j.file + \"\\n\\n\" +\n  \"SVACE MARKER  [\" + (j.svace_severity || '?') + \"]  \" + (j.svace_checker || '?') + \"\\n\" +\n  \"Location as reported: \" + loc + \"\\n\" +\n  \"The checker's claim: \" + (j.description || '') + \"\\n\\n\" +\n  \"LOCATION CONFIDENCE: \" + anchor_status + \" \u2014 \" + anchor_note + \"\\n\" +\n  (line_text ? \"Line \" + svLine + \" as it reads in the checked-out tree:\\n```java\\n\" + line_text + \"\\n```\\n\" : \"\") +\n  (method_text\n    ? \"\\nThe enclosing method (this is where the claim should be settled):\\n```java\\n\" + method_text + \"\\n```\\n\"\n    : \"\\nNo enclosing method could be resolved \u2014 locate the construct the checker describes yourself.\\n\") +\n  \"\\nWrite the proof test in package `\" + j.pkg + \"`, class `\" + j.test_class + \"`, at path `\" + j.test_path + \"`.\\n\" +\n  \"Only write the FAILING test \u2014 do not fix the defect.\\n\\n\" +\n  (src_truncated ? \"SOURCE FILE (TRUNCATED \u2014 you are NOT seeing the whole file):\\n```java\\n\"\n                 : \"FULL SOURCE FILE:\\n```java\\n\") + src + \"\\n```\";\nreturn { ...j, src, src_truncated, agent_input,\n         anchor, anchor_status, anchor_note, line_text, method_text };"
       },
-      "id": "p16",
+      "id": "p15",
       "name": "Build reproduce input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -411,7 +378,7 @@
           "maxTokens": 32000
         }
       },
-      "id": "p17",
+      "id": "p16",
       "name": "Reproducer Model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.3,
@@ -431,11 +398,11 @@
         "promptType": "define",
         "text": "={{ $json.agent_input }}",
         "options": {
-          "systemMessage": "[pipeline P6 (2026-07-22: prover drains the queue CONCURRENTLY with the scan, one at a time under a runner lease; empty-queue lease strand fixed)]  [stage r5 (2026-07-22: a test that never compiled/ran = infra (retry), not a false not-a-bug verdict; JDK auto-detect covers release-version mismatch)]\nYou are a Java test engineer PROVING that a suspected bug is real. You are given the full source file and the suspicion. Write exactly ONE self-contained JUnit 5 test (package + imports + a single public class named EXACTLY as given) that FAILS on the current, UNPATCHED code precisely because of this bug, and would PASS once the bug is fixed. Target the bug with a specific assertion \u2014 not a trivial always-true/always-false check. PREFER asserting a general property or several representative inputs (not a single hard-coded case), so a narrow special-case patch cannot make it pass without truly fixing the bug. Use only JUnit 5 (org.junit.jupiter) plus the public API of the given file. Do NOT fix the bug and do NOT modify any source file.\n\nReturn ONLY a JSON object, no prose:\n{\"can_prove\": true|false, \"test_code\": \"<full .java test>\", \"root_cause\": \"..\", \"value_verdict\": \"real|trivial|false-positive\"}\nIf this is not a real, provable bug, return {\"can_prove\": false, \"value_verdict\": \"false-positive\", \"root_cause\": \"..\"}.",
+          "systemMessage": "[pipeline S1 (2026-07-27: Svace markers replace the LLM suspector as the suspicion source; a marker that will not reproduce ends in a WRITTEN verdict instead of a bare not_reproduced)]  [stage r5 (2026-07-22: a test that never compiled/ran = infra (retry), not a false not-a-bug verdict; JDK auto-detect covers release-version mismatch)]\nYou are a Java test engineer adjudicating ONE static-analysis marker reported by Svace. You are given the full source file, the checker that fired, the exact claim it makes, and the location. Your job is to settle that specific claim \u2014 not to look for other bugs in the file.\n\nIf the claim holds, write exactly ONE self-contained JUnit 5 test (package + imports + a single public class named EXACTLY as given) that FAILS on the current, UNPATCHED code precisely because of this defect, and would PASS once it is fixed. Target it with a specific assertion \u2014 not a trivial always-true/always-false check. PREFER asserting a general property or several representative inputs (not a single hard-coded case), so a narrow special-case patch cannot make it pass without truly fixing the defect. Use only JUnit 5 (org.junit.jupiter) plus the public API of the given file. Do NOT fix the defect and do NOT modify any source file.\n\nLINE NUMBERS MAY HAVE DRIFTED. The commit Svace scanned is not known, so the reported line is a hint, not an address. Find the construct the checker DESCRIBES; if it is not in this file at all, say so via can_prove:false rather than testing something else.\n\nReturning can_prove:false is a legitimate, useful answer \u2014 a marker that does not hold is a result, not a failure. Do NOT invent a test that passes on unpatched code just to have written one: a test that goes green before any fix proves nothing and is worse than no test. Say WHY in root_cause, concretely (the guard already present, the branch that cannot be reached, the sanitizer upstream, or that the construct is intentional).\n\nReturn ONLY a JSON object, no prose:\n{\"can_prove\": true|false, \"test_code\": \"<full .java test>\", \"root_cause\": \"..\", \"value_verdict\": \"real|trivial|false-positive\"}\nIf the marker does not describe a real, provable defect here, return {\"can_prove\": false, \"value_verdict\": \"false-positive\", \"root_cause\": \"..\"}.",
           "maxIterations": 3
         }
       },
-      "id": "p18",
+      "id": "p17",
       "name": "Reproducer Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3.1,
@@ -450,7 +417,7 @@
         "mode": "runOnceForEachItem",
         "jsCode": "function extractJson(text, keys) {\n  const t = String(text || '');\n  if (!t.trim()) return null;\n  const tryParse = (raw) => { try { return JSON.parse(raw); } catch (e) { return null; } };\n  const repair = (body) => {\n    const stack = []; let inS = false, esc = false; const marks = [];\n    for (let i = 0; i < body.length; i++) { const ch = body[i];\n      if (esc) { esc = false; continue; }\n      if (ch === '\\\\') { esc = true; continue; }\n      if (ch === '\"') { inS = !inS; continue; }\n      if (inS) continue;\n      if (ch === '{' || ch === '[') stack.push(ch);\n      else if (ch === '}' || ch === ']') { stack.pop(); marks.push({ i: i, s: stack.slice() }); } }\n    const close = (txt, st, q) => {\n      let out = (q ? txt.replace(/\\\\+$/, m => m.length % 2 ? m.slice(1) : m) + '\"' : txt);\n      out = out.replace(/[\\s,]+$/, ''); if (/:\\s*$/.test(out)) out += 'null';\n      for (let k = st.length - 1; k >= 0; k--) out += (st[k] === '{' ? '}' : ']'); return tryParse(out); };\n    const whole = close(body, stack, inS); if (whole) return whole;\n    for (let m = marks.length - 1, tr = 0; m >= 0 && tr < 400; m--, tr++) {\n      const r = close(body.slice(0, marks[m].i + 1), marks[m].s, false); if (r) return r; }\n    return null;\n  };\n  const usable = (o) => o && typeof o === 'object' && keys.some(k => k in o);\n  const fences = [...t.matchAll(/```(?:json)?\\s*([\\s\\S]*?)```/gi)].map(m => m[1]);\n  for (let i = fences.length - 1; i >= 0; i--) { const o = tryParse(fences[i].trim()) || repair(fences[i].trim()); if (usable(o)) return o; }\n  const starts = []; for (let i = 0; i < t.length; i++) if (t[i] === '{') starts.push(i);\n  const tryAt = (p) => { const body = t.slice(p); const last = body.lastIndexOf('}');\n    if (last > 0) { const o = tryParse(body.slice(0, last + 1)); if (usable(o)) return o; }\n    const rep = repair(body); return usable(rep) ? rep : null; };\n  const keyRe = new RegExp('^\\\\s*\"(' + keys.join('|') + ')\"\\\\s*:');\n  for (const p of starts) { if (keyRe.test(t.slice(p + 1))) { const r = tryAt(p); if (r) return r; } }\n  const order = []; for (let k = starts.length - 1; k >= 0 && starts.length - k <= 40; k--) order.push(starts[k]);\n  for (let k = 0; k < starts.length && k < 40; k++) if (order.indexOf(starts[k]) < 0) order.push(starts[k]);\n  for (const p of order) { const r = tryAt(p); if (r) return r; }\n  return null;\n}\n\nconst j = $('Prep prover').item.json;\nconst text = ($json.output || '').toString();\n// a crashed agent (onError=continueRegularOutput -> no .output) and a malformed reply both land here;\n// flag them parse_failed so neither can read as the verdict 'not-a-bug'.\nlet r = text.trim() ? extractJson(text, ['can_prove', 'test_code', 'root_cause', 'value_verdict']) : null;\nlet parse_failed = !r;\nr = r || {};\nif (!parse_failed && typeof r.can_prove !== 'boolean') parse_failed = true;\nconst test_code = (r.test_code || '').toString();\nconst can_prove = r.can_prove === true && !!test_code;\n// reproduce run: the reproducer's test with NO fix -> must go RED on the unpatched code\nconst body = {\n  repo: j.repo, branch: j.branch, jdk: '21', module: j.module,\n  test_class: j.test_class, test_path: j.test_path, test_code, fix_edits: [],\n};\nreturn { ...j, can_prove, parse_failed, test_code,\n         repro_value_verdict: r.value_verdict || '', repro_root_cause: r.root_cause || '', body };"
       },
-      "id": "p19",
+      "id": "p18",
       "name": "Parse test",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -462,7 +429,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://fjb-java-runner:8090/run_test",
+        "url": "http://fsm-java-runner:8090/run_test",
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
@@ -471,7 +438,7 @@
           "timeout": 5400000
         }
       },
-      "id": "p20",
+      "id": "p19",
       "name": "run_test reproduce",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -484,9 +451,9 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const j = $('Prep prover').item.json;\nconst src = $('Build reproduce input').item.json.src || '';\nconst test_code = $('Parse test').item.json.test_code || '';\nconst repro = $json || {};                        // run_test reproduce verdict\nconst red = !!repro.red_reproduced;\nconst redOut = (repro.red_output || '').toString().slice(-2500);\nconst agent_input =\n  \"Repository: \" + j.repo + \"   (branch \" + j.branch + \", module '\" + j.module + \"')\\n\" +\n  \"Source file to fix: \" + j.file + \"\\n\\n\" +\n  \"SUSPECTED BUG in \" + j.class_name + \".\" + j.method + \"()\\n\" + j.title + \"\\n\" + (j.description||'') +\n  \"\\nEvidence: \" + (j.evidence||'') + \"\\n\\n\" +\n  \"An INDEPENDENT reproducer wrote this failing regression test \u2014 you MUST NOT modify it:\\n```java\\n\" +\n  test_code + \"\\n```\\n\\n\" +\n  (red\n    ? (\"It FAILS on the unpatched code (the bug is reproduced). Failure output:\\n```\\n\" + redOut + \"\\n```\\n\\n\")\n    : (\"NOTE: the test did not clearly reproduce the bug on unpatched code. If you cannot write a correct \" +\n       \"source-only fix that legitimately makes it pass, return can_fix:false.\\n\\n\")) +\n  \"Write the MINIMAL fix to the SOURCE FILE ONLY (path `\" + j.file + \"`) so the test passes. Do NOT touch the test.\\n\\n\" +\n  \"FULL SOURCE FILE:\\n```java\\n\" + src + \"\\n```\";\nreturn { ...j, test_code, red_reproduced: red, red_output: redOut, agent_input };"
+        "jsCode": "const j = $('Prep prover').item.json;\nconst src = $('Build reproduce input').item.json.src || '';\nconst test_code = $('Parse test').item.json.test_code || '';\nconst repro = $json || {};                        // run_test reproduce verdict\nconst red = !!repro.red_reproduced;\nconst redOut = (repro.red_output || '').toString().slice(-2500);\nconst agent_input =\n  \"Repository: \" + j.repo + \"   (branch \" + j.branch + \", module '\" + j.module + \"')\\n\" +\n  \"Source file to fix: \" + j.file + \"\\n\\n\" +\n  \"SVACE MARKER  [\" + (j.svace_severity || '?') + \"]  \" + (j.svace_checker || '?') +\n  \"  at \" + j.file + \":\" + (j.svace_line || '?') +\n  ((j.anchor) ? \"  (in \" + j.anchor + \"())\" : \"\") + \"\\n\" +\n  \"The checker's claim: \" + (j.description || '') + \"\\n\\n\" +\n  \"An INDEPENDENT reproducer wrote this failing regression test \u2014 you MUST NOT modify it:\\n```java\\n\" +\n  test_code + \"\\n```\\n\\n\" +\n  (red\n    ? (\"It FAILS on the unpatched code (the bug is reproduced). Failure output:\\n```\\n\" + redOut + \"\\n```\\n\\n\")\n    : (\"NOTE: the test did not clearly reproduce the bug on unpatched code. If you cannot write a correct \" +\n       \"source-only fix that legitimately makes it pass, return can_fix:false.\\n\\n\")) +\n  \"Write the MINIMAL fix to the SOURCE FILE ONLY (path `\" + j.file + \"`) so the test passes. Do NOT touch the test.\\n\\n\" +\n  \"FULL SOURCE FILE:\\n```java\\n\" + src + \"\\n```\";\nreturn { ...j, test_code, red_reproduced: red, red_output: redOut, agent_input };"
       },
-      "id": "p21",
+      "id": "p20",
       "name": "Build fix input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -509,7 +476,7 @@
           "maxTokens": 32000
         }
       },
-      "id": "p22",
+      "id": "p21",
       "name": "Fixer Model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.3,
@@ -529,11 +496,11 @@
         "promptType": "define",
         "text": "={{ $json.agent_input }}",
         "options": {
-          "systemMessage": "[pipeline P6 (2026-07-22: prover drains the queue CONCURRENTLY with the scan, one at a time under a runner lease; empty-queue lease strand fixed)]  [stage f3 (2026-07-22: robust JSON extractor for fix edits; records only edits actually APPLIED)]\nYou are a Java engineer FIXING a bug. You are given the source file, the suspicion, and an INDEPENDENTLY-AUTHORED failing regression test plus its failure output. Your job is the FIX ONLY.\n\nWrite the MINIMAL change to the SOURCE FILE so that test passes \u2014 as search/replace edits: an exact, unique `old_str` copied from the file -> `new_str`. The fix must be behaviorally correct for ALL inputs, not just the one the test checks. You MUST NOT edit, weaken, delete, or even reference the test file, and you MUST NOT change any test's expectations \u2014 you did not write the test and cannot touch it. Only edit the source file under src/main.\n\nReturn ONLY a JSON object, no prose:\n{\"can_fix\": true|false, \"fix_edits\": [{\"path\": \"<source file path>\", \"old_str\": \"..\", \"new_str\": \"..\"}], \"root_cause\": \"..\", \"pr_title\": \"..\", \"pr_body\": \"..\"}\nIf you cannot fix it correctly without touching the test, return {\"can_fix\": false, \"root_cause\": \"..\"}.",
+          "systemMessage": "[pipeline S1 (2026-07-27: Svace markers replace the LLM suspector as the suspicion source; a marker that will not reproduce ends in a WRITTEN verdict instead of a bare not_reproduced)]  [stage f3 (2026-07-22: robust JSON extractor for fix edits; records only edits actually APPLIED)]\nYou are a Java engineer FIXING a bug. You are given the source file, the suspicion, and an INDEPENDENTLY-AUTHORED failing regression test plus its failure output. Your job is the FIX ONLY.\n\nWrite the MINIMAL change to the SOURCE FILE so that test passes \u2014 as search/replace edits: an exact, unique `old_str` copied from the file -> `new_str`. The fix must be behaviorally correct for ALL inputs, not just the one the test checks. You MUST NOT edit, weaken, delete, or even reference the test file, and you MUST NOT change any test's expectations \u2014 you did not write the test and cannot touch it. Only edit the source file under src/main.\n\nReturn ONLY a JSON object, no prose:\n{\"can_fix\": true|false, \"fix_edits\": [{\"path\": \"<source file path>\", \"old_str\": \"..\", \"new_str\": \"..\"}], \"root_cause\": \"..\", \"pr_title\": \"..\", \"pr_body\": \"..\"}\nIf you cannot fix it correctly without touching the test, return {\"can_fix\": false, \"root_cause\": \"..\"}.",
           "maxIterations": 3
         }
       },
-      "id": "p23",
+      "id": "p22",
       "name": "Fixer Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3.1,
@@ -548,7 +515,7 @@
         "mode": "runOnceForEachItem",
         "jsCode": "function extractJson(text, keys) {\n  const t = String(text || '');\n  if (!t.trim()) return null;\n  const tryParse = (raw) => { try { return JSON.parse(raw); } catch (e) { return null; } };\n  const repair = (body) => {\n    const stack = []; let inS = false, esc = false; const marks = [];\n    for (let i = 0; i < body.length; i++) { const ch = body[i];\n      if (esc) { esc = false; continue; }\n      if (ch === '\\\\') { esc = true; continue; }\n      if (ch === '\"') { inS = !inS; continue; }\n      if (inS) continue;\n      if (ch === '{' || ch === '[') stack.push(ch);\n      else if (ch === '}' || ch === ']') { stack.pop(); marks.push({ i: i, s: stack.slice() }); } }\n    const close = (txt, st, q) => {\n      let out = (q ? txt.replace(/\\\\+$/, m => m.length % 2 ? m.slice(1) : m) + '\"' : txt);\n      out = out.replace(/[\\s,]+$/, ''); if (/:\\s*$/.test(out)) out += 'null';\n      for (let k = st.length - 1; k >= 0; k--) out += (st[k] === '{' ? '}' : ']'); return tryParse(out); };\n    const whole = close(body, stack, inS); if (whole) return whole;\n    for (let m = marks.length - 1, tr = 0; m >= 0 && tr < 400; m--, tr++) {\n      const r = close(body.slice(0, marks[m].i + 1), marks[m].s, false); if (r) return r; }\n    return null;\n  };\n  const usable = (o) => o && typeof o === 'object' && keys.some(k => k in o);\n  const fences = [...t.matchAll(/```(?:json)?\\s*([\\s\\S]*?)```/gi)].map(m => m[1]);\n  for (let i = fences.length - 1; i >= 0; i--) { const o = tryParse(fences[i].trim()) || repair(fences[i].trim()); if (usable(o)) return o; }\n  const starts = []; for (let i = 0; i < t.length; i++) if (t[i] === '{') starts.push(i);\n  const tryAt = (p) => { const body = t.slice(p); const last = body.lastIndexOf('}');\n    if (last > 0) { const o = tryParse(body.slice(0, last + 1)); if (usable(o)) return o; }\n    const rep = repair(body); return usable(rep) ? rep : null; };\n  const keyRe = new RegExp('^\\\\s*\"(' + keys.join('|') + ')\"\\\\s*:');\n  for (const p of starts) { if (keyRe.test(t.slice(p + 1))) { const r = tryAt(p); if (r) return r; } }\n  const order = []; for (let k = starts.length - 1; k >= 0 && starts.length - k <= 40; k--) order.push(starts[k]);\n  for (let k = 0; k < starts.length && k < 40; k++) if (order.indexOf(starts[k]) < 0) order.push(starts[k]);\n  for (const p of order) { const r = tryAt(p); if (r) return r; }\n  return null;\n}\n\nconst j = $('Prep prover').item.json;\nconst text = ($json.output || '').toString();\nlet r = text.trim() ? extractJson(text, ['can_fix', 'fix_edits', 'root_cause', 'pr_title']) : null;\nlet fix_parse_failed = !r;\nr = r || {};\nif (!fix_parse_failed && typeof r.can_fix !== 'boolean') fix_parse_failed = true;\nconst test_code = $('Parse test').item.json.test_code || '';\nconst test_path = (j.test_path || '').toString();\nconst jdk = ($('run_test reproduce').item.json.jdk || '21') + '';\n// INDEPENDENCE GUARD (ALLOWLIST): the fixer may edit ONLY the one suspected source file \u2014 never the\n// test it did not author, and never any other source/config/build file it could use to game the test.\nconst norm = s => (s == null ? '' : s).toString().replace(/^\\.?\\/+/, '');\nconst srcfile = norm(j.file);\nlet edits = Array.isArray(r.fix_edits) ? r.fix_edits : [];\nconst rejected = [];\nedits = edits.filter(e => {\n  const p = norm((e && e.path) || j.file);\n  if (p !== srcfile) { rejected.push(((e && e.path) || '') + ''); return false; }\n  return true;\n}).map(e => ({ path: j.file, old_str: e.old_str, new_str: e.new_str }));\nconst can_fix = r.can_fix === true && edits.length > 0;\n// fix run: the reproducer's test (verbatim) + the fixer's source edits -> red then GREEN\nconst body = {\n  repo: j.repo, branch: j.branch, jdk, module: j.module,\n  test_class: j.test_class, test_path, test_code, fix_edits: edits,\n};\nreturn { ...j, can_fix, fix_parse_failed, test_code, fix_edits_json: JSON.stringify(edits), fix_rejected: rejected.join(','),\n         fix_root_cause: r.root_cause || '', pr_title: r.pr_title || '', pr_body: r.pr_body || '', body };"
       },
-      "id": "p24",
+      "id": "p23",
       "name": "Parse fix",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -560,7 +527,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://fjb-java-runner:8090/run_test",
+        "url": "http://fsm-java-runner:8090/run_test",
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
@@ -569,7 +536,7 @@
           "timeout": 5400000
         }
       },
-      "id": "p25",
+      "id": "p24",
       "name": "run_test fix",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -582,9 +549,9 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const j = $('Prep prover').item.json;\nconst parseTest = $('Parse test').item.json || {};\nconst parseFix = $('Parse fix').item.json || {};\nconst fixrun = $json || {};                              // run_test fix verdict flows in\nconst proven = !!fixrun.proven;\n// 'not-run' initializer is deliberate: when the skeptic block is SKIPPED (not proven / can_fix false)\n// nothing has certified this fix, and 'sound' would have claimed otherwise.\nlet verdict = 'not-run', reason = 'skeptic did not run';\nif (proven && parseFix.can_fix) {\n  // judging half a diff is not judging the change: say so rather than cutting in silence\n  const cut = (x) => { const t = String(x||''); return t.length <= 20000 ? t\n      : t.slice(0,20000) + \"\\n\u2026[TRUNCATED \" + (t.length-20000) + \" chars \u2014 reply verdict 'unknown' if you cannot judge the whole change]\"; };\n  const prompt = \"[pipeline P6 (2026-07-22: prover drains the queue CONCURRENTLY with the scan, one at a time under a runner lease; empty-queue lease strand fixed)]  [stage sk5 (2026-07-22: fail-closed whitelist; a valid verdict with no reason is not mislabelled unrecognised)]\\n\" +\n    \"A bug fix passed its regression test (the test FAILED before the fix and PASSES after). \" +\n    \"Judge whether the FIX is a genuine, general correction, or whether it is OVER-FIT \u2014 makes THIS one test \" +\n    \"pass without truly fixing the bug (e.g. special-casing the tested input) or risks regressing other behaviour.\\n\\n\" +\n    \"BUG: \" + (j.title||'') + \"\\n\" + (j.description||'') + \"\\n\\nTEST:\\n```java\\n\" + cut(parseTest.test_code||'') + \"\\n```\\n\\n\" +\n    \"FIX EDITS (search/replace on the source file):\\n\" + cut(parseFix.fix_edits_json||'[]') + \"\\n\\n\" +\n    \"Reply ONLY JSON: {\\\"verdict\\\":\\\"sound|over-fit|regression-risk\\\",\\\"reason\\\":\\\"one sentence\\\"}.\";\n  try {\n    const r = await this.helpers.httpRequest({ method:'POST', url: $env.QWEN_BASE_URL + '/chat/completions',\n      headers:{ Authorization:'Bearer '+$env.QWEN_API_KEY, 'Content-Type':'application/json', Connection:'close' },\n      body:{ model:$env.QWEN_MODEL, messages:[{role:'user',content:prompt}], temperature:0, max_tokens:32000 }, json:true, timeout:3600000 });\n    const m = (r.choices && r.choices[0] && r.choices[0].message) || {};\n    const t = ((m.content || m.reasoning_content) || '') + '';\n    const a = t.indexOf('{'), b = t.lastIndexOf('}');\n    if (a>=0 && b>a) { const jj = JSON.parse(t.slice(a,b+1));\n      const v = (jj.verdict||'')+'';\n      const known = ['sound','over-fit','regression-risk'].indexOf(v) >= 0;\n      verdict = known ? v : 'unknown';\n      reason = ((jj.reason||'')+'')\n        || (known ? '(verdict given without a reason)'\n                  : (v ? ('unrecognised verdict: ' + v) : 'skeptic reply carried no verdict field')); }\n    if (verdict === 'not-run') { verdict = 'unknown'; reason = 'skeptic returned no usable verdict'; }\n  } catch(e) { verdict = 'unknown'; reason = 'skeptic call failed: ' + ((e && (e.message || e.description)) ? String(e.message || e.description).slice(0,150) : 'error'); }\n}\nreturn { ...fixrun, skeptic_verdict: verdict, skeptic_reason: reason };"
+        "jsCode": "const j = $('Prep prover').item.json;\nconst parseTest = $('Parse test').item.json || {};\nconst parseFix = $('Parse fix').item.json || {};\nconst fixrun = $json || {};                              // run_test fix verdict flows in\nconst proven = !!fixrun.proven;\n// 'not-run' initializer is deliberate: when the skeptic block is SKIPPED (not proven / can_fix false)\n// nothing has certified this fix, and 'sound' would have claimed otherwise.\nlet verdict = 'not-run', reason = 'skeptic did not run';\nif (proven && parseFix.can_fix) {\n  // judging half a diff is not judging the change: say so rather than cutting in silence\n  const cut = (x) => { const t = String(x||''); return t.length <= 20000 ? t\n      : t.slice(0,20000) + \"\\n\u2026[TRUNCATED \" + (t.length-20000) + \" chars \u2014 reply verdict 'unknown' if you cannot judge the whole change]\"; };\n  const prompt = \"[pipeline S1 (2026-07-27: Svace markers replace the LLM suspector as the suspicion source; a marker that will not reproduce ends in a WRITTEN verdict instead of a bare not_reproduced)]  [stage sk5 (2026-07-22: fail-closed whitelist; a valid verdict with no reason is not mislabelled unrecognised)]\\n\" +\n    \"A bug fix passed its regression test (the test FAILED before the fix and PASSES after). \" +\n    \"Judge whether the FIX is a genuine, general correction, or whether it is OVER-FIT \u2014 makes THIS one test \" +\n    \"pass without truly fixing the bug (e.g. special-casing the tested input) or risks regressing other behaviour.\\n\\n\" +\n    \"BUG: \" + (j.title||'') + \"\\n\" + (j.description||'') + \"\\n\\nTEST:\\n```java\\n\" + cut(parseTest.test_code||'') + \"\\n```\\n\\n\" +\n    \"FIX EDITS (search/replace on the source file):\\n\" + cut(parseFix.fix_edits_json||'[]') + \"\\n\\n\" +\n    \"Reply ONLY JSON: {\\\"verdict\\\":\\\"sound|over-fit|regression-risk\\\",\\\"reason\\\":\\\"one sentence\\\"}.\";\n  try {\n    const r = await this.helpers.httpRequest({ method:'POST', url: $env.QWEN_BASE_URL + '/chat/completions',\n      headers:{ Authorization:'Bearer '+$env.QWEN_API_KEY, 'Content-Type':'application/json', Connection:'close' },\n      body:{ model:$env.QWEN_MODEL, messages:[{role:'user',content:prompt}], temperature:0, max_tokens:32000 }, json:true, timeout:3600000 });\n    const m = (r.choices && r.choices[0] && r.choices[0].message) || {};\n    const t = ((m.content || m.reasoning_content) || '') + '';\n    const a = t.indexOf('{'), b = t.lastIndexOf('}');\n    if (a>=0 && b>a) { const jj = JSON.parse(t.slice(a,b+1));\n      const v = (jj.verdict||'')+'';\n      const known = ['sound','over-fit','regression-risk'].indexOf(v) >= 0;\n      verdict = known ? v : 'unknown';\n      reason = ((jj.reason||'')+'')\n        || (known ? '(verdict given without a reason)'\n                  : (v ? ('unrecognised verdict: ' + v) : 'skeptic reply carried no verdict field')); }\n    if (verdict === 'not-run') { verdict = 'unknown'; reason = 'skeptic returned no usable verdict'; }\n  } catch(e) { verdict = 'unknown'; reason = 'skeptic call failed: ' + ((e && (e.message || e.description)) ? String(e.message || e.description).slice(0,150) : 'error'); }\n}\nreturn { ...fixrun, skeptic_verdict: verdict, skeptic_reason: reason };"
       },
-      "id": "p26",
+      "id": "p25",
       "name": "Fix skeptic",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -597,9 +564,9 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const j = $('Prep prover').item.json;\nconst parseTest = $('Parse test').item.json || {};\nconst parseFix = $('Parse fix').item.json || {};\nconst repro = $('run_test reproduce').item.json || {};\nconst skepticOut = $json || {};                          // Fix skeptic output (fixrun + skeptic_*)\nconst proven = !!repro.red_reproduced && !!skepticOut.proven;\nconst skepticSound = (skepticOut.skeptic_verdict || 'unknown') === 'sound';   // missing != certified\nlet pr_decision = 'n/a', pr_reason = '', pr_curated = false;\nlet pr_title = parseFix.pr_title || j.title || '', pr_body = parseFix.pr_body || '';\nif (proven && skepticSound) {\n  const prompt = \"[pipeline P6 (2026-07-22: prover drains the queue CONCURRENTLY with the scan, one at a time under a runner lease; empty-queue lease strand fixed)]  [stage pr3 (2026-07-22: an uncurated draft is banner-marked in pr_body)]\\n\" +\n    \"You are the PR curator for open-source contributions to \" + j.repo + \". A defect has a \"\n    + \"regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). \"\n    + \"Decide whether to actually OPEN A PULL REQUEST upstream \u2014 this is REPO-SPECIFIC and varies by project. \"\n    + \"Reject if: the code is internal / deprecated / test-only / example code; the fix changes public API or \"\n    + \"observable behaviour beyond the bug; it fights the project's own conventions; the 'bug' is actually \"\n    + \"intended behaviour or a doc/style nitpick a maintainer would decline; or the change is too trivial to be \"\n    + \"worth a PR. Otherwise make it, and write a crisp PR title + body (imperative, explains the bug + fix + \"\n    + \"why it matters; NO AI/tool attribution).\\n\\n\"\n    + \"FILE: \" + j.file + \"\\nBUG: \" + (j.title||'') + \"\\n\" + (j.description||'') + \"\\nRoot cause: \" + (parseFix.fix_root_cause||'') + \"\\n\\n\"\n    + \"FIX EDITS:\\n\" + (parseFix.fix_edits_json||'[]').slice(0,5000) + \"\\n\\nTEST:\\n```java\\n\" + (parseTest.test_code||'').slice(0,4000) + \"\\n```\\n\\n\"\n    + \"Reply ONLY JSON: {\\\"decision\\\":\\\"make|reject\\\",\\\"reason\\\":\\\"one or two sentences, repo-specific\\\",\\\"pr_title\\\":\\\"..\\\",\\\"pr_body\\\":\\\"..\\\"}.\";\n  try {\n    const r = await this.helpers.httpRequest({ method:'POST', url: $env.QWEN_BASE_URL + '/chat/completions',\n      headers:{ Authorization:'Bearer '+$env.QWEN_API_KEY, 'Content-Type':'application/json', Connection:'close' },\n      body:{ model:$env.QWEN_MODEL, messages:[{role:'user',content:prompt}], temperature:0.2, max_tokens:32000 }, json:true, timeout:3600000 });\n    const m = (r.choices && r.choices[0] && r.choices[0].message) || {};\n    const t = ((m.content || m.reasoning_content) || '') + '';\n    const a = t.indexOf('{'), b = t.lastIndexOf('}');\n    if (a>=0 && b>a) { const jj = JSON.parse(t.slice(a,b+1));\n      pr_decision = (jj.decision||'make')+''; pr_reason = (jj.reason||'')+''; pr_curated = true;\n      if (jj.pr_title) pr_title = jj.pr_title+''; if (jj.pr_body) pr_body = jj.pr_body+''; }\n  } catch(e) { pr_decision = 'make';\n    pr_reason = '(pr maker unavailable \u2014 defaulting to draft): ' + ((e && (e.message || e.description))\n                ? String(e.message || e.description).slice(0,150) : 'error'); }\n}\nreturn { ...skepticOut, pr_decision, pr_reason, pr_curated, pr_title, pr_body };"
+        "jsCode": "const j = $('Prep prover').item.json;\nconst parseTest = $('Parse test').item.json || {};\nconst parseFix = $('Parse fix').item.json || {};\nconst repro = $('run_test reproduce').item.json || {};\nconst skepticOut = $json || {};                          // Fix skeptic output (fixrun + skeptic_*)\nconst proven = !!repro.red_reproduced && !!skepticOut.proven;\nconst skepticSound = (skepticOut.skeptic_verdict || 'unknown') === 'sound';   // missing != certified\nlet pr_decision = 'n/a', pr_reason = '', pr_curated = false;\nlet pr_title = parseFix.pr_title || j.title || '', pr_body = parseFix.pr_body || '';\nif (proven && skepticSound) {\n  const prompt = \"[pipeline S1 (2026-07-27: Svace markers replace the LLM suspector as the suspicion source; a marker that will not reproduce ends in a WRITTEN verdict instead of a bare not_reproduced)]  [stage pr3 (2026-07-22: an uncurated draft is banner-marked in pr_body)]\\n\" +\n    \"You are the PR curator for open-source contributions to \" + j.repo + \". A defect has a \"\n    + \"regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). \"\n    + \"Decide whether to actually OPEN A PULL REQUEST upstream \u2014 this is REPO-SPECIFIC and varies by project. \"\n    + \"Reject if: the code is internal / deprecated / test-only / example code; the fix changes public API or \"\n    + \"observable behaviour beyond the bug; it fights the project's own conventions; the 'bug' is actually \"\n    + \"intended behaviour or a doc/style nitpick a maintainer would decline; or the change is too trivial to be \"\n    + \"worth a PR. Otherwise make it, and write a crisp PR title + body (imperative, explains the bug + fix + \"\n    + \"why it matters; NO AI/tool attribution).\\n\\n\"\n    + \"FILE: \" + j.file + \"\\nBUG: \" + (j.title||'') + \"\\n\" + (j.description||'') + \"\\nRoot cause: \" + (parseFix.fix_root_cause||'') + \"\\n\\n\"\n    + \"FIX EDITS:\\n\" + (parseFix.fix_edits_json||'[]').slice(0,5000) + \"\\n\\nTEST:\\n```java\\n\" + (parseTest.test_code||'').slice(0,4000) + \"\\n```\\n\\n\"\n    + \"Reply ONLY JSON: {\\\"decision\\\":\\\"make|reject\\\",\\\"reason\\\":\\\"one or two sentences, repo-specific\\\",\\\"pr_title\\\":\\\"..\\\",\\\"pr_body\\\":\\\"..\\\"}.\";\n  try {\n    const r = await this.helpers.httpRequest({ method:'POST', url: $env.QWEN_BASE_URL + '/chat/completions',\n      headers:{ Authorization:'Bearer '+$env.QWEN_API_KEY, 'Content-Type':'application/json', Connection:'close' },\n      body:{ model:$env.QWEN_MODEL, messages:[{role:'user',content:prompt}], temperature:0.2, max_tokens:32000 }, json:true, timeout:3600000 });\n    const m = (r.choices && r.choices[0] && r.choices[0].message) || {};\n    const t = ((m.content || m.reasoning_content) || '') + '';\n    const a = t.indexOf('{'), b = t.lastIndexOf('}');\n    if (a>=0 && b>a) { const jj = JSON.parse(t.slice(a,b+1));\n      pr_decision = (jj.decision||'make')+''; pr_reason = (jj.reason||'')+''; pr_curated = true;\n      if (jj.pr_title) pr_title = jj.pr_title+''; if (jj.pr_body) pr_body = jj.pr_body+''; }\n  } catch(e) { pr_decision = 'make';\n    pr_reason = '(pr maker unavailable \u2014 defaulting to draft): ' + ((e && (e.message || e.description))\n                ? String(e.message || e.description).slice(0,150) : 'error'); }\n}\nreturn { ...skepticOut, pr_decision, pr_reason, pr_curated, pr_title, pr_body };"
       },
-      "id": "p27",
+      "id": "p26",
       "name": "PR maker",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -612,9 +579,9 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const j = $('Prep prover').item.json;\nconst parseTest = $('Parse test').item.json || {};\nconst parseFix = $('Parse fix').item.json || {};\nconst repro = $('run_test reproduce').item.json || {};   // reproducer's independent red proof\nconst pm = $json || {};                                  // PR maker output (fix run + skeptic_* + pr_*)\nconst reproduced = !!repro.red_reproduced;               // REPRODUCER stage result\nconst green = !!pm.green_passed;                          // FIXER stage result\nconst proven = reproduced && !!pm.proven;                // fix run re-verifies red AND green\nconst skeptic = (pm.skeptic_verdict || 'unknown') + '';  // missing verdict is NOT certification\nconst decision = (pm.pr_decision || 'unknown') + '';     // a crashed PR maker must not auto-approve\n// lifecycle: suspector -> reproducer(red) -> fixer(green) -> fix-skeptic -> PR maker\nlet state;\n// infra vs verdict: only a real reproducer judgement may retire a suspicion.\nconst infra = [];\nif (j.branch_ok === false) infra.push('branch unresolved: ' + (j.branch_error || '?'));\nif (!(($('Build reproduce input').item.json || {}).src || '').trim()) infra.push('source fetch returned nothing');\nif (($('Build reproduce input').item.json || {}).src_truncated) infra.push('source file exceeded ' + 300000 + ' chars and was truncated \u2014 a verdict on it is not trustworthy');\nif (parseTest.parse_failed) infra.push('reproducer reply was not parseable JSON');\n// A test that NEVER EXECUTED (compile / build failure \u2014 e.g. a JDK-version mismatch) is NOT a verdict\n// that the bug is unreal; it means we could not test it. Mark it infra so the suspicion is retried and\n// the build failure is visible, instead of silently RETIRING a real bug as 'not_reproduced'.\nconst _rs = (repro && repro.red_summary) || {};\nif (parseTest.can_prove && repro && repro.ok && _rs.test_executed === false) {\n  const _bt = String(repro.red_output || '').match(/release version (\\d+) not supported|Java (\\d+) or higher|cannot find symbol|package [\\w.]+ does not exist|BUILD FAILURE/);\n  infra.push('reproducer test never executed (build failed, jdk ' + (repro.jdk || '?') + ')' + (_bt ? ': ' + _bt[0] : ''));\n}\nif (repro && repro.error) infra.push('run_test(reproduce): ' + String(repro.error).slice(0, 120));\nif (pm && pm.error) infra.push('run_test(fix): ' + String(pm.error).slice(0, 120));\nconst editErrors = (pm && Array.isArray(pm.edit_errors)) ? pm.edit_errors : [];\nconst appliedFiles = (pm && Array.isArray(pm.applied_files)) ? pm.applied_files : [];\n// \"no errors\" is not \"it applied\": zero edits also produces zero errors. A red->green flip on a tree\n// nothing changed is test flakiness or build state, never evidence for the diff we would publish.\nconst notApplied = editErrors.length > 0 || appliedFiles.length === 0;\nif (parseFix.fix_parse_failed) infra.push('fixer reply was not parseable JSON');\nif (parseFix.fix_rejected) infra.push('edits rejected by the source-only allowlist: ' + parseFix.fix_rejected);\nif (infra.length) state = 'infra_error';\nelse if (proven && notApplied) state = 'needs_review';\nelse if (!parseTest.can_prove) state = 'not-a-bug';\nelse if (proven && skeptic === 'sound' && decision === 'make') state = 'pr_ready';   // only an explicit 'sound' certifies\nelse if (proven && skeptic === 'sound' && decision === 'reject') state = 'pr_rejected';   // proven, but not PR-worthy for this repo\nelse if (proven) state = 'needs_review';                 // proven by execution, but the fix-skeptic flagged the fix\nelse if (reproduced && !green) state = 'fix_failed';\nelse state = 'not_reproduced';\nlet pr_title = pm.pr_title || parseFix.pr_title || j.title || '';\nlet pr_body = pm.pr_body || parseFix.pr_body || '';\nif (state === 'needs_review') {\n  const why = editErrors.length\n    ? (\"\u26a0 FIX NOT FULLY APPLIED \u2014 the recorded diff is NOT what was verified: \" + editErrors.join('; '))\n    : (appliedFiles.length === 0\n       ? \"\u26a0 NO EDIT WAS APPLIED AT ALL \u2014 the red\u2192green flip happened on an unchanged tree, so it is test flakiness or build state, not a fix\"\n       : (\"\u26a0 FIX SKEPTIC (\" + skeptic + \"): \" + (pm.skeptic_reason||'')));\n  pr_body = why + \"\\n\\n\" + pr_body;\n}\nif (state === 'pr_rejected') { pr_title = \"PR rejected\"; pr_body = \"\u26d4 NOT PR-WORTHY (\" + j.repo + \"): \" + (pm.pr_reason||''); }\nif (state === 'pr_ready' && pm.pr_curated === false) {\n  pr_body = \"\u26a0 PR CURATOR NEVER RAN \u2014 this is the fixer's own unreviewed draft (\" + (pm.pr_reason||'') + \")\\n\\n\" + pr_body;\n}\nreturn {\n  suspicion_key: j.suspicion_key, repo: j.repo, file: j.file, title: j.title,\n  jdk: (pm.jdk || repro.jdk || '') + '', test_path: j.test_path, test_code: parseTest.test_code || '',\n  fix_diff: parseFix.fix_edits_json || '[]',\n  red_verified: reproduced, green_verified: green,     // Reproducer proved red; Fixer achieved green\n  value_score: (state === 'pr_ready') ? 1 : 0, value_verdict: parseTest.repro_value_verdict || '',\n  pr_title, pr_body, state,\n  infra_reason: infra.concat(editErrors.map(e => 'edit not applied: ' + e)).join('; '),\n  attempts: (Number(j.prove_attempts) || 0) + 1,   // so a permanently-broken row stops being requeued\n  branch: j.branch || '',                          // the artifact records WHICH branch it was proven on\n  versions: \"{\\\"pipeline\\\": \\\"P6 (2026-07-22: prover drains the queue CONCURRENTLY with the scan, one at a time under a runner lease; empty-queue lease strand fixed)\\\", \\\"suspector\\\": \\\"v65 (2026-07-22: one robust verdict parser on both paths \\\\u2014 fenced + key-anchored + both-ends + backslash-safe repair)\\\", \\\"dedup\\\": \\\"d2 (2026-07-22: repo-wide clustering of `new` suspicions; marks duplicates, never deletes)\\\", \\\"reproducer\\\": \\\"r5 (2026-07-22: a test that never compiled/ran = infra (retry), not a false not-a-bug verdict; JDK auto-detect covers release-version mismatch)\\\", \\\"fixer\\\": \\\"f3 (2026-07-22: robust JSON extractor for fix edits; records only edits actually APPLIED)\\\", \\\"pr_maker\\\": \\\"pr3 (2026-07-22: an uncurated draft is banner-marked in pr_body)\\\", \\\"skeptic\\\": \\\"sk5 (2026-07-22: fail-closed whitelist; a valid verdict with no reason is not mislabelled unrecognised)\\\"}\",      // which pipeline + stage versions produced this artifact\n};"
+        "jsCode": "const j = $('Prep prover').item.json;\nconst parseTest = $('Parse test').item.json || {};\nconst parseFix = $('Parse fix').item.json || {};\nconst repro = $('run_test reproduce').item.json || {};   // reproducer's independent red proof\nconst pm = $json || {};                                  // PR maker output (fix run + skeptic_* + pr_*)\nconst reproduced = !!repro.red_reproduced;               // REPRODUCER stage result\nconst green = !!pm.green_passed;                          // FIXER stage result\nconst proven = reproduced && !!pm.proven;                // fix run re-verifies red AND green\nconst skeptic = (pm.skeptic_verdict || 'unknown') + '';  // missing verdict is NOT certification\nconst decision = (pm.pr_decision || 'unknown') + '';     // a crashed PR maker must not auto-approve\n// lifecycle: suspector -> reproducer(red) -> fixer(green) -> fix-skeptic -> PR maker\nlet state;\n// infra vs verdict: only a real reproducer judgement may retire a suspicion.\nconst infra = [];\nif (j.branch_ok === false) infra.push('branch unresolved: ' + (j.branch_error || '?'));\nif (!(($('Build reproduce input').item.json || {}).src || '').trim()) infra.push('source fetch returned nothing');\nif (($('Build reproduce input').item.json || {}).src_truncated) infra.push('source file exceeded ' + 300000 + ' chars and was truncated \u2014 a verdict on it is not trustworthy');\nif (parseTest.parse_failed) infra.push('reproducer reply was not parseable JSON');\n// A test that NEVER EXECUTED (compile / build failure \u2014 e.g. a JDK-version mismatch) is NOT a verdict\n// that the bug is unreal; it means we could not test it. Mark it infra so the suspicion is retried and\n// the build failure is visible, instead of silently RETIRING a real bug as 'not_reproduced'.\nconst _rs = (repro && repro.red_summary) || {};\nif (parseTest.can_prove && repro && repro.ok && _rs.test_executed === false) {\n  const _bt = String(repro.red_output || '').match(/release version (\\d+) not supported|Java (\\d+) or higher|cannot find symbol|package [\\w.]+ does not exist|BUILD FAILURE/);\n  infra.push('reproducer test never executed (build failed, jdk ' + (repro.jdk || '?') + ')' + (_bt ? ': ' + _bt[0] : ''));\n}\nif (repro && repro.error) infra.push('run_test(reproduce): ' + String(repro.error).slice(0, 120));\nif (pm && pm.error) infra.push('run_test(fix): ' + String(pm.error).slice(0, 120));\nconst editErrors = (pm && Array.isArray(pm.edit_errors)) ? pm.edit_errors : [];\nconst appliedFiles = (pm && Array.isArray(pm.applied_files)) ? pm.applied_files : [];\n// \"no errors\" is not \"it applied\": zero edits also produces zero errors. A red->green flip on a tree\n// nothing changed is test flakiness or build state, never evidence for the diff we would publish.\nconst notApplied = editErrors.length > 0 || appliedFiles.length === 0;\nif (parseFix.fix_parse_failed) infra.push('fixer reply was not parseable JSON');\nif (parseFix.fix_rejected) infra.push('edits rejected by the source-only allowlist: ' + parseFix.fix_rejected);\nif (infra.length) state = 'infra_error';\nelse if (proven && notApplied) state = 'needs_review';\nelse if (!parseTest.can_prove) state = 'not-a-bug';\nelse if (proven && skeptic === 'sound' && decision === 'make') state = 'pr_ready';   // only an explicit 'sound' certifies\nelse if (proven && skeptic === 'sound' && decision === 'reject') state = 'pr_rejected';   // proven, but not PR-worthy for this repo\nelse if (proven) state = 'needs_review';                 // proven by execution, but the fix-skeptic flagged the fix\nelse if (reproduced && !green) state = 'fix_failed';\nelse state = 'not_reproduced';\nlet pr_title = pm.pr_title || parseFix.pr_title || j.title || '';\nlet pr_body = pm.pr_body || parseFix.pr_body || '';\nif (state === 'needs_review') {\n  const why = editErrors.length\n    ? (\"\u26a0 FIX NOT FULLY APPLIED \u2014 the recorded diff is NOT what was verified: \" + editErrors.join('; '))\n    : (appliedFiles.length === 0\n       ? \"\u26a0 NO EDIT WAS APPLIED AT ALL \u2014 the red\u2192green flip happened on an unchanged tree, so it is test flakiness or build state, not a fix\"\n       : (\"\u26a0 FIX SKEPTIC (\" + skeptic + \"): \" + (pm.skeptic_reason||'')));\n  pr_body = why + \"\\n\\n\" + pr_body;\n}\nif (state === 'pr_rejected') { pr_title = \"PR rejected\"; pr_body = \"\u26d4 NOT PR-WORTHY (\" + j.repo + \"): \" + (pm.pr_reason||''); }\nif (state === 'pr_ready' && pm.pr_curated === false) {\n  pr_body = \"\u26a0 PR CURATOR NEVER RAN \u2014 this is the fixer's own unreviewed draft (\" + (pm.pr_reason||'') + \")\\n\\n\" + pr_body;\n}\nreturn {\n  suspicion_key: j.suspicion_key, repo: j.repo, file: j.file, title: j.title,\n  jdk: (pm.jdk || repro.jdk || '') + '', test_path: j.test_path, test_code: parseTest.test_code || '',\n  fix_diff: parseFix.fix_edits_json || '[]',\n  red_verified: reproduced, green_verified: green,     // Reproducer proved red; Fixer achieved green\n  value_score: (state === 'pr_ready') ? 1 : 0, value_verdict: parseTest.repro_value_verdict || '',\n  pr_title, pr_body, state,\n  infra_reason: infra.concat(editErrors.map(e => 'edit not applied: ' + e)).join('; '),\n  attempts: (Number(j.prove_attempts) || 0) + 1,   // so a permanently-broken row stops being requeued\n  branch: j.branch || '',                          // the artifact records WHICH branch it was proven on\n  versions: \"{\\\"pipeline\\\": \\\"S1 (2026-07-27: Svace markers replace the LLM suspector as the suspicion source; a marker that will not reproduce ends in a WRITTEN verdict instead of a bare not_reproduced)\\\", \\\"ingester\\\": \\\"i1 (2026-07-27: CSV -> one suspicion per marker; CI path prefix stripped, checker mapped to category + one-line meaning, src/test+src/it excluded by default)\\\", \\\"anchor\\\": \\\"a1 (2026-07-27: markers re-anchored onto the enclosing symbol, because the scanned commit is unknown and line numbers drift against upstream HEAD)\\\", \\\"reproducer\\\": \\\"r5 (2026-07-22: a test that never compiled/ran = infra (retry), not a false not-a-bug verdict; JDK auto-detect covers release-version mismatch)\\\", \\\"fixer\\\": \\\"f3 (2026-07-22: robust JSON extractor for fix edits; records only edits actually APPLIED)\\\", \\\"pr_maker\\\": \\\"pr3 (2026-07-22: an uncurated draft is banner-marked in pr_body)\\\", \\\"skeptic\\\": \\\"sk5 (2026-07-22: fail-closed whitelist; a valid verdict with no reason is not mislabelled unrecognised)\\\", \\\"verdict\\\": \\\"vd1 (2026-07-27: source-only rebuttal \\\\u2014 no Svace endpoint available, so the argument is made from the checker's claim + the actual code, and enrichment sits behind a stub)\\\"}\",      // which pipeline + stage versions produced this artifact\n};"
       },
-      "id": "p28",
+      "id": "p27",
       "name": "Record outcome",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -625,12 +592,27 @@
     },
     {
       "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "function extractJson(text, keys) {\n  const t = String(text || '');\n  if (!t.trim()) return null;\n  const tryParse = (raw) => { try { return JSON.parse(raw); } catch (e) { return null; } };\n  const repair = (body) => {\n    const stack = []; let inS = false, esc = false; const marks = [];\n    for (let i = 0; i < body.length; i++) { const ch = body[i];\n      if (esc) { esc = false; continue; }\n      if (ch === '\\\\') { esc = true; continue; }\n      if (ch === '\"') { inS = !inS; continue; }\n      if (inS) continue;\n      if (ch === '{' || ch === '[') stack.push(ch);\n      else if (ch === '}' || ch === ']') { stack.pop(); marks.push({ i: i, s: stack.slice() }); } }\n    const close = (txt, st, q) => {\n      let out = (q ? txt.replace(/\\\\+$/, m => m.length % 2 ? m.slice(1) : m) + '\"' : txt);\n      out = out.replace(/[\\s,]+$/, ''); if (/:\\s*$/.test(out)) out += 'null';\n      for (let k = st.length - 1; k >= 0; k--) out += (st[k] === '{' ? '}' : ']'); return tryParse(out); };\n    const whole = close(body, stack, inS); if (whole) return whole;\n    for (let m = marks.length - 1, tr = 0; m >= 0 && tr < 400; m--, tr++) {\n      const r = close(body.slice(0, marks[m].i + 1), marks[m].s, false); if (r) return r; }\n    return null;\n  };\n  const usable = (o) => o && typeof o === 'object' && keys.some(k => k in o);\n  const fences = [...t.matchAll(/```(?:json)?\\s*([\\s\\S]*?)```/gi)].map(m => m[1]);\n  for (let i = fences.length - 1; i >= 0; i--) { const o = tryParse(fences[i].trim()) || repair(fences[i].trim()); if (usable(o)) return o; }\n  const starts = []; for (let i = 0; i < t.length; i++) if (t[i] === '{') starts.push(i);\n  const tryAt = (p) => { const body = t.slice(p); const last = body.lastIndexOf('}');\n    if (last > 0) { const o = tryParse(body.slice(0, last + 1)); if (usable(o)) return o; }\n    const rep = repair(body); return usable(rep) ? rep : null; };\n  const keyRe = new RegExp('^\\\\s*\"(' + keys.join('|') + ')\"\\\\s*:');\n  for (const p of starts) { if (keyRe.test(t.slice(p + 1))) { const r = tryAt(p); if (r) return r; } }\n  const order = []; for (let k = starts.length - 1; k >= 0 && starts.length - k <= 40; k--) order.push(starts[k]);\n  for (let k = 0; k < starts.length && k < 40; k++) if (order.indexOf(starts[k]) < 0) order.push(starts[k]);\n  for (const p of order) { const r = tryAt(p); if (r) return r; }\n  return null;\n}\n\nconst rec = $json;                                  // Record outcome\nconst j = $('Prep prover').item.json;\nconst parseTest = $('Parse test').item.json || {};\nconst repro = $('run_test reproduce').item.json || {};\nconst bri = $('Build reproduce input').item.json || {};\n\nlet verdict_text = '', verdict_kind = '', verdict_confidence = '', retry = false;\nlet state = rec.state;\n\n// --- Svace marker-detail enrichment (PLUGGABLE STUB) ------------------------------------------\n// No Svace endpoint exists for this deployment, so the rebuttal is argued from the checker's claim\n// plus the actual source. If an endpoint is added later, set SVACE_BASE_URL (and optionally\n// SVACE_TOKEN) in the environment and implement the response mapping below: the prompt already has a\n// slot for the message + taint trace, so the argument starts engaging Svace's own reasoning without\n// any other change to this pipeline. An arrow function so `this.helpers` stays bound.\nconst svaceDetail = async (markerId) => {\n  const base = ($env.SVACE_BASE_URL || '').trim();\n  if (!base || !markerId) return null;\n  try {\n    const hdrs = { Accept: 'application/json', Connection: 'close' };\n    if ($env.SVACE_TOKEN) hdrs.Authorization = 'Bearer ' + $env.SVACE_TOKEN;\n    const r = await this.helpers.httpRequest({\n      url: base.replace(/\\/+$/, '') + '/markers/' + encodeURIComponent(markerId),\n      headers: hdrs, json: true, timeout: 60000 });\n    if (!r) return null;\n    return { message: (r.message || r.msg || '') + '', trace: JSON.stringify(r.trace || r.path || []) };\n  } catch (e) { return null; }\n};\n\nif (state === 'not_reproduced') {\n  const attempts = Number(rec.attempts) || 1;\n  const argueOnly = (j.settle_by || 'test') === 'argue';\n  const testRan = !!((repro.red_summary || {}).test_executed);\n  // A checker that can only be settled by argument gets no retry \u2014 a second reproducer sample cannot\n  // write a runtime test for a dead store or a hard-coded constant, so it would only burn a build.\n  if (!argueOnly && attempts < 2) {\n    retry = true;\n    console.log('[verdict] ' + j.suspicion_key + ' attempt ' + attempts + ' \u2014 retrying before writing a verdict');\n  } else {\n    const detail = await svaceDetail(j.marker_id);\n    const code = bri.method_text\n      ? (\"The method the marker points into:\\n```java\\n\" + String(bri.method_text).slice(0, 20000) + \"\\n```\")\n      : (\"Source file:\\n```java\\n\" + String(bri.src || '').slice(0, 20000) + \"\\n```\");\n    const whatHappened = !parseTest.can_prove\n      ? (\"The reproducer declined to write a test. Its stated reason: \"\n         + (parseTest.repro_root_cause || '(none given)'))\n      : (testRan\n         ? (\"The reproducer wrote a test targeting this marker. It COMPILED AND RAN against the \"\n            + \"unpatched code and PASSED \u2014 so the code did not exhibit the defect the checker claims. \"\n            + \"The reproducer's reasoning was: \" + (parseTest.repro_root_cause || '(none given)'))\n         : (\"The reproducer wrote a test, but it did not demonstrate the defect. Reasoning: \"\n            + (parseTest.repro_root_cause || '(none given)')));\n    const prompt = \"[pipeline S1 (2026-07-27: Svace markers replace the LLM suspector as the suspicion source; a marker that will not reproduce ends in a WRITTEN verdict instead of a bare not_reproduced)]  [stage vd1 (2026-07-27: source-only rebuttal \u2014 no Svace endpoint available, so the argument is made from the checker's claim + the actual code, and enrichment sits behind a stub)]\\n\" +\n      \"You are adjudicating ONE static-analysis marker that could not be demonstrated by an executable \"\n      + \"test, after \" + attempts + \" attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. \"\n      + \"It must be specific enough to accept or reject on its merits \u2014 name the guard, the branch, the \"\n      + \"call, or the intent. A generic 'this appears to be a false positive' is worthless.\\n\\n\"\n      + \"REPOSITORY: \" + j.repo + \"\\nFILE: \" + j.file + \"\\n\"\n      + \"MARKER: \" + (j.svace_checker || '?') + \"  [\" + (j.svace_severity || '?') + \"]  at line \" + (j.svace_line || '?') + \"\\n\"\n      + \"THE CHECKER'S CLAIM: \" + (j.description || '') + \"\\n\"\n      + \"LOCATION CONFIDENCE: \" + (bri.anchor_status || '?') + \" \u2014 \" + (bri.anchor_note || '') + \"\\n\"\n      + (detail ? (\"SVACE DETAIL: \" + detail.message + \"\\nSVACE TRACE: \" + detail.trace + \"\\n\")\n                : \"SVACE DETAIL: unavailable (no Svace endpoint is configured for this deployment; argue from the code).\\n\")\n      + \"\\n\" + code + \"\\n\\n\"\n      + \"WHAT THE PIPELINE OBSERVED: \" + whatHappened + \"\\n\\n\"\n      + \"Classify into exactly one kind:\\n\"\n      + \"  false-positive \u2014 the claim does not hold on this code. Cite the guard, the validation, the \"\n      + \"branch that cannot be reached, or the upstream sanitizer that makes it safe.\\n\"\n      + \"  by-design \u2014 the claim DOES hold, but the code is deliberately written this way and fixing it \"\n      + \"would defeat its purpose (for example a deliberately vulnerable teaching example that exists to \"\n      + \"demonstrate this very weakness). Say what makes it intentional. Do NOT use this kind merely \"\n      + \"because the code looks old or awkward.\\n\"\n      + \"  unprovable \u2014 the claim may well be correct, but no runtime test can demonstrate a DEFECT \"\n      + \"(a dead store, an unread field, a hard-coded constant, a style rule). Say what a human should \"\n      + \"check instead, and whether it is worth fixing.\\n\\n\"\n      + \"If the location confidence is not 'exact', consider that the marker may point at code that has \"\n      + \"since moved or been deleted, and say so rather than arguing about the wrong lines.\\n\\n\"\n      + \"Reply ONLY JSON: {\\\"kind\\\":\\\"false-positive|by-design|unprovable\\\",\"\n      + \"\\\"verdict\\\":\\\"3-8 sentences, specific, citing the code\\\",\\\"confidence\\\":\\\"high|medium|low\\\"}.\";\n    try {\n      const r = await this.helpers.httpRequest({ method:'POST', url: $env.QWEN_BASE_URL + '/chat/completions',\n        headers:{ Authorization:'Bearer '+$env.QWEN_API_KEY, 'Content-Type':'application/json', Connection:'close' },\n        body:{ model:$env.QWEN_MODEL, messages:[{role:'user',content:prompt}], temperature:0.2, max_tokens:32000 },\n        json:true, timeout:3600000 });\n      const m = (r.choices && r.choices[0] && r.choices[0].message) || {};\n      const t = ((m.content || m.reasoning_content) || '') + '';\n      // the robust extractor, not indexOf('{')..lastIndexOf('}'): verdict prose routinely contains\n      // braces (generics, `{@code}`), and the naive scan then discards a perfectly good verdict.\n      const jj = extractJson(t, ['kind', 'verdict', 'confidence']) || {};\n      const kind = (jj.kind || '') + '';\n      verdict_kind = ['false-positive','by-design','unprovable'].indexOf(kind) >= 0 ? kind : 'false-positive';\n      verdict_text = (jj.verdict || '') + '';\n      verdict_confidence = (jj.confidence || '') + '';\n    } catch (e) {\n      verdict_text = '';\n      verdict_confidence = 'error: ' + ((e && (e.message || e.description))\n        ? String(e.message || e.description).slice(0,200) : 'verdict call failed');\n    }\n    if (verdict_text.trim()) {\n      state = 'false_positive';\n    } else {\n      // No text = no verdict. Leaving state='not_reproduced' is the honest outcome: an EMPTY\n      // false_positive row would claim the marker was argued away when nothing was written.\n      console.log('[verdict] ' + j.suspicion_key + ' \u2014 verdict call produced no text; left not_reproduced');\n    }\n  }\n}\n// The suspicion's next status is decided HERE, in code, rather than as a nested ternary inside an\n// n8n {{ }} expression. The parent's version was a single 300-character expression; one wrong branch\n// there silently retires a marker, and it cannot be tested.\nconst attempts = Number(rec.attempts) || 0;\nlet suspicion_status, suspicion_note = '';\nif (state === 'infra_error') {\n  // Never a verdict about the code: retry, but not forever. Past MAX it becomes infra_stuck, which\n  // no run selects, so a permanently broken row stops occupying the queue.\n  suspicion_status = attempts >= 3 ? 'infra_stuck' : 'new';\n  suspicion_note = '[prover] infra failure (attempt ' + attempts + '/3): ' + (rec.infra_reason || '');\n} else if (retry) {\n  suspicion_status = 'new';\n  suspicion_note = '[prover] did not reproduce on attempt ' + attempts + '; retrying before a verdict is written';\n} else if (['pr_ready', 'needs_review', 'pr_rejected'].indexOf(state) >= 0) {\n  suspicion_status = 'verified';\n} else if (state === 'fix_failed') {\n  suspicion_status = 'reproduced';\n} else if (state === 'false_positive') {\n  suspicion_status = 'false_positive';\n  suspicion_note = '[verdict/' + verdict_kind + '] ' + verdict_text.slice(0, 300);\n} else {\n  suspicion_status = 'rejected';\n}\nreturn { ...rec, state, retry, verdict_text, verdict_kind, verdict_confidence,\n         suspicion_status, suspicion_note,\n         anchor: bri.anchor || '', anchor_status: bri.anchor_status || '',\n         svace_checker: j.svace_checker || '' };"
+      },
+      "id": "p28",
+      "name": "Verdict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        620
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
         "resource": "row",
         "operation": "upsert",
         "dataTableId": {
           "__rl": true,
           "mode": "list",
-          "value": "tO8quypeTL29rLAE",
+          "value": "ZQ1hwP73Ce8y0GJi",
           "cachedResultName": "bugs"
         },
         "filters": {
@@ -662,7 +644,10 @@
             "state": "={{ $json['state'] }}",
             "infra_reason": "={{ $json['infra_reason'] }}",
             "branch": "={{ $json['branch'] }}",
-            "versions": "={{ $json['versions'] }}"
+            "versions": "={{ $json['versions'] }}",
+            "verdict_text": "={{ $json['verdict_text'] }}",
+            "verdict_kind": "={{ $json['verdict_kind'] }}",
+            "svace_checker": "={{ $json['svace_checker'] }}"
           },
           "matchingColumns": [
             "suspicion_key"
@@ -689,7 +674,7 @@
         "dataTableId": {
           "__rl": true,
           "mode": "list",
-          "value": "o17lTGMNGX0RI8wY",
+          "value": "kC7PYCiSwfxNtfiC",
           "cachedResultName": "suspicions"
         },
         "filters": {
@@ -697,16 +682,18 @@
             {
               "keyName": "dedup_key",
               "condition": "eq",
-              "keyValue": "={{ $('Record outcome').item.json.suspicion_key }}"
+              "keyValue": "={{ $('Verdict').item.json.suspicion_key }}"
             }
           ]
         },
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
-            "status": "={{ $('Record outcome').item.json.state === 'infra_error' ? ($('Record outcome').item.json.attempts >= 3 ? 'infra_stuck' : 'new') : (['pr_ready','needs_review','pr_rejected'].includes($('Record outcome').item.json.state) ? 'verified' : ($('Record outcome').item.json.state === 'fix_failed' ? 'reproduced' : 'rejected')) }}",
-            "prove_attempts": "={{ $('Record outcome').item.json.attempts }}",
-            "note": "={{ $('Record outcome').item.json.state === 'infra_error' ? ('[prover] infra failure (attempt ' + $('Record outcome').item.json.attempts + '/3): ' + ($('Record outcome').item.json.infra_reason || '')) : '' }}"
+            "status": "={{ $('Verdict').item.json.suspicion_status }}",
+            "prove_attempts": "={{ $('Verdict').item.json.attempts }}",
+            "note": "={{ $('Verdict').item.json.suspicion_note }}",
+            "anchor": "={{ $('Verdict').item.json.anchor }}",
+            "anchor_status": "={{ $('Verdict').item.json.anchor_status }}"
           },
           "matchingColumns": [
             "dedup_key"
@@ -740,7 +727,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://fjb-java-runner:8090/lease/release",
+        "url": "http://fsm-java-runner:8090/lease/release",
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
@@ -798,23 +785,12 @@
       "main": [
         [
           {
-            "node": "Call dedup",
+            "node": "Get new suspicions",
             "type": "main",
             "index": 0
           }
         ],
         []
-      ]
-    },
-    "Call dedup": {
-      "main": [
-        [
-          {
-            "node": "Get new suspicions",
-            "type": "main",
-            "index": 0
-          }
-        ]
       ]
     },
     "Get new suspicions": {
@@ -1078,6 +1054,17 @@
       "main": [
         [
           {
+            "node": "Verdict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verdict": {
+      "main": [
+        [
+          {
             "node": "Upsert bug",
             "type": "main",
             "index": 0
@@ -1110,6 +1097,6 @@
   },
   "settings": {
     "executionOrder": "v1",
-    "errorWorkflow": "fjbprover00001"
+    "errorWorkflow": "fsmprover00001"
   }
 }

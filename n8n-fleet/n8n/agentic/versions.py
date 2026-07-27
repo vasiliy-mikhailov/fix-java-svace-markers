@@ -6,13 +6,18 @@ bump PIPELINE_VERSION whenever the shape of the lifecycle changes (a stage added
 
 Each string is an id, a date, and a description of what that code DOES.
 
-Lifecycle: suspector -> dedup -> reproducer -> fixer -> pr maker
+Lifecycle: ingester -> reproducer -> fixer -> pr maker, with a verdict branch off the reproducer.
 """
 
-PIPELINE_VERSION = "P6 (2026-07-22: prover drains the queue CONCURRENTLY with the scan, one at a time under a runner lease; empty-queue lease strand fixed)"
+PIPELINE_VERSION = "S1 (2026-07-27: Svace markers replace the LLM suspector as the suspicion source; a marker that will not reproduce ends in a WRITTEN verdict instead of a bare not_reproduced)"
 
-SUSPECTOR_VERSION = "v65 (2026-07-22: one robust verdict parser on both paths — fenced + key-anchored + both-ends + backslash-safe repair)"
-DEDUP_VERSION = "d2 (2026-07-22: repo-wide clustering of `new` suspicions; marks duplicates, never deletes)"
+INGESTER_VERSION = "i1 (2026-07-27: CSV -> one suspicion per marker; CI path prefix stripped, checker mapped to category + one-line meaning, src/test+src/it excluded by default)"
+VERDICT_VERSION = "vd1 (2026-07-27: source-only rebuttal — no Svace endpoint available, so the argument is made from the checker's claim + the actual code, and enrichment sits behind a stub)"
+ANCHOR_VERSION = "a1 (2026-07-27: markers re-anchored onto the enclosing symbol, because the scanned commit is unknown and line numbers drift against upstream HEAD)"
+
+# Retired with the input swap, kept so an OLD stored artifact's `versions` blob still resolves.
+SUSPECTOR_VERSION = "v65 (2026-07-22: RETIRED — Svace markers replaced LLM detection in S1)"
+DEDUP_VERSION = "d2 (2026-07-22: RETIRED — Svace de-duplicates its own markers, so the dedup stage was dropped in S1)"
 REPRODUCER_VERSION = "r5 (2026-07-22: a test that never compiled/ran = infra (retry), not a false not-a-bug verdict; JDK auto-detect covers release-version mismatch)"
 FIXER_VERSION = "f3 (2026-07-22: robust JSON extractor for fix edits; records only edits actually APPLIED)"
 PR_MAKER_VERSION = "pr3 (2026-07-22: an uncurated draft is banner-marked in pr_body)"
@@ -36,10 +41,11 @@ def versions_json():
     import json
     return json.dumps({
         "pipeline": PIPELINE_VERSION,
-        "suspector": SUSPECTOR_VERSION,
-        "dedup": DEDUP_VERSION,
+        "ingester": INGESTER_VERSION,
+        "anchor": ANCHOR_VERSION,
         "reproducer": REPRODUCER_VERSION,
         "fixer": FIXER_VERSION,
         "pr_maker": PR_MAKER_VERSION,
         "skeptic": SKEPTIC_VERSION,
+        "verdict": VERDICT_VERSION,
     })

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """In-container jdtls bakeoff harness: run goto-definition / implementation on the 12 nav queries,
-INSIDE fjb-java-runner (has JDK21 + the opennlp clone + internet). Mirrors the JavaParser bench so
+INSIDE fsm-java-runner (has JDK21 + the opennlp clone + internet). Mirrors the JavaParser bench so
 both engines are measured in the SAME environment (no external SSH asymmetry).
 
 Usage (inside the container):  python3 nav_bench.py /tmp/navq.json <repo-clone-dir>
