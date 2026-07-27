@@ -583,7 +583,16 @@ const buildOnly = /test never executed \(build failed/.test(infraReason)
   && !/source fetch returned nothing|branch unresolved|not parseable JSON|exceeded/.test(infraReason);
 const exhaustedBuild = (state === 'infra_error') && attempts0 >= 3 && buildOnly;
 
-if (state === 'not_reproduced' || exhaustedBuild) {
+// EVERY route that retires a marker without a patch has to land here, or the marker is dropped
+// silently. There are three, and missing one is invisible: the row just reads `rejected` with an
+// empty verdict_text, which looks like a considered outcome.
+//   not-a-bug       — the reproducer DECLINED to write a test. This is the commonest way a marker
+//                     fails to hold, and it was the one omitted: 8 markers were retired with the
+//                     reproducer explicitly reporting value_verdict 'false-positive' and not one
+//                     word of argument recorded against them.
+//   not_reproduced  — a test was written, ran, and passed on the unpatched code.
+//   exhaustedBuild  — no test ever compiled (see above).
+if (state === 'not_reproduced' || state === 'not-a-bug' || exhaustedBuild) {
   const attempts = attempts0;
   const argueOnly = (j.settle_by || 'test') === 'argue';
   const testRan = !!((repro.red_summary || {}).test_executed);
@@ -701,7 +710,13 @@ if (state === 'infra_error') {
   suspicion_status = state;
   suspicion_note = '[verdict/' + verdict_kind + '] ' + verdict_text.slice(0, 300);
 } else {
+  // Reaching here means the marker is being RETIRED with neither a patch nor an argument. That is a
+  // gap in the routing above, not a considered outcome — an empty verdict_text on a `rejected` row is
+  // indistinguishable from a real decision unless it says so. Label it so the next one is visible on
+  // the dashboard the same day rather than after 8 markers have been quietly thrown away.
   suspicion_status = 'rejected';
+  suspicion_note = '[gap] retired as `' + state + '` with no verdict written — this marker was never '
+    + 'argued; the verdict stage does not route this state';
 }
 return { ...rec, state, retry, verdict_text, verdict_kind, verdict_confidence,
          suspicion_status, suspicion_note,
