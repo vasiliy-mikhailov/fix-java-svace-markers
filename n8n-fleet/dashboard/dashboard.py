@@ -522,6 +522,7 @@ async function tick(){
     +stat(byStatus('new'),'queued')
     +stat(byStatus('verified'),'proven')
     +stat(byStatus('false_positive'),'refuted')
+    +stat(byStatus('by_design'),'by design')
     +stat(byStatus('unprovable'),'unprovable')
     +stat(byStatus('rejected'),'not reproduced')
     +stat(byStatus('infra_stuck'),'infra stuck')

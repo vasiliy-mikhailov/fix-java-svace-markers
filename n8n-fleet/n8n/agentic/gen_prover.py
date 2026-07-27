@@ -649,10 +649,14 @@ if (state === 'not_reproduced' || exhaustedBuild) {
       // braces (generics, `{@code}`), and the naive scan then discards a perfectly good verdict.
       const jj = extractJson(t, ['kind', 'verdict', 'confidence']) || {};
       const kind = (jj.kind || '') + '';
-      // When no test ever compiled, 'unprovable' is the only honest classification available: nothing
-      // was executed, so the model cannot have established that the claim fails to hold.
-      verdict_kind = exhaustedBuild ? 'unprovable'
-        : (['false-positive','by-design','unprovable'].indexOf(kind) >= 0 ? kind : 'false-positive');
+      verdict_kind = ['false-positive','by-design','unprovable'].indexOf(kind) >= 0 ? kind : 'false-positive';
+      // With no test that ever compiled, we cannot assert the claim FAILS TO HOLD — nothing was
+      // executed, so 'false-positive' would be an untested exoneration and is downgraded.
+      // 'by-design' is NOT downgraded: it concedes the claim is correct and judges the code's INTENT,
+      // which is read off the source and needs no execution. Forcing everything to 'unprovable' threw
+      // away a sound judgement — the first real verdict argued, correctly and in detail, that a
+      // WebGoat SQL-injection lesson is deliberately vulnerable, and got filed as "could not test".
+      if (exhaustedBuild && verdict_kind === 'false-positive') verdict_kind = 'unprovable';
       verdict_text = (jj.verdict || '') + '';
       verdict_confidence = (jj.confidence || '') + '';
     } catch (e) {
@@ -661,10 +665,14 @@ if (state === 'not_reproduced' || exhaustedBuild) {
         ? String(e.message || e.description).slice(0,200) : 'verdict call failed');
     }
     if (verdict_text.trim()) {
-      // `unprovable` stays distinct from `false_positive`: one says "we could not test this", the
-      // other says "we tested it and the claim does not hold". Collapsing them would let a tooling
-      // failure read as an exoneration.
-      state = exhaustedBuild ? 'unprovable' : 'false_positive';
+      // The state follows the VERDICT, not the trigger that led here. The three stay distinct because
+      // they mean different things to a reviewer: `false_positive` = we tested it and the claim does
+      // not hold; `by_design` = the claim holds but the code is deliberately written that way, so
+      // there is nothing to fix; `unprovable` = we never managed to test it. Collapsing them would
+      // let a tooling failure read as an exoneration, or a deliberate vulnerability read as a bug.
+      state = verdict_kind === 'by-design' ? 'by_design'
+            : verdict_kind === 'unprovable' ? 'unprovable'
+            : 'false_positive';
     } else {
       // No text = no verdict. Leaving state='not_reproduced' is the honest outcome: an EMPTY
       // false_positive row would claim the marker was argued away when nothing was written.
@@ -689,7 +697,7 @@ if (state === 'infra_error') {
   suspicion_status = 'verified';
 } else if (state === 'fix_failed') {
   suspicion_status = 'reproduced';
-} else if (state === 'false_positive' || state === 'unprovable') {
+} else if (state === 'false_positive' || state === 'unprovable' || state === 'by_design') {
   suspicion_status = state;
   suspicion_note = '[verdict/' + verdict_kind + '] ' + verdict_text.slice(0, 300);
 } else {
