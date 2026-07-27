@@ -41,6 +41,17 @@ REPRODUCER_SYS = (
     "representative inputs (not a single hard-coded case), so a narrow special-case patch cannot make it "
     "pass without truly fixing the defect. Use only JUnit 5 (org.junit.jupiter) plus the public API of "
     "the given file. Do NOT fix the defect and do NOT modify any source file.\n\n"
+    "TEST THE REAL CLASS. The whole value of the test is that it executes the code under scrutiny, so "
+    "the class named above must be the REAL one: construct it, or call its static method, and invoke "
+    "the real method. NEVER mock, spy or stub the class under test — if you do, everything the test "
+    "observes is your own stubbing and the result says nothing about the source.\n"
+    "Mocking COLLABORATORS is fine and often necessary — a Connection, a DataSource, an HTTP client "
+    "cannot be stood up in a unit test, and mocking one to observe that the real object closes it is a "
+    "perfectly good proof. Prefer, in this order: drive real objects with real inputs and assert on "
+    "the returned value or resulting state; if the claim is about an interaction (a resource must be "
+    "closed, a call must not happen), mock the collaborator and verify against it. A test whose "
+    "assertions are only about mocks you configured, with the real class never invoked, is worthless "
+    "however cleanly it fails.\n\n"
     "LINE NUMBERS MAY HAVE DRIFTED. The commit Svace scanned is not known, so the reported line is a "
     "hint, not an address. Find the construct the checker DESCRIBES; if it is not in this file at all, "
     "say so via can_prove:false rather than testing something else.\n\n"
@@ -296,7 +307,75 @@ function extractJson(text, keys) {
 }
 """
 
-PARSE_TEST = REL_JSON_FN + r"""
+# ---- Is the proof about the REAL code, or about a mock? -----------------------------------------
+# A red->green flip only proves something about the source if the test actually EXERCISES the source.
+# A test that mocks the class under test, or that never touches it at all, can go red and then green
+# purely on its own stubbing — the execution evidence looks identical and means nothing.
+#
+# Mocks themselves are not the problem and must not be penalised bluntly: a resource-leak marker on a
+# JDBC method is BEST proved by mocking Connection/Statement and asserting close() was called on the
+# real object under test. That test is mock-heavy and completely sound. What matters is whether the
+# CLASS UNDER TEST is real and is invoked.
+#
+# So this scores realness deterministically (no LLM, no cost) and separates two things:
+#   sound   — a hard structural requirement: the real class is constructed or called. Failing it means
+#             the proof is not about this file, and no amount of green may present it as a fix.
+#   score   — a preference, 0..100, ranking a test that drives real objects and asserts on real values
+#             above one that only checks interactions on stubs.
+TEST_REALNESS_FN = r"""
+function testRealness(src, cls) {
+  const out = { sound: false, score: 0, reasons: [], mocks_subject: false, touches_real: false };
+  const name = String(cls || '').replace(/[^A-Za-z0-9_$]/g, '');
+  if (!src || !name) { out.reasons.push('no test source or no class name'); return out; }
+  // mask comments and string literals so a class name inside a comment cannot count as a usage
+  const s = src
+    .replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, ' '))
+    .replace(/\/\/[^\n]*/g, m => ' '.repeat(m.length))
+    .replace(/"(\\.|[^"\\\n])*"/g, '""');
+  const has = (re) => re.test(s);
+  const count = (re) => (s.match(re) || []).length;
+  const N = name.replace(/\$/g, '\\$');
+
+  // THE CARDINAL SIN: the subject itself is a mock, so every observed behaviour is stubbed.
+  out.mocks_subject = has(new RegExp('mock\\s*\\(\\s*' + N + '\\s*\\.\\s*class'))
+                   || has(new RegExp('@Mock[\\s\\S]{0,80}?\\b' + N + '\\s+\\w'))
+                   || has(new RegExp('@(?:Spy|InjectMocks)[\\s\\S]{0,80}?\\b' + N + '\\s+\\w'));
+
+  const constructs = count(new RegExp('new\\s+' + N + '\\s*\\(', 'g'));
+  const statics    = count(new RegExp('\\b' + N + '\\s*\\.\\s*[a-z]\\w*\\s*\\(', 'g'));
+  out.touches_real = (constructs > 0 || statics > 0) && !out.mocks_subject;
+
+  const asserts = count(/\bassert[A-Z]\w*\s*\(|\bassertThat\s*\(|\bfail\s*\(/g);
+  const verifies = count(/\bverify\s*\(/g);
+  const stubs = count(/\bwhen\s*\(|\bmock\s*\(|\bgiven\s*\(|@Mock\b/g);
+
+  if (out.mocks_subject) {
+    out.reasons.push('the class under test is itself mocked/spied — the test observes stubs, not ' + name);
+  }
+  if (!constructs && !statics) {
+    out.reasons.push('the test never constructs ' + name + ' and never calls a static method on it');
+  }
+  out.sound = out.touches_real;
+  if (!out.sound) return out;
+
+  // Preference ordering among SOUND tests.
+  let score = 55;                                   // it does drive the real class
+  if (constructs > 0) { score += 20; out.reasons.push('instantiates the real ' + name); }
+  else { out.reasons.push('exercises ' + name + ' through static calls'); }
+  if (asserts > 0) { score += 15; out.reasons.push(asserts + ' value/state assertion(s)'); }
+  if (asserts === 0 && verifies > 0) {
+    // Interaction-only is legitimate for "must call close()" style claims, but it is weaker evidence
+    // than asserting a value, so it ranks below — it is not penalised into unsoundness.
+    score -= 10; out.reasons.push('asserts only on interactions (verify), not on returned values/state');
+  }
+  if (stubs === 0) { score += 10; out.reasons.push('no stubbing at all — drives the real objects end to end'); }
+  else { out.reasons.push(stubs + ' stub/mock setup(s) for collaborators (legitimate when the real ones need a DB/network)'); }
+  out.score = Math.max(0, Math.min(100, score));
+  return out;
+}
+"""
+
+PARSE_TEST = TEST_REALNESS_FN + REL_JSON_FN + r"""
 const j = $('Prep prover').item.json;
 const text = ($json.output || '').toString();
 // a crashed agent (onError=continueRegularOutput -> no .output) and a malformed reply both land here;
@@ -312,7 +391,12 @@ const body = {
   repo: j.repo, branch: j.branch, jdk: '21', module: j.module,
   test_class: j.test_class, test_path: j.test_path, test_code, fix_edits: [],
 };
+const realness = testRealness(test_code, j.class_name);
+if (test_code) console.log('[realness] ' + j.class_name + ' sound=' + realness.sound
+  + ' score=' + realness.score + ' :: ' + realness.reasons.join('; '));
 return { ...j, can_prove, parse_failed, test_code,
+         test_sound: realness.sound, test_score: realness.score,
+         test_realness: realness.reasons.join('; '), test_mocks_subject: realness.mocks_subject,
          repro_value_verdict: r.value_verdict || '', repro_root_cause: r.root_cause || '', body };
 """
 
@@ -498,6 +582,11 @@ if (parseFix.fix_parse_failed) infra.push('fixer reply was not parseable JSON');
 if (parseFix.fix_rejected) infra.push('edits rejected by the source-only allowlist: ' + parseFix.fix_rejected);
 if (infra.length) state = 'infra_error';
 else if (proven && notApplied) state = 'needs_review';
+// A red->green flip is only evidence about THIS FILE if the test actually drove the real class. When
+// the class under test is mocked, or never constructed or called, the flip can be produced entirely
+// by the test's own stubbing — the execution proof looks identical and establishes nothing. That must
+// never reach pr_ready, however green it went, so it is held for review with the reason attached.
+else if (proven && parseTest.can_prove && parseTest.test_sound === false) state = 'needs_review';
 else if (!parseTest.can_prove) state = 'not-a-bug';
 else if (proven && skeptic === 'sound' && decision === 'make') state = 'pr_ready';   // only an explicit 'sound' certifies
 else if (proven && skeptic === 'sound' && decision === 'reject') state = 'pr_rejected';   // proven, but not PR-worthy for this repo
@@ -511,7 +600,11 @@ if (state === 'needs_review') {
     ? ("⚠ FIX NOT FULLY APPLIED — the recorded diff is NOT what was verified: " + editErrors.join('; '))
     : (appliedFiles.length === 0
        ? "⚠ NO EDIT WAS APPLIED AT ALL — the red→green flip happened on an unchanged tree, so it is test flakiness or build state, not a fix"
-       : ("⚠ FIX SKEPTIC (" + skeptic + "): " + (pm.skeptic_reason||'')));
+       : (parseTest.test_sound === false
+          ? ("⚠ THE TEST DOES NOT EXERCISE THE REAL CODE — " + (parseTest.test_realness || '')
+             + ". The red→green flip may have been produced by the test's own stubbing rather than by "
+             + "the fix, so it is not evidence about " + j.file + ".")
+          : ("⚠ FIX SKEPTIC (" + skeptic + "): " + (pm.skeptic_reason||''))));
   pr_body = why + "\n\n" + pr_body;
 }
 if (state === 'pr_rejected') { pr_title = "PR rejected"; pr_body = "⛔ NOT PR-WORTHY (" + j.repo + "): " + (pm.pr_reason||''); }
@@ -523,7 +616,11 @@ return {
   jdk: (pm.jdk || repro.jdk || '') + '', test_path: j.test_path, test_code: parseTest.test_code || '',
   fix_diff: parseFix.fix_edits_json || '[]',
   red_verified: reproduced, green_verified: green,     // Reproducer proved red; Fixer achieved green
-  value_score: (state === 'pr_ready') ? 1 : 0, value_verdict: parseTest.repro_value_verdict || '',
+  // value_score carries HOW REAL the proof is (0-100), not a bare 1/0 for pr_ready. Two proven fixes
+  // are not equally trustworthy: one that drives real objects and asserts on returned values outranks
+  // one that only checks interactions on stubs, and a reviewer with limited time should see that.
+  value_score: (state === 'pr_ready' || state === 'needs_review') ? (Number(parseTest.test_score) || 0) : 0,
+  value_verdict: parseTest.repro_value_verdict || '',
   pr_title, pr_body, state,
   infra_reason: infra.concat(editErrors.map(e => 'edit not applied: ' + e)).join('; '),
   attempts: (Number(j.prove_attempts) || 0) + 1,   // so a permanently-broken row stops being requeued
