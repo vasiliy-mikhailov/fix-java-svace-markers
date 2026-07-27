@@ -570,13 +570,26 @@ const svaceDetail = async (markerId) => {
   } catch (e) { return null; }
 };
 
-if (state === 'not_reproduced') {
-  const attempts = Number(rec.attempts) || 1;
+// A build that never compiled is OUR failure to write a runnable test, never evidence about the code
+// — which is why it is retried rather than recorded as a verdict. But once the retries are spent the
+// marker would otherwise end as `infra_stuck` and produce NOTHING: no patch, no rebuttal, no trace of
+// having been looked at. That is the one outcome a reviewer cannot act on. So an exhausted BUILD
+// failure falls through to a verdict of kind `unprovable`, carrying the compiler error as evidence.
+// Gated tightly: a source fetch that returned nothing, an unresolved branch or an unparseable reply
+// are real infrastructure faults and must keep retrying, never be dressed up as a finding.
+const attempts0 = Number(rec.attempts) || 1;
+const infraReason = String(rec.infra_reason || '');
+const buildOnly = /test never executed \(build failed/.test(infraReason)
+  && !/source fetch returned nothing|branch unresolved|not parseable JSON|exceeded/.test(infraReason);
+const exhaustedBuild = (state === 'infra_error') && attempts0 >= 3 && buildOnly;
+
+if (state === 'not_reproduced' || exhaustedBuild) {
+  const attempts = attempts0;
   const argueOnly = (j.settle_by || 'test') === 'argue';
   const testRan = !!((repro.red_summary || {}).test_executed);
   // A checker that can only be settled by argument gets no retry — a second reproducer sample cannot
   // write a runtime test for a dead store or a hard-coded constant, so it would only burn a build.
-  if (!argueOnly && attempts < __MIN_ATTEMPTS__) {
+  if (!exhaustedBuild && !argueOnly && attempts < __MIN_ATTEMPTS__) {
     retry = true;
     console.log('[verdict] ' + j.suspicion_key + ' attempt ' + attempts + ' — retrying before writing a verdict');
   } else {
@@ -584,7 +597,12 @@ if (state === 'not_reproduced') {
     const code = bri.method_text
       ? ("The method the marker points into:\n```java\n" + String(bri.method_text).slice(0, 20000) + "\n```")
       : ("Source file:\n```java\n" + String(bri.src || '').slice(0, 20000) + "\n```");
-    const whatHappened = !parseTest.can_prove
+    const whatHappened = exhaustedBuild
+      ? ("The reproducer wrote a test " + attempts + " times and NOT ONCE did it compile, so the claim "
+         + "was never actually exercised. This is a limitation of the tooling, NOT evidence that the "
+         + "marker is wrong — do not clear the marker on this basis. The last compiler output was:\n"
+         + String(repro.red_output || '(no build output captured)').slice(-2000))
+      : !parseTest.can_prove
       ? ("The reproducer declined to write a test. Its stated reason: "
          + (parseTest.repro_root_cause || '(none given)'))
       : (testRan
@@ -631,7 +649,10 @@ if (state === 'not_reproduced') {
       // braces (generics, `{@code}`), and the naive scan then discards a perfectly good verdict.
       const jj = extractJson(t, ['kind', 'verdict', 'confidence']) || {};
       const kind = (jj.kind || '') + '';
-      verdict_kind = ['false-positive','by-design','unprovable'].indexOf(kind) >= 0 ? kind : 'false-positive';
+      // When no test ever compiled, 'unprovable' is the only honest classification available: nothing
+      // was executed, so the model cannot have established that the claim fails to hold.
+      verdict_kind = exhaustedBuild ? 'unprovable'
+        : (['false-positive','by-design','unprovable'].indexOf(kind) >= 0 ? kind : 'false-positive');
       verdict_text = (jj.verdict || '') + '';
       verdict_confidence = (jj.confidence || '') + '';
     } catch (e) {
@@ -640,7 +661,10 @@ if (state === 'not_reproduced') {
         ? String(e.message || e.description).slice(0,200) : 'verdict call failed');
     }
     if (verdict_text.trim()) {
-      state = 'false_positive';
+      // `unprovable` stays distinct from `false_positive`: one says "we could not test this", the
+      // other says "we tested it and the claim does not hold". Collapsing them would let a tooling
+      // failure read as an exoneration.
+      state = exhaustedBuild ? 'unprovable' : 'false_positive';
     } else {
       // No text = no verdict. Leaving state='not_reproduced' is the honest outcome: an EMPTY
       // false_positive row would claim the marker was argued away when nothing was written.
@@ -665,8 +689,8 @@ if (state === 'infra_error') {
   suspicion_status = 'verified';
 } else if (state === 'fix_failed') {
   suspicion_status = 'reproduced';
-} else if (state === 'false_positive') {
-  suspicion_status = 'false_positive';
+} else if (state === 'false_positive' || state === 'unprovable') {
+  suspicion_status = state;
   suspicion_note = '[verdict/' + verdict_kind + '] ' + verdict_text.slice(0, 300);
 } else {
   suspicion_status = 'rejected';
