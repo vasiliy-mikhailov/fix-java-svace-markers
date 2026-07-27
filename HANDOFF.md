@@ -101,7 +101,9 @@ Simplest path: treat this as a **second, fully-namespaced stack** (`fsm-*` every
 
 ## First steps for the next session
 
-1. Get the Svace endpoint details + the WebGoat commit from the user (blocks steps 1 & 3).
+> **Already done — do NOT redo:** this repo is cloned in all three places (GitHub `vasiliy-mikhailov/fix-java-svace-markers`, mh `~/fix-java-svace-markers`, local `/Users/vmihaylov/projects/fix-java-svace-markers`). You start from an existing checkout. WebGoat is *not* cloned by hand at all — the java-runner clones it automatically into `/cache` on the first run (just pin the commit, see gotchas).
+
+1. Get the Svace endpoint details + the WebGoat commit from the user (blocks steps 4 & 5).
 2. Namespace the stack (`fsm-*`, new port, new volumes) so it coexists with fix-java-bugs on mh.
 3. Bring up n8n + java-runner + dashboard fresh; run `setup`; capture the new Data Table IDs.
 4. Build the marker ingester (CSV → suspicions); confirm one marker flows into the existing prove loop end-to-end.
