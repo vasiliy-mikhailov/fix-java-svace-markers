@@ -73,20 +73,23 @@ services:
 
   # Live read-only dashboard: renders marker ingest progress + suspicions/bugs Data Tables.
   # Exposed behind Caddy basic-auth on fix-java-svace-markers.mikhailov.tech.
+  # Node 24 for node:sqlite, which is built in there — so this service has no npm dependencies at all.
   dashboard:
-    image: python:3.11-slim
+    image: node:24-alpine
     container_name: fsm-dashboard
     restart: unless-stopped
-    command: python /app/dashboard.py
+    command: node /app/src/server.js
     networks:
       - default
       - proxy-net          # so inference-caddy can reverse_proxy fsm-dashboard:8091
     environment:
       - PORT=8091
       - N8N_DB=/n8n-data/database.sqlite
-      - GITHUB_TOKEN=${GITHUB_TOKEN}     # for the live repo-total file count (cached tree fetch)
+      # the marker tab reads source from the runner's cached checkout — the same tree the prover
+      # anchored and tested against, so the code shown is the code that was actually judged
+      - JAVA_RUNNER=http://fsm-java-runner:8090
     volumes:
-      - ../dashboard/dashboard.py:/app/dashboard.py:ro
+      - ../dashboard:/app:ro         # server + public/ assets; read-only, it only ever reads
       - ./n8n-data:/n8n-data:ro      # read-only view of the n8n DB + Data Tables
 
 networks:

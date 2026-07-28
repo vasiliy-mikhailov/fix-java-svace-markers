@@ -1,0 +1,47 @@
+<!doctype html><html><head><meta charset=utf-8><title>fix-java-svace-markers · live</title>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="style.css"></head><body>
+<header>
+  <h1>fix-java-svace-markers · live</h1>
+  <div class=muted style=margin-left:auto id=ts>connecting…</div>
+</header>
+<section class=stage id=stage-banner>
+  <div class=stage-label>STAGE</div>
+  <div id=stage-name>connecting…</div>
+  <div id=stage-detail class=muted></div>
+  <div id=current class=muted style="margin-top:6px"></div>
+</section>
+
+<!-- outcome tiles: where the 282 markers have landed -->
+<section class=cards id=stats></section>
+
+<!-- Only machine time here is measured. Human-equivalent is an itemised estimate and is labelled as
+     one, because the FTE multiple is the number people quote and it must not look observed. -->
+<h2>Effort <span class=muted id=workbasis></span></h2>
+<section class=cards id=work></section>
+<div class=muted id=workdetail style="margin-top:8px;font-size:11px"></div>
+
+<!-- Verdicts are a first-class output, not a footnote: a marker that yields no PR must still yield
+     an argued rebuttal, and this is where a reviewer reads it. -->
+<h2>Verdicts <span class=muted id=verdictcount></span></h2>
+<div class="tablewrap scroll" id=verdicts></div>
+
+<h2>Markers <span class=muted id=suscount></span></h2>
+<div class="tablewrap scroll" id=suspicions></div>
+
+<h2>Proven red→green <span class=muted id=bugcount></span></h2>
+<div class=tablewrap id=bugs></div>
+
+<h2>Activity</h2>
+<div class="tablewrap scroll" id=activity></div>
+
+<h2>Errors <span class=muted id=errcount></span></h2>
+<div class="tablewrap scroll" id=errors></div>
+<div class=modal-bg id=modalbg onclick="if(event.target===this)closeModal()">
+  <div class=modal>
+    <h3><span id=mtitle></span><span class=x onclick=closeModal()>✕ close</span></h3>
+    <div class=mtabs id=mtabs></div>
+    <div class=mbody id=mbody></div>
+  </div>
+</div>
+<script src="app.js"></script></body></html>

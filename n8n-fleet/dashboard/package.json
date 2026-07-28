@@ -1,0 +1,12 @@
+{
+  "name": "fsm-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Read-only view of the Svace marker pipeline. No npm dependencies: node:sqlite is built in on Node 24.",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test",
+    "coverage": "npx c8 --reporter=text --include 'lib/**' --include 'src/**' node --test"
+  }
+}
