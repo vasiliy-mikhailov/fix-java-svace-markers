@@ -31,25 +31,24 @@ fi
 # "Could not find the data table: '<id>'" — and because the prover's schedule just tries again a
 # minute later, the queue looks alive while nothing is ever proven. Catch it before importing.
 echo "==> checking table ids"
-python3 - "${FILES[@]}" <<'PY'
-import json, re, sys, os
-here = os.path.dirname(os.path.abspath(sys.argv[0])) if sys.argv[0] else "."
-sys.path.insert(0, os.getcwd())
-import tables
-valid = {tables.SUSPICIONS_TABLE, tables.BUGS_TABLE, tables.SCAN_FILES_TABLE, tables.METHOD_RUNS_TABLE}
-bad = []
-for path in sys.argv[1:]:
-    if not os.path.exists(path):
-        sys.exit("    missing artifact: %s (run the generator first)" % path)
-    blob = open(path).read()
-    for tid in set(re.findall(r'"dataTableId":\s*\{[^}]*?"value":\s*"([^"]+)"', blob)):
-        if tid not in valid:
-            bad.append("%s -> %s" % (path, tid))
-if bad:
-    sys.exit("    STALE/STUB TABLE IDS (regenerate with `python3 gen_<x>.py`):\n      "
-             + "\n      ".join(bad))
-print("    ok — all artifacts reference the live tables")
-PY
+node -e '
+const t = require("./src/tables");
+const fs = require("fs");
+const valid = new Set([t.SUSPICIONS_TABLE, t.BUGS_TABLE, t.SCAN_FILES_TABLE, t.METHOD_RUNS_TABLE]);
+const bad = [];
+for (const f of process.argv.slice(1)) {
+  if (!fs.existsSync(f)) { console.error("    missing artifact: " + f + " (run the generator first)"); process.exit(1); }
+  const blob = fs.readFileSync(f, "utf8");
+  for (const m of blob.matchAll(/"dataTableId":\s*\{[^}]*?"value":\s*"([^"]+)"/g)) {
+    if (!valid.has(m[1])) bad.push(f + " -> " + m[1]);
+  }
+}
+if (bad.length) {
+  console.error("    STALE/STUB TABLE IDS (regenerate with `node src/gen-<x>.js`):\n      " + bad.join("\n      "));
+  process.exit(1);
+}
+console.log("    ok — all artifacts reference the live tables");
+' "${FILES[@]}" || exit 1
 
 for f in "${FILES[@]}"; do
   echo "==> importing $f"
