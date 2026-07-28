@@ -616,16 +616,62 @@ async function showDialog(key,method){ openModal('suspector dialog · <code>'+es
   document.getElementById('mbody').innerHTML=fmtDialog((d&&d.dialog)||''); }
 async function showInvestigation(su){ if(!su)return;
   const mkey=su.method_key||(su.repo+'|'+su.file+'|'+su.method);   // producing run (class audits / callee findings differ)
-  openModal('<code>'+esc(short(su.file))+' :: '+esc(su.method)+'</code> — '+esc((su.title||'').slice(0,70)));
+  openModal('<code>'+esc(short(su.file))+':'+esc(su.svace_line!=null?num(su.svace_line):(su.line!=null?num(su.line):'?'))
+    +'</code> <span class=tiny>'+esc(su.svace_checker||'')+'</span> — '+esc((su.description||su.title||'').slice(0,90)));
   const [dlg,bug]=await Promise.all([jget('api/dialog?key='+encodeURIComponent(mkey)),jget('api/bug?key='+encodeURIComponent(su.dedup_key||su.suspicion_key||''))]);
-  const tabs=[{name:'Suspector',render:()=>verline(stageVer(bug,'suspector',su.version),bug)+fmtDialog((dlg&&dlg.dialog)||'')}];
+  const tabs=[{name:'Marker',render:()=>renderMarker(su,bug)}];
   if(bug&&bug.suspicion_key){
     tabs.push({name:'Reproducer '+(String(bug.red_verified)==='1'?'●':'○'),render:()=>renderTest(bug)});
     tabs.push({name:'Fixer '+(String(bug.green_verified)==='1'?'●':'○'),render:()=>renderFix(bug)});
     tabs.push({name:'PR maker '+(bug.state==='pr_ready'?'●':(bug.state==='pr_rejected'?'⛔':'○')),render:()=>renderPR(bug)});
   } else { tabs.push({name:'Reproducer / Fixer / PR',render:()=>empty('not proven yet — run the prover to generate a test, fix + PR decision')}); }
   setTabs(tabs,0); }
-function showBug(b){ if(!b)return; const parts=(b.suspicion_key||'').split('|'); showInvestigation({repo:b.repo,file:b.file,method:parts[2]||'',dedup_key:b.suspicion_key,title:b.title}); }
+// The bugs rows already carry the marker columns (joined from suspicions server-side), so pass the
+// whole row through rather than reconstructing a stub from the dedup_key — that stub was why opening
+// a proven bug showed a marker tab with nothing in it.
+function showBug(b){ if(!b)return;
+  const su=DASH.suspicions.find(x=>x.dedup_key===b.suspicion_key);
+  showInvestigation(su||{...b,dedup_key:b.suspicion_key}); }
+// The marker tab. This replaced the suspector's ReAct transcript: Svace markers came from a scanner,
+// not from an LLM investigation, so there was no dialog to show and the tab rendered empty. What a
+// reviewer needs here is the report row itself — Severity, Checker, File, Line — beside what the
+// pipeline made of it: where the line actually landed after re-anchoring, and how it was settled.
+function renderMarker(su,bug){
+  su=su||{}; bug=bug||{};
+  const pick=(...v)=>{for(const x of v){if(x!==undefined&&x!==null&&String(x).trim()!=='')return x;}return '';};
+  const line=pick(su.svace_line,su.line,bug.svace_line,bug.line);
+  const anchor=pick(su.anchor,bug.anchor), astatus=pick(su.anchor_status,bug.anchor_status);
+  // Location confidence is the one thing that decides whether the rest can be trusted: the scanned
+  // commit is unknown, so a marker resolved against upstream HEAD may point at code that has moved.
+  const conf={exact:['var(--hi2)','the reported line falls inside this method in the checked-out tree'],
+              'no-method':['var(--amber)','the line is a field, annotation or import — with Lombok the accessor Svace flagged is generated and has no source form'],
+              unresolved:['var(--red)','the line is past the end of the file as checked out — the file changed since the scan'],
+              pending:['var(--dim)','not resolved yet; the prover re-anchors when it fetches the source']}[astatus]
+             ||['var(--dim)',''];
+  const row=(k,v,extra)=>v===''||v==null?'':'<tr><td class=tiny style="white-space:nowrap;color:var(--dim)">'+k
+    +'</td><td>'+v+(extra?'<div class=tiny style="color:var(--dim)">'+esc(extra)+'</div>':'')+'</td></tr>';
+  const kind=pick(bug.verdict_kind), vtext=pick(bug.verdict_text);
+  return '<div class=diff-hdr>Svace report row</div><table>'
+    + row('severity','<span class=sev-'+esc(pick(su.severity,bug.severity))+'>'
+        +esc(pick(su.svace_severity,bug.svace_severity))+'</span>')
+    + row('checker','<code>'+esc(pick(su.svace_checker,bug.svace_checker))+'</code>')
+    + row('claim',esc(pick(su.description,bug.description)))
+    + row('file','<code>'+esc(pick(su.file,bug.file))+'</code>')
+    + row('line',line===''?'':'<code>'+esc(num(line))+'</code>')
+    + row('category',esc(pick(su.category,bug.category)))
+    + row('marker id','<span class=tiny>'+esc(pick(su.marker_id,bug.marker_id))+'</span>')
+    + '</table>'
+    + '<div class=diff-hdr>Where it landed in the checked-out tree</div><table>'
+    + row('anchor',anchor?('<code>'+esc(anchor)+'()</code>'):'<span class=tiny>—</span>')
+    + row('confidence','<span style="color:'+conf[0]+'">'+esc(astatus||'—')+'</span>',conf[1])
+    + row('status','<span class=st-'+esc(pick(su.status))+'>'+esc(pick(su.status))+'</span>')
+    + row('attempts',su.prove_attempts!=null?esc(num(su.prove_attempts)):'')
+    + row('note',pick(su.note)?esc(su.note):'')
+    + '</table>'
+    + (vtext?('<div class=diff-hdr>Verdict'+(kind?' — '+esc(kind):'')+'</div>'
+       +'<div style="white-space:pre-wrap;padding:0 12px">'+esc(vtext)+'</div>'):'')
+    + (bug&&bug.versions?verline(stageVer(bug,'ingester',su.version),bug):'');
+}
 const esc=s=>(s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const short=p=>p?p.split('/').pop():'';
 // folders before class: drop the noisy src/main/java segment, dim the folders, highlight the class

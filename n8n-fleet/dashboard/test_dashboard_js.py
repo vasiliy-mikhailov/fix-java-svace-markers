@@ -123,6 +123,17 @@ global.fetch = async (u) => ({ json: async () =>
   const need = ['stats','work','verdicts','suspicions','stage-name'];
   const empty = need.filter(k => !(els[k] && (els[k].innerHTML || els[k].textContent)));
   if (empty.length) { console.log('EMPTY: ' + empty.join(',')); process.exit(2); }
+  // renderMarker only runs when a modal opens, so tick() never touches it — exercise it directly or
+  // the marker tab can be broken while every other check stays green.
+  let html;
+  try { html = renderMarker(STATE.suspicions[0], STATE.bugs[0]); }
+  catch (e) { console.log('renderMarker THREW: ' + e.message); process.exit(4); }
+  for (const want of ['TAINTED_PTR', 'Critical', 'login', 'exact', 'a claim', 'CONFIRMED']) {
+    if (!html.includes(want)) { console.log('renderMarker MISSING: ' + want); process.exit(5); }
+  }
+  // it must also survive a marker with nothing filled in yet
+  try { renderMarker({}, null); renderMarker(null, null); }
+  catch (e) { console.log('renderMarker THREW on empty input: ' + e.message); process.exit(6); }
   console.log('OK');
 })();
 """ % (json.dumps(state), script)
