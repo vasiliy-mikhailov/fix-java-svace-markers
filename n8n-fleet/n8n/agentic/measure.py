@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Mutation-test the JavaScript inside the n8n Code nodes.
+"""Mutation-test the JavaScript still held in Python generators.
+
+Superseded node by node as each moves to src/nodes/*.js, where Stryker measures it properly.
+Delete this once gen_prover.py is gone.
 
 The pipeline's logic lives in JS strings inside the generators, so no ordinary tool sees it. Coverage
 would only say a line ran; mutation says it was CHECKED. That distinction is the whole point here —
@@ -41,7 +44,6 @@ NODES = {
     "Record outcome":        ("gen_prover", "RECORD",                 ["test_record"]),
     "Verdict":               ("gen_prover", "VERDICT",                ["test_verdict"]),
     "Parse fix":             ("gen_prover", "PARSE_FIX",              ["test_parsefix"]),
-    "Parse markers":         ("gen_ingest", "PARSE",                  ["test_ingest"]),
 }
 
 MUTATORS = [
