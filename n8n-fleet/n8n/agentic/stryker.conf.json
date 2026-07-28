@@ -1,10 +1,7 @@
 {
   "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
   "packageManager": "npm",
-  "testRunner": "command",
-  "commandRunner": {
-    "command": "node --test"
-  },
+  "testRunner": "tap",
   "mutate": [
     "src/nodes/**/*.js",
     "src/lib/**/*.js"
@@ -13,7 +10,7 @@
     "clear-text",
     "json"
   ],
-  "coverageAnalysis": "off",
+  "coverageAnalysis": "perTest",
   "thresholds": {
     "high": 90,
     "low": 80,
@@ -28,5 +25,10 @@
   },
   "jsonReporter": {
     "fileName": "reports/mutation.json"
+  },
+  "tap": {
+    "testFiles": [
+      "test/**/*.test.js"
+    ]
   }
 }

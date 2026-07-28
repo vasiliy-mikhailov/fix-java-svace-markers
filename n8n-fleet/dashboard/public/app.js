@@ -21,7 +21,8 @@ async function showInvestigation(su){ if(!su)return;
   const mkey=su.method_key||(su.repo+'|'+su.file+'|'+su.method);   // producing run (class audits / callee findings differ)
   openModal('<code>'+esc(short(su.file))+':'+esc(su.svace_line!=null?num(su.svace_line):(su.line!=null?num(su.line):'?'))
     +'</code> <span class=tiny>'+esc(su.svace_checker||'')+'</span> — '+esc((su.description||su.title||'').slice(0,90)));
-  const [dlg,bug]=await Promise.all([jget('api/dialog?key='+encodeURIComponent(mkey)),jget('api/bug?key='+encodeURIComponent(su.dedup_key||su.suspicion_key||''))]);
+  // the suspector transcript is gone with the suspector; only the artifact is fetched now
+  const bug=await jget('api/bug?key='+encodeURIComponent(su.dedup_key||su.suspicion_key||''));
   const tabs=[{name:'Marker',render:()=>{ const h=renderMarker(su,bug);
     setTimeout(()=>loadMarkerSource(su),0); return h; }}];
   if(bug&&bug.suspicion_key){

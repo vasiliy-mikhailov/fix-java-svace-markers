@@ -55,9 +55,7 @@ function state() {
     // stores only svace_checker, so the rest is joined here rather than duplicated into a second
     // table that could drift out of step.
     const byKey = new Map(suspicions.filter(s => s.dedup_key).map(s => [s.dedup_key, s]));
-    const markerCols = ['svace_severity', 'svace_checker', 'svace_line', 'marker_id', 'category',
-      'severity', 'line', 'class_name', 'method', 'anchor', 'anchor_status',
-      'description', 'evidence', 'status', 'prove_attempts', 'note'];
+    const markerCols = MARKER_COLS;
     for (const b of bugs) {
       const m = byKey.get(b.suspicion_key);
       for (const c of markerCols) {
@@ -94,6 +92,35 @@ function state() {
       work: workMetrics(suspicions, bugs, finished),
       prover_built: !!tableId(db, 'bugs'),
     };
+  } finally {
+    db.close();
+  }
+}
+
+// The Svace report row plus what the pipeline made of it. Joined onto every artifact so a verdict is
+// never shown without the marker it answers.
+const MARKER_COLS = ['svace_severity', 'svace_checker', 'svace_line', 'marker_id', 'category',
+  'severity', 'line', 'class_name', 'method', 'anchor', 'anchor_status',
+  'description', 'evidence', 'status', 'prove_attempts', 'note'];
+
+/** One artifact by its suspicion key, with the marker columns joined on as elsewhere. */
+function bugFor(key) {
+  if (!key) return null;
+  const db = open();
+  try {
+    const id = tableId(db, 'bugs');
+    if (!id) return null;
+    const b = db.prepare(`select * from data_table_user_${id} where suspicion_key = ?`).get(key);
+    if (!b) return null;
+    const sid = tableId(db, 'suspicions');
+    const m = sid
+      ? db.prepare(`select * from data_table_user_${sid} where dedup_key = ?`).get(key)
+      : null;
+    if (m) {
+      for (const c of MARKER_COLS) if (!String(b[c] ?? '').trim()) b[c] = m[c];
+    }
+    b.marker_orphaned = !m;
+    return b;
   } finally {
     db.close();
   }
@@ -151,6 +178,15 @@ const server = http.createServer((req, res) => {
       res.end(body);
       return;
     }
+    if (urlPath === '/api/bug') {
+      // The investigation modal adds its Reproducer / Fixer / PR maker tabs only when this returns a
+      // row. Dropping it in the port meant every marker — including 50 proven ones with a drafted PR —
+      // opened showing "not proven yet", hiding the test, the diff and the PR decision entirely.
+      const key = new URL(req.url, 'http://x').searchParams.get('key') || '';
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify(bugFor(key) || {}));
+      return;
+    }
     if (urlPath === '/api/source') {
       // The marker tab shows the code the marker points at. Read it from the java-runner's read-only
       // clone rather than GitHub: it is the exact tree the prover anchored and tested against, so the
@@ -167,8 +203,16 @@ const server = http.createServer((req, res) => {
         });
       return;
     }
-    if (urlPath === '/api/live' || urlPath === '/api/dialogs') {
-      res.writeHead(200, { 'Content-Type': 'application/json' }).end('{"dialogs":[]}');
+    // Retired with the LLM suspector: nothing streams ReAct transcripts or per-method runs any more.
+    // Answered as empty rather than left to 404, because jget() swallows a failed fetch and the caller
+    // cannot tell "no data" from "endpoint missing" — which is how a dropped /api/bug hid the
+    // Reproducer, Fixer and PR maker tabs on every proven marker.
+    if (urlPath === '/api/live' || urlPath === '/api/dialogs' || urlPath === '/api/dialog') {
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end('{"dialogs":[],"dialog":""}');
+      return;
+    }
+    if (urlPath === '/api/methods') {
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end('{"methods":[]}');
       return;
     }
     if (urlPath === '/api/errors') {
