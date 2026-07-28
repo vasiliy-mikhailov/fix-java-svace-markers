@@ -33,9 +33,15 @@ def gh_repo_files(repo):
         return []
 
 DB = os.environ.get("N8N_DB", "/n8n-data/database.sqlite")
-SUS_WF = "fsmsuspector0001"
-ORCH_WF = "fsmorchestr0001"
 PROVER_WF = "fsmprover00001"
+INGEST_WF = "fsmingest000001"
+# RETIRED with the input swap: Svace markers replaced LLM file-walking, so no workflow has these ids
+# any more. The constants stay because the scan-progress panel still queries them and is harmless dead
+# weight — those queries simply return nothing, which is exactly what they returned before the
+# generators were deleted. Removing them would mean unpicking the whole scan/ETA machinery under a
+# service that is mid-run; that is a separate change, not a side effect of deleting three files.
+ORCH_WF = "fsmorchestr0001"
+SUS_WF = "fsmsuspector0001"
 FILE_RE = re.compile(r'[A-Za-z0-9_.-]+/src/main/java/[A-Za-z0-9_./$-]+\.java')
 
 
@@ -215,12 +221,14 @@ def state():
             b["marker_orphaned"] = not m      # the suspicion was re-ingested out from under this row
         activity = []
         run_since = orch[2] if orch else None   # scope activity to the CURRENT orchestrator run (not old runs)
-        aq = ("select id,workflowId,status,startedAt,stoppedAt from execution_entity where workflowId in (?,?,?)"
-              + (" and startedAt>=?" if run_since else "") + " order by startedAt desc limit 20")
-        for eid, wf, st, s0, s1 in c.execute(aq, (ORCH_WF, SUS_WF, PROVER_WF) + ((run_since,) if run_since else ())):
-            name = {ORCH_WF: "orchestrator", SUS_WF: "suspector", PROVER_WF: "prover"}.get(wf, wf)
-            activity.append({"wf": name, "status": st, "started": s0,
-                             "file": (exec_file(c, eid) or "").split("/")[-1] if wf == SUS_WF else "",
+        # Only the two stages that still exist. The orchestrator and suspector were replaced by the
+        # marker ingester, so querying their ids returned nothing and the panel silently showed just
+        # the prover while implying two more stages were idle rather than gone.
+        aq = ("select id,workflowId,status,startedAt,stoppedAt from execution_entity where workflowId in (?,?)"
+              " order by startedAt desc limit 20")
+        for eid, wf, st, s0, s1 in c.execute(aq, (INGEST_WF, PROVER_WF)):
+            name = {INGEST_WF: "ingest", PROVER_WF: "prover"}.get(wf, wf)
+            activity.append({"wf": name, "status": st, "started": s0, "file": "",
                              "dur": secs(c, s0, s1)})
         return {"scan": scan, "files": files, "suspicions": suspicions, "bugs": bugs, "activity": activity,
                 "prover_built": bool(table_id(c, "bugs")) and _wf_exists(c, PROVER_WF)}

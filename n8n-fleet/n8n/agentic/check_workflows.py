@@ -72,8 +72,11 @@ def check(path, workdir):
     return problems, warnings
 
 
-GEN_FOR = {"workflow_suspector.json": "gen_suspector.py", "workflow_prover.json": "gen_prover.py",
-           "workflow_orchestrator.json": "gen_orchestrator.py", "workflow_dedup.json": "gen_dedup.py",
+# The three live stages. The suspector, orchestrator and dedup generators were deleted when Svace
+# markers replaced LLM detection: they were never re-run after the fsm rename, so they sat permanently
+# STALE here and every validation run reported "3 problem(s)". A check that is always red is a check
+# nobody reads, and it would have hidden a real staleness failure in the workflows that do ship.
+GEN_FOR = {"workflow_ingest.json": "gen_ingest.py", "workflow_prover.json": "gen_prover.py",
            "workflow_setup.json": "gen_setup.py"}
 
 
