@@ -413,18 +413,39 @@ PAGE = r"""<!doctype html><html><head><meta charset=utf-8><title>fix-java-svace-
 <style>
 :root{--bg:#0d1117;--panel:#161b22;--line:#30363d;--fg:#e6edf3;--dim:#8b949e;--hi:#58a6ff;
 --hi2:#3fb950;--red:#f85149;--amber:#d29922;--pill:#21262d}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);
-font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
-header{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;gap:20px;align-items:baseline;flex-wrap:wrap}
-h1{font-size:15px;margin:0;color:var(--hi)}.muted{color:var(--dim)}
-.wrap{padding:16px 20px;display:grid;gap:16px;grid-template-columns:1fr 1fr}
-.full{grid-column:1/-1}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.card h2{font-size:12px;margin:0;padding:9px 12px;border-bottom:1px solid var(--line);
-color:var(--dim);text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between}
-.scroll{max-height:340px;overflow:auto}
-table{width:100%;border-collapse:collapse}td,th{padding:6px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
-th{color:var(--dim);font-weight:600;font-size:11px;position:sticky;top:0;background:var(--panel)}tr:last-child td{border-bottom:0}
+/* Laid out to match the improve-java-tests-n8n dashboard: system sans body on a centred column,
+   a stage banner, then a grid of .k/.v/.d metric tiles above the tables. */
+*{box-sizing:border-box;margin:0;padding:0}
+body{font:14px/1.5 -apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--fg);
+padding:24px 20px;max-width:min(1900px,97vw);margin:0 auto}
+header{display:flex;align-items:baseline;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+h1{font-size:20px;font-weight:700}
+h2{font-size:15px;margin:26px 0 10px;color:#c9d1d9;display:flex;gap:12px;align-items:baseline}
+.muted{color:var(--dim);font-size:13px}
+/* stage banner — what the prover is doing right now */
+.stage{border-radius:10px;padding:16px 20px;border:1px solid var(--line);background:var(--panel)}
+.stage .stage-label{font-size:10px;letter-spacing:2px;color:var(--dim)}
+.stage #stage-name{font-size:22px;font-weight:700;margin:2px 0}
+.stage.active{border-color:#1f6feb;box-shadow:0 0 0 1px #1f6feb33}
+.stage.active #stage-name{color:var(--hi)}
+.stage.active #stage-name::after{content:' ●';color:var(--hi);animation:blink 1.2s infinite}
+.stage.done #stage-name{color:var(--hi2)}
+@keyframes blink{50%{opacity:.2}}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.card .k{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
+.card .v{font-size:26px;font-weight:700;margin:2px 0}
+.card .d{font-size:11px;color:var(--dim)}
+.card.wide{grid-column:span 2}
+.progressbar{height:8px;background:var(--pill);border-radius:6px;margin:6px 0 4px;overflow:hidden}
+.progressbar>div{height:100%;width:0;background:linear-gradient(90deg,#1f6feb,#3fb950);border-radius:6px;transition:width .6s ease}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.scroll{max-height:460px;overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td,th{text-align:left;padding:6px 10px;border-bottom:1px solid var(--pill);vertical-align:top}
+th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;position:sticky;top:0;background:var(--panel)}
+tr:last-child td{border-bottom:0}
+td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .pill{display:inline-block;padding:1px 8px;border-radius:20px;background:var(--pill);font-size:11px}
 .sev-high{color:var(--red)}.sev-medium{color:var(--amber)}.sev-low{color:var(--dim)}
 .st-new{color:var(--hi)}.st-verified,.st-green,.st-success,.st-done{color:var(--hi2)}.st-rejected{color:var(--dim)}.st-red,.st-error{color:var(--red)}.st-running,.st-scanning{color:var(--amber)}.st-queued{color:var(--dim)}
@@ -533,53 +554,40 @@ pre.dlg b{color:var(--hi2)}
 </style></head><body>
 <header>
   <h1>fix-java-svace-markers · live</h1>
-  <div id=scanmeta class=muted>connecting…</div>
-  <div class=clock id=timers style=color:var(--dim)></div>
-  <div class=muted style=margin-left:auto id=ts></div>
+  <div class=muted style=margin-left:auto id=ts>connecting…</div>
 </header>
-<div class=wrap>
-  <div class="card full">
-    <h2><span>marker progress</span><span id=scanrepo class=tiny></span></h2>
-    <div class=stats id=stats></div>
-    <div class=bar><i id=progbar style=width:0%></i></div>
-    <div class=tiny style="padding:0 12px 10px" id=current></div>
-  </div>
+<section class=stage id=stage-banner>
+  <div class=stage-label>STAGE</div>
+  <div id=stage-name>connecting…</div>
+  <div id=stage-detail class=muted></div>
+  <div id=current class=muted style="margin-top:6px"></div>
+</section>
 
-  <!-- Only machine time here is measured. Human-equivalent is an itemised estimate and is labelled
-       as one, because the FTE multiple is the number people quote and it must not look observed. -->
-  <div class="card full">
-    <h2><span>effort — machine time measured, human-equivalent estimated</span><span id=workbasis class=tiny></span></h2>
-    <div class=stats id=work></div>
-    <div class=tiny style="padding:0 12px 10px" id=workdetail></div>
-  </div>
+<!-- outcome tiles: where the 282 markers have landed -->
+<section class=cards id=stats></section>
 
-  <!-- Verdicts are a first-class output, not a footnote: a marker that yields no PR must still yield
-       an argued rebuttal, and this is where a reviewer reads it. -->
-  <div class="card full">
-    <h2><span>verdicts — every settled marker, whatever the outcome</span><span id=verdictcount class=tiny></span></h2>
-    <div class=scroll id=verdicts></div>
-  </div>
+<!-- Only machine time here is measured. Human-equivalent is an itemised estimate and is labelled as
+     one, because the FTE multiple is the number people quote and it must not look observed. -->
+<h2>Effort <span class=muted id=workbasis></span></h2>
+<section class=cards id=work></section>
+<div class=muted id=workdetail style="margin-top:8px;font-size:11px"></div>
 
-  <div class="card full">
-    <h2><span>markers</span><span id=suscount class=tiny></span></h2>
-    <div class=scroll id=suspicions></div>
-  </div>
+<!-- Verdicts are a first-class output, not a footnote: a marker that yields no PR must still yield
+     an argued rebuttal, and this is where a reviewer reads it. -->
+<h2>Verdicts <span class=muted id=verdictcount></span></h2>
+<div class="tablewrap scroll" id=verdicts></div>
 
-  <div class="card">
-    <h2><span>bugs · proven red→green</span><span class=tiny id=bugcount></span></h2>
-    <div id=bugs></div>
-  </div>
+<h2>Markers <span class=muted id=suscount></span></h2>
+<div class="tablewrap scroll" id=suspicions></div>
 
-  <div class="card">
-    <h2>activity</h2>
-    <div class=scroll id=activity></div>
-  </div>
+<h2>Proven red→green <span class=muted id=bugcount></span></h2>
+<div class=tablewrap id=bugs></div>
 
-  <div class="card full">
-    <h2><span>errors · orchestrator + suspector + prover</span><span id=errcount class=tiny></span></h2>
-    <div class=scroll id=errors></div>
-  </div>
-</div>
+<h2>Activity</h2>
+<div class="tablewrap scroll" id=activity></div>
+
+<h2>Errors <span class=muted id=errcount></span></h2>
+<div class="tablewrap scroll" id=errors></div>
 <div class=modal-bg id=modalbg onclick="if(event.target===this)closeModal()">
   <div class=modal>
     <h3><span id=mtitle></span><span class=x onclick=closeModal()>✕ close</span></h3>
@@ -636,37 +644,39 @@ async function tick(){
   let s; try{ s=await (await fetch('api/state',{cache:'no-store'})).json(); }catch(e){ return; }
   DASH=s;
   document.getElementById('ts').textContent='updated '+new Date().toLocaleTimeString();
-  const sc=s.scan;
-  document.getElementById('scanmeta').innerHTML='<span class="dot d-'+(sc.status||'idle')+'"></span>'+esc(sc.status||'idle')
-    +(sc.repo?'  ·  <code>'+esc(sc.repo)+'</code>':'');
-  const scope=(sc.total?sc.total+' files · '+(sc.total_methods||0)+' methods':(sc.planning?'planning…':''))
-    +(sc.pathFilter?" · filter '"+esc(sc.pathFilter)+"'":'');
-  document.getElementById('scanrepo').innerHTML=(sc.repo?'<code>'+esc(sc.repo)+'</code> · ':'')+'<span class=tiny>'+scope+'</span>'+(sc.startedAt?' · '+fmtTime(sc.startedAt):'');
-  document.getElementById('timers').innerHTML =
-    (sc.elapsed!=null?'⏱ elapsed <b class=clock>'+dur(sc.elapsed)+'</b>':'') +
-    (sc.status==='running'&&sc.eta!=null?'   ·   ⏳ ~<b class=clock>'+dur(sc.eta)+'</b> left':'');
+  // The scan header (files walked, methods counted, ETA) belonged to the orchestrator the marker
+  // ingester replaced; every one of those figures is now permanently zero. The stage banner and the
+  // Run progress tile carry the real state instead, so rendering the old ones only added noise.
   // Markers, not a file scan: the backlog is the Svace report, so progress is "how many markers are
   // still status=new" rather than files walked. There is no suspector and no dedup stage any more.
   const all=s.suspicions;
   const byStatus=(st)=>all.filter(x=>x.status===st).length;
   const pending=byStatus('new')+byStatus('infra_stuck');
   const settled=all.length-byStatus('new');
+  const pct=all.length?Math.round(settled/all.length*100):0;
+  const proven=s.bugs.filter(b=>String(b.red_verified)==='1'&&String(b.green_verified)==='1').length;
   document.getElementById('stats').innerHTML=
-    stat(all.length,'markers')
-    +stat(byStatus('new'),'queued')
-    +stat(byStatus('verified'),'proven')
-    +stat(byStatus('false_positive'),'refuted')
-    +stat(byStatus('by_design'),'by design')
-    +stat(byStatus('unprovable'),'unprovable')
-    +stat(byStatus('rejected'),'not reproduced')
-    +stat(byStatus('infra_stuck'),'infra stuck')
-    +stat(s.bugs.filter(b=>String(b.red_verified)==='1'&&String(b.green_verified)==='1').length,'red→green')
-    +stat(s.bugs.filter(b=>b.state==='infra_error').length,'infra retries');
-  document.getElementById('progbar').style.width=(all.length?Math.round(settled/all.length*100):0)+'%';
-  document.getElementById('current').innerHTML = pending
-    ? ('▶ '+pending+' marker(s) still to settle — the prover takes them one at a time under the runner lease')
-    : (all.length?'✓ every marker settled':'no markers ingested yet — POST /webhook/ingest');
-  document.getElementById('scanrepo').innerHTML=(all.length?'<code>'+esc(all[0].repo||'')+'</code>':'');
+     card('Run progress', settled+' / '+all.length,
+          '<div class=progressbar><div style="width:'+pct+'%"></div></div>'+pct+'% settled', 'wide')
+    +card('Queued', byStatus('new'), 'not yet attempted')
+    +card('Proven', byStatus('verified'), proven+' verified red→green')
+    +card('Refuted', byStatus('false_positive'), 'claim does not hold')
+    +card('By design', byStatus('by_design'), 'intentional, nothing to fix')
+    +card('Unprovable', byStatus('unprovable'), 'no test would compile')
+    +card('Reproduced', byStatus('reproduced'), 'real, fix not found')
+    +card('Infra stuck', byStatus('infra_stuck'), 'never became testable');
+
+  // stage banner
+  const running=(s.activity||[]).some(a=>a.status==='running');
+  const bn=document.getElementById('stage-banner');
+  bn.className='stage'+(running?' active':(pending?'':' done'));
+  document.getElementById('stage-name').textContent =
+    running?'proving':(pending?'idle':'complete');
+  document.getElementById('stage-detail').innerHTML =
+    (all.length?'<code>'+esc(all[0].repo||'')+'</code> · ':'')+'Svace markers · one at a time under the runner lease';
+  document.getElementById('current').textContent = pending
+    ? (pending+' marker(s) still to settle')
+    : (all.length?'every marker settled':'no markers ingested yet — POST /webhook/ingest');
 
   // effort panel
   const w=s.work||{};
@@ -674,11 +684,13 @@ async function tick(){
   const eta=(sec)=>{if(sec==null)return '–';const d=Math.floor(sec/86400),h=Math.round(sec%86400/3600);
     return d?d+'d '+h+'h':h+'h';};
   document.getElementById('work').innerHTML=
-    stat(hrs(w.humanHours),'human-equivalent work')
-    +stat(hrs(w.machineHours),'machine time (measured)')
-    +stat(w.fte!=null?w.fte+'×':'–','human FTE equivalent')
-    +stat(eta(w.etaSec),'ETA to finish')
-    +stat((w.settled||0)+' / '+(w.totalMarkers||0),'markers settled');
+     card('Human-equivalent work', hrs(w.humanHours), 'estimated, itemised by outcome')
+    +card('Machine time', hrs(w.machineHours), 'measured wall-clock on the prover')
+    +card('Human FTE equivalent', w.fte!=null?w.fte+'×':'–',
+          'human-eq hours ÷ machine hours')
+    +card('ETA', eta(w.etaSec), 'at the rate observed on this run')
+    +card('Markers settled', (w.settled||0)+' / '+(w.totalMarkers||0),
+          (w.remaining||0)+' remaining');
   document.getElementById('workbasis').textContent=
     w.fteBasis!=null?('over '+w.fteBasis+' settled marker(s) · all machine time charged, including '
       +hrs(w.retryHours)+' of retries'):'';
@@ -748,7 +760,9 @@ async function tick(){
     s.activity.map(a=>['<span class="dot d-'+esc(a.status)+'"></span>'+fmtTime(a.started),esc(a.wf),
       '<span class=tiny>'+esc(a.file)+'</span>','<span class=st-'+esc(a.status)+'>'+esc(a.status)+'</span>',dur(a.dur)]));
 }
-function stat(n,l){return '<span class=stat><b>'+n+'</b><span>'+l+'</span></span>';}
+// Metric tile in the same shape the improve-java-tests-n8n dashboard uses: label, big value, note.
+function card(k,v,d,cls){return '<div class="card'+(cls?' '+cls:'')+'"><div class=k>'+k+'</div>'
+  +'<div class=v>'+v+'</div><div class=d>'+(d||'')+'</div></div>';}
 // n8n Data Table `number` columns come back as REAL, so a line number arrives as 26.0 and a source
 // location reads "Foo.java:26.0". Render whole numbers as whole numbers.
 function num(x){const n=Number(x);return (x===null||x===undefined||x===''||isNaN(n))?'?':String(Math.round(n));}
