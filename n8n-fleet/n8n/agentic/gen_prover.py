@@ -637,12 +637,79 @@ return {
 # non-reproduction from an infrastructure failure (build never compiled, source never fetched, reply
 # unparseable). Those are retried, and must never be written up as "Svace was wrong" — a verdict
 # derived from a build that never ran is a fabrication.
-VERDICT = REL_JSON_FN + r"""
+# ---- Verdicts for markers settled by EXECUTION -----------------------------------------------
+# Composed from evidence, never written by the model. Where a claim was settled by running code — a
+# test that fails before a change and passes after — that execution IS the finding; asking an LLM to
+# argue a case already established by running it could only add prose weaker than, or contradicting,
+# the proof it describes. The LLM argues only where there is no ground truth.
+#
+# A standalone function because backfill_verdicts.py runs this exact code over markers that were
+# settled before the verdict stage covered every outcome. Re-implementing the wording in the backfill
+# would let the two drift, and a reviewer could not tell which produced a given row.
+EXEC_VERDICT_FN = r"""
+function execVerdict(state, ev) {
+  const rg = 'JUnit test `' + (ev.test_path || '?') + '` on JDK ' + (ev.jdk || '?');
+  const realness = (ev.test_score != null && ev.test_score !== '')
+    ? (' Test realness ' + ev.test_score + '/100' + (ev.test_realness ? ' — ' + ev.test_realness : '') + '.')
+    : '';
+  const cause = ev.fix_root_cause ? (' Root cause: ' + ev.fix_root_cause) : '';
+  if (state === 'pr_ready') {
+    return { kind: 'true-positive', text:
+      'CONFIRMED, and fixed. ' + rg + ' fails on the unpatched code and passes after the recorded '
+      + 'change, so the marker describes a real defect and the fix addresses it.' + cause
+      + ' The fix was reviewed for over-fitting and judged sound, and a pull request is drafted (never '
+      + 'opened automatically): "' + (ev.pr_title || '') + '".' + realness };
+  }
+  if (state === 'pr_rejected') {
+    return { kind: 'true-positive', text:
+      'CONFIRMED by execution — ' + rg + ' goes red before the change and green after — but NOT '
+      + 'proposed upstream. ' + (ev.pr_reason || 'The PR curator judged it not worth a pull request for '
+      + 'this repository.') + cause + realness };
+  }
+  if (state === 'needs_review') {
+    return { kind: 'needs-review', text:
+      'CONFIRMED by execution, but the RESULT IS NOT TRUSTWORTHY AS IT STANDS and a human must look '
+      + 'before anything is proposed. ' + rg + ' flipped red to green, however: '
+      + String(ev.pr_body || '').split('\n')[0] + realness };
+  }
+  if (state === 'fix_failed') {
+    return { kind: 'true-positive-unfixed', text:
+      'CONFIRMED as a real defect, but UNFIXED. ' + rg + ' fails on the unpatched code, which '
+      + 'demonstrates the marker holds. No source-only fix could be produced that made it pass'
+      + (ev.infra_reason ? (' (' + ev.infra_reason + ')') : '')
+      + ', so this marker needs a human to write the fix. The failing test is recorded and is reusable '
+      + 'as a regression test.' + realness };
+  }
+  if (state === 'infra_error' || state === 'infra_stuck') {
+    return { kind: 'undetermined', text:
+      'NOT SETTLED. The pipeline could not get this marker to a testable state after '
+      + (ev.attempts || '?') + ' attempts, so nothing here is a judgement about the code — the marker '
+      + 'is neither confirmed nor refuted and still needs a human. What blocked it: '
+      + (ev.infra_reason || 'unknown') + '.' };
+  }
+  if (state === 'not-a-bug' || state === 'not_reproduced') {
+    // Only reachable on BACKFILL: these were retired before the verdict stage routed them, so no
+    // argument was ever written and none can be invented now without re-running the marker.
+    return { kind: 'undetermined', text:
+      'RETIRED WITHOUT AN ARGUMENT. The reproducer did not establish the defect ('
+      + state + '), and this marker was settled before the verdict stage covered that route, so no '
+      + 'rebuttal was ever written. Re-queue it to have the claim argued properly.' };
+  }
+  return { kind: 'undetermined', text:
+    'Settled as `' + state + '`, which the verdict stage has no specific wording for. '
+    + (ev.infra_reason || '') };
+}
+"""
+
+VERDICT = EXEC_VERDICT_FN + REL_JSON_FN + r"""
 const rec = $json;                                  // Record outcome
 const j = $('Prep prover').item.json;
 const parseTest = $('Parse test').item.json || {};
+const parseFix = $('Parse fix').item.json || {};
 const repro = $('run_test reproduce').item.json || {};
 const bri = $('Build reproduce input').item.json || {};
+// the PR curator's repo-specific reasoning, needed to explain a proven-but-not-proposed outcome
+const pmReason = (($('PR maker').item.json || {}).pr_reason || '') + '';
 
 let verdict_text = '', verdict_kind = '', verdict_confidence = '', retry = false;
 let state = rec.state;
@@ -771,7 +838,7 @@ if (state === 'not_reproduced' || state === 'not-a-bug' || exhaustedBuild) {
         ? String(e.message || e.description).slice(0,200) : 'verdict call failed');
     }
     if (verdict_text.trim()) {
-      // The state follows the VERDICT, not the trigger that led here. The three stay distinct because
+      // NOTE: the state follows the VERDICT, not the trigger that led here. The three stay distinct because
       // they mean different things to a reviewer: `false_positive` = we tested it and the claim does
       // not hold; `by_design` = the claim holds but the code is deliberately written that way, so
       // there is nothing to fix; `unprovable` = we never managed to test it. Collapsing them would
@@ -785,6 +852,30 @@ if (state === 'not_reproduced' || state === 'not-a-bug' || exhaustedBuild) {
       console.log('[verdict] ' + j.suspicion_key + ' — verdict call produced no text; left not_reproduced');
     }
   }
+} else if (state === 'infra_error') {
+  // Below the retry ceiling this is not an outcome at all — the marker goes back on the queue and
+  // must NOT carry a verdict, or a transient failure would read as a decision.
+  if (attempts0 >= 3) {
+    const vi = execVerdict('infra_stuck', { infra_reason: rec.infra_reason, attempts: attempts0 });
+    verdict_kind = vi.kind; verdict_text = vi.text;
+  }
+} else {
+  // EVERY OTHER TERMINAL STATE GETS A VERDICT TOO, so the verdicts table covers all 282 markers rather
+  // than only the ones that failed to reproduce. A reviewer should be able to read one table and know
+  // where every marker landed.
+  //
+  // These verdicts are COMPOSED FROM EVIDENCE, not written by the model. Where a claim was settled by
+  // executing code — a test that fails before a change and passes after — that execution IS the
+  // finding. Asking an LLM to argue a case already established by running it would add prose that can
+  // only be weaker than, or contradict, the proof it is describing. So the LLM argues only where there
+  // is no ground truth (above); here we state what happened.
+  const v = execVerdict(state, {
+    test_path: rec.test_path, jdk: rec.jdk, pr_title: rec.pr_title, pr_body: rec.pr_body,
+    infra_reason: rec.infra_reason, attempts: attempts0, pr_reason: pmReason,
+    fix_root_cause: parseFix.fix_root_cause, test_score: parseTest.test_score,
+    test_realness: parseTest.test_realness,
+  });
+  verdict_kind = v.kind; verdict_text = v.text;
 }
 // The suspicion's next status is decided HERE, in code, rather than as a nested ternary inside an
 // n8n {{ }} expression. The parent's version was a single 300-character expression; one wrong branch

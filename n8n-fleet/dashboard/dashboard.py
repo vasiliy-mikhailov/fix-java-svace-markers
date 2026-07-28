@@ -438,7 +438,7 @@ pre.dlg b{color:var(--hi2)}
   <!-- Verdicts are a first-class output, not a footnote: a marker that yields no PR must still yield
        an argued rebuttal, and this is where a reviewer reads it. -->
   <div class="card full">
-    <h2><span>verdicts — markers settled by argument</span><span id=verdictcount class=tiny></span></h2>
+    <h2><span>verdicts — every settled marker, whatever the outcome</span><span id=verdictcount class=tiny></span></h2>
     <div class=scroll id=verdicts></div>
   </div>
 
@@ -555,9 +555,13 @@ async function tick(){
   // judge an answer without the question. The claim column is the checker's meaning, which is what
   // the verdict is actually arguing against.
   const verdicts=s.bugs.filter(b=>(b.verdict_text||'').trim());
-  document.getElementById('verdictcount').textContent=verdicts.length+(verdicts.length===1?' verdict':' verdicts')
-    +' · marker columns joined from the report';
-  const kindColour={'false-positive':'var(--hi)','by-design':'var(--hi2)','unprovable':'var(--amber)'};
+  const settled=all.filter(x=>x.status!=='new').length;
+  document.getElementById('verdictcount').textContent=
+    verdicts.length+' of '+settled+' settled markers · '+all.length+' total';
+  // every kind gets a colour; an unmapped one must stay visible rather than blend into the amber default
+  const kindColour={'true-positive':'var(--hi2)','true-positive-unfixed':'var(--amber)',
+    'false-positive':'var(--hi)','by-design':'var(--hi2)','unprovable':'var(--amber)',
+    'needs-review':'var(--red)','undetermined':'var(--red)'};
   document.getElementById('verdicts').innerHTML=verdicts.length? tbl(
     ['severity','checker','file','line','category','anchor','claim','kind','verdict'],
     verdicts.map(v=>[
@@ -571,7 +575,7 @@ async function tick(){
       '<span class=pill-state style="background:'+(kindColour[v.verdict_kind]||'var(--amber)')+';color:#101418">'
         +esc(v.verdict_kind||'?')+'</span>',
       '<div style="white-space:pre-wrap;min-width:26em">'+esc(v.verdict_text)+'</div>']))
-    : empty('no written verdicts yet — a marker that will not reproduce gets one here');
+    : empty('no verdicts yet — every settled marker gets one, whatever the outcome');
 
   // markers table
   document.getElementById('suscount').textContent=all.length+' rows';
