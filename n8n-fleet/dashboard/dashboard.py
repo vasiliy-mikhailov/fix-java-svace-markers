@@ -124,6 +124,107 @@ def exec_repo(c, eid):
         return None
 
 
+# --- Human-equivalent work -----------------------------------------------------------------------
+# What a competent engineer, new to the codebase, would have spent settling ONE Svace marker by hand.
+# These are ESTIMATES, not measurements, and the dashboard labels them as such — the only measured
+# number on that panel is machine time. They are itemised rather than a single per-marker figure so
+# the assumption is arguable: if you think proving a defect takes 30 minutes rather than 45, you can
+# see and change exactly that line instead of arguing about an opaque multiplier.
+#
+# Effort is charged by OUTCOME, because the outcomes are not remotely equal. Reading a marker and
+# concluding it does not hold is a fraction of the work of writing a failing test, fixing the code and
+# verifying the fix — averaging them would flatter the proven fixes and inflate the dismissals.
+HUMAN_MIN = {
+    "triage": 10,      # locate the file, find the construct the checker names, read the surroundings
+    "assess": 20,      # decide whether the claim actually holds on this code path
+    "write_test": 45,  # author a JUnit test that fails for this specific defect (only if reproduced)
+    "write_fix": 40,   # write the source fix and iterate until the test passes (only if fixed)
+    "verify": 15,      # run the build, read the failure, confirm red then green (only if a test ran)
+    "rebut": 25,       # write up a justification a reviewer can accept or reject (verdict-only)
+}
+
+
+def human_timesheet(state):
+    """Itemised human-equivalent minutes for a marker that ended in `state`."""
+    it = {"triage": HUMAN_MIN["triage"], "assess": HUMAN_MIN["assess"]}
+    reproduced = state in ("pr_ready", "pr_rejected", "needs_review", "fix_failed")
+    fixed = state in ("pr_ready", "pr_rejected", "needs_review")
+    if reproduced:
+        it["write_test"] = HUMAN_MIN["write_test"]
+        it["verify"] = HUMAN_MIN["verify"]
+    if fixed:
+        it["write_fix"] = HUMAN_MIN["write_fix"]
+    if state in ("false_positive", "by_design", "unprovable", "undetermined", "not-a-bug"):
+        it["rebut"] = HUMAN_MIN["rebut"]
+    total = sum(it.values())
+    return {"items": it, "totalMin": total, "hours": round(total / 60.0, 2)}
+
+
+def work_metrics(c, suspicions, bugs):
+    """Human-equivalent vs machine time. Only machine time is measured; the rest is estimated."""
+    # Machine time per marker: proving is serialised under the runner lease, so the prover execution
+    # whose window CONTAINS a marker's updatedAt is the one that settled it. Attribution by containment
+    # rather than by dividing a total, so a marker with no measured window is left out of the ratio
+    # instead of being handed an average it never earned.
+    execs = []
+    for s0, s1 in c.execute(
+            "select startedAt, stoppedAt from execution_entity where workflowId=? and stoppedAt is not null",
+            (PROVER_WF,)):
+        d = secs(c, s0, s1)
+        if d and d > 0:
+            execs.append((s0, s1, d))
+    machine_total = round(sum(e[2] for e in execs) / 3600.0, 2)
+
+    by_key = {b.get("suspicion_key"): b for b in bugs}
+    settled, human_min, matched_machine, matched_human, matched_n = 0, 0, 0.0, 0, 0
+    per_marker = {}
+    for s in suspicions:
+        st = (s.get("status") or "")
+        if st == "new":
+            continue
+        settled += 1
+        b = by_key.get(s.get("dedup_key")) or {}
+        ts = human_timesheet(b.get("state") or st)
+        per_marker[s.get("dedup_key")] = ts
+        human_min += ts["totalMin"]
+        upd = s.get("updatedAt")
+        if upd:
+            for s0, s1, d in execs:
+                if s0 <= upd <= s1:
+                    matched_machine += d
+                    matched_human += ts["totalMin"]
+                    matched_n += 1
+                    break
+
+    human_hours = round(human_min / 60.0, 2)
+    # Charge ALL machine time, not just the windows that happened to settle a marker. Roughly half of
+    # the prover's wall-clock goes on attempts that end in a retry, and a human working these markers
+    # would not get those retries for free either. Dividing by the successful windows alone inflated
+    # the multiple by about 2x (17.9x against 9.5x on the same run), and this figure is exactly the one
+    # that gets quoted in an efficiency argument, so it has to be the conservative one.
+    fte = round(human_hours / machine_total, 2) if machine_total > 0 else None
+    # kept alongside so the gap between the two is visible rather than hidden in a single number
+    fte_settled_only = (round((matched_human / 60.0) / (matched_machine / 3600.0), 2)
+                        if matched_machine > 0 else None)
+    total = len(suspicions)
+    remaining = total - settled
+    # ETA from the rate actually observed on this run, not from a nominal per-marker cost.
+    eta = None
+    if settled and remaining and machine_total > 0:
+        eta = int((machine_total * 3600.0 / settled) * remaining)
+    return {
+        "totalMarkers": total, "settled": settled, "remaining": remaining,
+        "humanHours": human_hours, "machineHours": machine_total,
+        # fteBasis is the number of markers with a MEASURED machine window, not the number settled. The
+        # ratio is only defensible over units where both sides were actually observed; quoting it over
+        # every settled marker would silently credit machine time that was never measured.
+        "fte": fte, "fteBasis": settled, "fteSettledOnly": fte_settled_only,
+        "retryHours": round(max(0.0, machine_total - matched_machine / 3600.0), 2),
+        "fteMeasuredHours": round(matched_machine / 3600.0, 2),
+        "etaSec": eta, "perMarker": per_marker, "humanMin": HUMAN_MIN,
+    }
+
+
 def state():
     c = conn()
     try:
@@ -231,6 +332,7 @@ def state():
             activity.append({"wf": name, "status": st, "started": s0, "file": "",
                              "dur": secs(c, s0, s1)})
         return {"scan": scan, "files": files, "suspicions": suspicions, "bugs": bugs, "activity": activity,
+                "work": work_metrics(c, suspicions, bugs),
                 "prover_built": bool(table_id(c, "bugs")) and _wf_exists(c, PROVER_WF)}
     finally:
         c.close()
@@ -443,6 +545,14 @@ pre.dlg b{color:var(--hi2)}
     <div class=tiny style="padding:0 12px 10px" id=current></div>
   </div>
 
+  <!-- Only machine time here is measured. Human-equivalent is an itemised estimate and is labelled
+       as one, because the FTE multiple is the number people quote and it must not look observed. -->
+  <div class="card full">
+    <h2><span>effort — machine time measured, human-equivalent estimated</span><span id=workbasis class=tiny></span></h2>
+    <div class=stats id=work></div>
+    <div class=tiny style="padding:0 12px 10px" id=workdetail></div>
+  </div>
+
   <!-- Verdicts are a first-class output, not a footnote: a marker that yields no PR must still yield
        an argued rebuttal, and this is where a reviewer reads it. -->
   <div class="card full">
@@ -557,6 +667,31 @@ async function tick(){
     ? ('▶ '+pending+' marker(s) still to settle — the prover takes them one at a time under the runner lease')
     : (all.length?'✓ every marker settled':'no markers ingested yet — POST /webhook/ingest');
   document.getElementById('scanrepo').innerHTML=(all.length?'<code>'+esc(all[0].repo||'')+'</code>':'');
+
+  // effort panel
+  const w=s.work||{};
+  const hrs=(h)=>h==null?'–':(h>=10?Math.round(h)+'h':h.toFixed(1)+'h');
+  const eta=(sec)=>{if(sec==null)return '–';const d=Math.floor(sec/86400),h=Math.round(sec%86400/3600);
+    return d?d+'d '+h+'h':h+'h';};
+  document.getElementById('work').innerHTML=
+    stat(hrs(w.humanHours),'human-equivalent work')
+    +stat(hrs(w.machineHours),'machine time (measured)')
+    +stat(w.fte!=null?w.fte+'×':'–','human FTE equivalent')
+    +stat(eta(w.etaSec),'ETA to finish')
+    +stat((w.settled||0)+' / '+(w.totalMarkers||0),'markers settled');
+  document.getElementById('workbasis').textContent=
+    w.fteBasis!=null?('over '+w.fteBasis+' settled marker(s) · all machine time charged, including '
+      +hrs(w.retryHours)+' of retries'):'';
+  const hm=w.humanMin||{};
+  document.getElementById('workdetail').innerHTML=
+    'Human-equivalent is an ESTIMATE, charged by outcome, not a measurement — per marker: triage '
+    +(hm.triage||0)+'m + assess '+(hm.assess||0)+'m, plus write-test '+(hm.write_test||0)
+    +'m and verify '+(hm.verify||0)+'m when it reproduced, plus write-fix '+(hm.write_fix||0)
+    +'m when it was fixed, or write-up '+(hm.rebut||0)+'m when it ended in a verdict. '
+    +'Machine time is real wall-clock on the prover, charged in full: about half of it goes on '
+    +'attempts that end in a retry, and a human would not get those free either. Counting only the '
+    +'attempts that settled a marker would read '+(w.fteSettledOnly!=null?w.fteSettledOnly+'x':'-')
+    +' instead.';
 
   // Verdicts — every column of the Svace report row, then what we concluded about it.
   // Severity/Checker/File/Line ARE the report; a verdict shown without them asks the reviewer to
