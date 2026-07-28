@@ -197,6 +197,22 @@ def state():
         if orch and not scan["repo"] and suspicions:
             scan["repo"] = suspicions[0].get("repo")
         bugs = read_table(c, "bugs")
+        # Carry the WHOLE marker onto its artifact. A verdict is only reviewable next to the marker it
+        # answers — Severity, Checker, File and Line are the four columns of the Svace report, and
+        # without them the verdicts table says "unprovable" about a file with no indication of what was
+        # claimed, how bad Svace thought it was, or where. `bugs` only stores svace_checker, so the rest
+        # is joined from `suspicions` here rather than duplicated into a second table that could drift.
+        by_key = {s.get("dedup_key"): s for s in suspicions if s.get("dedup_key")}
+        marker_cols = ("svace_severity", "svace_checker", "svace_line", "marker_id", "category",
+                       "severity", "line", "class_name", "method", "anchor", "anchor_status",
+                       "description", "evidence", "status", "prove_attempts", "note")
+        for b in bugs:
+            m = by_key.get(b.get("suspicion_key")) or {}
+            for col in marker_cols:
+                # never let the join clobber a value the artifact itself owns (e.g. bugs.svace_checker)
+                if not str(b.get(col) or "").strip():
+                    b[col] = m.get(col)
+            b["marker_orphaned"] = not m      # the suspicion was re-ingested out from under this row
         activity = []
         run_since = orch[2] if orch else None   # scope activity to the CURRENT orchestrator run (not old runs)
         aq = ("select id,workflowId,status,startedAt,stoppedAt from execution_entity where workflowId in (?,?,?)"
@@ -534,14 +550,27 @@ async function tick(){
     : (all.length?'✓ every marker settled':'no markers ingested yet — POST /webhook/ingest');
   document.getElementById('scanrepo').innerHTML=(all.length?'<code>'+esc(all[0].repo||'')+'</code>':'');
 
-  // verdicts — the written rebuttals, shown in full rather than summarised away
+  // Verdicts — every column of the Svace report row, then what we concluded about it.
+  // Severity/Checker/File/Line ARE the report; a verdict shown without them asks the reviewer to
+  // judge an answer without the question. The claim column is the checker's meaning, which is what
+  // the verdict is actually arguing against.
   const verdicts=s.bugs.filter(b=>(b.verdict_text||'').trim());
-  document.getElementById('verdictcount').textContent=verdicts.length+(verdicts.length===1?' verdict':' verdicts');
+  document.getElementById('verdictcount').textContent=verdicts.length+(verdicts.length===1?' verdict':' verdicts')
+    +' · marker columns joined from the report';
+  const kindColour={'false-positive':'var(--hi)','by-design':'var(--hi2)','unprovable':'var(--amber)'};
   document.getElementById('verdicts').innerHTML=verdicts.length? tbl(
-    ['kind','checker','file','verdict'],
-    verdicts.map(v=>['<span class=pill-state style="background:var(--amber);color:#231a04">'+esc(v.verdict_kind||'?')+'</span>',
-      '<span class=tiny>'+esc(v.svace_checker||'')+'</span>', pkg(v.file),
-      '<div style="white-space:pre-wrap">'+esc(v.verdict_text)+'</div>']))
+    ['severity','checker','file','line','category','anchor','claim','kind','verdict'],
+    verdicts.map(v=>[
+      '<span class=sev-'+esc(v.severity||'')+'>'+esc(v.svace_severity||v.severity||'?')+'</span>',
+      '<span class=tiny>'+esc(v.svace_checker||'')+'</span>',
+      pkg(v.file)+(v.marker_orphaned?'<div class=tiny style="color:var(--red)">marker row gone — re-ingested since</div>':''),
+      '<span class=tiny>'+num(v.svace_line!=null?v.svace_line:v.line)+'</span>',
+      '<span class=tiny>'+esc(v.category||'')+'</span>',
+      '<span class=tiny>'+esc(v.anchor?v.anchor+'()':(v.anchor_status||''))+'</span>',
+      '<div class=tiny style="max-width:30em">'+esc(v.description||'')+'</div>',
+      '<span class=pill-state style="background:'+(kindColour[v.verdict_kind]||'var(--amber)')+';color:#101418">'
+        +esc(v.verdict_kind||'?')+'</span>',
+      '<div style="white-space:pre-wrap;min-width:26em">'+esc(v.verdict_text)+'</div>']))
     : empty('no written verdicts yet — a marker that will not reproduce gets one here');
 
   // markers table
@@ -550,7 +579,7 @@ async function tick(){
     ['sev','checker','category','file:line','anchor','status'],
     all.map(x=>['<span class=sev-'+esc(x.severity)+'>'+esc(x.svace_severity||x.severity)+'</span>',
       '<span class=tiny>'+esc(x.svace_checker||'')+'</span>', esc(x.category),
-      pkg(x.file)+'<span class=tiny>:'+esc(x.svace_line||x.line)+'</span>',
+      pkg(x.file)+'<span class=tiny>:'+num(x.svace_line!=null?x.svace_line:x.line)+'</span>',
       '<span class=tiny>'+esc(x.anchor?x.anchor+'()':(x.anchor_status||''))+'</span>',
       '<span class=st-'+esc(x.status)+'>'+esc(x.status)+'</span>'
       +((x.note||'').trim()?'<div class=dedupnote>'+esc(String(x.note).slice(0,180))+'</div>':'')]),
@@ -572,6 +601,9 @@ async function tick(){
       '<span class=tiny>'+esc(a.file)+'</span>','<span class=st-'+esc(a.status)+'>'+esc(a.status)+'</span>',dur(a.dur)]));
 }
 function stat(n,l){return '<span class=stat><b>'+n+'</b><span>'+l+'</span></span>';}
+// n8n Data Table `number` columns come back as REAL, so a line number arrives as 26.0 and a source
+// location reads "Foo.java:26.0". Render whole numbers as whole numbers.
+function num(x){const n=Number(x);return (x===null||x===undefined||x===''||isNaN(n))?'?':String(Math.round(n));}
 function redgreen(v){return v?'<span class=st-green>●</span>':'<span class=st-red>○</span>';}
 // lightweight single-pass Java highlighter (esc first, then one alternation so keywords inside
 // comments/strings are never separately matched -> no broken nesting)
