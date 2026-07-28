@@ -11,3 +11,6 @@ n8n-fleet/**/node_modules/
 results_n8n/
 n8n-fleet/**/*cache*/
 *.log
+n8n-fleet/n8n/agentic/node_modules/
+n8n-fleet/n8n/agentic/.stryker-tmp/
+n8n-fleet/n8n/agentic/reports/
