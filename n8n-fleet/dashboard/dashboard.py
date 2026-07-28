@@ -563,7 +563,8 @@ async function tick(){
   // judge an answer without the question. The claim column is the checker's meaning, which is what
   // the verdict is actually arguing against.
   const verdicts=s.bugs.filter(b=>(b.verdict_text||'').trim());
-  const settled=all.filter(x=>x.status!=='new').length;
+  // reuses `settled` from the stats block above — re-declaring it with const here was a SyntaxError
+  // that killed the whole inline script and left the page completely blank
   document.getElementById('verdictcount').textContent=
     verdicts.length+' of '+settled+' settled markers · '+all.length+' total';
   // every kind gets a colour; an unmapped one must stay visible rather than blend into the amber default
