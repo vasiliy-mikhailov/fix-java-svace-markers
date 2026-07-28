@@ -12,7 +12,10 @@ const path = require('path');
 const { parseMarkers } = require('../src/nodes/parse-markers');
 const { CHECKER_MAP, SEVERITY_MAP, SEVERITY_RANK } = require('../src/lib/checker-map');
 
-const CSV = path.join(__dirname, '..', '..', '..', '..', 'data', 'svace', 'webgoat-markers-356.csv');
+// A copy of the real report lives beside the test rather than four directories up: Stryker runs the
+// suite from a sandbox copy of this package, so anything outside it simply is not there — the
+// original path made every marker test fail during mutation runs while passing under node --test.
+const CSV = path.join(__dirname, 'fixtures', 'webgoat-markers-356.csv');
 
 function ingest(body) {
   const items = parseMarkers({
