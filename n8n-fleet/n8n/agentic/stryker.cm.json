@@ -1,0 +1,19 @@
+{
+  "packageManager": "npm",
+  "testRunner": "tap",
+  "mutate": ["src/lib/checker-map.js"],
+  "reporters": ["clear-text"],
+  "coverageAnalysis": "perTest",
+  "thresholds": { "high": 90, "low": 80, "break": null },
+  "tempDirName": ".stryker-tmp-cm",
+  "ignorePatterns": [".stryker-tmp*", "coverage", "reports", "__pycache__"],
+  "cleanTempDir": "always",
+  "concurrency": 4,
+  "mutator": { "excludedMutations": ["StringLiteral"] },
+  "tap": {
+    "testFiles": [
+      "test/checker-map.test.js",
+      "test/parse-markers.test.js"
+    ]
+  }
+}

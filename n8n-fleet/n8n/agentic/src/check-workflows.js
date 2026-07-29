@@ -329,6 +329,19 @@ function analyse(toks) {
           else if (CLOSERS.has(t2.v)) { if (d === 0) { end = j; break; } d--; }
           else if (t2.v === ';' && d === 0) { end = j; break; }
         } else if (t2.t === 'name' && d === 0 && (t2.v === 'of' || t2.v === 'in')) { end = j; break; }
+        // AUTOMATIC SEMICOLON INSERTION. `let a` with no initialiser and no semicolon is a complete
+        // declaration, and the next line is a new statement — but scanning only for ';' ran on and
+        // BOUND every name in it, so `let a` followed by a use of an undefined variable reported
+        // nothing at all. A false negative in the one check whose whole purpose is catching the
+        // ReferenceErrors n8n swallows. Break where JS would insert the semicolon: a newline, at depth
+        // zero, after a token a declaration can legally end on.
+        const prev = toks[j - 1];
+        if (d === 0 && prev && t2.line > prev.line
+            && (prev.t === 'name' || (prev.t === 'punct' && CLOSERS.has(prev.v)))
+            && !(t2.t === 'punct' && (t2.v === '=' || t2.v === ',' || t2.v === '.'))) {
+          end = j;
+          break;
+        }
       }
       collectBindings(toks, i + 1, end, (k) => declare(k, tk.v), markKey);
       continue;
@@ -416,6 +429,12 @@ function analyse(toks) {
     if (p && p.t === 'punct' && (p.v === '.' || p.v === '?.')) continue;      // a property, not a name
     // `continue outer` names a label, which lives in its own namespace and is never a variable.
     if (p && p.t === 'name' && (p.v === 'break' || p.v === 'continue')) continue;
+    // `typeof maybeThing` is the STANDARD way to ask whether a name exists at all, and it cannot
+    // throw — that is the whole point of the idiom. eslint's no-undef exempts it by default. Without
+    // this exemption the checker reports the guard itself as an undefined variable, and a validator
+    // that fires on correct code is one nobody reads: the same reasoning that had the permanently-red
+    // staleness check deleted from this project rather than tolerated.
+    if (p && p.t === 'name' && p.v === 'typeof') continue;
     const nx = toks[i + 1];
     const isCase = p && p.t === 'name' && p.v === 'case';
     if (nx && nx.t === 'punct' && nx.v === ':' && !colons.has(i + 1) && !isCase) continue;

@@ -208,6 +208,13 @@ test('filters', async (t) => {
     assert.equal(r.length, 356);
     assert.deepEqual(JSON.parse(r[0].__summary).skipped,
       { tests: 0, checker_filter: 0, severity_filter: 0, unmapped_kept: 0, bad_row: 0 });
+    // Five checkers (the three TEST.*, UNREACHABLE_CODE.EXCEPTION, FB.VA_FORMAT_STRING_USES_NEWLINE)
+    // only ever mark files under src/test, so this is the ONLY ingest that reads their map entries.
+    // A hollowed-out entry is still truthy, so unmapped_kept above stays 0 while the row it produces
+    // says "Claim: undefined. Settle-by: undefined." — a marker the prover cannot act on at all.
+    const hollow = r.filter(x => !x.category || !x.description
+      || !/\. Settle-by: (test|argue)\.$/.test(x.evidence));
+    assert.deepEqual([...new Set(hollow.map(x => x.svace_checker))], []);
   });
   await t.test('min_severity=Major keeps the 59 Critical+Major under src/main', () => {
     const r = ingest({ ...full, min_severity: 'Major' });
