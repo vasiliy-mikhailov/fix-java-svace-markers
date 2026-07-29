@@ -1,3 +1,8 @@
-# Maven build output, including target/pit-reports. The root .gitignore has no `target` rule because
-# nothing in this repo was a Maven project before the engine.
+# Maven build output, including target/pit-reports. The repo root has no `target` rule because
+# nothing here was a Maven project before the engine.
 target/
+
+# Differential-harness output: the generated cases and both sides' results run to tens of megabytes
+# and are reproduced by `sh harness/<slice>-run.sh` in seconds. The *-report.txt summaries are the
+# evidence for a port and ARE committed.
+harness/out/

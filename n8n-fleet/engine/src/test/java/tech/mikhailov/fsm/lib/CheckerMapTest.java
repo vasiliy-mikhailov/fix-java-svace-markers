@@ -3,6 +3,7 @@ package tech.mikhailov.fsm.lib;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.BufferedReader;
@@ -124,6 +125,21 @@ class CheckerMapTest {
                     + "'argue'; in the JS any third spelling read as 'test' and an unprovable finding "
                     + "was queued for a PR");
         }
+    }
+
+    @Test
+    void entriesComeBackInDeclarationOrderAndNotInAFreshShufflePerJvm() {
+        // Found by the parse-markers port, which compared the ported table against checker-map.js
+        // entry by entry: all 48 entries were right and the ORDER was different — differently
+        // different on every run, because entries() returned Map.copyOf and the JDK's immutable maps
+        // salt their iteration order per JVM. Nothing read it in order, so nothing broke; the method's
+        // own javadoc was simply untrue, which is the state a defect sits in until something does.
+        List<String> first = List.copyOf(CheckerMap.entries().keySet());
+        assertEquals(first, List.copyOf(CheckerMap.entries().keySet()));
+        assertEquals("PROC_USE.VULNERABLE", first.get(0), "the first checker declared in the table");
+        assertEquals("TEST.MULTIPLE_EXCEPTIONAL_CALLS", first.get(first.size() - 1));
+        assertThrows(UnsupportedOperationException.class,
+                () -> CheckerMap.entries().put("X", null), "and still unmodifiable");
     }
 
     @Test

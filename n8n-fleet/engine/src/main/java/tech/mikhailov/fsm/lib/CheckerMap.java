@@ -1,5 +1,6 @@
 package tech.mikhailov.fsm.lib;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -192,9 +193,19 @@ public final class CheckerMap {
                         + "which", SettleBy.ARGUE);
     }
 
-    /** The table, in declaration order and unmodifiable. */
+    /**
+     * The table, in declaration order and unmodifiable.
+     *
+     * <p>NOT {@code Map.copyOf}, which was what this returned until the parse-markers port compared
+     * the ported table against checker-map.js entry by entry and found the two in different orders —
+     * a DIFFERENT order on every run, because the JDK's immutable maps salt their iteration with a
+     * per-JVM value. Nothing reads it in order today, and the 48 entries themselves were correct, so
+     * the only casualty was this sentence being false. It stops being false here rather than in the
+     * javadoc, because the next caller to want a stable table dump would otherwise get a fresh
+     * shuffle from every container restart and no reason to suspect this method.
+     */
     public static Map<String, Entry> entries() {
-        return Map.copyOf(MAP);
+        return Collections.unmodifiableMap(MAP);
     }
 
     /**

@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import tech.mikhailov.fsm.lib.JsText;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.MarkerState;
 
@@ -148,7 +149,11 @@ public final class RecordOutcome {
         if (Boolean.FALSE.equals(Json.get(j, "branch_ok"))) {
             infra.add("branch unresolved: " + or(Json.str(j, "branch_error"), "?"));
         }
-        if (Json.str(bri, "src").isBlank()) {
+        // JsText.isBlank, NOT String.isBlank: they disagree about four characters in each direction,
+        // and a source file that is nothing but a byte-order mark is one of them. To the JS that file
+        // is empty — infra_error, retried. To String.isBlank it has content, and the marker would be
+        // adjudicated against a file with no code in it. See JsText for the whole list.
+        if (JsText.isBlank(Json.str(bri, "src"))) {
             infra.add("source fetch returned nothing");
         }
         if (Json.truthy(bri, "src_truncated")) {

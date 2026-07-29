@@ -208,7 +208,41 @@ class RecordOutcomeTest {
                         "run_test(reproduce): boom"),
                 infra("run_test(fix) errored",
                         m -> m.prMaker("error", "boom"),
-                        "run_test(fix): boom"));
+                        "run_test(fix): boom"),
+                // The blankness divergence, one case per character JS calls whitespace and
+                // Character.isWhitespace does not. Ported as String.isBlank() every one of these
+                // reads as a source file WITH CONTENT, and the marker is adjudicated against a file
+                // that has no code in it — a verdict, written down, about nothing. See JsText.
+                infra("a source file that is only a byte-order mark",
+                        m -> m.buildInput("src", "\ufeff"),
+                        "source fetch returned nothing"),
+                infra("a source file that is only a no-break space",
+                        m -> m.buildInput("src", "\u00a0"),
+                        "source fetch returned nothing"),
+                infra("a source file that is only a figure space",
+                        m -> m.buildInput("src", "\u2007"),
+                        "source fetch returned nothing"),
+                infra("a source file that is only a narrow no-break space",
+                        m -> m.buildInput("src", "\u202f"),
+                        "source fetch returned nothing"),
+                infra("a BOM'd file emptied to its line endings",
+                        m -> m.buildInput("src", "\ufeff\r\n\r\n"),
+                        "source fetch returned nothing"));
+    }
+
+    /**
+     * The other direction of the same divergence, and the reason the helper is JS's set and not
+     * Java's: {@code Character.isWhitespace} calls U+001C..U+001F whitespace and JavaScript does not.
+     * A file holding one of them is CONTENT to the pipeline that is running in production today, so
+     * the marker is judged rather than retried — and the port must not change which of those happens.
+     */
+    @ParameterizedTest(name = "U+{0}")
+    @ValueSource(strings = {"001C", "001D", "001E", "001F"})
+    void aSourceFileOfAsciiSeparatorsIsContentBecauseJavaScriptSaysSo(String hex) {
+        Outcome r = marker().buildInput("src", String.valueOf((char) Integer.parseInt(hex, 16))).run();
+        assertEquals(MarkerState.PR_READY, r.state(),
+                "String.isBlank() would call this an empty fetch and park the marker as infra_error");
+        assertEquals("", r.infraReason());
     }
 
     /**

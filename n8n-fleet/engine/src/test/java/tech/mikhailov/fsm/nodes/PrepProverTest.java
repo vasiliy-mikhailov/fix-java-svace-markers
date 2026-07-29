@@ -1,0 +1,444 @@
+package tech.mikhailov.fsm.nodes;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Supplier;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import tech.mikhailov.fsm.nodes.PrepProver.LookupFailed;
+import tech.mikhailov.fsm.nodes.PrepProver.LookupRequest;
+import tech.mikhailov.fsm.nodes.PrepProver.Outcome;
+import tech.mikhailov.fsm.nodes.PrepProver.Request;
+
+/**
+ * {@code Prep prover} — resolves a marker into the paths and branch the rest of the prove depends on.
+ *
+ * <p>REGRESSION ORIGIN (found by e2e, not by a unit test): it split the file path on
+ * {@code "/src/main/java/"} WITH a leading slash. That matches the parent pipeline's module-prefixed
+ * paths but not the Svace ingester's repo-relative ones, so on a single-module repo like WebGoat the
+ * separator never matched — module, package and package directory all came out empty and every
+ * generated test landed in the default package. Nothing failed loudly; the test still compiled.
+ *
+ * <p>Ported from {@code n8n/agentic/test/prep-prover.test.js}, assertion for assertion.
+ */
+class PrepProverTest {
+
+    /** The suspicion row the JS fixture builds, minus the file each test supplies. */
+    private static final Map<String, Object> BASE = item(
+            "dedup_key", "k", "repo", "WebGoat/WebGoat", "branch", "main", "class_name", "",
+            "method", "", "category", "taint", "severity", "high", "title", "t", "description", "d",
+            "evidence", "Settle-by: test.", "svace_line", 44L);
+
+    /** The JS fixture's default: every lookup rejects, so no test accidentally depends on a network. */
+    private static final Supplier<Object> NO_NETWORK = () -> {
+        throw new LookupFailed(new IllegalStateException("no network"));
+    };
+
+    /** An n8n item, written the way the JS fixtures wrote their object literals. Nulls allowed. */
+    private static Map<String, Object> item(Object... kv) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        for (int i = 0; i < kv.length; i += 2) {
+            m.put((String) kv[i], kv[i + 1]);
+        }
+        return m;
+    }
+
+    /** The node's answer plus the lookups it actually made — the JS test's {@code __calls}. */
+    private record Run(Outcome out, List<LookupRequest> calls) {
+    }
+
+    private static Run prep(Object... rowOverrides) {
+        return run(item(rowOverrides), NO_NETWORK);
+    }
+
+    private static Run run(Map<String, Object> rowOverrides, Supplier<Object> lookupAnswer) {
+        Map<String, Object> row = new LinkedHashMap<>(BASE);
+        row.putAll(rowOverrides);
+        return runExact(row, lookupAnswer);
+    }
+
+    /** The row as given, with nothing merged in — for the cases about a field that is ABSENT. */
+    private static Run runExact(Map<String, Object> row, Supplier<Object> lookupAnswer) {
+        List<LookupRequest> calls = new ArrayList<>();
+        PrepProver.RepoLookup lookup = request -> {
+            calls.add(request);
+            return lookupAnswer.get();
+        };
+        return new Run(PrepProver.prepProver(new Request(row, "tok"), lookup), calls);
+    }
+
+    /** A lookup that answers with the given body. */
+    private static Supplier<Object> answers(Object body) {
+        return () -> body;
+    }
+
+    /** A lookup that rejects with the value n8n's httpRequest would reject with. */
+    private static Supplier<Object> rejectsWith(Object rejection) {
+        return () -> {
+            throw new LookupFailed(rejection);
+        };
+    }
+
+    @Test
+    void aSingleModuleRepoKeepsItsPackage() {
+        // THE REGRESSION: paths from the ingester start at src/main/java, with no module prefix
+        Outcome r = prep("file",
+                "src/main/java/org/owasp/webgoat/lessons/challenges/challenge5/Assignment5.java")
+                .out();
+        assertEquals("", r.module());
+        assertEquals("org.owasp.webgoat.lessons.challenges.challenge5", r.pkg());
+        assertEquals("src/test/java/org/owasp/webgoat/lessons/challenges/challenge5"
+                + "/Assignment5FsmProofTest.java", r.testPath());
+        assertEquals("Assignment5", r.className());
+        assertEquals("Assignment5FsmProofTest", r.testClass());
+    }
+
+    @Test
+    void aMultiModuleRepoStillWorks() {
+        Outcome r = prep("file",
+                "webgoat-container/src/main/java/org/owasp/webgoat/container/Foo.java").out();
+        assertEquals("webgoat-container", r.module());
+        assertEquals("org.owasp.webgoat.container", r.pkg());
+        assertEquals("webgoat-container/src/test/java/org/owasp/webgoat/container/FooFsmProofTest.java",
+                r.testPath());
+    }
+
+    @Test
+    void aNestedModuleKeepsEverySegment() {
+        // A module nested more than one directory deep keeps EVERY segment; only the trailing
+        // separator is dropped. Collapsing the first '/' instead would fuse 'core/legacy' into
+        // 'corelegacy' — a module directory that does not exist, so `mvn -pl` refuses the build and
+        // the marker never gets a verdict.
+        Outcome r = prep("file", "core/legacy/src/main/java/org/a/Foo.java").out();
+        assertEquals("core/legacy", r.module());
+        assertEquals("core/legacy/src/test/java/org/a/FooFsmProofTest.java", r.testPath());
+    }
+
+    @Test
+    void aDoubledSeparatorDoesNotLeakIntoTheModule() {
+        // A doubled separator (upstream joined a module and a path that both carried one) must not
+        // leak into the module or the test path: '/+$' strips the whole run, and
+        // 'core//src/test/java/...' is a directory maven never scans.
+        Outcome r = prep("file", "core//src/main/java/org/a/Foo.java").out();
+        assertEquals("core", r.module());
+        assertEquals("core/src/test/java/org/a/FooFsmProofTest.java", r.testPath());
+    }
+
+    @Test
+    void aClassDirectlyUnderSrcMainJavaHasNoPackage() {
+        Outcome r = prep("file", "src/main/java/Root.java").out();
+        assertEquals("", r.pkg());
+        // lastIndexOf('/') is -1 here, and slice(0, -1) would silently truncate the FILENAME into a
+        // package — 'Root.jav' — and emit `package Root.jav;` into a file that will not compile.
+        assertEquals("src/test/java/RootFsmProofTest.java", r.testPath());
+    }
+
+    @Test
+    void aPathWithNoSrcMainJavaNeitherCrashesNorInventsAPackage() {
+        Outcome r = prep("file", "Weird.java").out();
+        assertEquals("", r.pkg());
+        assertEquals("", r.module());
+        assertEquals("src/test/java/WeirdFsmProofTest.java", r.testPath());
+    }
+
+    @Test
+    void aPathThatMerelyLooksMavenishInventsNothing() {
+        // The dangerous one: without the marker there is no package at all, and slicing at a fixed
+        // offset would carve 'va.org' out of the middle of the directory names and emit
+        // `package va.org;` into a file under src/test/java — it will not compile.
+        Outcome r = prep("file", "legacy/src/java/org/Weird.java").out();
+        assertEquals("", r.pkg(), "no src/main/java means no package, however deep the path is");
+        assertEquals("", r.module());
+        assertEquals("src/test/java/WeirdFsmProofTest.java", r.testPath());
+    }
+
+    @Test
+    void theClassNameIsSanitisedIntoSomethingJavaWillAccept() {
+        Outcome r = prep("file", "src/main/java/a/Odd-Name.java").out();
+        assertTrue(r.className().matches("[A-Za-z0-9_]+"), "got " + r.className());
+        assertTrue(r.testClass().endsWith("FsmProofTest"));
+    }
+
+    @Test
+    void onlyTheFirstDotJavaIsStripped() {
+        // String.prototype.replace with a STRING needle replaces the FIRST occurrence; Java's
+        // String.replace replaces every one. On 'Widget.javadoc.java' the two answers differ, and the
+        // class name is what the generated test is named after.
+        assertEquals("Widgetdocjava", prep("file", "src/main/java/x/Widget.javadoc.java")
+                .out().className());
+    }
+
+    @Test
+    void markerProvenanceSurvivesIntoThePromptBuildingStages() {
+        Outcome r = prep("file", "src/main/java/a/B.java", "svace_checker", "TAINTED_PTR",
+                "svace_severity", "Critical", "marker_id", "m1", "svace_line", 41L,
+                "evidence", "Svace Critical marker. Settle-by: argue.").out();
+        assertEquals("TAINTED_PTR", r.svaceChecker());
+        assertEquals("Critical", r.svaceSeverity());
+        assertEquals("m1", r.markerId());
+        assertEquals(41, r.svaceLine());
+        assertEquals("argue", r.settleBy(),
+                "this decides whether a non-reproduction is worth a retry");
+    }
+
+    @Test
+    void settleByFallsBackToTestWhenTheHintIsAbsent() {
+        assertEquals("test", prep("file", "src/main/java/a/B.java", "evidence", "no hint here")
+                .out().settleBy());
+    }
+
+    @Test
+    void theSettleByHintIsReadWithOrWithoutWhitespace() {
+        // The evidence blob is free-form prose the ingester assembles, so the hint is read with or
+        // without whitespace after the colon. Demanding a space downgrades every 'argue' marker to
+        // 'test', and a dead store — which nothing observable at runtime can exhibit — then burns a
+        // second prove attempt on a JUnit test that can only ever fail to reproduce.
+        assertEquals("argue", prep("file", "src/main/java/a/B.java",
+                "evidence", "Svace marker.Settle-by:argue").out().settleBy());
+    }
+
+    @Test
+    void proveAttemptsIsCarriedThroughAsANumber() {
+        assertEquals(2, prep("file", "src/main/java/a/B.java", "prove_attempts", 2L)
+                .out().proveAttempts());
+        assertEquals(0, prep("file", "src/main/java/a/B.java").out().proveAttempts());
+    }
+
+    @Test
+    void proveAttemptsIsCoercedTheWayJavaScriptCoercesIt() {
+        // The column arrives from a Data Table cell, so it is routinely a string. `Number(x)` is not
+        // `Double.parseDouble`: it reads "0x10" as 16 and rejects the Java literal suffix in "1d".
+        // Getting this wrong resets an attempt counter, and a permanently-broken row is requeued for
+        // ever.
+        assertEquals(3, prep("file", "a.java", "prove_attempts", "3").out().proveAttempts());
+        assertEquals(12, prep("file", "a.java", "prove_attempts", " 12 ").out().proveAttempts());
+        assertEquals(16, prep("file", "a.java", "prove_attempts", "0x10").out().proveAttempts());
+        assertEquals(0, prep("file", "a.java", "prove_attempts", "1d").out().proveAttempts());
+        assertEquals(0, prep("file", "a.java", "prove_attempts", "12abc").out().proveAttempts());
+        assertEquals(1, prep("file", "a.java", "prove_attempts", true).out().proveAttempts());
+    }
+
+    @Test
+    void theLineFallsBackToTheOtherColumnTheIngesterMightHaveUsed() {
+        assertEquals(7, prep("file", "a.java", "svace_line", 0L, "line", 7L).out().svaceLine());
+        assertEquals(41, prep("file", "a.java", "svace_line", 41L, "line", 7L).out().svaceLine());
+        assertEquals(0, prep("file", "a.java", "svace_line", "", "line", "").out().svaceLine());
+    }
+
+    @Nested
+    class AnUnresolvableBranchIsFlaggedNotGuessed {
+
+        @Test
+        void aSuppliedBranchIsReusedWithoutALookup() {
+            Run r = prep("file", "src/main/java/a/B.java", "branch", "develop");
+            assertEquals("develop", r.out().branch());
+            assertTrue(r.out().branchOk());
+            assertEquals("", r.out().branchError(),
+                    "a branch we already had is not a failure to report downstream");
+            assertEquals(0, r.calls().size(), "and costs no API call");
+        }
+
+        @Test
+        void aBranchPaddedWithWhitespaceIsTheSameBranch() {
+            // The column arrives from SQLite/CSV and is routinely padded. Untrimmed it goes straight
+            // into the raw.githubusercontent URL, which 404s, the reproducer is handed an empty file
+            // and the suspicion is 'rejected' — indistinguishable from a real false positive.
+            Run r = prep("file", "src/main/java/a/B.java", "branch", "  develop\n");
+            assertEquals("develop", r.out().branch());
+            assertEquals(0, r.calls().size());
+        }
+
+        @Test
+        void whitespaceJavaDoesNotRecogniseStillCountsAsBlank() {
+            // JS trim strips U+00A0 and U+FEFF; Character.isWhitespace — and therefore String.strip
+            // and String.isBlank — does not. A branch column holding only a BOM must still trigger
+            // the lookup: left as the branch it goes into a URL that 404s for every marker in the
+            // repo, and every one of them is recorded as a false positive.
+            for (String blank : new String[] {"\u00a0", "\ufeff", "\u2007", "\u202f",
+                                              "\u3000"}) {
+                Run r = run(item("file", "a.java", "branch", blank),
+                        answers(item("default_branch", "v5-master")));
+                assertEquals("v5-master", r.out().branch(),
+                        "U+" + Integer.toHexString(blank.charAt(0)) + " is whitespace to JS");
+                assertEquals(1, r.calls().size());
+            }
+            // ...and it diverges the other way too: Java calls U+001C whitespace and JS does not, so
+            // a branch of exactly that character is a BRANCH, not a blank.
+            Run kept = prep("file", "a.java", "branch", "\u001c");
+            assertEquals("\u001c", kept.out().branch());
+            assertEquals(0, kept.calls().size());
+        }
+
+        @Test
+        void aBlankBranchIsLookedUpWithARequestGitHubWillActuallyAnswer() {
+            Run r = run(item("file", "src/main/java/a/B.java", "branch", "   "),
+                    answers(item("default_branch", "v5-master")));
+            assertEquals("v5-master", r.out().branch(),
+                    "whitespace is not a branch — it must still trigger the lookup");
+            assertTrue(r.out().branchOk());
+            assertEquals("", r.out().branchError());
+            assertEquals(1, r.calls().size(), "exactly one lookup per suspicion");
+
+            LookupRequest req = r.calls().get(0);
+            assertEquals("https://api.github.com/repos/WebGoat/WebGoat", req.url(),
+                    "the repo of THIS suspicion");
+            // GitHub answers a User-Agent-less request with 403, and an unauthenticated one with 60
+            // req/hour and no private repos at all. Either way default_branch comes back undefined
+            // for every row.
+            assertEquals("n8n-fsm", req.headers().get("User-Agent"));
+            assertEquals("Bearer tok", req.headers().get("Authorization"),
+                    "the token is threaded through, not dropped");
+            assertEquals("application/vnd.github+json", req.headers().get("Accept"));
+            // json:false hands back an unparsed string body, so default_branch is undefined for
+            // every repo — silently, as an empty branch.
+            assertTrue(req.json());
+            assertTrue(req.timeoutMs() > 0,
+                    "an unbounded lookup would hang the whole prove on a stalled connection");
+        }
+
+        @Test
+        void aLookupThatAnswersWithoutADefaultBranchIsNotASilentSuccess() {
+            Run r = run(item("file", "src/main/java/a/B.java", "branch", ""),
+                    answers(item("id", 7L)));
+            assertEquals("", r.out().branch());
+            assertFalse(r.out().branchOk());
+            assertEquals("no default_branch returned", r.out().branchError(),
+                    "an empty branch always carries the reason it is empty, or triage cannot tell "
+                    + "infra from verdict");
+        }
+
+        @Test
+        void aFailedLookupIsRecordedSoItReadsAsInfraNotAsAVerdict() {
+            Run r = run(item("file", "src/main/java/a/B.java", "branch", ""), NO_NETWORK);
+            assertFalse(r.out().branchOk());
+            // The CAUSE, not merely some text: hardcoding main here silently destroyed every finding
+            // on a repo that uses develop, and reporting 'no default_branch returned' for a network
+            // outage would blame GitHub's answer for a request that never got one.
+            assertEquals("no network", r.out().branchError());
+        }
+
+        @Test
+        void anErrorThatCarriesOnlyADescriptionStillNamesTheCause() {
+            // n8n's httpRequest rejects HTTP-level failures with {description}, not {message}
+            Run r = run(item("file", "src/main/java/a/B.java", "branch", ""),
+                    rejectsWith(item("description", "404 - Not Found")));
+            assertEquals("404 - Not Found", r.out().branchError());
+            assertFalse(r.out().branchOk());
+        }
+
+        @Test
+        void anErrorWithNothingToSayStillSaysSomethingUsable() {
+            // A rejection with neither field (a bare socket/abort object) must not stringify into
+            // the literal 'undefined', which reads in the DB like a real GitHub answer rather than a
+            // missing one.
+            Run r = run(item("file", "src/main/java/a/B.java", "branch", ""),
+                    rejectsWith(item("statusCode", 502L)));
+            assertEquals("repo lookup failed", r.out().branchError());
+            assertFalse(r.out().branchOk());
+        }
+
+        @Test
+        void anEmptyMessageFallsThroughToTheDescription() {
+            // `e.message || e.description` — an Error constructed with no message has message === '',
+            // which is falsy, so the description is what names the cause.
+            Run r = run(item("file", "a.java", "branch", ""),
+                    rejectsWith(item("message", "", "description", "socket hang up")));
+            assertEquals("socket hang up", r.out().branchError());
+        }
+
+        @Test
+        void aRunawayErrorMessageIsTruncatedNotPastedWholeIntoTheRow() {
+            // GitHub answers a rate limit with a multi-KB HTML page. Untruncated it lands in the
+            // suspicion row and then in every prover prompt built from it, costing tokens and
+            // burying the real marker.
+            Run r = run(item("file", "src/main/java/a/B.java", "branch", ""),
+                    rejectsWith(new IllegalStateException("Ex" + "y".repeat(400))));
+            assertEquals(200, r.out().branchError().length());
+            assertTrue(r.out().branchError().startsWith("Exy"),
+                    "truncated from the END — the cause is at the front");
+        }
+
+        @Test
+        void aTokenTheEnvironmentNeverSetIsVisibleInTheHeader() {
+            // 'Bearer undefined' is what the JS sent, and GitHub answers it with 401 — which is
+            // findable. 'Bearer ' with nothing after it looks like a request nobody meant to
+            // authenticate, and the 60-per-hour anonymous quota then fails only intermittently.
+            List<LookupRequest> calls = new ArrayList<>();
+            PrepProver.prepProver(
+                    new Request(item("file", "a.java", "branch", "", "repo", "o/r"),
+                            tech.mikhailov.fsm.lib.JsValue.UNDEFINED),
+                    request -> {
+                        calls.add(request);
+                        return answers(item("default_branch", "main")).get();
+                    });
+            assertEquals("Bearer undefined", calls.get(0).headers().get("Authorization"));
+        }
+    }
+
+    @Test
+    void theRequestIsReadOutOfAPostedBody() {
+        Object body = item("suspicion", item("file", "src/main/java/a/B.java", "branch", "main"),
+                "github_token", "tok");
+        Request req = Request.of(body);
+        Outcome r = PrepProver.prepProver(req, request -> {
+            throw new LookupFailed(null);
+        });
+        assertEquals("a", r.pkg());
+        assertEquals("main", r.branch());
+    }
+
+    @Test
+    void theRowIsWrittenInTheKeyOrderTheJsReturned() {
+        // The Data Table columns line up by position downstream; a re-ordered row is a re-ordered
+        // table.
+        Map<String, Object> m = prep("file", "src/main/java/a/B.java").out().toMap();
+        assertEquals(List.of("suspicion_key", "repo", "branch", "branch_ok", "branch_error",
+                "prove_attempts", "file", "module", "pkg", "class_name", "method", "test_class",
+                "test_path", "category", "severity", "title", "description", "evidence",
+                "marker_id", "svace_checker", "svace_severity", "svace_line", "settle_by"),
+                List.copyOf(m.keySet()));
+    }
+
+    @Test
+    void aFieldTheIngesterNeverSetIsOmittedRatherThanEmittedAsNull() {
+        // JSON.stringify DROPS a key whose value is undefined. Emitting "method": null instead would
+        // be a claim the JS never made, and the prompt builders splice these fields in with `+`,
+        // where null renders as the word "null" and an absent key renders as "undefined".
+        Map<String, Object> row = new LinkedHashMap<>(BASE);
+        row.remove("method");
+        row.put("file", "a.java");
+        Map<String, Object> m = runExact(row, NO_NETWORK).out().toMap();
+        assertFalse(m.containsKey("method"));
+        assertTrue(m.containsKey("category"), "a field that IS set is still emitted");
+    }
+
+    @Test
+    void aSeparatorFollowedByASlashDoesNotSwallowThePackagesFirstSegment() {
+        // rest is "/a/B.java" here, so indexOf('/') is 0 — and `> 0` instead of `>= 0` would call
+        // that "no package directory" and drop the package entirely. The JS keeps it, leading dot and
+        // all: the path is malformed either way, but silently losing the package is the failure this
+        // node exists to prevent.
+        Outcome r = prep("file", "src/main/java//a/B.java").out();
+        assertEquals(".a", r.pkg());
+        assertEquals("src/test/java//a/BFsmProofTest.java", r.testPath());
+    }
+
+    @Test
+    void aRejectionThatIsNotAnObjectAtAllStillProducesAReason() {
+        // `throw 'boom'` and a bare abort object both reach the same catch, and neither has a
+        // `.message`. Reading one as though it did would crash the node instead of recording infra.
+        assertEquals("repo lookup failed",
+                run(item("file", "a.java", "branch", ""), rejectsWith("boom")).out().branchError());
+        assertEquals("repo lookup failed",
+                run(item("file", "a.java", "branch", ""), rejectsWith(null)).out().branchError());
+        assertEquals("repo lookup failed",
+                run(item("file", "a.java", "branch", ""), rejectsWith(42L)).out().branchError());
+    }
+
+}

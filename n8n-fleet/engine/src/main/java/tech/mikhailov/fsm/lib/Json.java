@@ -228,7 +228,16 @@ public final class Json {
 
     /** JS truthiness: null, false, 0, "" and an absent key are false; everything else is true. */
     public static boolean truthy(Object container, String key) {
-        Object v = get(container, key);
+        return truthy(get(container, key));
+    }
+
+    /**
+     * JS truthiness of a VALUE. Split out from the field read because json-extract.js leans on it for
+     * values it never named a key for: {@code tryParse(x) || repair(x)} falls through to the repair
+     * when a candidate parsed to {@code 0}, {@code false} or {@code ""}, and a port that treated
+     * "parsed successfully" as "usable" would settle on a candidate the JS walked past.
+     */
+    public static boolean truthy(Object v) {
         return switch (v) {
             case null -> false;
             case Boolean b -> b;
