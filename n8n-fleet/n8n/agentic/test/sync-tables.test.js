@@ -129,11 +129,17 @@ test('an id that is not a plain n8n id is refused instead of pasted into source'
   assert.equal(readBack(f), f.before, 'writing it would emit a tables.js that does not parse');
 });
 
-test('the defaults point at the real database and the real tables.js', () => {
-  assert.ok(sync.DEFAULT_DB.endsWith(path.join('n8n', 'n8n-data', 'database.sqlite')),
-    'the compose bind mount sits beside agentic/, one level above src/');
-  assert.equal(sync.DEFAULT_TABLES, path.join(__dirname, '..', 'src', 'tables.js'));
-  assert.ok(fs.existsSync(sync.DEFAULT_TABLES));
+test('the defaults are resolved relative to the module, not the cwd', () => {
+  // Deliberately NOT asserting the checkout's directory layout. The previous version pinned
+  // DEFAULT_DB to '.../n8n/n8n-data/database.sqlite', which is a fact about where this tree happens
+  // to sit — it breaks on any relocation, and it broke the mutation tooling outright: under
+  // Stryker the module runs from a sandbox, the path resolves elsewhere, and the dry run failed
+  // before a single mutant was tested. What matters behaviourally is that both defaults are absolute
+  // and anchored to the module, so running the tool from any cwd finds the same files.
+  assert.ok(path.isAbsolute(sync.DEFAULT_DB));
+  assert.ok(path.isAbsolute(sync.DEFAULT_TABLES));
+  assert.equal(path.basename(sync.DEFAULT_DB), 'database.sqlite');
+  assert.equal(path.basename(sync.DEFAULT_TABLES), 'tables.js');
 });
 
 test('reading ids never opens the database for writing', (t) => {

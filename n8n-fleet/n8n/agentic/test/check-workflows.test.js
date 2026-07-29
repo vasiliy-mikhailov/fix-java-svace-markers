@@ -195,7 +195,14 @@ test('the workflows in the repo pass', async (t) => {
       const r = checkWorkflow(path.join(REPO, name));
       assert.deepEqual(r.problems, []);
       assert.deepEqual(r.warnings, [], 'advisories are noise once they are permanent');
-      assert.equal(staleness(path.join(REPO, name)), null, 'and the generator still produces it');
+      // The staleness half re-runs the generator and diffs against the committed JSON. Under a
+      // mutation run the generator's own sources are instrumented, so the regenerated workflow can
+      // never match and the dry run fails before any mutant is tested — the check would then be
+      // measuring the instrumenter rather than this code. Skipped there; it runs in every ordinary
+      // `node --test`, which is where a stale artifact actually needs catching.
+      if (!process.env.__STRYKER_ACTIVE_MUTANT__ && !process.env.STRYKER_MUTATOR_RUNNER) {
+        assert.equal(staleness(path.join(REPO, name)), null, 'and the generator still produces it');
+      }
     });
   }
 
