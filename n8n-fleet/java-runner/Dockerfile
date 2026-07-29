@@ -1,5 +1,9 @@
 # Self-contained build/test runner. Everything it needs is fetched here from public sources.
 #
+# Node, not Python: the rest of the fleet is Node and the runner was the last Python service. The
+# JavaParser navigation server is gone too — it existed to answer goto-definition for the LLM
+# suspector's tools, and nothing has queried it since Svace markers replaced that stage.
+#
 # This deliberately does NOT start from a base image built elsewhere on the host (the parent project's
 # `bjv-alljdk`), and does not expect any jar to be staged into the build context by hand. Both of those
 # made the image unbuildable on a clean checkout: `docker compose build` failed with "pull access
@@ -8,8 +12,18 @@
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl ca-certificates git python3 procps tar gzip unzip \
+      curl ca-certificates git procps tar gzip unzip xz-utils \
     && rm -rf /var/lib/apt/lists/*
+
+# Node 24 from upstream, matching the dashboard. Debian bookworm ships 18, and pinning the fleet to a
+# single major keeps "works on the dashboard" from meaning something different here.
+ENV NODE_VERSION=24.9.0
+RUN set -eux; \
+    curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" -o /tmp/node.tar.xz; \
+    tar -xJf /tmp/node.tar.xz -C /opt; \
+    rm -f /tmp/node.tar.xz; \
+    ln -s /opt/node-v${NODE_VERSION}-linux-x64/bin/node /usr/local/bin/node; \
+    node --version
 
 # --- JDKs 8/11/17/21/25 side by side at /opt/jdk/<major> -------------------------------------------
 # The runner picks one per build and RE-RUNS with a different one when javac reports a release-version
@@ -41,35 +55,15 @@ ENV PATH=/opt/jdk/21/bin:/opt/apache-maven-3.9.9/bin:$PATH
 # Maven resolves through the Nexus mirror on the mvn-cache network. settings.xml sets mirrorOf=*, so
 # this is not a cache in front of Central — it is the ONLY repository Maven will talk to, and every
 # build fails if the `nexus` container is down. (Nexus is shared host infrastructure, not part of the
-# parent project.) The nav jars above are fetched straight from Central at build time instead, so the
-# image itself builds without it.
+# parent project.) Nothing else in this image needs it: the JDKs and Maven come from upstream, and the
+# runner itself has no npm dependencies.
 COPY settings.xml /root/.m2/settings.xml
 COPY settings.xml /opt/apache-maven-3.9.9/conf/settings.xml
 
-# --- Code navigation (JavaParser SymbolSolver) ----------------------------------------------------
-# Fetched from Maven Central at build time rather than pre-staged into the build context.
-RUN set -eux; \
-    mkdir -p /opt/nav/lib; \
-    cd /opt/nav/lib; \
-    for u in \
-      com/github/javaparser/javaparser-core/3.26.2/javaparser-core-3.26.2.jar \
-      com/github/javaparser/javaparser-symbol-solver-core/3.26.2/javaparser-symbol-solver-core-3.26.2.jar \
-      com/google/guava/guava/33.3.0-jre/guava-33.3.0-jre.jar \
-      com/google/guava/failureaccess/1.0.2/failureaccess-1.0.2.jar \
-      com/google/guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar \
-      org/javassist/javassist/3.30.2-GA/javassist-3.30.2-GA.jar \
-      org/checkerframework/checker-qual/3.43.0/checker-qual-3.43.0.jar \
-      com/google/errorprone/error_prone_annotations/2.28.0/error_prone_annotations-2.28.0.jar \
-      com/google/j2objc/j2objc-annotations/3.0.0/j2objc-annotations-3.0.0.jar \
-      com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.jar \
-    ; do curl -fsSLO "https://repo1.maven.org/maven2/$u"; done
-
-COPY NavServer.java /opt/nav/NavServer.java
-RUN /opt/jdk/21/bin/javac -cp "/opt/nav/lib/*" -d /opt/nav/classes /opt/nav/NavServer.java
-
-COPY runner.py /runner.py
+COPY src /app/src
+COPY lib /app/lib
 
 ENV PORT=8090
-WORKDIR /
+WORKDIR /app
 ENTRYPOINT []
-CMD ["python3", "/runner.py"]
+CMD ["node", "/app/src/server.js"]
