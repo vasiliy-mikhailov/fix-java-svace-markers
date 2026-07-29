@@ -1,0 +1,6 @@
+# target/ is the host's build output, compiled by whatever JDK the developer happens to have. Copying
+# it in would let a stale or wrong-release jar win over the one the image builds from source.
+target/
+.mvn/
+*.iml
+.idea/

@@ -1,0 +1,3 @@
+# Maven build output, including target/pit-reports. The root .gitignore has no `target` rule because
+# nothing in this repo was a Maven project before the engine.
+target/

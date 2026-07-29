@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  fsm-engine — the judgement half of the fix-java-svace-markers pipeline.
+
+  n8n keeps what n8n is good at: the schedule, the queue, Data Tables and run history. Everything
+  that DECIDES something — the verdict routing, the infra-vs-verdict state machine, the checker map —
+  moves here, because the team that owns it reads Java and not JavaScript. The n8n Code nodes shrink
+  to HTTP shims against this service.
+
+  DEPENDENCY POLICY. The JS services in this fleet have zero runtime dependencies, and that is not an
+  accident: java-runner/settings.xml sets `mirrorOf=*` at a Nexus that is shared host infrastructure,
+  so every artifact this project resolves is one more thing that has to be in Nexus or the image does
+  not build. A runtime dependency is therefore an operational commitment, not a line in a file. This
+  pom has NO runtime dependencies. JSON is hand-rolled in lib/Json.java; see the class comment there
+  for why a library was rejected rather than merely skipped.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>tech.mikhailov.fsm</groupId>
+  <artifactId>engine</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+  <name>fsm-engine</name>
+  <description>Svace-marker judgement engine: verdict routing, state machine and checker map.</description>
+
+  <properties>
+    <!-- Java 25. `release` (not source/target) so the compiler also checks the API surface against
+         25 and cannot silently link against a newer JDK's methods when built on one. -->
+    <maven.compiler.release>25</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+    <!-- JUnit 5, not 6. pitest-junit5-plugin is still built against the JUnit 5 platform, and
+         mutation testing is the point of this toolchain — the ported JS suite is graded by whether
+         it kills mutants, so the test framework follows the mutation tool rather than the other
+         way round. Revisit when pitest ships a JUnit 6 platform plugin. -->
+    <junit.version>5.14.4</junit.version>
+    <surefire.version>3.5.6</surefire.version>
+    <pitest.version>1.25.8</pitest.version>
+    <pitest.junit5.version>1.2.3</pitest.junit5.version>
+
+    <exec.mainClass>tech.mikhailov.fsm.engine.Engine</exec.mainClass>
+  </properties>
+
+  <dependencies>
+    <!-- The ONLY dependency, and it never ships: test scope keeps it out of the runtime image. -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>fsm-engine</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.14.1</version>
+        <configuration>
+          <compilerArgs>
+            <!-- The ported logic is string- and regex-heavy and its failures are silent by nature:
+                 a wrong branch retires a real defect instead of crashing. Warnings are the cheapest
+                 place to catch that class of mistake, so they are not optional here. -->
+            <arg>-Xlint:all</arg>
+            <arg>-Werror</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${surefire.version}</version>
+        <configuration>
+          <!-- The engine binds a real socket in EngineServerTest. Surefire's default forked JVM is
+               fine, but the tests must not race for a port; each test asks the OS for port 0. -->
+          <trimStackTrace>false</trimStackTrace>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.2</version>
+        <configuration>
+          <archive>
+            <manifest>
+              <mainClass>${exec.mainClass}</mainClass>
+            </manifest>
+            <manifestEntries>
+              <!-- Read back by /health so a running container can be matched to a build without
+                   guessing which image is deployed. -->
+              <Implementation-Version>${project.version}</Implementation-Version>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.pitest</groupId>
+        <artifactId>pitest-maven</artifactId>
+        <version>${pitest.version}</version>
+        <dependencies>
+          <dependency>
+            <groupId>org.pitest</groupId>
+            <artifactId>pitest-junit5-plugin</artifactId>
+            <version>${pitest.junit5.version}</version>
+          </dependency>
+        </dependencies>
+        <configuration>
+          <targetClasses>
+            <param>tech.mikhailov.fsm.*</param>
+          </targetClasses>
+          <targetTests>
+            <param>tech.mikhailov.fsm.*</param>
+          </targetTests>
+          <excludedClasses>
+            <!-- Engine/EngineServer are wiring: a socket, an executor and a shutdown hook. Mutating
+                 them produces mutants only an integration test could kill, and a low score there
+                 would be read as "the logic is untested" when the logic lives in lib/ and nodes/. -->
+            <param>tech.mikhailov.fsm.engine.Engine</param>
+          </excludedClasses>
+
+          <!-- MUTATOR SET = PIT's STRONGER, spelled out so the guild can see and edit what runs.
+               DEFAULTS covers the arithmetic and the returns; the ported code is a scoring function
+               and a router, so both matter. The two additions earn their place:
+                 REMOVE_CONDITIONALS  — deletes a guard entirely. This is the exact defect class the
+                                        JS comments keep describing: a branch that was supposed to
+                                        stop an infra failure being recorded as a verdict, which
+                                        NEGATE_CONDITIONALS alone can leave alive when both sides of
+                                        the branch happen to be asserted.
+                 EXPERIMENTAL_SWITCH  — the marker state machine is a switch in Java where the JS was
+                                        an if/else chain, so its arms need to be mutated too.
+               ALL is deliberately NOT used: it adds EXPERIMENTAL_MEMBER_VARIABLE and REMOVE_INCREMENTS,
+               which generate large numbers of equivalent (unkillable) mutants. A score nobody can
+               reach to 100% stops being read at all, which is worse than a smaller honest one. -->
+          <mutators>
+            <mutator>DEFAULTS</mutator>
+            <mutator>REMOVE_CONDITIONALS</mutator>
+            <mutator>EXPERIMENTAL_SWITCH</mutator>
+          </mutators>
+
+          <outputFormats>
+            <param>HTML</param>
+            <param>XML</param>
+          </outputFormats>
+          <!-- Fixed report path, mirroring the JS side's `reports/mutation.json`: a timestamped
+               directory means CI cannot point at the result without globbing for it. -->
+          <timestampedReports>false</timestampedReports>
+          <reportsDirectory>${project.build.directory}/pit-reports</reportsDirectory>
+
+          <!-- No mutationThreshold, matching stryker.conf.json's `"break": null`. A break threshold
+               fails the build the moment a new class lands before its tests do, which trains people
+               to pass -DskipTests rather than to write the test. The score is read, not enforced. -->
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
