@@ -189,7 +189,15 @@ test('a stale artifact is caught — a failed generator leaves the old JSON on d
   });
 });
 
-test('the workflows in the repo pass', async (t) => {
+// Validates the COMMITTED artifacts, not the code under test — so it earns nothing in a mutation run
+// and cannot survive one: Stryker instruments the generator sources, the regenerated workflow can
+// never match the committed JSON, and the dry run aborts before a single mutant is tested. Skipped
+// there, kept for every ordinary `node --test`, which is where a stale or broken artifact must be
+// caught. (A guard on the inner staleness() call alone was not enough — checkWorkflow compares too.)
+const INSTRUMENTED = !!(process.env.__STRYKER_ACTIVE_MUTANT__ || process.env.STRYKER_MUTATOR_RUNNER
+  || __dirname.includes('.stryker-tmp'));
+
+test('the workflows in the repo pass', { skip: INSTRUMENTED && 'validates committed artifacts' }, async (t) => {
   for (const name of LIVE) {
     await t.test(name, () => {
       const r = checkWorkflow(path.join(REPO, name));
