@@ -1,0 +1,127 @@
+// @ts-nocheck
+'use strict';
+/**
+ * fsm-setup: creates the Data Tables the pipeline writes to. Idempotent — createIfNotExists.
+ *
+ * Run once against a fresh n8n, which mints its own table ids; then sync those ids into tables.js.
+ *
+ * Two columns here exist because the PROVER reads and writes them and the parent's spec never
+ * declared them: prove_attempts and branch. The live fix-java-bugs tables have them, added
+ * out-of-band, so the parent worked — but a table created cleanly from that spec did not, and the
+ * first `Update suspicion` rejected the unknown column and crashed every prove.
+ */
+const fs = require('fs');
+const path = require('path');
+
+const SUSPICIONS = [
+  { name: 'dedup_key', type: 'string' },
+  { name: 'repo', type: 'string' },
+  { name: 'file', type: 'string' },
+  { name: 'class_name', type: 'string' },
+  { name: 'method', type: 'string' },
+  { name: 'line', type: 'number' },
+  { name: 'category', type: 'string' },
+  { name: 'severity', type: 'string' },
+  { name: 'title', type: 'string' },
+  { name: 'description', type: 'string' },
+  { name: 'evidence', type: 'string' },
+  { name: 'status', type: 'string' },
+  { name: 'note', type: 'string' },
+  { name: 'version', type: 'string' },
+  { name: 'method_key', type: 'string' },
+  { name: 'prove_attempts', type: 'number' },
+  { name: 'branch', type: 'string' },
+  { name: 'marker_id', type: 'string' },
+  { name: 'svace_checker', type: 'string' },
+  { name: 'svace_severity', type: 'string' },
+  { name: 'svace_line', type: 'number' },
+  { name: 'anchor', type: 'string' },
+  { name: 'anchor_status', type: 'string' },
+];
+
+const BUGS = [
+  { name: 'suspicion_key', type: 'string' },
+  { name: 'repo', type: 'string' },
+  { name: 'file', type: 'string' },
+  { name: 'title', type: 'string' },
+  { name: 'jdk', type: 'string' },
+  { name: 'test_path', type: 'string' },
+  { name: 'test_code', type: 'string' },
+  { name: 'fix_diff', type: 'string' },
+  { name: 'red_verified', type: 'boolean' },
+  { name: 'green_verified', type: 'boolean' },
+  { name: 'value_score', type: 'number' },
+  { name: 'value_verdict', type: 'string' },
+  { name: 'pr_title', type: 'string' },
+  { name: 'pr_body', type: 'string' },
+  { name: 'state', type: 'string' },
+  { name: 'versions', type: 'string' },
+  { name: 'infra_reason', type: 'string' },
+  { name: 'branch', type: 'string' },
+  { name: 'verdict_text', type: 'string' },
+  { name: 'verdict_kind', type: 'string' },
+  { name: 'svace_checker', type: 'string' },
+];
+
+const SCAN_FILES = [
+  { name: 'file', type: 'string' },
+  { name: 'repo', type: 'string' },
+  { name: 'module', type: 'string' },
+  { name: 'class_name', type: 'string' },
+  { name: 'methods', type: 'number' },
+  { name: 'status', type: 'string' },
+  { name: 'run_id', type: 'string' },
+];
+
+const METHOD_RUNS = [
+  { name: 'method_key', type: 'string' },
+  { name: 'repo', type: 'string' },
+  { name: 'file', type: 'string' },
+  { name: 'class_name', type: 'string' },
+  { name: 'method', type: 'string' },
+  { name: 'findings', type: 'number' },
+  { name: 'tool_calls', type: 'number' },
+  { name: 'status', type: 'string' },
+  { name: 'dialog', type: 'string' },
+];
+
+const N = [];
+function dtNode(name, table, spec, x) {
+  N.push({
+    parameters: {
+      resource: 'table', operation: 'create', tableName: table,
+      columns: { column: spec }, options: { createIfNotExists: true },
+    },
+    id: `dt-${table}`, name, type: 'n8n-nodes-base.dataTable',
+    typeVersion: 1.1, position: [x, 300],
+  });
+  return name;
+}
+
+N.push({
+  parameters: { httpMethod: 'POST', path: 'setup', responseMode: 'onReceived', options: {} },
+  id: 'wh', name: 'Webhook', type: 'n8n-nodes-base.webhook', typeVersion: 2,
+  position: [0, 300], webhookId: 'fsmsetuphook01',
+});
+dtNode('Create suspicions', 'suspicions', SUSPICIONS, 240);
+dtNode('Create bugs', 'bugs', BUGS, 480);
+dtNode('Create scan_files', 'scan_files', SCAN_FILES, 720);
+dtNode('Create method_runs', 'method_runs', METHOD_RUNS, 960);
+
+const connections = {
+  Webhook: { main: [[{ node: 'Create suspicions', type: 'main', index: 0 }]] },
+  'Create suspicions': { main: [[{ node: 'Create bugs', type: 'main', index: 0 }]] },
+  'Create bugs': { main: [[{ node: 'Create scan_files', type: 'main', index: 0 }]] },
+  'Create scan_files': { main: [[{ node: 'Create method_runs', type: 'main', index: 0 }]] },
+};
+
+const wf = { id: 'fsmsetup00000001', name: 'fsm-setup', active: false,
+  nodes: N, connections, settings: { executionOrder: 'v1' } };
+
+if (require.main === module) {
+  fs.writeFileSync(path.join(__dirname, '..', 'workflow_setup.json'), JSON.stringify(wf, null, 2));
+  console.log(`wrote workflow_setup.json — suspicions(${SUSPICIONS.length} cols) + bugs(${BUGS.length} cols)`);
+}
+
+/* ---- test exports (stripped when inlined into n8n) ---- */
+module.exports = { wf, SUSPICIONS, BUGS };

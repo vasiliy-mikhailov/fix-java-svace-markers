@@ -1,0 +1,20 @@
+{
+  "packageManager": "npm",
+  "testRunner": "tap",
+  "mutate": ["src/lib/json-extract.js"],
+  "reporters": ["clear-text"],
+  "coverageAnalysis": "perTest",
+  "thresholds": { "high": 90, "low": 80, "break": null },
+  "tempDirName": ".stryker-tmp-je",
+  "ignorePatterns": [".stryker-tmp*", "coverage", "reports", "__pycache__"],
+  "cleanTempDir": "always",
+  "concurrency": 4,
+  "mutator": { "excludedMutations": ["StringLiteral"] },
+  "tap": {
+    "testFiles": [
+      "test/json-extract.test.js",
+      "test/parse-fix.test.js",
+      "test/verdict.test.js"
+    ]
+  }
+}

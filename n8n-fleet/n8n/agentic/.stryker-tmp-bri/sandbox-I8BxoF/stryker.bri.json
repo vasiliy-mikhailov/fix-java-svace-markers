@@ -1,0 +1,13 @@
+{
+  "packageManager": "npm",
+  "testRunner": "tap",
+  "mutate": ["src/nodes/build-reproduce-input.js"],
+  "reporters": ["clear-text", "json"],
+  "coverageAnalysis": "perTest",
+  "tempDirName": ".stryker-tmp-bri",
+  "cleanTempDir": true,
+  "ignorePatterns": [".stryker-tmp*", "coverage", "reports", "node_modules", "__pycache__"],
+  "mutator": { "excludedMutations": ["StringLiteral"] },
+  "jsonReporter": { "fileName": "reports/mutation-bri.json" },
+  "tap": { "testFiles": ["test/build-reproduce-input.test.js"] }
+}

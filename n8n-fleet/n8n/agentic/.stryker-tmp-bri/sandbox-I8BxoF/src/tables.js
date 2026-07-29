@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use strict';
 /**
  * n8n Data Table ids for THIS instance.
