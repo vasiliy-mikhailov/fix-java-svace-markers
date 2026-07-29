@@ -1,0 +1,18 @@
+{
+  "packageManager": "npm",
+  "testRunner": "tap",
+  "mutate": ["src/nodes/fix-skeptic.js"],
+  "reporters": ["clear-text"],
+  "coverageAnalysis": "perTest",
+  "thresholds": { "high": 90, "low": 80, "break": null },
+  "tempDirName": ".stryker-tmp-sk",
+  "ignorePatterns": [".stryker-tmp*", "coverage", "reports", "__pycache__"],
+  "cleanTempDir": "always",
+  "concurrency": 4,
+  "mutator": { "excludedMutations": ["StringLiteral"] },
+  "tap": {
+    "testFiles": [
+      "test/fix-skeptic.test.js"
+    ]
+  }
+}
