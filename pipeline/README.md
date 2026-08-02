@@ -67,12 +67,3 @@ orchestrator/playwright/run.sh     # the browser suite, inside the Playwright im
 The browser tests are excluded from `mvn test` deliberately — they need the browsers that ship in that
 image. The build prints one line saying so and giving the command, and a test asserts that line still
 matches reality, so the notice cannot quietly become a lie.
-
-## `tools/`
-
-Helpers that are not part of the running system. Nothing on the build path, nothing deployed.
-
-**`tools/Dockerfile` is dead and should go.** It builds a node+eslint+python image whose `CMD` is
-`python3 check_workflows.py` — the validator for the *generated n8n workflows*. There are no n8n
-workflows and `check_workflows.py` was deleted with the last Python file. Nothing builds it, nothing
-references it, and it is the only thing left in this directory.
