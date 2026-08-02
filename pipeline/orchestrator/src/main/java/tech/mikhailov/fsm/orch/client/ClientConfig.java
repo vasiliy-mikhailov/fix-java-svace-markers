@@ -1,16 +1,20 @@
 package tech.mikhailov.fsm.orch.client;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import tech.mikhailov.fsm.lib.Llm;
 import tech.mikhailov.fsm.orch.Secrets;
 import tech.mikhailov.fsm.orch.config.FsmProperties;
+import tech.mikhailov.fsm.runner.LocalRunner;
+import tech.mikhailov.fsm.runner.MavenSettings;
 
 /**
  * The three clients, wired once.
@@ -99,8 +103,65 @@ public class ClientConfig {
                 Duration.ofMillis(properties.llm().retryDelayMs()));
     }
 
+    /**
+     * THE PROVER ITSELF, IN THIS PROCESS — the whole of the one-container deployment.
+     *
+     * <p>{@code destroyMethod} is named rather than inferred, and it matters here more than it does for
+     * the transport: shutting this down interrupts the build thread, which kills the child Maven rather
+     * than orphaning one that owns the shared workspace.
+     *
+     * <p>THE CACHE IS CREATED HERE, ON THE WAY UP, and the process refuses to start if it cannot be. A
+     * runner whose cache directory is unwritable answers every prove with a clone failure, which reads
+     * as "every repository is broken" — six hours into a run, one marker at a time.
+     */
+    @Bean(destroyMethod = "close")
+    @ConditionalOnProperty(prefix = "fsm.runner", name = "mode",
+            havingValue = FsmProperties.Runner.LOCAL, matchIfMissing = true)
+    public LocalRunner localRunner(FsmProperties properties, Secrets secrets) {
+        FsmProperties.Runner configured = properties.runner();
+        // The mirror is a RUN-TIME setting read straight off the environment, not a build argument baked
+        // into the image: the Guild runs an image they did not build, pointed at a Nexus of their own.
+        // Unset means Central, which is what a machine with nothing but Docker gets. See MavenSettings.
+        LocalRunner runner = LocalRunner.open(Path.of(configured.cache()), secrets.githubToken(),
+                System.getenv(MavenSettings.MIRROR_ENV));
+        log.info("[runner] in-process, cache {}, maven {}", runner.cache(),
+                runner.mavenSettings().map(Path::toString).orElse("central (no "
+                        + MavenSettings.MIRROR_ENV + ")"));
+        return runner;
+    }
+
+    /** @see LocalRunnerClient */
     @Bean
-    public RunnerClient runnerClient(HttpTransport transport, FsmProperties properties) {
+    @ConditionalOnProperty(prefix = "fsm.runner", name = "mode",
+            havingValue = FsmProperties.Runner.LOCAL, matchIfMissing = true)
+    public RunnerClient localRunnerClient(LocalRunner runner, FsmProperties properties) {
+        return new LocalRunnerClient(runner::submit, properties.runner().timeout());
+    }
+
+    /**
+     * THE SOURCE THE DASHBOARD SHOWS MOVES WITH THE PROVE, and this bean is why that is not a thing
+     * anybody has to remember. Both readers are declared beside their client under the same condition,
+     * so there is no configuration in which the marker view reads from a runner the prove did not use.
+     */
+    @Bean
+    @ConditionalOnProperty(prefix = "fsm.runner", name = "mode",
+            havingValue = FsmProperties.Runner.LOCAL, matchIfMissing = true)
+    public SourceReader localSourceReader(LocalRunner runner) {
+        return new LocalSourceReader(runner::readFile);
+    }
+
+    /**
+     * The remote shape, kept and selectable — {@code fsm.runner.mode=http}.
+     *
+     * <p>It is not legacy. {@code /run_test} runs arbitrary third-party build scripts, and a deployment
+     * that wants that in a container of its own is making a reasonable trade against the address chain
+     * the local mode deletes. A branch only one side of which is ever exercised is a branch that has
+     * already rotted, so both are pinned by a test.
+     */
+    @Bean
+    @ConditionalOnProperty(prefix = "fsm.runner", name = "mode",
+            havingValue = FsmProperties.Runner.HTTP)
+    public RunnerClient httpRunnerClient(HttpTransport transport, FsmProperties properties) {
         FsmProperties.Runner configured = properties.runner();
         HttpRunnerClient client = new HttpRunnerClient(transport, configured.baseUrl(),
                 configured.timeout(), configured.connectAttempts(),
@@ -108,6 +169,14 @@ public class ClientConfig {
         log.info("[runner] {}, up to {}s per prove, {} connect attempt(s)", client.endpoint(),
                 client.timeout().toSeconds(), client.connectAttempts());
         return client;
+    }
+
+    /** @see #localSourceReader */
+    @Bean
+    @ConditionalOnProperty(prefix = "fsm.runner", name = "mode",
+            havingValue = FsmProperties.Runner.HTTP)
+    public SourceReader httpSourceReader(HttpTransport transport, FsmProperties properties) {
+        return new HttpSourceReader(transport, properties.runner().baseUrl());
     }
 
     @Bean

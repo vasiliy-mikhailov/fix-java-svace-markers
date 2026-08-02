@@ -12,6 +12,17 @@ and not a base URL, and why there is no `fsm-engine` container in this service's
 **If you have never seen n8n, you do not need to.** Everything below is `mvn`, `curl` and `docker
 compose`.
 
+> **THE PROVER IS IN THIS PROCESS TOO, since the three services became one.** `fsm.runner.mode` is
+> `local` by default: `RunnerClient` is `LocalRunnerClient`, which calls
+> `tech.mikhailov.fsm.runner.LocalRunner` directly — the same clone, the same RED and GREEN builds, the
+> same single-flight queue, no HTTP. Where `fsm-runner` appears below, read "the prover"; there is no
+> such container. `FSM_RUNNER_MODE=http` restores the split shape and `FSM_RUNNER_URL` with it, and the
+> retry and timeout knobs documented here apply to that mode only.
+>
+> Two consequences worth knowing here: `CACHE` must point at a mounted volume for the same reason
+> `FSM_DB_PATH` must, and the container now runs as uid **10002** with both `/state` and `/cache` under
+> it.
+
 ```
 POST /api/ingest        ──►  ingest job   ──►  suspicions (the backlog)
                                                    │
@@ -19,7 +30,7 @@ schedule tick (60s)  ─┐                            ▼
 POST /api/prove       ├──►  prove job  ──►  claim one marker
 POST /api/prove/marker┘                     ├─ GitHub contents  (source)
 --fsm.prove.marker    ┘                     ├─ model            (reproducer, fixer)
-                                            ├─ fsm-runner       (RED build, GREEN build)
+                                            ├─ the prover       (RED build, GREEN build, in-process)
                                             ├─ model            (skeptic, PR maker, verdict)
                                             └─►  bugs + suspicions.status
 ```
@@ -45,17 +56,28 @@ fails closed on anything that needs them. The database is `orchestrator/data/fsm
 
 ```bash
 cd pipeline/deploy
-cp ../orchestrator/.env.example .env            # then fill in QWEN_* and GITHUB_TOKEN
-docker compose build orchestrator               # runs BOTH modules' test suites inside the build
-docker compose up -d orchestrator
-docker compose logs -f orchestrator
+cp .env.example .env                 # then fill in QWEN_* and GITHUB_TOKEN
+docker compose up -d --build         # ONE service, `fsm` — this module, with engine and runner inside it
+docker compose logs -f fsm
 ```
 
-On a host where Central is slow, and only with the Nexus network:
+**There is no `orchestrator` service to name.** `deploy/docker-compose.yml` declares one running
+service and it is called `fsm`; `docker compose up -d orchestrator` fails with *no such service*. The
+image build runs all THREE modules' test suites.
+
+On a host where Central is slow, and only with the Nexus network — `docker compose build` cannot join a
+network and BuildKit rejects custom network modes, so this is the legacy builder from the reactor root:
 
 ```bash
-docker compose build --build-arg MAVEN_MIRROR_URL=http://nexus:8081/repository/maven-public/ orchestrator
+cd pipeline
+DOCKER_BUILDKIT=0 docker build --network mvn-cache \
+  --build-arg MAVEN_MIRROR_URL=http://nexus:8081/repository/maven-public/ \
+  -t fsm:latest .
 ```
+
+That argument governs the **image's own** build. Which repository the *analysed* projects resolve from
+is the `MAVEN_MIRROR_URL` environment variable on the running container — no rebuild, and it works on an
+image you did not build.
 
 Published on `127.0.0.1:8085` only. Public access is Caddy over `proxy-net` with basic-auth in front,
 which routes `/dashboard/` here — this process serves the dashboard that used to be its own Node
@@ -63,11 +85,12 @@ service.
 
 ### The cutover from n8n is done
 
-n8n is gone from the deployment. `deploy/docker-compose.yml` declares three services — `engine`,
-`orchestrator`, `runner` — and this process is the only prover in the stack, so its single-flight
-guarantee is once again the whole of the mutual exclusion rather than half of it.
+n8n is gone from the deployment. `deploy/docker-compose.yml` declares ONE running service, `fsm` (plus
+`engine` behind a profile, which nothing in a run calls), and this process is the only prover in the
+stack, so its single-flight guarantee is once again the whole of the mutual exclusion rather than half
+of it.
 
-**That is the property to protect if anything is ever added back.** `fsm-runner` serialises `/run_test`
+**That is the property to protect if anything is ever added back.** The prover serialises `/run_test`
 around ONE cached workspace *per process*, so a second prover patches the first one's tree with no lock
 between them and nothing anywhere goes red. `DeploymentTest` pins the service list for exactly this
 reason — it is the only place the compose file is checked now that the Node half of the fleet is gone.
@@ -136,7 +159,7 @@ count untouched, like any other.
 A marker that is not there fails the run rather than completing with nothing proved — a `COMPLETED`
 execution with a write count of zero is indistinguishable from a drain of an empty queue, and a developer
 running one prove cannot act on that. The key is in the cause of the step's
-`NonSkippableReadException`; `docker compose logs orchestrator | grep MarkerNotClaimed` finds it.
+`NonSkippableReadException`; `docker compose logs fsm | grep MarkerNotClaimed` finds it.
 
 ---
 
@@ -461,7 +484,9 @@ ingest, runs, and simply reads zero after the next `docker compose up -d`. Nothi
 
 So:
 
-- `orchestrator/Dockerfile` sets `FSM_DB_PATH=/state/fsm` and prepares `/state` owned by the service uid;
+- `pipeline/Dockerfile` sets `FSM_DB_PATH=/state/fsm` and prepares `/state` owned by the service uid
+  (10002), and does the same for `CACHE=/cache`, which the in-process prover needs for exactly the same
+  reason;
 - `docker-compose.yml` mounts the **named volume** `fsm-orchestrator-state` there, restates the variable
   next to it, and declares the volume at the bottom of the file.
 
@@ -586,8 +611,8 @@ that must look different **do** look different.
   libraries come from the image; Temurin 25 is added on top because the image's own JDK is not 25 and
   this module targets 25. There is no per-machine browser decision and no "skipped because none
   installed" path anywhere in the suite.
-- **Not a compose service.** `deploy/docker-compose.yml` declares exactly three services and
-  `DeploymentTest` pins that list. A test suite starts, asserts and exits — `docker run --rm` is the
+- **Not a compose service.** `deploy/docker-compose.yml` declares exactly one running service and
+  `DeploymentTest` pins that. A test suite starts, asserts and exits — `docker run --rm` is the
   shape that fits, and it keeps the service list a statement about what is deployed.
 - **Excluded by tag, not by path**: `@Tag("ui")`, `<excludedGroups>` by default, `-Pui` to invert the
   filter and run the browser suite alone. The classes still live in `src/test/java` and are **compiled

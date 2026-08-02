@@ -20,35 +20,47 @@ that verifies the marker count survived.
 |---|---|---|
 | **engine** | The judgement, as pure functions over maps. Ten node classes, no I/O, ~900 tests. Also runs standalone over HTTP so one stage can be replayed by hand. | nothing |
 | **orchestrator** | Spring Batch drives each marker through the chain. Owns H2, the dashboard, the REST API and the WebSocket. **Embeds `engine` as a library** — no HTTP hop between the queue and the judgement. | engine |
-| **runner** | Clones the target repo, writes the test, applies the patch, runs Maven twice. Ships JDK 8/11/17/21/25 + Maven. Ported from a Node service, with a 23,401-case differential harness proving the two agree. | engine |
+| **runner** | Clones the target repo, writes the test, applies the patch, runs Maven twice. Ported from a Node service, with a 23,401-case differential harness proving the two agree. **A library now, not a service** — `LocalRunner` is what `orchestrator` calls; `RunnerServer` still wraps it for a deployment that wants the sandbox split off. | engine |
 
 Each module has its own README with the detail — endpoints, configuration, and why particular decisions
 were made the way they were.
 
+`runner` stays a module rather than being folded into `orchestrator`, and that is deliberate: its 188
+tests are the ported specification of the one distinction the whole pipeline rests on — did the test RUN
+and fail, or did it never run — and it holds a zero-third-party-dependency policy that a merge into a
+Spring Boot module would quietly break.
+
 ## Deployment
 
-`deploy/docker-compose.yml` is the whole deployment: three services. Two tests pin that list, so a fourth
-service is a red test rather than a discovery. `deploy/.env.example` documents every variable it reads.
+`deploy/docker-compose.yml` is the whole deployment: **one service**, plus `engine` behind a profile for
+replaying a single stage by hand. `DeploymentTest` pins that, so a second running service is a red test
+rather than a discovery. `deploy/.env.example` documents every variable it reads.
 
-Images build from the **reactor root**, not from a module directory, because `orchestrator` and `runner`
-resolve `tech.mikhailov.fsm:engine` from the reactor and nothing publishes that jar:
+`Dockerfile` is at the **reactor root**, which is also its build context, because `orchestrator` resolves
+`tech.mikhailov.fsm:engine` and `tech.mikhailov.fsm:runner` from the reactor and nothing publishes those
+jars. Its runtime stage is the runner's old one — git, JDK 8/11/17/21/25 and Maven — because the process
+it starts spawns all three over the repositories under analysis.
 
 ```bash
-docker compose build                                    # all three, resolving from Central
+docker compose up -d --build                            # one image, resolving from Central
 
 DOCKER_BUILDKIT=0 docker build --network mvn-cache \
   --build-arg MAVEN_MIRROR_URL=http://nexus:8081/repository/maven-public/ \
-  -f orchestrator/Dockerfile -t fsm-orchestrator:latest .
+  -t fsm:latest .
 ```
 
 The second form is not a stylistic preference. `docker compose build` cannot join a network and BuildKit
 rejects custom network modes, so a Maven mirror that only resolves on `mvn-cache` needs the legacy
 builder. Without it the build fails minutes in with `nexus: No address associated with hostname`.
 
+That build argument governs the image's OWN build. Which repository the analysed projects resolve from
+is the `MAVEN_MIRROR_URL` **environment variable** on the running container — empty means Central, and
+it takes effect with no rebuild. See `runner/src/main/java/.../MavenSettings.java`.
+
 ## Tests
 
 ```bash
-mvn -B test                        # 1634 tests across the three modules
+mvn -B test                        # 1658 tests across the three modules
 orchestrator/playwright/run.sh     # the browser suite, inside the Playwright image
 ```
 
@@ -59,3 +71,8 @@ matches reality, so the notice cannot quietly become a lie.
 ## `tools/`
 
 Helpers that are not part of the running system. Nothing on the build path, nothing deployed.
+
+**`tools/Dockerfile` is dead and should go.** It builds a node+eslint+python image whose `CMD` is
+`python3 check_workflows.py` — the validator for the *generated n8n workflows*. There are no n8n
+workflows and `check_workflows.py` was deleted with the last Python file. Nothing builds it, nothing
+references it, and it is the only thing left in this directory.

@@ -31,14 +31,23 @@ import org.junit.jupiter.api.Test;
  */
 class RunnerImageTest {
 
-    /** Surefire's working directory is the module, and the Dockerfile sits in it. */
-    private static final Path DOCKERFILE = Path.of("Dockerfile");
+    /**
+     * ONE Dockerfile FOR THE WHOLE PIPELINE, at the reactor root — which is one directory up from this
+     * module, because that root is the image's build context.
+     *
+     * <p>It used to be {@code runner/Dockerfile}, beside this test. The runner and the orchestrator ship
+     * as one container now, so there is one image and one file; these assertions did NOT move with it,
+     * because everything they are about is still true and still the runner's. The process that spawns
+     * `mvn` over somebody else's repository is this one, whatever else shares its JVM.
+     */
+    private static final Path DOCKERFILE = Path.of("..", "Dockerfile");
 
     /**
-     * The image build copies {@code pom.xml}, {@code src} and {@code harness/fixtures} into /src and
-     * nothing else — deliberately, so a source change does not bust the layer cache on a file the build
-     * never reads. The Dockerfile is therefore absent while these tests run INSIDE the image build, and
-     * asserting there would fail the image over a file that was correctly left out.
+     * The image build copies the poms, {@code src} and {@code harness/fixtures} into /src and nothing
+     * else — deliberately, so a source change does not bust the layer cache on a file the build never
+     * reads, and so the running container carries no copy of its own deployment. The Dockerfile is
+     * therefore absent while these tests run INSIDE the image build, and asserting there would fail the
+     * image over a file that was correctly left out.
      *
      * <p>So skip there, and skip LOUDLY: JUnit reports it as skipped with the reason, never as passed.
      * On a developer's machine, in CI and at the reactor root the file is present and every assertion

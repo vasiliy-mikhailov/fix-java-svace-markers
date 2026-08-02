@@ -224,6 +224,28 @@ final class Build {
      * @param build  {@code auto}, {@code maven} or {@code gradle} — the request may override detection
      */
     static Command buildCmd(Path ws, String jdk, String module, String build, String testClass) {
+        return buildCmd(ws, jdk, module, build, testClass, null);
+    }
+
+    /**
+     * …and with the Maven settings file this deployment's mirror was written to.
+     *
+     * <p>{@code -s} RATHER THAN A FILE IN THE IMAGE, which is the whole of the runtime-mirror fix. The
+     * old arrangement copied a committed settings.xml into {@code conf/} and {@code ~/.m2/}, so the
+     * mirror was decided when the image was built and could not be changed by the person running it.
+     * Here the path arrives from {@link MavenSettings#configure}, which reads
+     * {@link MavenSettings#MIRROR_ENV} on the way up — and when nothing is configured this is null, no
+     * {@code -s} is added, and Maven resolves from Central exactly as an unconfigured Maven does.
+     *
+     * <p>GRADLE IS NOT GIVEN IT, and that is not an omission: {@code ./gradlew} resolves through the
+     * repositories the project under test declares in its own build script, {@code settings.xml} means
+     * nothing there, and {@code -s} is not a flag Gradle has — passing it would turn every Gradle prove
+     * into an argument error.
+     *
+     * @param settings the file, or null to leave Maven with its own defaults
+     */
+    static Command buildCmd(Path ws, String jdk, String module, String build, String testClass,
+                            Path settings) {
         // `module_ ? … : …` — an EMPTY module is no module. Java's `!= null` is not that test, and the
         // differential harness caught the difference: an empty string produced `-pl "" -am`, which
         // Maven rejects, and `::test` for Gradle, which resolves to no project. The caller normalises
@@ -253,7 +275,15 @@ final class Build {
         }
 
         // Prove phase: skip every style / license / static-analysis gate; just compile and run the test.
-        List<String> cmd = new ArrayList<>(List.of("mvn", "-B", "-DfailIfNoTests=false",
+        List<String> cmd = new ArrayList<>(List.of("mvn", "-B"));
+        if (settings != null) {
+            // Immediately after -B so it is at the head of the line in every build log: "which
+            // repository did this resolve from?" is the first question a resolution failure raises, and
+            // it must be answerable from the log the marker carries rather than from the image.
+            cmd.add("-s");
+            cmd.add(settings.toString());
+        }
+        cmd.addAll(List.of("-DfailIfNoTests=false",
                 "-Dsurefire.failIfNoSpecifiedTests=false", "-Dtest=" + testClass,
                 "-Dcheckstyle.skip=true", "-Dspotless.check.skip=true", "-Dspotless.apply.skip=true",
                 "-Dlicense.skip=true", "-Drat.skip=true", "-Dapache-rat.skip=true", "-Dpmd.skip=true",

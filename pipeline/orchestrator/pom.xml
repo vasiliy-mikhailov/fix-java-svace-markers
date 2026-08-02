@@ -40,6 +40,7 @@
     <java.version>25</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <engine.version>0.1.0-SNAPSHOT</engine.version>
+    <runner.version>0.1.0-SNAPSHOT</runner.version>
 
     <!-- Same versions as engine and runner, deliberately: three modules in one reactor disagreeing
          about the measuring tool would mean three numbers that cannot be added up. JUnit itself is
@@ -81,6 +82,27 @@
       <groupId>tech.mikhailov.fsm</groupId>
       <artifactId>engine</artifactId>
       <version>${engine.version}</version>
+    </dependency>
+
+    <!-- THE PROVER'S HANDS, AS A LIBRARY, and this line is what makes the deployment one container.
+
+         `runner` was a second service because /run_test does not compute an answer — it clones a
+         repository and shells out to Maven, twice, over somebody else's code. What that arrangement
+         actually cost was an ADDRESS: http://fsm-runner:8090 written in the compose environment, in
+         application.yml and compiled into HttpRunnerClient.DEFAULT_BASE_URL, none of them read until a
+         marker is proved, so a stale one surfaces hours into a run as a refused connect filed as an
+         infrastructure failure. tech.mikhailov.fsm.runner.LocalRunner is the same Prove, Workspace and
+         Build behind the same single-flight queue, called directly.
+
+         THE HTTP SHAPE IS NOT DELETED. `fsm.runner.mode=http` still posts to a runner of its own, for a
+         deployment that wants the build sandbox behind a container boundary; see ClientConfig. This
+         dependency is what gives the DEFAULT its prover, and it drags in nothing — `runner`'s own pom
+         has a zero-third-party-dependency policy and its only dependency is `engine`, which is already
+         above. -->
+    <dependency>
+      <groupId>tech.mikhailov.fsm</groupId>
+      <artifactId>runner</artifactId>
+      <version>${runner.version}</version>
     </dependency>
 
     <dependency>

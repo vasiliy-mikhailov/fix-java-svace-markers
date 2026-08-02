@@ -2,6 +2,15 @@
 .env
 *.env
 !.env.example
+
+# THE DEPLOYMENT HOST'S HALF OF THE COMPOSE FILE. Compose merges docker-compose.override.yml
+# automatically, which is exactly what makes it the right home for a host's private wiring — an
+# `external: true` network, a reverse proxy, a published port — and exactly what makes committing one
+# dangerous: it would apply to everyone, and a network that exists on one machine stops
+# `docker compose up -d` dead on every other. The committed example is the template.
+# See pipeline/deploy/docker-compose.override.yml.example.
+docker-compose.override.yml
+
 pipeline/deploy/n8n-data/
 pipeline/**/node_modules/
 **/__pycache__/

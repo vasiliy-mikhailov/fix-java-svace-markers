@@ -5,17 +5,41 @@ build **GREEN**, and answer with what happened. It decides nothing — every jud
 belongs to `engine`.
 
 This is `java-runner/src/server.js` in Java, route for route. **That JavaScript was deleted on
-2026-07-31.** What it ANSWERED was kept: 23 851 cases and the replies it gave are frozen under
-`harness/fixtures` as data, and the comparison against them is now a JUnit test
-(`DifferentialHarnessTest`) that runs on every `mvn test` — where before it was a shell script nothing
+2026-07-31.** What it ANSWERED was kept: the 23 851 cases it generated and the replies it gave are
+frozen under `harness/fixtures` as data, and the comparison against them is now a JUnit test
+(`DifferentialHarnessTest`) that runs on every `mvn test`. **23 401 of them are replayed today** — the
+450-case `lease` family went with `/lease` and `Lease.java` on 2026-08-01, and `DifferentialHarnessTest`
+hardcodes 23 401 so a corpus that quietly lost cases cannot self-certify — where before it was a shell script nothing
 invoked. `harness/README.md` states what that freeze buys, what it costs, and why the fixtures cannot
 be regenerated.
 
-**THE CUTOVER IS DONE.** `deploy/docker-compose.yml` declares three services — `engine`, `orchestrator`,
-`runner` — and `java-runner` is no longer one of them. The comparison table below is history: it
-records what was swapped and why, and the "Cutover" section is kept as the account of how it was done,
-not as a procedure to run. Anything in it that names `fsm-java-runner`, `fsm-n8n` or `fsm-dashboard` as
-a *live* container is stale.
+> ## THIS IS A LIBRARY NOW, NOT A SERVICE — read this before the rest of the file
+>
+> There is **no `fsm-runner` container**. `deploy/docker-compose.yml` declares one service, `fsm`, and
+> the prove runs inside it: `tech.mikhailov.fsm.runner.LocalRunner` is the same `Prove`, `Workspace` and
+> `Build` behind the same single FIFO build thread, called in-process by the orchestrator's
+> `LocalRunnerClient`. `RunnerServer` is unchanged and still wraps `LocalRunner` over HTTP — set
+> `FSM_RUNNER_MODE=http` and everything below about ports, routes and reply shapes is live again.
+>
+> **Why.** The split cost an ADDRESS: `http://fsm-runner:8090` written in the compose environment, in
+> `application.yml` and compiled into `HttpRunnerClient.DEFAULT_BASE_URL`, each a fallback for the one
+> above it, none read until a marker is proved. A stale value anywhere in that chain surfaced hours into
+> a 6-26 hour run as a refused connect filed as an infrastructure failure — which reads as a runner that
+> is down rather than as a name nothing serves.
+>
+> **Two things below are now WRONG as written**, and are kept because the reasoning around them is not:
+> - `runner/Dockerfile` and `runner/settings.xml` are **deleted**. There is one `pipeline/Dockerfile`;
+>   its runtime stage is this one's, JDK for JDK. The mirror is `MAVEN_MIRROR_URL` at RUN time
+>   (`MavenSettings`) — empty means Central — instead of a `mirrorOf=*` settings.xml baked into the
+>   image, which made every prove fail on every machine but one.
+> - the process line is `env LC_ALL=C.UTF-8 java -jar /app/fsm.jar`, a Spring Boot fat jar, rather than
+>   `-cp` over a thin jar and `/app/libs`. Everything the paragraph below says about `env` and the
+>   locale is unchanged and still load-bearing.
+>
+> **THE 2026-07-31 CUTOVER IS DONE.** `java-runner` (Node) is gone. The comparison table below is
+> history: it records what was swapped and why, and the "Cutover" section is the account of how it was
+> done, not a procedure to run. Anything naming `fsm-java-runner`, `fsm-n8n` or `fsm-dashboard` as a
+> *live* container is stale.
 
 | | `fsm-java-runner` | `fsm-runner` |
 |---|---|---|
@@ -36,7 +60,7 @@ line with the platform's value. debian-slim has no locale, so without this the e
 checkout. The variable is on the exec line and **not** an image `ENV`, and `Proc` strips `LANG`,
 `LANGUAGE` and every `LC_*` out of every child, so no build of any repository under test inherits it —
 that isolation is the whole reason the image declares no locale, and it is now enforced by code rather
-than by an absent line. `PathEncoding`, `runner/Dockerfile` and `PathEncodingTest` carry the detail; the
+than by an absent line. `PathEncoding`, `pipeline/Dockerfile` and `PathEncodingTest` carry the detail; the
 first line of the log reports `sun.jnu.encoding=` and warns if it is not UTF-8.
 
 ---
@@ -48,21 +72,26 @@ first line of the log reports `sun.jnu.encoding=` and warns if it is not UTF-8.
 repository. A context of `./runner` cannot build the image at all, and the failure arrives minutes in as an
 unresolvable dependency.
 
+**There is no image of this module's own.** `runner/Dockerfile` was deleted when the three services
+became one; this module is compiled into `pipeline/Dockerfile`'s single image, whose runtime stage is
+this one's old one JDK for JDK. So the build command is the deployment's:
+
 ```bash
 cd pipeline/deploy
-docker compose build runner                    # Maven Central; works on a fresh clone anywhere
+docker compose up -d --build                   # Maven Central; works on a fresh clone anywhere
 ```
 
 Through the Nexus mirror instead — worth it on the deployment host, where a cold build is a few hundred
 artifacts — the build itself has to be **on the `mvn-cache` network**, and that is not something
-`docker compose build` can ask for. So build it by hand under the tag compose already expects:
+`docker compose build` can ask for. So build it by hand, from the reactor root, under the tag compose
+already expects:
 
 ```bash
 cd pipeline
-DOCKER_BUILDKIT=0 docker build --network mvn-cache -f runner/Dockerfile \
+DOCKER_BUILDKIT=0 docker build --network mvn-cache \
   --build-arg MAVEN_MIRROR_URL=http://nexus:8081/repository/maven-public/ \
-  -t fsm-runner:latest .
-docker compose -f deploy/docker-compose.yml up -d runner    # uses the tag; does not rebuild
+  -t fsm:latest .
+docker compose -f deploy/docker-compose.yml up -d           # uses the tag; does not rebuild
 ```
 
 `--network <name>` is the classic builder's, hence `DOCKER_BUILDKIT=0`. That also leaves `TARGETARCH`
@@ -72,8 +101,8 @@ then died at run time with "exec format error".
 
 `MAVEN_MIRROR_URL` behaves exactly as it does for `engine` and `orchestrator`: **opt-in, defaulting to
 Central**, because a baked-in `http://nexus:8081` mirror would make the image unbuildable everywhere —
-including on the host that has Nexus. The *run-time* mirror is the opposite case and is unconditional; see
-[The mirror](#the-mirror-is-not-optional).
+including on the host that has Nexus. The *run-time* mirror is a separate, equally opt-in setting; see
+[The mirror](#the-mirror-is-optional-and-that-reversal-was-the-fix).
 
 Three more things the build does on purpose:
 
@@ -81,18 +110,19 @@ Three more things the build does on purpose:
   one distinction the whole pipeline rests on — did the test *run* and fail, or did it never run.
   `--build-arg SKIP_TESTS=-DskipTests` exists only to reproduce a build whose failure you are already
   looking at.
-- **All four module poms are copied**, including `orchestrator/pom.xml`, which this image never compiles.
-  Maven builds the model for every module the aggregator lists before `-pl` selects anything, so a missing
-  one fails the build before it starts with `Child module /src/orchestrator of /src/pom.xml does not exist`.
-  A module added to `pipeline/pom.xml` is a `COPY` line added to `runner/Dockerfile` and to
-  `orchestrator/Dockerfile`.
-- **`fsm-runner.jar` is a THIN jar**, and the image ships `/app/libs` beside it. This module has no shade
-  plugin and no spring-boot repackage, so the jar holds `tech.mikhailov.fsm.runner.*` and nothing else —
-  `java -jar fsm-runner.jar` dies on the first line of `main` with
-  `NoClassDefFoundError: tech/mikhailov/fsm/lib/Json$JsonException`, because `Json`, `Js.string` and
-  `JsText.isSpace` are the engine's. The build therefore runs `dependency:copy-dependencies` **in the same
-  Maven invocation** as `package` (a separate one cannot resolve `engine`: it comes from the reactor and
-  nothing ran `install`), and the entrypoint is `-cp … tech.mikhailov.fsm.runner.Runner`.
+- **All four module poms are copied.** Maven builds the model for every module the aggregator lists
+  before `-pl` selects anything, so a missing one fails the build before it starts with `Child module
+  /src/orchestrator of /src/pom.xml does not exist`. A module added to `pipeline/pom.xml` is a `COPY`
+  line added to `pipeline/Dockerfile` — the one place, now that there is one image.
+- **`fsm-runner.jar` is a THIN jar.** This module has no shade plugin and no spring-boot repackage, so
+  the jar holds `tech.mikhailov.fsm.runner.*` and nothing else — `java -jar fsm-runner.jar` dies on the
+  first line of `main` with `NoClassDefFoundError: tech/mikhailov/fsm/lib/Json$JsonException`, because
+  `Json`, `Js.string` and `JsText.isSpace` are the engine's. **The shipped image no longer contains this
+  jar at all**: `pipeline/Dockerfile` copies the orchestrator's Spring Boot fat jar, which repackages
+  every runtime dependency including this module and `engine`. The thin jar and its `target/libs` are a
+  local-build artefact — see "Locally, without Docker", which still needs the
+  `dependency:copy-dependencies` in the same Maven invocation as `package` (a separate one cannot
+  resolve `engine`: it comes from the reactor and nothing ran `install`).
 
 ### Locally, without Docker
 
@@ -116,12 +146,46 @@ that does not exist. Use the image for that.
 
 ## Run
 
+**By default this module is never "run".** It is called in-process, and the line that says so is:
+
 ```bash
-cd pipeline/deploy
-docker compose up -d runner                    # alongside java-runner; nothing is switched over yet
-docker compose exec runner curl -fsS http://127.0.0.1:8090/health
+docker compose logs fsm | grep '\[runner\]'
+# [runner] in-process, cache /cache, maven central (no MAVEN_MIRROR_URL)
+```
+
+**To run it as a service anyway** — `fsm.runner.mode=http`, the split shape — you supply the container
+yourself: `deploy/docker-compose.yml` declares no `runner` service and there is no `fsm-runner:latest`
+image any more. You do not need one. The single image already carries this module, inside the
+orchestrator's Spring Boot fat jar, and Boot's `PropertiesLauncher` will start any main class in it:
+
+```bash
+docker run -d --name fsm-split-runner --network fsm_default -e PORT=8090 -e CACHE=/cache \
+  --entrypoint env fsm:latest LC_ALL=C.UTF-8 java \
+  -Dloader.main=tech.mikhailov.fsm.runner.Runner \
+  -cp /app/fsm.jar org.springframework.boot.loader.launch.PropertiesLauncher
+
+docker exec fsm-split-runner curl -fsS http://127.0.0.1:8090/health
 # {"ok":true,"jdks":["8","11","17","21","25"]}
 ```
+
+`env LC_ALL=C.UTF-8` for the same reason the main entrypoint has it, and it is not decoration: without
+it `sun.jnu.encoding` is `ANSI_X3.4-1968` and no non-ASCII path can be named from Java at all. The
+startup line reports what it got — `sun.jnu.encoding=UTF-8`, or a warning.
+
+Then point the orchestrator at it. **Both variables must be set on the `fsm` service**, and both are
+pass-through in the compose file for exactly that reason:
+
+```bash
+FSM_RUNNER_MODE=http FSM_RUNNER_URL=http://fsm-split-runner:8090 docker compose up -d
+docker compose logs fsm | grep '\[runner\]'
+# [runner] http://fsm-split-runner:8090/run_test, up to 5400s per prove, 3 connect attempt(s)
+```
+
+Read that line rather than trusting the command: it prints the URI the client actually resolved. For one
+revision `FSM_RUNNER_URL` was **not** listed under `environment:` in the compose file while
+`FSM_RUNNER_MODE` was, so this pair switched the mode and silently dropped the address, and every prove
+went to `HttpRunnerClient.DEFAULT_BASE_URL` — `http://fsm-runner:8090`, which nothing serves.
+`DeploymentTest` now pins the two to travel together.
 
 `jdks` is the list actually **on disk**, not the list the code knows about. A JDK missing from that reply
 is a download that failed in the image build, and it matters: `/run_test` retries onto the major a build
@@ -137,20 +201,37 @@ compile under.
 
 No `QWEN_*`, no `SVACE_*`: this service never calls a model. It has one secret and one job.
 
-### The mirror is not optional
+### The mirror is optional, and that reversal was the fix
 
-`runner/settings.xml` sets `mirrorOf=*`. That makes the Nexus on the `mvn-cache` network **the only
-repository Maven will talk to** — not a cache in front of Central. Off that network the container starts,
-answers `/health` with all five JDKs, clones happily, and then fails every RED build with hundreds of
-lines about unresolvable artifacts, which reads as a broken target repository rather than as a missing
-word in a compose file. The orchestrator's `DeploymentTest` pins the network for that reason. To check
-it from the running container:
+**This section used to say the opposite, and the opposite was the defect.** `runner/settings.xml` set
+`mirrorOf=*` at `http://nexus:8081/…` and the image copied it in unconditionally. A mirror of `*` is not
+a cache in front of Central — it is **the only repository Maven will talk to**. So on every machine
+without that Nexus on that Docker network the container started, answered `/health` with all five JDKs,
+cloned happily, and then failed every RED build with hundreds of lines about unresolvable artifacts,
+which reads as a broken target repository rather than as an image carrying somebody else's
+infrastructure.
+
+`runner/settings.xml` is **deleted**. The mirror is now `MAVEN_MIRROR_URL`, read at RUN time by
+`MavenSettings`:
+
+- **unset — the default —** means Maven Central, and it must work on a laptop with nothing but Docker.
+- set means that URL, written to a `settings.xml` on the cache volume and handed to every `mvn` with
+  `-s`.
+
+An environment variable rather than a build argument, because the Guild will run an image they did not
+build against a Nexus at their own endpoint. Use a **public hostname**: a compose-internal name like
+`nexus:8081` resolves only inside one Docker network, which is precisely why it could not be a default.
+`TheMavenMirrorIsARuntimeSettingTest` pins the code half and `DeploymentTest` the compose half. Which one
+is in force is in the boot log:
 
 ```bash
-docker compose exec runner curl -s -o /dev/null -m 20 -w '%{http_code}\n' \
-  http://nexus:8081/repository/maven-public/
-# any status at all means the route exists — which is the only thing being asked
+docker compose logs fsm | grep '\[runner\]'
+# [runner] in-process, cache /cache, maven central (no MAVEN_MIRROR_URL)
+# [runner] in-process, cache /cache, maven /cache/maven-settings.xml
 ```
+
+There is no longer an `mvn-cache` network to be on, and `DeploymentTest` no longer pins one — the
+Nexus is reached by address, not by shared bridge.
 
 ---
 
@@ -289,7 +370,12 @@ under a dot-named component is served, at any depth, with links resolved.
 
 ## Cutover
 
-> **Completed. Kept as the record, not as instructions.** Two of the three callers below no longer
+> **COMPLETED, AND NOT A PROCEDURE. Do not run anything in this section.** Every `docker compose`
+> command below names a service that no longer exists — `runner`, `java-runner`, `orchestrator`,
+> `dashboard`, `n8n` — and each will fail with *no such service*. `deploy/docker-compose.yml` declares
+> ONE running service, `fsm`. This is kept as the record of how the cutover was done and what it cost,
+> because the reasoning is still what stops the next one going wrong; the commands are an artefact of a
+> stack that is gone. Two of the three callers below no longer
 > exist: `fsm-dashboard` and `fsm-n8n` were deleted from the deployment along with `java-runner`, and
 > the orchestrator is the only caller left. Its default is now `http://fsm-runner:8090` in all three
 > places that state it — `application.yml`, `HttpRunnerClient.DEFAULT_BASE_URL` and the compose
@@ -351,7 +437,7 @@ docker compose exec runner curl -fsS http://127.0.0.1:8090/health
 # {"ok":true,"jdks":["8","11","17","21","25"]}   <- all five, or stop here
 docker compose exec runner curl -s -o /dev/null -m 20 -w '%{http_code}\n' \
   http://nexus:8081/repository/maven-public/     # any status; 000 means it is off mvn-cache
-docker exec fsm-orchestrator curl -fsS http://fsm-runner:8090/health   # resolvable by its callers
+docker exec fsm curl -fsS http://fsm-runner:8090/health   # resolvable by its callers
 ```
 
 Nothing is switched over yet. A runner nobody posts to does nothing.
@@ -376,13 +462,17 @@ docker compose logs orchestrator | grep '\[runner\]'
 That line is the confirmation — `ClientConfig` logs the URI the client actually resolved, so it says
 where proves are going rather than what the environment was meant to say.
 
-> **Do not write `FSM_RUNNER_URL=${FSM_RUNNER_URL:-}`**, the shape the engine's variable uses on the
-> `n8n` service. That is safe there because the shim is JavaScript and `'' || default` is the default. It
-> is *not* safe here: Spring resolves `${FSM_RUNNER_URL:http://fsm-java-runner:8090}` against a variable
-> that exists and is empty, so `fsm.runner.base-url` becomes `""`. `HttpRunnerClient` happens to guard a
-> blank and falls back to `fsm-java-runner`; `SourceWindowService` does not, and ends up with a base URL
-> of `""`. The result is a split brain: proves go to the **old** runner while every source window in the
-> dashboard says "source unavailable". Set a real value or leave the line out entirely.
+> **`FSM_RUNNER_URL=${FSM_RUNNER_URL:-}` was once unsafe here, and is now the shape the compose file
+> uses.** Spring resolves `${FSM_RUNNER_URL:http://fsm-runner:8090}` against a variable that exists and
+> is empty, so `fsm.runner.base-url` becomes `""` rather than the default. That used to split the brain:
+> `HttpRunnerClient` guarded the blank and fell back, while `SourceWindowService` re-derived the address
+> itself and did not — proves went to the runner and every source window said "source unavailable".
+>
+> **Both halves now agree.** `SourceWindowService` no longer holds an address at all; it takes a
+> `SourceReader` chosen in `ClientConfig` beside the prove client, and `HttpSourceReader` guards blank
+> against the same `HttpRunnerClient.DEFAULT_BASE_URL`. So an empty value degrades to one default in both
+> places, which is what makes the pass-through safe — and the pass-through is what makes
+> `FSM_RUNNER_MODE=http` addressable at all.
 
 ### 3. Point the dashboard at it
 
@@ -458,8 +548,10 @@ cutover does.
 | path | what |
 |---|---|
 | `pom.xml` | module: Java 25, no third-party runtime dependencies, one on `engine` for the JavaScript semantics (`Json`, `Js.string`, `JsText.isSpace`) |
-| `Dockerfile` | multi-stage; reactor build, then the full JDK/Maven toolchain because `/run_test` shells out |
-| `settings.xml` | the **run-time** Maven mirror, `mirrorOf=*` → `nexus:8081`. Its own copy, not java-runner's, so java-runner can be deleted |
+| ~~`Dockerfile`~~ | **deleted.** One image is built from `pipeline/Dockerfile`, whose runtime stage is this one's, JDK for JDK |
+| ~~`settings.xml`~~ | **deleted.** The run-time mirror is `MAVEN_MIRROR_URL` (`MavenSettings`); a baked `mirrorOf=*` → `nexus:8081` made every prove fail off one network |
+| `…/MavenSettings.java` | writes the `settings.xml` handed to every `mvn` with `-s`, from `MAVEN_MIRROR_URL`; unset means Central |
+| `…/LocalRunner.java` | the in-process prover the orchestrator calls: same `Prove`, same single FIFO build thread, no HTTP |
 | `src/main/java/…/Runner.java` | entrypoint: environment, cache, bind, shutdown hook |
 | `…/RunnerServer.java` | the five routes, the virtual-thread executor, the single-thread build queue |
 | `…/Prove.java` | `doRunTest`: write the test, RED, apply, GREEN |
@@ -472,7 +564,7 @@ cutover does.
 Tests, from `pipeline/`:
 
 ```bash
-mvn -B -pl runner -am test                                   # engine, then runner's 203
+mvn -B -pl runner -am test                                   # engine, then runner's 188
 mvn -B -pl runner -am test-compile \
   && mvn -B -pl runner org.pitest:pitest-maven:mutationCoverage   # report: runner/target/pit-reports/
 ( cd runner && sh harness/run.sh )                           # …and print the differential report
@@ -484,8 +576,11 @@ killable by an integration test and a low score there would read as "the logic i
 is in `Edit`, `Build`, `Workspace` and `Prove`.
 
 The compose wiring is pinned in `orchestrator/src/test/java/tech/mikhailov/fsm/orch/DeploymentTest.java`
-— `mvn -pl orchestrator test -Dtest=DeploymentTest` from `pipeline/`. That is where "the runner must be
-on `mvn-cache`" and "this runner must not adopt the retired java-runner cache" live, because neither is a
-statement about what any code computes. It used to be pinned from the Node side as well, in
+— `mvn -pl orchestrator test -Dtest=DeploymentTest` from `pipeline/`. That is where "this runner must not
+adopt the retired java-runner cache", "the checkouts live in a named volume at the path the process is
+told to use" and "the mode and the runner's address are pass-through together" live, because none is a
+statement about what any code computes. **"The runner must be on `mvn-cache`" is gone** — there is no
+runner service and no `mvn-cache` network; the mirror is an address (`MAVEN_MIRROR_URL`), pinned instead
+by `theMavenMirrorIsSettableOnTheRunningContainer`. It used to be pinned from the Node side as well, in
 `n8n/agentic/test/compose.test.js`; that tree is deleted and every assertion it made was moved into
 `DeploymentTest` first.

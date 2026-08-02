@@ -3,18 +3,12 @@ package tech.mikhailov.fsm.runner;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
-import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import tech.mikhailov.fsm.lib.Json;
 
 /**
@@ -47,28 +41,25 @@ final class RunnerServer implements AutoCloseable {
     static final int DEFAULT_PORT = 8090;
 
     /** {@code process.env.CACHE || '/cache'} — the persistent volume both clones live in. */
-    static final String DEFAULT_CACHE = "/cache";
+    static final String DEFAULT_CACHE = LocalRunner.DEFAULT_CACHE;
 
     private final HttpServer server;
     private final ExecutorService executor;
-    private final ExecutorService builds;
-    private final Workspace workspace;
-    private final Prove prove;
-    private final Path jdkRoot;
+    private final LocalRunner runner;
+    private final boolean ownsRunner;
 
-    private RunnerServer(HttpServer server, ExecutorService executor, ExecutorService builds,
-                         Workspace workspace, Prove prove, Path jdkRoot) {
+    private RunnerServer(HttpServer server, ExecutorService executor, LocalRunner runner,
+                         boolean ownsRunner) {
         this.server = server;
         this.executor = executor;
-        this.builds = builds;
-        this.workspace = workspace;
-        this.prove = prove;
-        this.jdkRoot = jdkRoot;
+        this.runner = runner;
+        this.ownsRunner = ownsRunner;
     }
 
     /** Bind and start serving real builds out of {@code cache}. */
     static RunnerServer start(String host, int port, Path cache, String token) throws IOException {
-        return start(host, port, cache, token, Proc.EXEC, Path.of(Build.JDK_ROOT));
+        return start(host, port, LocalRunner.open(cache, token, System.getenv(MavenSettings.MIRROR_ENV)),
+                true);
     }
 
     /**
@@ -78,6 +69,24 @@ final class RunnerServer implements AutoCloseable {
      */
     static RunnerServer start(String host, int port, Path cache, String token, Proc.Exec exec,
                               Path jdkRoot) throws IOException {
+        return start(host, port, new LocalRunner(cache, token, exec, jdkRoot, null), true);
+    }
+
+    /**
+     * The HTTP surface over a runner that already exists.
+     *
+     * <p>THE SERIALISATION IS NOT HERE ANY MORE, and that is the point of this signature. It used to be
+     * a single-thread executor owned by this class — which was fine while the only caller was a socket,
+     * and became a hazard the moment the orchestrator could call the same {@link Prove} in-process:
+     * two queues around one workspace are no queue at all. {@link LocalRunner} owns the one queue, and
+     * both callers go through it.
+     *
+     * @param ownsRunner whether {@link #close()} also shuts the runner down. False when a caller
+     *                   (the single-container deployment) is serving this on the side and still needs
+     *                   its prover afterwards.
+     */
+    static RunnerServer start(String host, int port, LocalRunner runner, boolean ownsRunner)
+            throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress(host, port), 0);
 
         // VIRTUAL THREADS, for the reason the engine documents: /run_test blocks for up to 90 minutes,
@@ -87,24 +96,10 @@ final class RunnerServer implements AutoCloseable {
         ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
         server.setExecutor(executor);
 
-        // BUILDS ARE SERIALISED, and this single thread is the whole mechanism — the JS chained them on
-        // one promise (`BUILDING = BUILDING.then(...)`). It has to be ONE thread and it has to be FIFO:
-        // there is one cached workspace per repository, so two concurrent proves would patch each
-        // other's tree and both report about a file neither of them wrote. A fair lock would also
-        // serialise, but a queue is what the JS had, and a caller's turn arriving in order is the
-        // difference between a slow prove and a lost one.
-        //
-        // A PLATFORM thread, not a virtual one: this thread does nothing but wait on a child process it
-        // pins for twenty minutes at a time, which is the case virtual threads buy nothing for.
-        ExecutorService builds = Executors.newSingleThreadExecutor(
-                r -> Thread.ofPlatform().name("fsm-runner-build").unstarted(r));
-
-        Workspace workspace = new Workspace(cache, token, exec);
-        RunnerServer runner = new RunnerServer(server, executor, builds, workspace,
-                new Prove(workspace, exec), jdkRoot);
-        server.createContext("/", runner::handle);
+        RunnerServer wrapper = new RunnerServer(server, executor, runner, ownsRunner);
+        server.createContext("/", wrapper::handle);
         server.start();
-        return runner;
+        return wrapper;
     }
 
     /** The port actually bound — meaningful after starting on port 0, which every test does. */
@@ -147,8 +142,11 @@ final class RunnerServer implements AutoCloseable {
             }
 
             Map<String, Object> reply = switch (path) {
-                case "/fs/read_file" -> workspace.readFile(body);
-                case "/run_test" -> runSerialised(body);
+                case "/fs/read_file" -> runner.readFile(body);
+                // The wait is on a virtual thread, so a queued caller costs a heap object rather than an
+                // OS thread — which is what makes it safe to hold a 90-minute request open while an
+                // earlier marker finishes. The QUEUE itself is LocalRunner's; see its class comment.
+                case "/run_test" -> runner.runTest(body);
                 default -> null;
             };
             Http.sendJson(exchange, reply == null ? 404 : 200, reply == null ? notFound() : reply);
@@ -156,68 +154,16 @@ final class RunnerServer implements AutoCloseable {
             // 200, not 500 — see the class comment. getResponseCode() is -1 until the status line goes
             // out; answering twice would throw and lose the original failure.
             if (exchange.getResponseCode() == -1) {
-                Http.sendJson(exchange, 200, Prove.failure(stack(e)));
+                Http.sendJson(exchange, 200, Prove.failure(LocalRunner.stack(e)));
             }
         } finally {
             exchange.close();
         }
     }
 
-    /**
-     * Queue a prove behind whatever is already building, and wait for it.
-     *
-     * <p>The wait is on a virtual thread, so a queued caller costs a heap object rather than an OS thread
-     * — which is what makes it safe for n8n to hold a 90-minute request open while an earlier marker
-     * finishes.
-     */
-    private Map<String, Object> runSerialised(Object body) {
-        Future<Map<String, Object>> mine = builds.submit(() -> {
-            try {
-                return prove.runTest(body);
-            } catch (RuntimeException e) {
-                // `doRunTest(body).catch(e => ({ok: false, error: String(e.stack).slice(-1500)}))`.
-                // The next queued prove must still run, which is why this is caught inside the task.
-                return Prove.failure(stack(e));
-            }
-        });
-        try {
-            return mine.get();
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            return Prove.failure("interrupted while waiting for the build queue");
-        } catch (ExecutionException e) {
-            // An Error, or a rejection from a shut-down executor. Reported rather than thrown: a caller
-            // that gets a 500 here learns nothing it can put in a Data Table cell.
-            return Prove.failure(stack(e.getCause() == null ? e : e.getCause()));
-        }
-    }
-
-    /**
-     * {@code String(e.stack).slice(-1500)}.
-     *
-     * <p>The LAST 1500 characters, which is the JS's choice and worth keeping even though a Java stack
-     * puts the interesting frame first: the tail is where the frames of THIS service are, under the
-     * JDK's own. The message is on the first line either way, so a trace long enough to be cut has
-     * already told the reader which exception it was.
-     */
-    private static String stack(Throwable t) {
-        StringWriter out = new StringWriter();
-        t.printStackTrace(new PrintWriter(out));
-        return Text.lastChars(out.toString(), Text.STACK);
-    }
-
-    /**
-     * {@code GET /health}.
-     *
-     * <p>{@code jdks} lists the majors actually installed, not the ones the code knows about: the image
-     * builds them one at a time and a failed download used to leave a runner that accepted {@code jdk:
-     * "25"} and then could not compile with it.
-     */
+    /** {@code GET /health} — {@link LocalRunner#health()}, which reports the JDKs actually on disk. */
     private Map<String, Object> health() {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("ok", Boolean.TRUE);
-        out.put("jdks", Build.availableJdks(jdkRoot));
-        return out;
+        return runner.health();
     }
 
     private static Map<String, Object> notFound() {
@@ -228,23 +174,19 @@ final class RunnerServer implements AutoCloseable {
 
     /** {@code fs.mkdirSync(CACHE, {recursive: true})} — the volume may be mounted empty. */
     static void ensureCache(Path cache) {
-        try {
-            Files.createDirectories(cache);
-        } catch (IOException e) {
-            // Refuse to start: a runner whose cache directory cannot be created answers every prove
-            // with a clone failure, which reads as "every repository is broken".
-            throw new UncheckedIOException(e);
-        }
+        LocalRunner.ensureCache(cache);
     }
 
     @Override
     public void close() {
         // Zero-second delay, as the engine does: an interrupted prove is idempotent — the marker is
         // requeued — and waiting would make `docker compose restart` hang for the length of a Maven
-        // build. shutdownNow() interrupts the build thread, which kills the child process it is waiting
-        // on rather than orphaning a Maven that owns the workspace.
+        // build. LocalRunner#close interrupts the build thread, which kills the child process it is
+        // waiting on rather than orphaning a Maven that owns the workspace.
         server.stop(0);
-        builds.shutdownNow();
+        if (ownsRunner) {
+            runner.close();
+        }
         executor.close();
     }
 }

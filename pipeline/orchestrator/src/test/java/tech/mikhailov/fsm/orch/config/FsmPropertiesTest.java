@@ -56,6 +56,9 @@ import tech.mikhailov.fsm.orch.web.SourceWindowService;
         "fsm.github.timeout-ms=11000",
         "fsm.github.attempts=6",
         "fsm.github.retry-delay-ms=1500",
+        // http, because these five runner knobs are the REMOTE client's — under the default
+        // `local` there is no base URL, no connect budget and nothing for them to reach.
+        "fsm.runner.mode=http",
         "fsm.runner.base-url=http://runner.example.test:9099",
         "fsm.runner.timeout=PT13M",
         "fsm.runner.connect-attempts=4",
@@ -140,7 +143,8 @@ class FsmPropertiesTest {
         assertThat(client.connectRetryDelay()).isEqualTo(Duration.ofMillis(2500));
         // …and the dashboard's source window reads the same base, or the code a reviewer is shown
         // comes from a different checkout from the one the prove was run against.
-        assertThat(sourceWindow.baseUrl()).isEqualTo("http://runner.example.test:9099");
+        assertThat(sourceWindow.describe())
+                .isEqualTo("http://runner.example.test:9099/fs/read_file");
     }
 
     @Test

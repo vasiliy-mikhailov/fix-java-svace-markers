@@ -25,8 +25,14 @@ public final class Runner {
         // the failure when it is needed is a git error in `error`, not a crash here.
         String token = env("GITHUB_TOKEN", "");
 
+        // WHERE MAVEN RESOLVES FROM, and it is a RUN-TIME setting rather than an image layer. Unset
+        // means Central, which is what a machine with nothing but Docker gets and what must work; set
+        // means that URL, whatever host it names. See MavenSettings for the defect this replaces.
+        String mirror = System.getenv(MavenSettings.MIRROR_ENV);
+
         RunnerServer.ensureCache(cache);
-        RunnerServer server = RunnerServer.start(host, port, cache, token);
+        RunnerServer server = RunnerServer.start(host, port,
+                LocalRunner.open(cache, token, mirror), true);
         // Compose sends SIGTERM on `down` and `restart`. Without this hook the JVM dies with the
         // listening socket still open in the kernel and the next start can lose the race for the port,
         // which reads as "the runner did not come back up" rather than as a shutdown bug. It also kills
@@ -39,6 +45,7 @@ public final class Runner {
         // change or a stripped `env` breaks without breaking anything visible.
         System.out.println("fsm-runner listening on " + host + ":" + server.port()
                 + " (cache " + cache + ", java " + Runtime.version()
+                + ", maven " + (mirror == null || mirror.isBlank() ? "central" : mirror)
                 + ", " + PathEncoding.describe() + ")");
         if (!PathEncoding.spellsNonAscii()) {
             // Not fatal: the runner still proves every marker whose paths are ASCII, which is nearly all

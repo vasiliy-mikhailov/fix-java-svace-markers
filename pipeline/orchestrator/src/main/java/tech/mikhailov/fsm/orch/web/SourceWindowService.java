@@ -6,8 +6,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
 import tech.mikhailov.fsm.lib.Json;
-import tech.mikhailov.fsm.orch.client.HttpTransport;
-import tech.mikhailov.fsm.orch.config.FsmProperties;
+import tech.mikhailov.fsm.orch.client.SourceReader;
 
 /**
  * A window of source around a marker's line, from the java-runner's cached read-only checkout —
@@ -31,34 +30,34 @@ public class SourceWindowService {
     /** Lines either side of the marker — a screenful, not a whole file. */
     static final int CONTEXT = 14;
 
-    /** The runner's read-only path. It never touches the build workspace. */
-    static final String PATH = "/fs/read_file";
-
     /**
-     * Long enough for a cold clone, short enough that a dead runner does not hang the modal. server.js
-     * used the same 60s; the marker tab renders immediately and fills this in when it arrives, so the
-     * cost of the wait is a placeholder rather than a blocked page.
+     * WHERE THE READ GOES IS NOT DECIDED HERE ANY MORE, and that is the fix rather than a tidy-up.
+     *
+     * <p>This class used to hold an {@link tech.mikhailov.fsm.orch.client.HttpTransport} and re-derive
+     * the runner's base URL from {@code fsm.runner.base-url} itself — a SECOND copy of an address whose
+     * first copy already had a history of going stale. Worse, it is the copy whose failure is silent: a
+     * source window pointed at a container that is not in the stack renders "source unavailable" on
+     * every marker while every verdict stays correct and nothing goes red. With the prover in this
+     * process by default, that is exactly the shape the mistake would have taken.
+     *
+     * <p>So the reader is chosen once, beside the prove client, and the two move together.
      */
-    static final long TIMEOUT_MS = 60_000;
+    private final SourceReader reader;
 
-    private final HttpTransport transport;
-    private final String baseUrl;
-
-    public SourceWindowService(HttpTransport transport, FsmProperties properties) {
-        this.transport = transport;
-        String url = properties.runner().baseUrl();
-        this.baseUrl = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+    public SourceWindowService(SourceReader reader) {
+        this.reader = reader;
     }
 
     /**
-     * The runner this reads source from, exposed so a test can prove the knob reached this object.
+     * Where source is read from, exposed so a test can prove the choice reached this object — and so the
+     * "source unavailable" line can name it.
      *
-     * <p>It has to be the SAME runner the prove posted to, or the code a reviewer is shown comes from a
+     * <p>It has to be the SAME runner the prove ran in, or the code a reviewer is shown comes from a
      * different checkout from the one that was judged — which is the whole reason this service exists
      * rather than a second GitHub fetch.
      */
-    public String baseUrl() {
-        return baseUrl;
+    public String describe() {
+        return reader.describe();
     }
 
     /**
@@ -82,21 +81,14 @@ public class SourceWindowService {
             body.put("repo", repo);
             body.put("branch", branch == null || branch.isBlank() ? "main" : branch);
             body.put("path", file);
-
-            Map<String, Object> options = new LinkedHashMap<>();
-            options.put("method", "POST");
-            options.put("url", baseUrl + PATH);
-            options.put("body", body);
-            options.put("json", true);
-            options.put("timeout", TIMEOUT_MS);
-            reply = transport.request(options);
+            reply = reader.read(body);
         } catch (Exception e) {
             // Including InterruptedException: the flag is restored so a shutting-down container is not
             // left with a thread that has swallowed its interrupt.
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            return error("the java-runner at " + baseUrl + PATH + " could not be read: " + message(e));
+            return error("the runner at " + reader.describe() + " could not be read: " + message(e));
         }
 
         // The runner answers {"error": "..."} with a 200 for a path that escapes the repo, a file that

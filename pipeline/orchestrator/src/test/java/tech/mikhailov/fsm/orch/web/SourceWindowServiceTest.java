@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.entry;
 
 import java.io.IOException;
 import java.net.ConnectException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,8 +13,8 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import tech.mikhailov.fsm.orch.client.HttpSourceReader;
 import tech.mikhailov.fsm.orch.client.HttpTransport;
-import tech.mikhailov.fsm.orch.config.FsmProperties;
 
 /**
  * THE CODE SHOWN NEXT TO A MARKER MUST BE THE CODE THE MARKER IS ABOUT.
@@ -278,7 +277,7 @@ class SourceWindowServiceTest {
         RunnerStub runner = RunnerStub.answering(content(fileOf(10)));
         SourceWindowService service = serviceOn(RUNNER + "/", runner);
 
-        assertThat(service.baseUrl()).isEqualTo(RUNNER);
+        assertThat(service.describe()).isEqualTo(READ);
 
         service.window("org/repo", "main", "A.java", 5);
         assertThat(runner.seen).containsEntry("url", READ);
@@ -296,7 +295,7 @@ class SourceWindowServiceTest {
         RunnerStub runner = RunnerStub.answering(content(fileOf(10)));
         SourceWindowService service = serviceOn(RUNNER, runner);
 
-        assertThat(service.baseUrl()).isEqualTo(RUNNER);
+        assertThat(service.describe()).isEqualTo(READ);
 
         service.window("org/repo", "main", "A.java", 5);
         assertThat(runner.seen).containsEntry("url", READ);
@@ -439,12 +438,10 @@ class SourceWindowServiceTest {
 
     private SourceWindowService serviceOn(String runnerBaseUrl, HttpTransport transport) {
         opened.add(transport);
-        // Only the runner block is read here; the rest are null on purpose, so a component this
-        // service starts reading without being told about fails loudly rather than picking up a
-        // default that looks deliberate.
-        return new SourceWindowService(transport, new FsmProperties(null, null,
-                new FsmProperties.Runner(runnerBaseUrl, Duration.ofMinutes(90), 3, 3000L), null,
-                null, null, null));
+        // The HTTP reader specifically: this class is about what a REMOTE runner's replies are turned
+        // into, so `fsm.runner.mode=http` is the shape under test. The in-process reader has no URL to
+        // get wrong and no transport to fail, which is exactly why it is not exercised here.
+        return new SourceWindowService(new HttpSourceReader(transport, runnerBaseUrl));
     }
 
     /** A file whose Nth line says "line N", so a window off by one is off by a whole line of text. */

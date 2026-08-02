@@ -219,6 +219,13 @@ public record FsmProperties(@DefaultValue Prove prove, @DefaultValue Github gith
      * per-call timeout the prove chain passes, and by {@code SourceWindowService} for the read-only
      * checkout the dashboard renders source from.
      *
+     * @param mode             {@code local} — the prove runs IN THIS PROCESS, which is the default and
+     *                         the whole of the one-container deployment. {@code http} posts it to
+     *                         {@code baseUrl} instead, which is the shape a deployment that wants the
+     *                         build sandbox in its own container keeps. The three settings below apply
+     *                         to {@code http} only; {@code cache} applies to {@code local} only.
+     * @param cache            where the checkouts and build workspaces live when the prove is local —
+     *                         the directory a volume must be mounted on. See {@link #DEFAULT_CACHE}.
      * @param baseUrl          the runner's root — {@code http://fsm-runner:8090} on the fleet
      *                         network. It clones, builds RED, applies the fix and builds GREEN, one
      *                         marker at a time around a single cached workspace.
@@ -241,10 +248,48 @@ public record FsmProperties(@DefaultValue Prove prove, @DefaultValue Github gith
      * @param connectRetryDelayMs how long between those attempts: long enough for a container that is
      *                         still starting to finish binding its port.
      */
-    public record Runner(@DefaultValue(HttpRunnerClient.DEFAULT_BASE_URL) String baseUrl,
+    public record Runner(@DefaultValue(Runner.LOCAL) String mode,
+                         @DefaultValue(Runner.DEFAULT_CACHE) String cache,
+                         @DefaultValue(HttpRunnerClient.DEFAULT_BASE_URL) String baseUrl,
                          @DefaultValue("PT90M") Duration timeout,
                          @DefaultValue("3") int connectAttempts,
                          @DefaultValue("3000") long connectRetryDelayMs) {
+
+        /** The prove runs in this process. One container, no address, and the default. */
+        public static final String LOCAL = "local";
+
+        /** The prove is posted to a runner of its own — the shape the deployment host may keep. */
+        public static final String HTTP = "http";
+
+        /**
+         * WHERE THE CHECKOUTS GO, and the default is deliberately laptop-correct rather than
+         * container-correct — the same choice {@code spring.datasource.url} makes with
+         * {@code ./data/fsm}, and for the same reason: an absolute {@code /cache} would make
+         * {@code mvn spring-boot:run} fail at start-up on a machine where nothing has prepared it.
+         * The IMAGE overrides this with {@code CACHE=/cache}, which is a path it has created and
+         * chowned, and compose mounts a named volume there. {@code DeploymentTest} pins that pairing,
+         * because an unmounted cache is not an error — it is a container layer that silently discards
+         * every checkout and every {@code target/} on the next {@code up -d}.
+         */
+        public static final String DEFAULT_CACHE = "./data/cache";
+
+        /**
+         * Refused at BINDING time rather than left to a conditional, so a typo is a process that will
+         * not start with the value printed — instead of a context missing its {@code RunnerClient} bean
+         * and a stack trace about a dependency nobody configured.
+         */
+        public Runner {
+            if (!LOCAL.equals(mode) && !HTTP.equals(mode)) {
+                throw new IllegalArgumentException("fsm.runner.mode must be '" + LOCAL + "' (the prove "
+                        + "runs in this process, and is the default) or '" + HTTP + "' (it is posted to "
+                        + "fsm.runner.base-url), not '" + mode + "'");
+            }
+        }
+
+        /** @see #LOCAL */
+        public boolean isLocal() {
+            return LOCAL.equals(mode);
+        }
     }
 
     /**

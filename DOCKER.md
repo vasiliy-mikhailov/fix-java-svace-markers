@@ -1,51 +1,49 @@
 # Running it with Docker — three ways
 
-The [README](README.md) quickstart builds the images from source. That is the right default, but it is
-not the only option and it is the slowest one: the runner image provisions five JDKs and Maven, so a
-cold build is long and needs network access to Adoptium, Apache and Maven Central.
+One image, one container. The [README](README.md) quickstart builds it from source; that is the right
+default and it is the slowest one, because the image provisions five JDKs and Maven and a cold build
+needs network access to Adoptium, Apache and Maven Central.
 
 Pick by what the target machine actually has.
 
 | | needs | build time | image transfer |
 |---|---|---|---|
 | **A. Build from source** | git, Docker, internet | long (cold), minutes (warm) | none |
-| **B. Hand over saved images** | Docker only | none | ~2.6 GB |
+| **B. Hand over a saved image** | Docker only | none | ~1.8 GB |
 | **C. Registry** | Docker, a registry | once, by you | pull |
 
-All three end at the same place: three containers, `http://localhost:8085`.
+All three end at the same place: one container, `http://localhost:8085`.
 
 ---
 
 ## A. Build from source
 
-The README quickstart. Use it when the machine has git and internet.
-
 ```bash
 git clone git@github.com:vasiliy-mikhailov/fix-java-svace-markers.git
 cd fix-java-svace-markers/pipeline/deploy
-cp .env.example .env          # fill in QWEN_* and GITHUB_TOKEN
-docker compose build
-docker compose up -d
+cp .env.example .env             # fill in QWEN_* and GITHUB_TOKEN
+docker compose up -d --build
 ```
+
+That is the whole of it. `docker compose ps` shows **one** container, `fsm`.
 
 **If your Maven repository is a mirror on a private Docker network**, `docker compose build` cannot
 reach it — Compose cannot join a network at build time, and BuildKit rejects `--network` for custom
 networks. Use the legacy builder, from the reactor root:
 
 ```bash
-cd ../..                      # the repo root
+cd ..                         # pipeline/
 DOCKER_BUILDKIT=0 docker build --network <your-net> \
   --build-arg MAVEN_MIRROR_URL=http://nexus:8081/repository/maven-public/ \
-  -f pipeline/orchestrator/Dockerfile -t fsm-orchestrator:latest .
+  -t fsm:latest .
 ```
 
-Repeat for `pipeline/engine/Dockerfile` and `pipeline/runner/Dockerfile`. The build context is the
-**reactor root**, not the module directory: `orchestrator` and `runner` resolve
-`tech.mikhailov.fsm:engine` from the reactor and nothing publishes that jar.
+That build argument only affects **the image's own build**. Which repository the *analysed projects*
+resolve from is a separate, runtime setting — see "The Maven mirror" below.
 
 ---
 
-## B. Hand over saved images — no build, no source, no internet
+## B. Hand over a saved image — no build, no source, no internet
 
 Best for giving the pipeline to someone who should not have to care how it is built, or for a machine
 with no route to Maven Central.
@@ -53,8 +51,7 @@ with no route to Maven Central.
 **You, once:**
 
 ```bash
-docker save fsm-engine:latest fsm-orchestrator:latest fsm-runner:latest \
-  | gzip > fsm-images.tar.gz          # ~2.6 GB uncompressed
+docker save fsm:latest | gzip > fsm-image.tar.gz          # ~1.8 GB uncompressed
 ```
 
 Send them that file, plus three small things from the repo:
@@ -69,23 +66,45 @@ prompts/                              # optional: only if they want to edit prom
 **Them:**
 
 ```bash
-docker load < fsm-images.tar.gz
-docker images | grep fsm-            # fsm-engine, fsm-orchestrator, fsm-runner
+docker load < fsm-image.tar.gz
+docker images | grep fsm             # fsm  latest
 
 mkdir -p fsm/pipeline/deploy fsm/data/svace fsm/prompts
 # put docker-compose.yml + .env.example in fsm/pipeline/deploy/, the CSV in fsm/data/svace/
 cd fsm/pipeline/deploy
 cp .env.example .env                 # fill in QWEN_* and GITHUB_TOKEN
-docker compose up -d --no-build      # --no-build is the point: use the loaded images
+docker compose up -d --no-build      # --no-build is the point: use the loaded image
 ```
 
 **Why the directory layout matters.** Compose mounts `../../` as `/data` (read-only) and
-`../../feedback` as `/data/feedback` (writable). Those are relative to the compose file, so the
-compose file must sit **two levels below** the directory holding `data/` and `prompts/`. Keep the
+`../../feedback` as `/data/feedback` (writable). Those are relative to the compose file, so the compose
+file must sit **two levels below** the directory holding `data/` and `prompts/`. Keep the
 `pipeline/deploy/` shape and it works; flatten it and the ingest will not find the CSV.
 
 `--no-build` is not optional. Without it Compose sees a `build:` section, tries to build, and fails on
 a source tree that was never sent.
+
+### …or one `docker run`, if you would rather not have a compose file at all
+
+It works. What the flags buy:
+
+```bash
+docker run -d --name fsm -p 127.0.0.1:8085:8085 \
+  -e QWEN_BASE_URL=... -e QWEN_API_KEY=... -e QWEN_MODEL=... -e GITHUB_TOKEN=... \
+  -v fsm_fsm-orchestrator-state:/state \
+  -v fsm_fsm-runner-cache:/cache \
+  -v "$PWD":/data:ro \
+  fsm:latest
+```
+
+- `/state` — the H2 database. **Without it a run is lost on the next restart, silently**: the container
+  starts, serves, accepts an ingest, works for hours and then reads zero.
+- `/cache` — the checkouts and their `target/` trees. Without it every restart re-clones everything.
+- `/data` — the repository root, so the ingest can read `data/svace/*.csv` and the five prompts.
+
+Compose is still the better answer for anything long-lived, because those volumes, the env file and the
+writable `feedback/` bind are exactly the things you do not want to retype correctly every time. But
+nothing in the image requires it.
 
 ---
 
@@ -94,15 +113,12 @@ a source tree that was never sent.
 The right answer if more than one person runs this.
 
 ```bash
-# you, once per change
-docker tag fsm-engine:latest       ghcr.io/<org>/fsm-engine:latest
-docker tag fsm-orchestrator:latest ghcr.io/<org>/fsm-orchestrator:latest
-docker tag fsm-runner:latest       ghcr.io/<org>/fsm-runner:latest
-docker push ghcr.io/<org>/fsm-engine:latest      # …and the other two
+docker tag fsm:latest ghcr.io/<org>/fsm:latest
+docker push ghcr.io/<org>/fsm:latest
 ```
 
-Then in `docker-compose.yml`, change each `image:` to the registry path and **delete that service's
-`build:` block** — leaving it means `docker compose build` silently rebuilds over the pulled image.
+Then in `docker-compose.yml`, change `image:` to the registry path and **delete the `build:` block** —
+leaving it means `docker compose build` silently rebuilds over the pulled image.
 
 ```bash
 docker compose pull && docker compose up -d
@@ -132,19 +148,48 @@ Dashboard at **http://localhost:8085/**.
 
 ---
 
+## The Maven mirror, which is a runtime setting
+
+The container builds the projects under analysis. Where it resolves their dependencies from is one
+environment variable:
+
+```
+MAVEN_MIRROR_URL=                                                      # -> Maven Central. The default.
+MAVEN_MIRROR_URL=https://nexus.example.com/repository/maven-public/    # -> that mirror
+```
+
+It takes effect on the next `docker compose up -d` — **no rebuild, on an image you did not build.** The
+process writes a `settings.xml` onto the cache volume at start-up and hands it to every `mvn` with `-s`;
+the boot log says which is in force:
+
+```
+[runner] in-process, cache /cache, maven central (no MAVEN_MIRROR_URL)
+[runner] in-process, cache /cache, maven /cache/maven-settings.xml
+```
+
+**Use a public hostname.** A compose-internal name like `nexus:8081` only resolves inside the Docker
+network that stack is on, which is exactly why it cannot be a default — and why it was a bug when it
+was one. The image used to carry a committed `settings.xml` pinning `mirrorOf=*` at `http://nexus:8081`.
+A mirror of `*` is not a cache in front of Central; it is *the only repository Maven will talk to*. So
+on every machine but one, the container started, answered `/healthz`, cloned the repository — and then
+failed every build in hundreds of lines about unresolvable artifacts, which reads as a broken project
+rather than as an image carrying somebody else's infrastructure.
+
+---
+
 ## The model endpoint, which is where this usually goes wrong
 
-The orchestrator makes all five model calls. `QWEN_BASE_URL` must be reachable **from inside the
-orchestrator container**, not from your shell.
+`QWEN_BASE_URL` must be reachable **from inside the container**, not from your shell.
 
 - Model on the host: `http://host.docker.internal:8000` (Docker Desktop) or the host's LAN address.
-- Model in another Compose stack: put the orchestrator on that stack's network — see the `networks:`
-  block in `docker-compose.yml`, which already carries a long comment about exactly this.
+- Model in another Compose stack: put this container on that stack's network. Copy
+  `pipeline/deploy/docker-compose.override.yml.example` to `docker-compose.override.yml` — Compose
+  merges it automatically — and edit the network name.
 
 Check it the way that answers the question:
 
 ```bash
-docker exec fsm-orchestrator curl -s -o /dev/null -w '%{http_code}\n' "$QWEN_BASE_URL"
+docker exec fsm curl -s -o /dev/null -w '%{http_code}\n' "$QWEN_BASE_URL"
 ```
 
 Any status — 200, 401, 404 — means the route exists. Only "connection refused" or "could not resolve"
@@ -153,7 +198,7 @@ is a wiring failure.
 **This matters more than it looks.** The three judging stages fail *closed*: if the model is
 unreachable they return a safe default and answer HTTP 200. You get a green run history, no errors, and
 every marker settling as `needs_review` with a downgraded verdict nobody made. That failure has cost
-this project a full run more than once, which is why the orchestrator names every missing variable in a
+this project a full run more than once, which is why the container names every missing variable in a
 `WARN` on the way up — read that line rather than assuming a healthy start means a working one.
 
 ---
@@ -163,16 +208,53 @@ this project a full run more than once, which is why the orchestrator names ever
 **`.env` is gitignored.** It never moves with a `git pull`, a `git clone` or a `docker save`. A stack
 started without it interpolates every credential to empty and then fails closed as above.
 
-**`FSM_DB_PATH` must be on a volume.** The application default `./data/fsm` is the container's writable
-layer, discarded on the next `up -d`: the stack serves, accepts an ingest, runs for hours and then
-reads zero, with nothing red at any point. The compose file sets it correctly — if you deploy some
-other way, set it yourself.
+**`FSM_DB_PATH` and `CACHE` must be on volumes.** The application defaults (`./data/fsm`,
+`./data/cache`) are the container's writable layer, discarded on the next `up -d`: the stack serves,
+accepts an ingest, runs for hours and then reads zero, with nothing red at any point. The compose file
+sets both correctly — if you deploy some other way, set them yourself.
+
+**No `external:` networks in the committed compose file, and please keep it that way.** It used to
+declare two that exist on one machine, and everywhere else `docker compose up -d` died on its first
+line with *"network mvn-cache declared as external, but could not be found"* — after a build that had
+succeeded. Host-specific wiring goes in `docker-compose.override.yml`, which is gitignored and which
+Compose merges automatically; the committed example is the template.
 
 **`FSM_FEEDBACK=true` writes as uid 10002.** If the host directory is owned by someone else the service
 says so on startup and records nothing. `chown 10002:10002 feedback/`.
 
 **One prover at a time.** `/run_test` is serialised inside one process around one workspace per
-repository, and two processes share no lock. Do not run a second orchestrator against the same runner.
+repository, and two processes share no lock. Do not run a second container against the same cache
+volume.
+
+**The engine service is opt-in.** `docker compose --profile engine up -d engine` publishes the
+judgement on `localhost:8092`, one stage per request, so you can reproduce a single stage against a
+request you wrote by hand instead of a 6-26 hour run around it. Nothing in a run calls it, and it holds
+no secrets — the model endpoint, the Svace endpoint and the GitHub token all arrive in the request.
+
+**Want the prover in its own container after all?** `FSM_RUNNER_MODE=http` plus `FSM_RUNNER_URL` gives
+you exactly the split this deployment used to have. It is a real trade: `/run_test` runs third-party
+build scripts, and a container boundary between them and this pipeline's credentials is stronger than
+the denylist that protects them inside one process.
+
+**You supply the runner, and the same image is one.** There is no `runner` service and no
+`fsm-runner:latest`, but the fat jar carries the module, so Boot's `PropertiesLauncher` starts it:
+
+```bash
+docker run -d --name fsm-split-runner --network fsm_default -e PORT=8090 -e CACHE=/cache \
+  --entrypoint env fsm:latest LC_ALL=C.UTF-8 java \
+  -Dloader.main=tech.mikhailov.fsm.runner.Runner \
+  -cp /app/fsm.jar org.springframework.boot.loader.launch.PropertiesLauncher
+
+FSM_RUNNER_MODE=http FSM_RUNNER_URL=http://fsm-split-runner:8090 docker compose up -d
+docker compose logs fsm | grep '\[runner\]'
+# [runner] http://fsm-split-runner:8090/run_test, up to 5400s per prove, 3 connect attempt(s)
+```
+
+**Read that last line rather than trusting the command.** Both variables have to be listed under
+`environment:` in the compose file or Compose keeps them to itself: for one revision `FSM_RUNNER_MODE`
+was pass-through and `FSM_RUNNER_URL` was not, so this pair switched the mode, dropped the address, and
+sent every prove to a compiled-in `http://fsm-runner:8090` that nothing serves — discovered hours into a
+run as an infrastructure failure. `DeploymentTest` now pins the two to travel together.
 
 ---
 
@@ -184,5 +266,6 @@ docker compose down -v                 # DESTROYS them
 ```
 
 The volumes pin their physical names (`fsm_fsm-orchestrator-state`, `fsm_fsm-runner-cache`), so renaming
-the project or moving the directory does **not** abandon them. `down -v` is the only thing here that
-deletes a completed run.
+the project or moving the directory does **not** abandon them — and neither did collapsing three
+services into one, which is why an existing deployment keeps its run history and its checkouts across
+that change. `down -v` is the only thing here that deletes a completed run.

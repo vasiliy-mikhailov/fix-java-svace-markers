@@ -222,4 +222,46 @@ class ProcTest {
         // aborts a build that was going to succeed and the marker is requeued having burnt the time.
         assertEquals(1_200_000L, Proc.DEFAULT_TIMEOUT_MS);
     }
+
+    /**
+     * THE PROCESS'S CREDENTIALS DO NOT REACH A THIRD-PARTY BUILD, and this was never true before.
+     *
+     * <p>{@link Build#buildCmd} spreads {@code System.getenv()} into the environment of every Maven it
+     * starts — it has to, or Maven loses {@code PATH}, {@code HOME} and its own local repository. The
+     * consequence was that {@code GITHUB_TOKEN}, which the deployment sets on this service so
+     * {@link Workspace} can clone, was ALSO in the environment of every {@code mvn} run over somebody
+     * else's {@code pom.xml}. A build plugin is arbitrary code — {@code exec-maven-plugin},
+     * {@code maven-antrun-plugin}, or any test the prove runs — and reading an environment variable is
+     * the easiest thing it can do. So the token was readable by every repository this pipeline judged,
+     * separate container or not.
+     *
+     * <p>THAT IS WHY THE STRIP IS HERE AND NOT IN {@code buildCmd}: {@code buildCmd} is one of several
+     * ways a child is started, and this is the single place all of them pass through — the same
+     * argument the locale strip above is made on.
+     *
+     * <p>{@link Workspace#TOKEN_ENV} IS DELIBERATELY NOT ON THE LIST. It is the runner's own name for the
+     * clone credential and it is never in this process's environment: {@link Workspace#gitEnv} builds it
+     * per command, so it reaches git and nothing else. Adding it here would break every clone while
+     * protecting nothing.
+     */
+    @Test
+    void theProcessesOwnSecretsAreStrippedFromEveryChild() {
+        Map<String, String> env = new LinkedHashMap<>();
+        env.put("PATH", "/usr/bin:/bin");
+        env.put("GITHUB_TOKEN", "ghp_secret");
+        env.put("QWEN_API_KEY", "sk-secret");
+        env.put("SVACE_TOKEN", "svace-secret");
+        env.put("FSM_DB_PASSWORD", "h2-secret");
+        env.put(Workspace.TOKEN_ENV, "the-clone-credential");
+        env.put("MAVEN_OPTS", "-Xmx2g");
+
+        Proc.Result r = Proc.execFile(
+                List.of("/bin/sh", "-c", "echo [$GITHUB_TOKEN][$QWEN_API_KEY][$SVACE_TOKEN]"
+                        + "[$FSM_DB_PASSWORD][$" + Workspace.TOKEN_ENV + "][$MAVEN_OPTS]"),
+                null, env, 10_000);
+
+        assertEquals("[][][][][the-clone-credential][-Xmx2g]\n", r.out(),
+                "a hostile pom.xml can read any variable the build inherits; the clone credential is "
+                        + "the one that must still arrive, because git is a child too");
+    }
 }

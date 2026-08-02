@@ -33,9 +33,23 @@ final class Prove {
     private final Workspace workspace;
     private final Proc.Exec exec;
 
+    /**
+     * The Maven settings file this deployment's mirror was written to, or null for Central.
+     *
+     * <p>Held rather than read from the environment at each build, because it is decided ONCE on the way
+     * up — see {@link MavenSettings}. A prove that re-read it would be a prove whose repository could
+     * change halfway through a run.
+     */
+    private final Path mavenSettings;
+
     Prove(Workspace workspace, Proc.Exec exec) {
+        this(workspace, exec, null);
+    }
+
+    Prove(Workspace workspace, Proc.Exec exec, Path mavenSettings) {
         this.workspace = workspace;
         this.exec = exec;
+        this.mavenSettings = mavenSettings;
     }
 
     /** A build plus the JDK it settled on, which may not be the one it was asked for. */
@@ -157,13 +171,13 @@ final class Prove {
      * to compile under — WebGoat needs 25 and asks for it by failing.
      */
     private Built build(Path ws, String jdk, String module, String buildTool, String testClass) {
-        Build.Command command = Build.buildCmd(ws, jdk, module, buildTool, testClass);
+        Build.Command command = Build.buildCmd(ws, jdk, module, buildTool, testClass, mavenSettings);
         Proc.Result r = exec.run(command.cmd(), ws, command.env(), Proc.DEFAULT_TIMEOUT_MS);
         String want = Build.requiredJdk(r.out(), jdk);
         if (want == null) {
             return new Built(r.code(), r.out(), jdk);
         }
-        Build.Command retry = Build.buildCmd(ws, want, module, buildTool, testClass);
+        Build.Command retry = Build.buildCmd(ws, want, module, buildTool, testClass, mavenSettings);
         Proc.Result second = exec.run(retry.cmd(), ws, retry.env(), Proc.DEFAULT_TIMEOUT_MS);
         // Only ONE retry, and the second run's output replaces the first: a module that demands a third
         // JDK is a project misconfiguration, and looping would spend an hour of the shared workspace

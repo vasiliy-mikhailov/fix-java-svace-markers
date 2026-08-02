@@ -39,7 +39,7 @@ orchestrator Dockerfile deliberately copies only `orchestrator/`, `engine/` and 
 The orchestrator names the source of all five stages on the way up, one line each:
 
 ```
-docker compose logs fsm-orchestrator | grep '\[prompts\]'
+docker compose logs fsm | grep '\[prompts\]'
 
 [prompts] directory /data/prompts — a file here overrides the DEFAULT_ fallback
 [prompts] reproducer <- FILE /data/prompts/reproducer.txt (2895 chars)

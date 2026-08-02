@@ -144,16 +144,42 @@ fsm:
     # overridden.
     auto-server: ${FSM_DB_AUTO_SERVER:false}
   runner:
-    # fsm-runner on the compose default network. It clones, builds RED, applies the fix and builds
-    # GREEN, one marker at a time around a single cached workspace.
+    # WHERE THE PROVE RUNS, and this one line is the whole of the single-container deployment.
+    #
+    #   local (default) — in THIS process. tech.mikhailov.fsm.runner.LocalRunner is the same Prove,
+    #                     Workspace and Build the separate service ran, behind the same single-flight
+    #                     queue, called directly. One image, one `docker compose up -d`, and NO ADDRESS
+    #                     to get wrong.
+    #   http            — posted to `base-url` below, which is exactly what this was before. Keep it
+    #                     when you want the build sandbox behind a container boundary: /run_test clones
+    #                     third-party repositories and runs their build scripts, and `local` puts that
+    #                     in the same process as the H2 store. (Proc strips this process's credentials
+    #                     out of every child either way — see tech.mikhailov.fsm.runner.Proc.SECRETS —
+    #                     but a denylist is not a container.)
+    #
+    # An unknown value REFUSES TO START, naming both, rather than leaving the context without a
+    # RunnerClient and failing on a dependency nobody configured.
+    mode: ${FSM_RUNNER_MODE:local}
+    # WHERE THE CHECKOUTS GO when the prove is local — the build workspaces and the read-only trees the
+    # dashboard's source window renders. `local` ONLY; ignored under `http`, where they live in the
+    # runner container's own volume.
+    #
+    # The default is relative and therefore laptop-correct, exactly as spring.datasource.url's
+    # ./data/fsm is, and it is a DATA-LOSS BUG in a container for the same reason: an unmounted path is
+    # the writable layer, so every `docker compose up -d` throws away every checkout and every target/
+    # behind it — minutes per repository, silently, on a run that is 282 markers long. The image sets
+    # CACHE=/cache (a path it created and chowned) and compose mounts a named volume there;
+    # DeploymentTest pins that pairing.
+    cache: ${CACHE:./data/cache}
+    # WHERE THE PROVE IS POSTED under `mode: http`, and read by nothing under `local`.
     #
     # THIS DEFAULT SAID `fsm-java-runner` FOR A WHILE AFTER THAT CONTAINER WAS DELETED, which is worth
-    # a line because nothing catches it: the address is written here, in deploy/docker-compose.yml as the
-    # FSM_RUNNER_URL passthrough, and in HttpRunnerClient.DEFAULT_BASE_URL as the last fallback — and
-    # none of the three is read until a marker is actually proved. The stack starts, /healthz is green,
-    # the schedule fires, and six hours in the first prove spends three connect attempts on a name
-    # nothing serves and is filed as an infrastructure failure. DeploymentTest pins all three together
-    # and pins this one to a service that exists in the compose file.
+    # a line because it is the failure `mode: local` deletes outright: the address was written here, in
+    # deploy/docker-compose.yml as an FSM_RUNNER_URL passthrough, and in
+    # HttpRunnerClient.DEFAULT_BASE_URL as the last fallback — and none of them is read until a marker
+    # is actually proved. The stack starts, /healthz is green, the schedule fires, and six hours in the
+    # first prove spends three connect attempts on a name nothing serves and is filed as an
+    # infrastructure failure. DeploymentTest still pins the two remaining copies to each other.
     base-url: ${FSM_RUNNER_URL:http://fsm-runner:8090}
     # ISO-8601, and the ONLY knob for this number — the prove chain passes it to every /run_test call
     # and the client uses it as its own default. 90 minutes = clone + two Maven builds at the runner's
@@ -362,6 +388,19 @@ spring:
     username: sa
     password: ""
 fsm:
+  runner:
+    # THE MODE IS NOT OVERRIDDEN HERE, and that omission is deliberate. `local` is what production runs
+    # and it is therefore what the contexts under test must resolve to — a test profile that pinned
+    # `http` would leave the default this whole deployment rests on unexercised by every Spring test in
+    # the suite, and TheProverIsChosenByConfigurationTest could not assert it at all.
+    #
+    # What IS overridden is where the checkouts would go. `local` creates its cache directory on the way
+    # up — correctly, because a runner whose cache is unwritable answers every prove with a clone
+    # failure — and the production default resolves to ./data/cache in the module directory. Under
+    # target/ it is thrown away by `mvn clean` like everything else a build produces. No test in this
+    # suite ever asks this runner to prove anything: the ones that exercise the chain script their own
+    # RunnerClient, so nothing is ever cloned or built into it.
+    cache: ./target/test-cache/workspaces
   comments:
     # UNDER target/, not /data. The journal is ON by default — deliberately, see above — and the default
     # path is a container mount that does not exist on a developer's machine, so a test run would log an

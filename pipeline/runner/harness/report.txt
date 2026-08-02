@@ -1,4 +1,4 @@
-CASES 23851   IDENTICAL 23082   DIVERGENT 769
+CASES 23401   IDENTICAL 22656   DIVERGENT 745
   wsNorm            458/458    identical
   applyEdit       16943/17524  identical   <-- DIVERGENT
   applyEditCoerced      9/11     identical   <-- DIVERGENT
@@ -7,14 +7,13 @@ CASES 23851   IDENTICAL 23082   DIVERGENT 769
   summarize         541/543    identical   <-- DIVERGENT
   requiredJdk       758/758    identical
   keyFor             15/15     identical
-  tail                9/40     identical   <-- DIVERGENT
-  lease             450/450    identical
+  tail               33/40     identical   <-- DIVERGENT
   buildCmd         1510/1510   identical
   outcome           417/433    identical   <-- DIVERGENT
   readFile           42/42     identical
   keyForCoerced     108/108    identical
 
-DIVERGENCE KINDS: 15   (distinct value pairs: 443)
+DIVERGENCE KINDS: 14   (distinct value pairs: 438)
 
 [1] applyEdit | out.text | s -> s
     581 field difference(s) in 326 distinct value pair(s)
@@ -64,19 +63,7 @@ DIVERGENCE KINDS: 15   (distinct value pairs: 443)
         JS   : s:path escapes workspace
         JAVA : z
 
-[5] tail | out.last1500 | s -> s
-    30 field difference(s) in 5 distinct value pair(s)
-    - tail: exactly6000 n=null
-        JS   : s:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz…(1502)
-        JAVA : s:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz…(1501)
-    - tail: exactly6000 n=0
-        JS   : s:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz…(1502)
-        JAVA : s:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz…(1501)
-    - tail: exactly6000 n=1
-        JS   : s:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz…(1502)
-        JAVA : s:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz…(1501)
-
-[6] fixTarget | out.path | s -> null
+[5] fixTarget | out.path | s -> null
     27 field difference(s) in 5 distinct value pair(s)
     - fixTarget: ws=/cache/ab12cd34ef56 p="a\u0000b.java" test=
         JS   : s:/cache/ab12cd34ef56/a\u0000b.java
@@ -88,7 +75,7 @@ DIVERGENCE KINDS: 15   (distinct value pairs: 443)
         JS   : s:/cache/ab12cd34ef56/a\u0000b.java
         JAVA : z
 
-[7] fixTarget | out.error | null -> s
+[6] fixTarget | out.error | null -> s
     27 field difference(s) in 1 distinct value pair(s)
     - fixTarget: ws=/cache/ab12cd34ef56 p="a\u0000b.java" test=
         JS   : z
@@ -100,7 +87,7 @@ DIVERGENCE KINDS: 15   (distinct value pairs: 443)
         JS   : z
         JAVA : s:file not found
 
-[8] fixTarget | out.error | s -> s
+[7] fixTarget | out.error | s -> s
     26 field difference(s) in 2 distinct value pair(s)
     - fixTarget: ws=/ p="src/test/java/a/BTest.java" test=
         JS   : s:path escapes workspace
@@ -112,7 +99,7 @@ DIVERGENCE KINDS: 15   (distinct value pairs: 443)
         JS   : s:path escapes workspace
         JAVA : s:refuses to edit a test file (fixer may not touch the test)
 
-[9] outcome | out.tests | s -> s
+[8] outcome | out.tests | s -> s
     16 field difference(s) in 1 distinct value pair(s)
     - outcome: count bigger than a long since=0 out=
         JS   : s:junit-xml: tests=100000000000000000000 failures=0 errors=0
@@ -124,7 +111,7 @@ DIVERGENCE KINDS: 15   (distinct value pairs: 443)
         JS   : s:junit-xml: tests=100000000000000000000 failures=0 errors=0
         JAVA : s:junit-xml: tests=9223372036854775807 failures=0 errors=0
 
-[10] outcome | out.ran | n -> n
+[9] outcome | out.ran | n -> n
     16 field difference(s) in 1 distinct value pair(s)
     - outcome: count bigger than a long since=0 out=
         JS   : n:100000000000000000000
@@ -136,7 +123,7 @@ DIVERGENCE KINDS: 15   (distinct value pairs: 443)
         JS   : n:100000000000000000000
         JAVA : n:9223372036854775807
 
-[11] tail | out.tail | s -> s
+[10] tail | out.tail | s -> s
     7 field difference(s) in 7 distinct value pair(s)
     - tail: short n=0
         JS   : s:...(truncated)...\u000aabc
@@ -148,7 +135,7 @@ DIVERGENCE KINDS: 15   (distinct value pairs: 443)
         JS   : s:...(truncated)...\u000azzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz…(6026)
         JAVA : s:...(truncated)...\u000a
 
-[12] fixTarget | out.edit_error | s -> null
+[11] fixTarget | out.edit_error | s -> null
     4 field difference(s) in 2 distinct value pair(s)
     - fixTarget: ws=/ p="../etc/passwd" test=
         JS   : s:../etc/passwd: path escapes workspace
@@ -160,7 +147,7 @@ DIVERGENCE KINDS: 15   (distinct value pairs: 443)
         JS   : s:/../etc/passwd: path escapes workspace
         JAVA : z
 
-[13] applyEditCoerced | out | null -> tree
+[12] applyEditCoerced | out | null -> tree
     2 field difference(s) in 2 distinct value pair(s)
     - applyEditCoerced: old explicitly null, cur never says it
         JS   : z
@@ -169,7 +156,7 @@ DIVERGENCE KINDS: 15   (distinct value pairs: 443)
         JS   : z
         JAVA : ["o",["error","z"],["text","s:undefined\n"],["note","s:matched ignoring whitespace/line-wrapping"]]
 
-[14] applyEditCoerced | threw | s -> null
+[13] applyEditCoerced | threw | s -> null
     2 field difference(s) in 1 distinct value pair(s)
     - applyEditCoerced: old explicitly null, cur never says it
         JS   : s:TypeError
@@ -178,7 +165,7 @@ DIVERGENCE KINDS: 15   (distinct value pairs: 443)
         JS   : s:TypeError
         JAVA : z
 
-[15] summarize | out.ran | n -> n
+[14] summarize | out.ran | n -> n
     2 field difference(s) in 2 distinct value pair(s)
     - summarize: #14
         JS   : n:100000000000000000000

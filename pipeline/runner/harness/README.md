@@ -59,9 +59,15 @@ they were children of one shell.
 
 ## The baseline: 745 divergences, and why each one is a decision
 
-`CASES 23851  IDENTICAL 23106  DIVERGENT 745`, in 14 kinds. **Every divergence has one of the seven
+`CASES 23401  IDENTICAL 22656  DIVERGENT 745`, in 14 kinds. **Every divergence has one of the seven
 causes below, and each is a decision somebody wrote down. A divergence that does not reduce to one of
 them is a regression, whatever the totals say.**
+
+> The corpus was 23 851 until 2026-08-01, when `/lease` and `/lease/release` were deleted with
+> `Lease.java` and the 450-case `lease` family went with them. They were 450/450 IDENTICAL, so no
+> divergence was hidden by their removal — **DIVERGENT is still 745**, which is the number that matters.
+> `DifferentialHarnessTest` hardcodes 23 401 precisely so a corpus that quietly shrinks cannot
+> re-record its way to green.
 
 - **581 `applyEdit`** — `new_str` containing `$&`, `$$`, `` $` `` or `$'`, and ONLY where the match was
   EXACT, because that is the path the JS ran through `String.prototype.replace`, which expands them.

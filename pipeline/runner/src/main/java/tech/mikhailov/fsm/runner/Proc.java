@@ -88,6 +88,8 @@ final class Proc {
         }
         // …AND THE LOCALE COMES BACK OUT, on both paths. See the comment on isLocale.
         builder.environment().keySet().removeIf(Proc::isLocale);
+        // …AND SO DO THIS PROCESS'S CREDENTIALS. See SECRETS.
+        builder.environment().keySet().removeIf(SECRETS::contains);
 
         Process process;
         try {
@@ -170,6 +172,36 @@ final class Proc {
     static boolean isLocale(String name) {
         return "LANG".equals(name) || "LANGUAGE".equals(name) || name.startsWith("LC_");
     }
+
+    /**
+     * THE PIPELINE'S CREDENTIALS, BY NAME, REMOVED FROM EVERY CHILD.
+     *
+     * <p>WHAT THIS FIXES, AND IT WAS TRUE BEFORE THE SERVICES WERE MERGED. {@link Build#buildCmd}
+     * spreads {@code System.getenv()} into the environment of every Maven it starts — it has to, or
+     * Maven loses {@code PATH}, {@code HOME} and its own local repository. The deployment sets
+     * {@code GITHUB_TOKEN} on this process so {@link Workspace} can clone. Between those two facts, the
+     * token was in the environment of every {@code mvn} run over somebody else's {@code pom.xml}, and a
+     * build plugin — {@code exec-maven-plugin}, {@code maven-antrun-plugin}, or any test the prove runs
+     * — is arbitrary code for which reading an environment variable is the easiest thing there is. A
+     * separate container never protected against that: the token was INSIDE the container the builds
+     * ran in.
+     *
+     * <p>It matters more now, because the merged process also holds the model key, the Svace token and
+     * the H2 password. None of them is any use to a build of a third-party repository, so none of them
+     * is given to one.
+     *
+     * <p>{@link Workspace#TOKEN_ENV} IS DELIBERATELY ABSENT FROM THIS LIST. It is this service's own name
+     * for the clone credential and it is never in the process environment: {@link Workspace#gitEnv}
+     * constructs it per command, so it reaches {@code git} and nothing else. Stripping it here would
+     * break every clone of a private repository while protecting nothing.
+     *
+     * <p>A DENYLIST IS NOT A SANDBOX, and this comment should not be read as claiming otherwise. It
+     * closes the one path that was actually open. A deployment that needs a real boundary between its
+     * secrets and the code under test runs the prover in its own container —
+     * {@code fsm.runner.mode=http}, which is still supported for exactly this reason.
+     */
+    static final java.util.Set<String> SECRETS = java.util.Set.of(
+            "GITHUB_TOKEN", "QWEN_API_KEY", "SVACE_TOKEN", "FSM_DB_PASSWORD");
 
     /**
      * Kill the process AND EVERYTHING UNDER IT.

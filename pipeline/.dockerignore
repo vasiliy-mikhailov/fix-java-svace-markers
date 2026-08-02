@@ -1,6 +1,6 @@
-# The build context for the two REACTOR-ROOT images — orchestrator/Dockerfile and runner/Dockerfile,
-# both of which are built with `context: ..` because their modules resolve `tech.mikhailov.fsm:engine`
-# from the reactor. Those builds COPY named poms and named src/ trees, so nothing here changes what ends
+# The build context for THE image — ./Dockerfile, built with `context: .` (this directory, the reactor
+# root) because `orchestrator` resolves `tech.mikhailov.fsm:engine` AND `tech.mikhailov.fsm:runner`
+# from the reactor. That build COPYs named poms and named src/ trees, so nothing here changes what ends
 # up in an image; what it changes is how much of this worktree is shipped to the daemon first. Without
 # it that is ~130 MB of build output, differential-harness fixtures and node_modules per build, which is
 # most of the wall clock of an otherwise cached build.
@@ -29,7 +29,10 @@
 **/__pycache__/
 
 # Live state, not source: n8n's sqlite database and Data Tables, and the orchestrator's default-path H2
-# store from a `mvn spring-boot:run` in that directory. (The directory is `deploy/` now; `n8n-data` is
+# store from a `mvn spring-boot:run` in that directory — and, since the prover moved into that process,
+# its default-path checkout cache as well: fsm.runner.cache defaults to ./data/cache, so a local run
+# leaves a couple of dozen cloned third-party repositories under orchestrator/data/. Those are hundreds
+# of megabytes that must never reach a build context. (The directory is `deploy/` now; `n8n-data` is
 # the basename n8n itself used, so it stays.)
 deploy/n8n-data/
 orchestrator/data/

@@ -1,5 +1,17 @@
 # fix-java-svace-markers-spring — handoff
 
+> ## SUPERSEDED. This describes a stack that no longer exists — read [README.md](README.md) instead.
+>
+> Written 2026-07-27 as a to-do list, and **the work in it is done**. Everything below assumes the n8n
+> deployment it was written against: `fsm-n8n`, `fsm-java-runner` and `fsm-dashboard` containers, `gen_*.py`
+> workflow generators, n8n Data Tables, and the runner's `/lease` route. **None of those exist.** The
+> pipeline was ported to Java in July 2026 and the three services were then merged into one: today
+> `deploy/docker-compose.yml` declares a single running service, `fsm`, with no Node, no n8n, no Python,
+> and `/lease` was deleted on 2026-08-01 with `Lease.java`.
+>
+> It is kept as the record of what was asked for and why — the goal statement below is still the goal —
+> not as instructions. Every command, container name, port and file path in it is stale.
+
 **Written 2026-07-27. For a fresh session picking this up. This is a to-do list, ordered.**
 
 ## The goal
