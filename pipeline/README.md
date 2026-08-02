@@ -48,7 +48,7 @@ builder. Without it the build fails minutes in with `nexus: No address associate
 ## Tests
 
 ```bash
-mvn -B test                        # 1727 tests across the three modules
+mvn -B test                        # 1634 tests across the three modules
 orchestrator/playwright/run.sh     # the browser suite, inside the Playwright image
 ```
 

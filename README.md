@@ -94,7 +94,7 @@ you which came from a file and which fell back to a compiled-in default:
 ```
 
 **`pipeline/engine/src/main/java/tech/mikhailov/fsm/nodes/`** — the ten decision classes. They are pure
-functions over maps with no I/O, which is why they have 900 tests and why you can call one from a unit
+functions over maps with no I/O, which is why they have 901 tests and why you can call one from a unit
 test without a container.
 
 ---
@@ -122,7 +122,7 @@ Set `FSM_PROVE_SCHEDULE=true` to have it drain on a timer instead of on demand.
 
 ```bash
 cd pipeline
-mvn -B test            # 1727 tests across engine, orchestrator, runner
+mvn -B test            # 1634 tests across engine (901), orchestrator (558), runner (175)
 ```
 
 The **browser tests are deliberately not in that run** — they need the browsers that ship in the
