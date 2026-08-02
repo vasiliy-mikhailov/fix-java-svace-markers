@@ -269,7 +269,13 @@ public final class PrepProver {
         // GitHub answers a User-Agent-less request with 403 and an unauthenticated one with 60
         // requests an hour and no private repos at all. Either way default_branch comes back absent
         // for every row, and every marker in the run is recorded against an empty branch.
-        headers.put("User-Agent", "n8n-fsm");
+        //
+        // The NAME is addressed to a repository owner reading their access log: it says what is
+        // reading their source and why. It was "n8n-fsm" until 2026-08-02 — the name of a workflow
+        // runner that has not executed anything here since July, which told that reader nothing.
+        // Changing it is a deliberate divergence from the retired JavaScript; see
+        // harness/README.md, "Re-baselines".
+        headers.put("User-Agent", "svace-marker-fixer");
         headers.put("Accept", "application/vnd.github+json");
         headers.put("Authorization", "Bearer " + JsValue.string(token));
         // One short-lived call per suspicion; a pooled connection to api.github.com outlives the run

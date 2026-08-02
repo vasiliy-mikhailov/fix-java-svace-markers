@@ -202,11 +202,12 @@ class OutboundTest {
         // JDK is already handling; the header it can send has to still arrive.
         Map<String, Object> headers = new LinkedHashMap<>();
         headers.put("Connection", "close");
-        headers.put("User-Agent", "n8n-fsm");
+        headers.put("User-Agent", "svace-marker-fixer");
 
         outbound.request(options("headers", headers));
 
-        assertEquals("n8n-fsm", received.get(0).getRequestHeaders().getFirst("User-Agent"));
+        assertEquals("svace-marker-fixer",
+                received.get(0).getRequestHeaders().getFirst("User-Agent"));
     }
 
     @Test
@@ -387,12 +388,14 @@ class OutboundTest {
         reply = "{\"default_branch\":\"develop\"}";
 
         Object r = outbound.fetch(new PrepProver.LookupRequest(base + "/repos/o/r",
-                Map.of("User-Agent", "n8n-fsm", "Authorization", "Bearer ghp_x"), true, 10_000));
+                Map.of("User-Agent", "svace-marker-fixer", "Authorization", "Bearer ghp_x"),
+                true, 10_000));
 
         assertEquals("develop", Json.get(r, "default_branch"),
                 "hardcoding 'main' destroyed every finding on a repo that uses develop");
         assertEquals("Bearer ghp_x", received.get(0).getRequestHeaders().getFirst("Authorization"));
-        assertEquals("n8n-fsm", received.get(0).getRequestHeaders().getFirst("User-Agent"),
+        assertEquals("svace-marker-fixer",
+                received.get(0).getRequestHeaders().getFirst("User-Agent"),
                 "GitHub answers a User-Agent-less request with 403");
     }
 }

@@ -14,10 +14,10 @@ import tech.mikhailov.fsm.lib.JsValue;
 /**
  * {@link SourceClient} against the GitHub contents API — the n8n {@code Fetch source} node.
  *
- * <p>That node, transcribed:
+ * <p>That node, transcribed — with the ONE field that no longer matches it marked:
  * <pre>
  *   GET https://api.github.com/repos/{repo}/contents/{file}?ref={branch}
- *   User-Agent: n8n-fsm
+ *   User-Agent: svace-marker-fixer      // was "n8n-fsm"; renamed 2026-08-02, see {@link #USER_AGENT}
  *   Accept: application/vnd.github+json
  *   Authorization: Bearer $GITHUB_TOKEN
  *   Connection: close
@@ -49,8 +49,16 @@ public class GithubSourceClient implements SourceClient {
     /** The public API. Overridable so a test can point the client at a local server. */
     public static final String DEFAULT_API_BASE_URL = "https://api.github.com";
 
-    /** n8n's own User-Agent, kept: GitHub's abuse heuristics have seen it from this pipeline before. */
-    public static final String USER_AGENT = "n8n-fsm";
+    /**
+     * What GitHub sees this pipeline as, and the same string {@code PrepProver} sends on the branch
+     * lookup — the two calls come from one client and must read as one client in an access log.
+     *
+     * <p>It was {@code "n8n-fsm"} until 2026-08-02, after the workflow runner it was named for had
+     * stopped running anything here; a repository owner reading their log learned nothing from it.
+     * That rename is a deliberate divergence from the retired JavaScript — see
+     * {@code engine/harness/README.md}, "Re-baselines".
+     */
+    public static final String USER_AGENT = "svace-marker-fixer";
 
     /** {@code maxTries: 3} — the total number of attempts, not the number of retries after the first. */
     public static final int ATTEMPTS = 3;

@@ -291,7 +291,9 @@ class PrepProverTest {
             // GitHub answers a User-Agent-less request with 403, and an unauthenticated one with 60
             // req/hour and no private repos at all. Either way default_branch comes back undefined
             // for every row.
-            assertEquals("n8n-fsm", req.headers().get("User-Agent"));
+            // The name is addressed to a repository owner reading their access log; it was "n8n-fsm"
+            // until 2026-08-02. See harness/README.md, "Re-baselines".
+            assertEquals("svace-marker-fixer", req.headers().get("User-Agent"));
             assertEquals("Bearer tok", req.headers().get("Authorization"),
                     "the token is threaded through, not dropped");
             assertEquals("application/vnd.github+json", req.headers().get("Accept"));

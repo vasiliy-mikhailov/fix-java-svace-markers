@@ -77,7 +77,7 @@ class GithubRepoLookupTest {
         // unparsed string and every marker in the run is recorded against an empty branch.
         assertThat(sent.get("headers")).isInstanceOf(Map.class);
         assertThat(headers(sent))
-                .containsEntry("User-Agent", "n8n-fsm")
+                .containsEntry("User-Agent", "svace-marker-fixer")
                 .containsEntry("Authorization", "Bearer ghp_token");
     }
 

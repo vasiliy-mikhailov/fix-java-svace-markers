@@ -3,10 +3,11 @@ package tech.mikhailov.fsm.orch.client;
 /**
  * Fetch the source file a marker points at — the n8n {@code Fetch source} node.
  *
- * <p>Replaces this request, and nothing more:
+ * <p>Replaces this request, and nothing more — the User-Agent being the one field deliberately
+ * changed since (renamed 2026-08-02; see {@link GithubSourceClient#USER_AGENT}):
  * <pre>
  *   GET https://api.github.com/repos/{repo}/contents/{file}?ref={branch}
- *   User-Agent: n8n-fsm
+ *   User-Agent: svace-marker-fixer
  *   Accept: application/vnd.github+json
  *   Authorization: Bearer $GITHUB_TOKEN
  *   Connection: close

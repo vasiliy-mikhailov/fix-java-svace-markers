@@ -1,14 +1,20 @@
 {
   "cases": 2199,
-  "identical": 2185,
-  "divergent": 14,
-  "divergenceClasses": 25,
+  "identical": 1808,
+  "divergent": 391,
+  "divergenceClasses": 26,
   "byNode_totalThenIdentical": {
-    "prep prover": [1500,1491],
+    "prep prover": [1500,1114],
     "build reproduce input": [537,534],
     "build fix input": [162,160]
   },
   "classes": [
+    {
+      "cases": 378,
+      "at": "calls[i].headers.User-Agent",
+      "js": "s:n8n-fsm",
+      "java": "s:svace-marker-fixer"
+    },
     {
       "cases": 4,
       "at": "threw",
@@ -109,7 +115,7 @@
       "cases": 1,
       "at": "calls[i]",
       "js": "(missing)",
-      "java": "[\"o\",[\"url\",\"s:https://api.github.com/repos/undefined\"],[\"headers\",[\"o\",[\"User-Agent\",\"s:n8n-fsm\"],[\"Accept\",\"s:application/vnd.github+json\"],[\"Authorization\",\"s:Bearer tok\"],[\"Connection\",\"s:close\"]]],[\"json\",\"b:true\"],…(242)"
+      "java": "[\"o\",[\"url\",\"s:https://api.github.com/repos/undefined\"],[\"headers\",[\"o\",[\"User-Agent\",\"s:svace-marker-fixer\"],[\"Accept\",\"s:application/vnd.github+json\"],[\"Authorization\",\"s:Bearer tok\"],[\"Connection\",\"s:close\"]]],[\"json\"…(253)"
     },
     {
       "cases": 1,

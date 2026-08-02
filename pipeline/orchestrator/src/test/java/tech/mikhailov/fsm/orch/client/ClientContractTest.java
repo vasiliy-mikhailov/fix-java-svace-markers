@@ -95,7 +95,7 @@ class ClientContractTest {
 
             assertThat(github.lastPath())
                     .isEqualTo("/repos/org/repo/contents/src/main/java/A.java?ref=release/1.x");
-            assertThat(github.lastHeader("User-Agent")).isEqualTo("n8n-fsm");
+            assertThat(github.lastHeader("User-Agent")).isEqualTo("svace-marker-fixer");
             assertThat(github.lastHeader("Accept")).isEqualTo("application/vnd.github+json");
             assertThat(github.lastHeader("Authorization")).isEqualTo("Bearer gh-token");
             // Verbatim, base64 and all: BuildReproduceInput decodes it, not this client.
