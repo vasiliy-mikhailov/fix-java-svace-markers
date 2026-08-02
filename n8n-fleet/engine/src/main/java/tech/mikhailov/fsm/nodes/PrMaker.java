@@ -60,8 +60,14 @@ public final class PrMaker {
      * AI/tool attribution in the PR body — a PR that announces it was written by a bot is closed unread
      * by most maintainers, and the model test asserts the rule holds end to end. {@code PrMakerTest}
      * pins these bytes against a second, independently written copy.
+     *
+     * <p>PUBLIC, AND NAMED {@code DEFAULT_}, because it is the FALLBACK now: {@code prompts/pr-maker.txt}
+     * at the repo root wins, {@code DEFAULT_PR_MAKER_PROMPT} in the environment comes next, and this text
+     * is what a deployment with neither gets. {@code tech.mikhailov.fsm.orch.PromptSource} picks the
+     * winner and hands it in on {@link Request#promptTemplate}; this node still only formats what it was
+     * given.
      */
-    private static final String PROMPT = """
+    public static final String DEFAULT_PROMPT = """
             %s
             You are the PR curator for open-source contributions to %s. A defect has a regression\s\
             test that FAILS before and PASSES after a minimal source-only fix (execution-proven).\s\
@@ -125,7 +131,16 @@ public final class PrMaker {
      *             off this same item
      */
     public record Request(Object prepProver, Object parseTest, Object parseFix, Object reproduce,
-                          Object item, Llm.Endpoint llm, String prStamp) {
+                          Object item, Llm.Endpoint llm, String prStamp, String promptTemplate) {
+
+        /**
+         * The request as every existing caller writes it — {@link #DEFAULT_PROMPT} as the template.
+         * @see FixSkeptic.Request#Request(Object, Object, Object, Object, Llm.Endpoint, String)
+         */
+        public Request(Object prepProver, Object parseTest, Object parseFix, Object reproduce,
+                       Object item, Llm.Endpoint llm, String prStamp) {
+            this(prepProver, parseTest, parseFix, reproduce, item, llm, prStamp, DEFAULT_PROMPT);
+        }
 
         /** Read the request out of a posted body. The keys are the n8n node names, snake-cased. */
         public static Request of(Object body) {
@@ -138,9 +153,20 @@ public final class PrMaker {
 
     /** Assemble the prompt. Pure, so it can be asserted byte for byte offline. */
     public static String buildPrPrompt(PromptInput in) {
+        return buildPrPrompt(in, DEFAULT_PROMPT);
+    }
+
+    /**
+     * Assemble the prompt from an arbitrary template — the resolved file, when there is one.
+     *
+     * <p>The eight {@code %s} are positional and this method defines them: stamp, repo, file, title,
+     * description, root cause, fix edits, test code. A file with the wrong number is rejected at
+     * START-UP by {@code PromptSource}, never mid-prove.
+     */
+    public static String buildPrPrompt(PromptInput in, String template) {
         Object j = in.prepProver();
         Object parseFix = in.parseFix();
-        return PROMPT.formatted(Llm.concat(in.prStamp()), Llm.concat(j, "repo"),
+        return template.formatted(Llm.concat(in.prStamp()), Llm.concat(j, "repo"),
                 Llm.concat(j, "file"), Js.orEmptyString(Json.get(j, "title")),
                 Js.orEmptyString(Json.get(j, "description")),
                 Js.orEmptyString(Json.get(parseFix, "fix_root_cause")),
@@ -233,7 +259,8 @@ public final class PrMaker {
 
         if (proven && skepticSound) {
             // Built outside the try, exactly as the JS builds it: see NotSliceable.
-            String prompt = buildPrPrompt(new PromptInput(req.prStamp(), j, req.parseTest(), parseFix));
+            String prompt = buildPrPrompt(new PromptInput(req.prStamp(), j, req.parseTest(), parseFix),
+                    req.promptTemplate());
             try {
                 Curation c = parsePrReply(http.request(Llm.chat(req.llm(), prompt, 0.2)), title, body);
                 decision = c.decision();

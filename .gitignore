@@ -11,6 +11,12 @@ n8n-fleet/**/node_modules/
 results_n8n/
 n8n-fleet/**/*cache*/
 *.log
-n8n-fleet/n8n/agentic/node_modules/
-n8n-fleet/n8n/agentic/.stryker-tmp/
-n8n-fleet/n8n/agentic/reports/
+
+# THE FEEDBACK STORE — full model prompts, full model replies and source excerpts from the
+# third-party repositories under analysis, appended one line per settled marker and accumulated
+# across runs. Kept out of git for the same reason the H2 store is: it is run data, it is large
+# (gigabytes over a few runs), and it contains verbatim third-party source. The directory itself is
+# tracked via feedback/.gitkeep — Docker creates a missing bind-mount source as root and the
+# orchestrator runs unprivileged. See orchestrator/README.md, "The feedback store".
+feedback/*
+!feedback/.gitkeep

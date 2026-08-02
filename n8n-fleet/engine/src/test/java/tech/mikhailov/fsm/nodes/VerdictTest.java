@@ -16,6 +16,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import tech.mikhailov.fsm.lib.JsText;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.Llm;
 
@@ -164,7 +165,14 @@ class VerdictTest {
             return this;
         }
 
+        /** {@code fsm.prove.verdict-enabled=false} — the argument is not attempted at all. */
+        Marker verdictOff() {
+            argue = false;
+            return this;
+        }
+
         private double min = MIN_ATTEMPTS;
+        private boolean argue = true;
         private Object row = rec;
 
         /** The Record-outcome item, for the hostile shapes n8n can hand a node. */
@@ -177,7 +185,7 @@ class VerdictTest {
             stub = new Stub(http);
             return Verdict.verdict(new Verdict.Request(row, prep, test, fix, repro, bri, pm,
                     Llm.Endpoint.of(env), Llm.text(env, "SVACE_BASE_URL"), Llm.text(env, "SVACE_TOKEN"),
-                    min, "[stage vd1]"), stub, logs::add);
+                    min, "[stage vd1]", argue), stub, logs::add);
         }
 
         /** The prompt of the n-th call the node made. */
@@ -288,6 +296,46 @@ class VerdictTest {
         assertTrue(String.valueOf(out.get("suspicion_note")).contains("[gap]"));
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("nonAnswers")
+    void aKindWithNoArgumentUnderItIsNotAClassification(String what, Object nonAnswer) {
+        // THE KIND IS PART OF THE VERDICT, not part of the reply. `verdict_kind` is copied verbatim into
+        // bugs.verdict_kind (Bug.fromVerdict), and the row is written whatever the outcome
+        // (ProveWriter), so a kind stamped on an EMPTY verdict_text puts a finding in the artifact that
+        // nobody argued: `false-positive` says we tested this and the claim does not hold, `by-design`
+        // concedes the claim and calls the code deliberate. Both are conclusions, and neither was
+        // reached. The kind was being read eight lines before the text and never revisited.
+        Map<String, Object> out = marker().answers(nonAnswer).run();
+        // the premise. Blank, not empty: what the model sent is kept verbatim on the row, so a reply of
+        // nothing but spaces reaches verdict_text as those spaces — it is still not an argument.
+        assertTrue(JsText.isBlank(String.valueOf(out.get("verdict_text"))),
+                () -> what + ": the premise is that nothing was argued, but verdict_text has content: "
+                        + out.get("verdict_text"));
+        assertEquals("", out.get("verdict_kind"), what + ": nothing was argued, so nothing is filed");
+        // and the rest of the row is unchanged — this fixes what the artifact records, not the routing
+        assertEquals("not_reproduced", out.get("state"));
+        assertEquals("rejected", out.get("suspicion_status"));
+    }
+
+    static Stream<Arguments> nonAnswers() {
+        return Stream.of(
+                // the model named a kind and then argued nothing for it
+                Arguments.of("an empty verdict beside a named kind",
+                        reply("by-design", "", "low")),
+                // no JSON at all: the extractor finds nothing, and the kind falls back to
+                // `false-positive` — an EXONERATION invented by the fallback, off a reply that said
+                // only that the model had no conclusion
+                Arguments.of("prose with no JSON object in it",
+                        completion("I was unable to reach a conclusion about this marker.")),
+                Arguments.of("whitespace where the argument should be",
+                        reply("unprovable", "   \n ", "high")),
+                // THE CONTRAST that made the asymmetry visible: a dead endpoint already leaves the kind
+                // empty, because the catch is reached before the kind is ever read. Two paths that both
+                // mean 'nothing was argued' must not disagree about what the artifact records.
+                Arguments.of("the endpoint never answered",
+                        new RuntimeException("connection refused")));
+    }
+
     @ParameterizedTest(name = "U+{0}")
     @ValueSource(strings = {"00A0", "FEFF", "2007", "202F", "2028", "3000"})
     void whitespaceMeansWHATTHEJAVASCRIPTMEANSByItNotWhatJavaMeans(String hex) {
@@ -359,6 +407,57 @@ class VerdictTest {
     }
 
     @Test
+    void aDeadEndpointOnTheHatchStillLeavesTheComposedVerdictEveryStuckRowGets() {
+        // THE POINT OF THE HATCH is that a never-compiled marker produces SOMETHING rather than being
+        // parked with nothing. When the argument cannot be obtained the row still lands on infra_stuck —
+        // which no run re-selects, so this is terminal — and it must then get the same composed fallback
+        // as every other row at the ceiling. Without it the artifact for a permanently retired marker
+        // carries no verdict and no kind at all, and the same row with any OTHER infra reason gets a full
+        // "NOT SETTLED" verdict: the hatch would make the row WORSE than not taking it.
+        Marker m = exhausted().answers(new RuntimeException("connection refused"));
+        Map<String, Object> out = m.run();
+        assertEquals("infra_stuck", out.get("suspicion_status"), "and it is terminal");
+        assertEquals("undetermined", out.get("verdict_kind"));
+        String text = String.valueOf(out.get("verdict_text"));
+        assertTrue(text.contains("NOT SETTLED"), text);
+        assertTrue(text.contains("after 3 attempts"), text);
+        assertTrue(text.contains(BUILD_FAILED), "and it names what blocked it: " + text);
+        // the failure itself is still recorded in both places it was before
+        assertEquals("error: connection refused", out.get("verdict_confidence"));
+        assertEquals(BUILD_FAILED + "; verdict writer never answered: connection refused",
+                out.get("infra_reason"));
+        assertTrue(m.logs.stream().anyMatch(l -> l.contains("call FAILED")), () -> m.logs.toString());
+    }
+
+    @Test
+    void aModelWithNothingToSayOnTheHatchDoesNotLeaveABareKindBehindEither() {
+        // A gateway answering 200 with `{}` extracts no kind, so the fallback names one — and the hatch
+        // downgrades that to `unprovable`. On a row nobody argued that is a REAL-LOOKING kind with no
+        // text under it: `SELECT verdict_kind, COUNT(*) FROM bugs` counts it into the unprovable bucket
+        // the run is compared against, and the verdicts panel drops it for having no text. The composed
+        // fallback is the honest answer here too.
+        Marker m = exhausted().answers(item());
+        Map<String, Object> out = m.run();
+        assertEquals(1, m.calls());
+        assertEquals("undetermined", out.get("verdict_kind"),
+                "`unprovable` is a judgement, and nothing judged this marker");
+        assertTrue(String.valueOf(out.get("verdict_text")).contains("NOT SETTLED"));
+        assertEquals("infra_stuck", out.get("suspicion_status"));
+        assertEquals("", out.get("verdict_confidence"), "nothing failed — the model simply said nothing");
+        assertEquals(BUILD_FAILED, out.get("infra_reason"), "and no step broke, so no step is named");
+    }
+
+    @Test
+    void theNoTextLogLineNamesTheStateItActuallyLeftTheRowIn() {
+        // "left not_reproduced" was hardcoded, so on the hatch — where the row is an infra_error — the
+        // only trace of a verdict call that produced nothing named a state the row was never in. That
+        // line is read when someone asks why a marker was parked, and it sent them to the wrong route.
+        Marker m = exhausted().answers(item());
+        m.run();
+        assertEquals(List.of("[verdict] k — verdict call produced no text; left infra_error"), m.logs);
+    }
+
+    @Test
     void theBuildLogIsQuotedFromItsEndWhereTheErrorIs() {
         Marker m = marker().rec("state", "infra_error", "attempts", 3L, "infra_reason", BUILD_FAILED)
                 .repro("red_output", "LOG-HEAD" + "y".repeat(2100) + "error: cannot find symbol LOG-TAIL")
@@ -409,6 +508,27 @@ class VerdictTest {
         // times the pipeline tried, and what stopped it
         assertTrue(text.contains("after 3 attempts"), text);
         assertTrue(text.contains(reason), "and name the blocker");
+        assertEquals("infra_stuck", out.get("suspicion_status"));
+    }
+
+    @Test
+    void aFixVerificationThatNeverRanIsNeverArguedAsAMarkerNoTestCompiledFor() {
+        // The escape hatch is opened by ONE phrase — "test never executed (build failed" — and it asks
+        // the model to argue a marker "the reproducer wrote a test N times and NOT ONCE did it compile".
+        // That sentence is FALSE of this row: its reproducer test compiled and went red, and only the
+        // fix verification never ran. Arguing it would invite a `false-positive` (downgraded to
+        // `unprovable`) against a marker that HAS been demonstrated — the strongest claim in the
+        // vocabulary, on the evidence of a build that was killed. So the green-side reason is worded to
+        // keep the hatch shut, and this pins that it stays that way.
+        Marker m = marker().rec("state", "infra_error", "attempts", 3L, "infra_reason",
+                "fix verification never ran the test (green build failed, jdk 21): "
+                        + "killed at the build timeout [TIMEOUT]");
+        Map<String, Object> out = m.run();
+        assertEquals(0, m.calls(), "no argument is attempted about a marker that reproduced");
+        assertEquals("undetermined", out.get("verdict_kind"));
+        String text = String.valueOf(out.get("verdict_text"));
+        assertTrue(text.contains("NOT SETTLED"), text);
+        assertTrue(text.contains("[TIMEOUT]"), "and it names what blocked it: " + text);
         assertEquals("infra_stuck", out.get("suspicion_status"));
     }
 
@@ -527,10 +647,49 @@ class VerdictTest {
         assertEquals("error: connection refused", out.get("verdict_confidence"),
                 "the transport error is kept verbatim — it is what an operator greps for");
         assertEquals("rejected", out.get("suspicion_status"));
-        assertTrue(String.valueOf(out.get("suspicion_note")).contains("[gap]"),
-                "retired with neither patch nor argument — that is a routing gap, not an outcome");
-        assertTrue(m.logs.stream().anyMatch(l -> l.contains("k") && l.contains("produced no text")),
-                "and the run says so where an operator can see which marker it was");
+
+        // NOT '[gap]', and this is the point. `[gap]` means "the verdict stage does not route this
+        // state" — a defect in this file, which is what the next reader would go looking for. The call
+        // failed: the routing worked perfectly and the endpoint did not answer.
+        String note = String.valueOf(out.get("suspicion_note"));
+        assertFalse(note.contains("[gap]"), note);
+        assertEquals("[verdict] the verdict call FAILED, so `not_reproduced` was retired with no "
+                + "argument: connection refused", note);
+
+        // …and the ARTIFACT says it too. verdict_confidence is NOT one of the 21 columns of the bugs
+        // table, so it is dropped on the way to the row: without this the only surviving evidence in the
+        // artifact was an empty verdict_text, which is what a marker nobody argued looks like anyway.
+        assertEquals("verdict writer never answered: connection refused", out.get("infra_reason"));
+
+        assertTrue(m.logs.stream().anyMatch(l -> l.contains("k") && l.contains("call FAILED")),
+                () -> "the run log must say the call FAILED, not that the model said nothing: " + m.logs);
+    }
+
+    @Test
+    void aFailedCallAndAModelWithNothingToSayAreDifferentRows() {
+        // Both leave verdict_text empty and both leave the state alone. The difference is whether the
+        // pipeline learned anything, and it is the difference between re-running the marker and reading
+        // the prompt.
+        Map<String, Object> silent = marker().answers(item()).run();
+        assertEquals("", silent.get("verdict_text"));
+        assertEquals("", silent.get("verdict_confidence"), "nothing failed");
+        assertEquals("", silent.get("infra_reason"), "and no step broke, so no step is named");
+        assertTrue(String.valueOf(silent.get("suspicion_note")).contains("[gap]"),
+                "a model that was asked and said nothing IS the routing gap the label is for");
+
+        Map<String, Object> failed = marker().answers(new RuntimeException("no route to host")).run();
+        assertEquals("verdict writer never answered: no route to host", failed.get("infra_reason"));
+    }
+
+    @Test
+    void aFailedCallDoesNotOVERWRITETheInfraReasonTheRowArrivedWith() {
+        // infra_reason is the audit trail of the whole prove; a judging failure is one more entry on it,
+        // never a replacement for what Record outcome found.
+        Map<String, Object> out = marker()
+                .rec("state", "not_reproduced", "attempts", 2L, "infra_reason", "run_test(fix): boom")
+                .answers(new RuntimeException("connection refused")).run();
+        assertEquals("run_test(fix): boom; verdict writer never answered: connection refused",
+                out.get("infra_reason"));
     }
 
     @Test
@@ -845,5 +1004,129 @@ class VerdictTest {
         // An unset retry ceiling must not read as zero: `attempts < NaN` is false, so a marker is
         // argued rather than requeued for ever.
         assertTrue(Double.isNaN(Verdict.Request.of(Json.parse("{}")).minAttempts()));
+    }
+
+    // ---- the argument, switched off ---------------------------------------------------------------
+    //
+    // WHAT THE TOGGLE ACTUALLY TURNS OFF, because it is not "the verdict stage". Four fifths of this
+    // node is arithmetic: it routes every state to a suspicion_status, it decides the retry, it composes
+    // the verdicts for markers settled BY EXECUTION with no model call at all, and it carries the anchor
+    // onto the row. None of that costs anything and none of it can be skipped — a marker whose status is
+    // never computed is a marker parked in `new` for ever.
+    //
+    // What costs a model call is the ARGUMENT, and it is reached on exactly three routes:
+    // `not_reproduced`, `not-a-bug`, and the exhausted-build hatch. Those are what the toggle skips, and
+    // what these tests pin is that skipping them still settles the marker and says so on the row.
+
+    @Test
+    void withTheArgumentOffTheModelIsNotCalledAndTheMarkerStillSettles() {
+        Marker m = marker().verdictOff().rec("state", "not_reproduced", "attempts", 2L);
+        Map<String, Object> out = m.run();
+
+        assertEquals(0, m.calls(), "the whole point of the toggle is that this call does not happen");
+        // NOT left in `new`: a run made cheaper must not be a run that has to be done again.
+        assertEquals("rejected", out.get("suspicion_status"));
+        assertEquals(Boolean.FALSE, out.get("retry"));
+        // The state is NOT rewritten. false_positive/by_design/unprovable are the three things the
+        // ARGUMENT concludes, and nothing argued anything here.
+        assertEquals("not_reproduced", out.get("state"));
+        assertEquals("", out.get("verdict_text"));
+        assertEquals("", out.get("verdict_kind"), "no argument, so no finding is filed");
+    }
+
+    @Test
+    void aSkippedArgumentIsNOTTheSameRowAsAnArgumentThatCameBackEMPTY() {
+        // THE MISDIAGNOSIS THIS EXISTS TO PREVENT. Both rows carry an empty verdict_text and an
+        // unreplaced state, and they mean opposite things: one is a marker nobody asked about, the other
+        // is a model that WAS asked and had nothing to say — which is a prompt to go and read. Told
+        // apart on the artifact by `verdict_status`, and on the dashboard by the label on the note.
+        Map<String, Object> skipped = marker().verdictOff().run();
+        Map<String, Object> askedAndSilent = marker().answers(item()).run();
+
+        assertEquals("skipped", skipped.get("verdict_status"));
+        assertEquals(null, askedAndSilent.get("verdict_status"),
+                "a stage that RAN must not be marked skipped, on any route");
+
+        String skippedNote = String.valueOf(skipped.get("suspicion_note"));
+        assertTrue(skippedNote.startsWith("[skipped]"), skippedNote);
+        assertFalse(skippedNote.contains("[gap]"),
+                "a deliberately unasked question is not a hole in the routing, and sends the next "
+                        + "reader somewhere else entirely");
+        assertTrue(String.valueOf(askedAndSilent.get("suspicion_note")).contains("[gap]"),
+                "…while a model that answered nothing IS what that label is for");
+    }
+
+    @Test
+    void theSkipIsInTheRunLogToo() {
+        // The row records `verdict_status`; the log is what an operator watching a cheap run reads to
+        // confirm the toggle is the reason there are no arguments, rather than a dead endpoint.
+        Marker m = marker().verdictOff();
+        m.run();
+        assertEquals(1, m.logs.size(), m.logs.toString());
+        assertTrue(m.logs.get(0).contains("k"), m.logs.get(0));
+        assertTrue(m.logs.get(0).contains("switched off"), m.logs.get(0));
+    }
+
+    @Test
+    void theRetrySTILLCOMESFIRSTBecauseTheSamplingBudgetIsNotTheArgument() {
+        // The toggle is for iterating on the REPRODUCER's prompt, so the second sample the reproducer is
+        // owed must still be taken. Skipping the argument does not retire a marker one sample early.
+        Marker m = marker().verdictOff().rec("state", "not_reproduced", "attempts", 1L);
+        Map<String, Object> out = m.run();
+        assertEquals("new", out.get("suspicion_status"));
+        assertEquals(Boolean.TRUE, out.get("retry"));
+        assertEquals(null, out.get("verdict_status"), "nothing was skipped — nothing was due yet");
+        assertEquals(0, m.calls());
+    }
+
+    @Test
+    void theExhaustedBuildHatchStillLeavesTheComposedVerdictEveryStuckRowGets() {
+        // The hatch's whole purpose is that a marker no test ever compiled for does not end as a row
+        // with nothing on it. With the argument off it loses the `unprovable` rebuttal — that IS the
+        // loss — but it must not lose the composed fallback as well, or the toggle turns a documented
+        // outcome into a blank.
+        Marker m = marker().verdictOff()
+                .rec("state", "infra_error", "attempts", 3L, "infra_reason", BUILD_FAILED);
+        Map<String, Object> out = m.run();
+
+        assertEquals(0, m.calls());
+        assertEquals("infra_stuck", out.get("suspicion_status"));
+        assertEquals("undetermined", out.get("verdict_kind"));
+        assertTrue(String.valueOf(out.get("verdict_text")).contains("NOT SETTLED"),
+                String.valueOf(out.get("verdict_text")));
+        // …and the row still says the argument was never attempted. Without this the composed verdict
+        // is indistinguishable from the one a marker gets when the ENDPOINT was down.
+        assertEquals("skipped", out.get("verdict_status"));
+        assertTrue(String.valueOf(out.get("suspicion_note")).contains("[skipped]"),
+                String.valueOf(out.get("suspicion_note")));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("settledByExecution")
+    void aMarkerSETTLEDBYEXECUTIONIsByteIdenticalWithTheToggleOffBecauseItNeverAskedAnything(
+            String state, String kind, String status, boolean cause) {
+        // The five execution routes reach no model at all — ExecVerdict composes their verdicts from the
+        // run. There is nothing to skip on them, so the toggle must change NOTHING, and in particular
+        // must not label them skipped: that would report a loss that did not happen.
+        Map<String, Object> on = marker().rec("state", state, "attempts", 1L,
+                "test_path", "src/test/java/a/BTest.java", "jdk", "25", "pr_title", "t").run();
+        Map<String, Object> off = marker().verdictOff().rec("state", state, "attempts", 1L,
+                "test_path", "src/test/java/a/BTest.java", "jdk", "25", "pr_title", "t").run();
+
+        assertEquals(on, off, "the toggle only skips the argument, and this route never argues");
+        assertEquals(kind, off.get("verdict_kind"));
+        assertEquals(status, off.get("suspicion_status"));
+        assertEquals(null, off.get("verdict_status"));
+    }
+
+    @Test
+    void theArgumentIsONUnlessSomethingSaysOtherwise() {
+        // Default ON in both directions a Request is built: the twelve-argument constructor every
+        // existing caller uses, and the shim body, which has no such key and never will.
+        assertTrue(new Verdict.Request(item(), item(), item(), item(), item(), item(), item(),
+                new Llm.Endpoint("http://llm", "k", "m"), "", "", 2, "[stage vd1]").verdictEnabled());
+        assertTrue(Verdict.Request.of(Json.parse("{}")).verdictEnabled());
+        assertFalse(Verdict.Request.of(Json.parse("{\"verdict_enabled\":false}")).verdictEnabled());
+        assertTrue(Verdict.Request.of(Json.parse("{\"verdict_enabled\":true}")).verdictEnabled());
     }
 }

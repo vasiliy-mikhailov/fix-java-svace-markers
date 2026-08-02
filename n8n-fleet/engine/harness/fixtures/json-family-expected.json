@@ -1,0 +1,57 @@
+{
+  "cases": 1354,
+  "identical": 1272,
+  "divergent": 82,
+  "divergenceClasses": 11,
+  "bySuite_totalThenIdentical": {
+    "extract": [955,955],
+    "parse_test": [238,174],
+    "parse_fix": [161,143]
+  },
+  "classes": [
+    {
+      "cases": 12,
+      "signature": "parse_test | ok | ok | field=repro_root_cause [js num: vs java str:]"
+    },
+    {
+      "cases": 12,
+      "signature": "parse_test | ok | ok | field=repro_root_cause [js [ vs java str:]"
+    },
+    {
+      "cases": 12,
+      "signature": "parse_test | ok | ok | field=repro_value_verdict [js { vs java str:]"
+    },
+    {
+      "cases": 27,
+      "signature": "parse_test | ok | ok | field=log line only"
+    },
+    {
+      "cases": 1,
+      "signature": "parse_test | ok | ok | field=repro_root_cause [js null vs java str:]"
+    },
+    {
+      "cases": 1,
+      "signature": "parse_fix | JS THREW TypeError | ok | field=? [js  vs java {]"
+    },
+    {
+      "cases": 1,
+      "signature": "parse_fix | ok | ok | field=pr_title [js num: vs java str:]"
+    },
+    {
+      "cases": 7,
+      "signature": "parse_fix | ok | ok | field=test_code [js num: vs java str:]"
+    },
+    {
+      "cases": 7,
+      "signature": "parse_fix | ok | ok | field=test_code [js { vs java str:]"
+    },
+    {
+      "cases": 1,
+      "signature": "parse_fix | ok | ok | field=fix_root_cause [js null vs java str:]"
+    },
+    {
+      "cases": 1,
+      "signature": "parse_fix | ok | ok | field=pr_title [js null vs java str:]"
+    }
+  ]
+}

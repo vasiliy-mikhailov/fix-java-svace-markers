@@ -33,6 +33,11 @@ import tech.mikhailov.fsm.lib.Llm;
  *       SQL-injection lesson is deliberately vulnerable, and it got filed as "could not test".</li>
  *   <li>Anything retired with neither a patch nor an argument is labelled a ROUTING GAP, because an
  *       empty verdict on a {@code rejected} row is indistinguishable from a considered decision.</li>
+ *   <li>THE KIND IS PART OF THE VERDICT, not part of the reply. {@code verdict_kind} is copied verbatim
+ *       into the artifact's {@code bugs} row, so a kind with no argument under it files a finding
+ *       nobody made — and the unrecognised-kind fallback INVENTS {@code false-positive}, the strongest
+ *       claim in the vocabulary, out of a default. Blank verdict, blank kind, whichever way the stage
+ *       arrived at nothing.</li>
  * </ul>
  *
  * <p>WHERE THE MODEL IS ALLOWED TO SPEAK. Only where there is no ground truth. A claim settled by
@@ -72,6 +77,38 @@ public final class Verdict {
     private static final List<String> REPLY_KEYS = List.of("kind", "verdict", "confidence");
 
     /**
+     * {@code verdict_status} — what happened to the ARGUMENT, and it is written ONLY when the argument
+     * was deliberately not attempted.
+     *
+     * <p>WHY IT IS A COLUMN OF ITS OWN AND NOT A KIND. Three rows carry an empty {@code verdict_text},
+     * and until this existed a reader could not tell them apart:
+     * <ul>
+     *   <li>the model was asked and said nothing — go and read the prompt;</li>
+     *   <li>the model was never reached — go and look at the endpoint ({@code infra_reason} names it);</li>
+     *   <li>the argument was switched off — nothing is wrong with anything, and the marker is owed a
+     *       re-queue if the argument is ever wanted.</li>
+     * </ul>
+     * Spelling the third as a {@code verdict_kind} would put a word that is not a finding into the
+     * column {@code SELECT verdict_kind, COUNT(*)} counts findings in, and spelling it into
+     * {@code infra_reason} would file a configuration choice as an infrastructure fault on the one
+     * column that must only ever carry those. It is also the ONLY signal available on the
+     * exhausted-build route, where the composed fallback fills {@code verdict_text} and
+     * {@code verdict_kind} in exactly the shape a dead endpoint would have left them.
+     *
+     * <p>ABSENT ON EVERY OTHER ROW, deliberately: a stage that ran writes no key at all, so the item
+     * this node returns with the argument ON is byte-identical — same keys, same order — to the one it
+     * has always returned.
+     */
+    public static final String SKIPPED = "skipped";
+
+    /**
+     * The label on the note, and it is NOT {@code [gap]}. That one means "the verdict stage does not
+     * route this state", a defect in this file; this one means the question was deliberately not asked.
+     * A run made cheaper on purpose must never be indistinguishable from a run that lost markers.
+     */
+    private static final String SKIPPED_LABEL = "[skipped] ";
+
+    /**
      * The ONE infra reason that opens the {@code unprovable} escape hatch.
      *
      * <p>A build that never compiled is OUR failure to write a runnable test, never evidence about the
@@ -95,11 +132,54 @@ public final class Verdict {
      * @param item        the {@code Record outcome} row the node runs on; the whole of it flows through
      * @param minAttempts how many samples a non-reproduction is worth before it is argued. One sample
      *                    is a weak basis for "the marker is wrong".
+     * @param verdictEnabled whether the ARGUMENT may be attempted — {@code fsm.prove.verdict-enabled},
+     *                    and it is deliberately narrower than "run this stage". Everything else here is
+     *                    arithmetic over the row: which status the suspicion settles at, whether another
+     *                    sample is owed, the verdicts composed by {@link ExecVerdict} for markers
+     *                    settled BY EXECUTION, and the anchor columns. None of that costs a call and
+     *                    none of it can be skipped — a marker whose status is never computed sits in
+     *                    {@code new} for ever. What costs a call is the rebuttal on the three routes
+     *                    that reach {@link #argumentPrompt}, and {@code false} skips exactly those. See
+     *                    {@link #SKIPPED}.
      */
     public record Request(Object item, Object prepProver, Object parseTest, Object parseFix,
                           Object reproduce, Object buildReproduceInput, Object prMaker,
                           Llm.Endpoint llm, String svaceBaseUrl, String svaceToken,
-                          double minAttempts, String verdictStamp) {
+                          double minAttempts, String verdictStamp, boolean verdictEnabled,
+                          String promptTemplate) {
+
+        /**
+         * The stage with its own shipped rebuttal text.
+         *
+         * <p>The template is a DEPLOYMENT choice — {@code prompts/verdict.txt} at the repo root, or
+         * {@code DEFAULT_VERDICT_PROMPT}, resolved once at start-up by
+         * {@code tech.mikhailov.fsm.orch.PromptSource}. Every caller that has no opinion about it, the
+         * HTTP shim included, keeps {@link #DEFAULT_PROMPT}.
+         */
+        public Request(Object item, Object prepProver, Object parseTest, Object parseFix,
+                       Object reproduce, Object buildReproduceInput, Object prMaker, Llm.Endpoint llm,
+                       String svaceBaseUrl, String svaceToken, double minAttempts,
+                       String verdictStamp, boolean verdictEnabled) {
+            this(item, prepProver, parseTest, parseFix, reproduce, buildReproduceInput, prMaker, llm,
+                    svaceBaseUrl, svaceToken, minAttempts, verdictStamp, verdictEnabled,
+                    DEFAULT_PROMPT);
+        }
+
+        /**
+         * The stage as it has always run: the argument is written.
+         *
+         * <p>Here so that ON is what a caller gets by DEFAULT rather than by remembering a boolean. A
+         * new component on a record is silently {@code false} at every call site that predates it, and
+         * {@code false} here means "argue nothing" — every marker that failed to reproduce would retire
+         * unargued, which is the exact defect this stage was built to end.
+         */
+        public Request(Object item, Object prepProver, Object parseTest, Object parseFix,
+                       Object reproduce, Object buildReproduceInput, Object prMaker, Llm.Endpoint llm,
+                       String svaceBaseUrl, String svaceToken, double minAttempts,
+                       String verdictStamp) {
+            this(item, prepProver, parseTest, parseFix, reproduce, buildReproduceInput, prMaker, llm,
+                    svaceBaseUrl, svaceToken, minAttempts, verdictStamp, true);
+        }
 
         /** Read the request out of a posted body. The keys are the n8n node names, snake-cased. */
         public static Request of(Object body) {
@@ -109,7 +189,7 @@ public final class Verdict {
                     Json.get(body, "run_test_reproduce"), Json.get(body, "build_reproduce_input"),
                     Json.get(body, "pr_maker"), Llm.Endpoint.of(env),
                     Llm.text(env, "SVACE_BASE_URL"), Llm.text(env, "SVACE_TOKEN"),
-                    minAttempts(body), Llm.concat(body, "verdict_stamp"));
+                    minAttempts(body), Llm.concat(body, "verdict_stamp"), verdictEnabled(body));
         }
 
         /**
@@ -121,6 +201,16 @@ public final class Verdict {
         private static double minAttempts(Object body) {
             return Json.get(body, "min_attempts") == null ? Double.NaN
                     : Json.num(body, "min_attempts");
+        }
+
+        /**
+         * ABSENT MEANS ON, which is the opposite of what {@link Json#truthy} would say and is the whole
+         * reason this is spelled out. The shims that post this body have no such key and never will —
+         * the toggle is an orchestrator setting — so reading it as falsy would switch the argument OFF
+         * for every caller that never heard of it.
+         */
+        private static boolean verdictEnabled(Object body) {
+            return Json.get(body, "verdict_enabled") == null || Json.truthy(body, "verdict_enabled");
         }
     }
 
@@ -147,6 +237,14 @@ public final class Verdict {
         String verdictText = "";
         String verdictKind = "";
         String verdictConfidence = "";
+        // Non-empty ONLY when the argue call itself failed. An empty verdict has two causes that look
+        // identical on the row — the model was asked and said nothing, or the model was never reached —
+        // and they send a reader to opposite places: the prompt, or the endpoint.
+        String callFailure = "";
+        // The argument was DUE on this row and was not attempted, because the stage is switched off.
+        // Only ever set on the three routes that would have reached the model: a route that never argues
+        // has lost nothing and must not claim it has. @see #SKIPPED
+        boolean skipped = false;
         boolean retry = false;
         Object state = Json.get(rec, "state");
         // The state AS IT ARRIVED, concatenated at the read so that a row with no state and a row
@@ -184,6 +282,18 @@ public final class Verdict {
                 retry = true;
                 log.accept("[verdict] " + Llm.concat(j, "suspicion_key") + " attempt "
                         + Js.numberToString(attempts0) + " — retrying before writing a verdict");
+            // AFTER the retry gate, and that ordering is the whole design of the toggle. The samples a
+            // non-reproduction is worth belong to the REPRODUCER, which is the prompt this toggle exists
+            // to iterate on; skipping the argument must make a run cheaper, not settle markers a sample
+            // early on evidence nobody finished gathering.
+            } else if (!req.verdictEnabled()) {
+                skipped = true;
+                // The row records this too, but a log line is what an operator watching a cheap run
+                // reads to confirm that the missing arguments are the toggle and not a dead endpoint —
+                // the two produce very similar-looking rows and only one of them is fine.
+                log.accept("[verdict] " + Llm.concat(j, "suspicion_key")
+                        + " — the argument is switched off; `" + stateText
+                        + "` settles with no verdict written");
             } else {
                 String prompt = argumentPrompt(req, http, exhaustedBuild, attempts0);
                 try {
@@ -207,8 +317,8 @@ public final class Verdict {
                     verdictText = "";
                     // Kept verbatim, bounded: it is what an operator greps for, and the confidence is
                     // one narrow column rather than a place to paste a 500 page.
-                    verdictConfidence = "error: "
-                            + Llm.failureText(e, ERROR_CUT, "verdict call failed");
+                    callFailure = Llm.failureText(e, ERROR_CUT, "verdict call failed");
+                    verdictConfidence = "error: " + callFailure;
                 }
                 if (!JsText.isBlank(verdictText)) {
                     // NOTE: the state follows the VERDICT, not the trigger that led here. The three stay
@@ -221,22 +331,49 @@ public final class Verdict {
                             : "unprovable".equals(verdictKind) ? "unprovable"
                             : "false_positive";
                 } else {
-                    // No text = no verdict. Leaving state='not_reproduced' is the honest outcome: an
-                    // EMPTY false_positive row would claim the marker was argued away when nothing was
-                    // written.
-                    log.accept("[verdict] " + Llm.concat(j, "suspicion_key")
-                            + " — verdict call produced no text; left not_reproduced");
+                    // NOTHING WAS ARGUED, SO NOTHING IS FILED — and the KIND goes with the text.
+                    //
+                    // The kind is read out of the reply eight lines above, before anything has looked at
+                    // whether there is a verdict under it, and `verdict_kind` is copied straight into the
+                    // artifact's bugs.verdict_kind on a row that is written whatever the outcome. So a
+                    // model that named a kind and argued nothing for it used to stamp the row with a
+                    // finding nobody made: `false-positive` asserts we tested this and the claim does not
+                    // hold, `by-design` concedes the claim and calls the code deliberate. Worse for a
+                    // reply that is not JSON at all — no kind is found, and the fallback for an
+                    // unrecognised kind INVENTS `false-positive`, the strongest claim in the vocabulary,
+                    // out of a default.
+                    //
+                    // Cleared HERE, once, for both ways of getting here. A dead endpoint already left the
+                    // kind empty — its catch is reached before the kind is ever read — and a useless
+                    // answer did not, and the two mean the same thing about the artifact: no finding was
+                    // made. One `select … where verdict_kind = 'false-positive'` has to count
+                    // exonerations without picking up the markers nobody argued.
+                    verdictKind = "";
+                    if (!callFailure.isEmpty()) {
+                        // The stage failed CLOSED — it reports success with no verdict — so this line and
+                        // the note below are the only places the failure is ever stated. "produced no
+                        // text" would be a lie about a call that produced nothing at all, and it is the
+                        // lie that reads as a model with nothing to say.
+                        log.accept("[verdict] " + Llm.concat(j, "suspicion_key")
+                                + " — the verdict call FAILED: " + callFailure
+                                + "; nothing was argued, left " + stateText);
+                    } else {
+                        // No text = no verdict. Leaving the state alone is the honest outcome: an EMPTY
+                        // false_positive row would claim the marker was argued away when nothing was
+                        // written. The state is NAMED rather than assumed — this branch is also reached
+                        // from the exhaustedBuild hatch, where the row is an `infra_error` and a line
+                        // reading "left not_reproduced" sends the next reader down a route the marker
+                        // never took.
+                        log.accept("[verdict] " + Llm.concat(j, "suspicion_key")
+                                + " — verdict call produced no text; left " + stateText);
+                    }
                 }
             }
         } else if ("infra_error".equals(state)) {
             // Below the retry ceiling this is not an outcome at all — the marker goes back on the queue
             // and must NOT carry a verdict, or a transient failure would read as a decision.
             if (attempts0 >= MAX_ATTEMPTS) {
-                // ONLY the reason and the count: the JS hands execVerdict a two-field object here, and
-                // an infra_stuck row must not pick up a test path or a PR title from a run that never
-                // got that far.
-                ExecVerdict.Verdict vi = ExecVerdict.of("infra_stuck",
-                        evidence(null, null, null, Json.get(rec, "infra_reason"), attempts0, ""));
+                ExecVerdict.Verdict vi = stuck(rec, attempts0);
                 verdictKind = vi.kind().wire();
                 verdictText = vi.text();
             }
@@ -249,6 +386,22 @@ public final class Verdict {
                             attempts0, pmReason));
             verdictKind = v.kind().wire();
             verdictText = v.text();
+        }
+
+        // THE HATCH MUST NOT LEAVE THE ROW WORSE OFF THAN NOT TAKING IT. `exhaustedBuild` diverts an
+        // at-the-ceiling infra_error row into the argue branch above and so PAST the `else if` that
+        // hands every other stuck row its composed verdict. When the argument does not materialise —
+        // the endpoint was down, or the model answered with nothing — the state is never replaced, so
+        // the row is still parked `infra_stuck` below, which no run re-selects: terminal, with an empty
+        // verdict_text the verdicts panel filters out, and either no kind at all (the call threw before
+        // one was assigned) or a bare `unprovable` from the fallback at the top of the branch — a
+        // judgement, on a marker nothing judged, which a `SELECT verdict_kind, COUNT(*)` counts as one.
+        // The same row with any OTHER infra reason gets the full "NOT SETTLED" text. Compose it here
+        // too, so the hatch can only ever ADD an argument, never subtract the fallback.
+        if (exhaustedBuild && JsText.isBlank(verdictText)) {
+            ExecVerdict.Verdict vi = stuck(rec, attempts0);
+            verdictKind = vi.kind().wire();
+            verdictText = vi.text();
         }
 
         // The suspicion's next status is decided HERE, in code, rather than as a nested ternary inside
@@ -264,6 +417,14 @@ public final class Verdict {
             // and why.
             suspicionNote = "[prover] infra failure (attempt " + Js.numberToString(attempts) + "/"
                     + MAX_ATTEMPTS + "): " + Js.orEmptyString(Json.get(rec, "infra_reason"));
+            // THE EXHAUSTED-BUILD HATCH, WITH THE ARGUMENT OFF. This row would have been argued and
+            // downgraded to `unprovable`; instead it parks `infra_stuck` carrying the composed fallback,
+            // which is character-for-character what a marker gets when the endpoint is down. Appended,
+            // not substituted, because the infra reason is still the whole story of why it is stuck.
+            if (skipped) {
+                suspicionNote = also(suspicionNote, SKIPPED_LABEL + "the argument is switched off, so "
+                        + "this marker was never argued");
+            }
         } else if (retry) {
             suspicionStatus = "new";
             suspicionNote = "[prover] did not reproduce on attempt " + Js.numberToString(attempts)
@@ -279,6 +440,29 @@ public final class Verdict {
             // One dashboard column: unbounded, an 8k argument makes the table unreadable, and the kind
             // has to lead so the row can be scanned without opening it.
             suspicionNote = "[verdict/" + verdictKind + "] " + head(verdictText, NOTE_CUT);
+        // NOT the `[gap]` label below, and not the failed-call one either. The routing worked, the
+        // endpoint was never asked, and the marker is RETIRED rather than requeued: by the time the
+        // argument was due the reproducer's sampling budget was already spent, so going round again
+        // would cost two completions and two Maven builds to reach the same skip. What makes it
+        // recoverable instead is that the note says exactly which markers to re-queue, and
+        // `verdict_status` says it on the artifact.
+        } else if (skipped) {
+            suspicionStatus = "rejected";
+            suspicionNote = SKIPPED_LABEL + "the argument is switched off, so `" + stateText
+                    + "` was retired with no verdict written; re-queue this marker with "
+                    + "fsm.prove.verdict-enabled=true to have the claim argued";
+        } else if (!callFailure.isEmpty()) {
+            // NOT the `[gap]` label below. That one means "the verdict stage does not route this state" —
+            // a defect in THIS FILE, which is where it sends the next reader. Here the routing worked and
+            // the endpoint did not answer, and those are fixed in different places.
+            //
+            // Still retired rather than requeued, and deliberately: by the time a verdict is written the
+            // non-reproduction budget is already spent, and going round again costs two model completions
+            // and two Maven builds per attempt against an endpoint that is down. The note is what makes
+            // it visible instead.
+            suspicionStatus = "rejected";
+            suspicionNote = "[verdict] the verdict call FAILED, so `" + stateText
+                    + "` was retired with no argument: " + callFailure;
         } else {
             // Reaching here means the marker is being RETIRED with neither a patch nor an argument.
             // That is a gap in the routing above, not a considered outcome — an empty verdict_text on a
@@ -291,6 +475,16 @@ public final class Verdict {
         }
 
         Map<String, Object> out = spread(rec);
+        // THE ARTIFACT'S OWN RECORD of a call that failed. `verdict_confidence` carries "error: …", and
+        // it is not one of the 21 columns of the bugs table — so without this line the row keeps NO trace
+        // of the failure, and an empty verdict_text is what a marker nobody argued looks like anyway.
+        // Appended, never overwritten: infra_reason is the audit trail of the whole prove, and the
+        // wording matches the two clauses Record outcome writes for the other fail-closed stages, so one
+        // query over `never answered` finds every marker any judging call was lost on.
+        if (!callFailure.isEmpty()) {
+            out.put("infra_reason", also(Js.orEmptyString(Json.get(rec, "infra_reason")),
+                    "verdict writer never answered: " + callFailure));
+        }
         out.put("state", state);
         out.put("retry", retry);
         out.put("verdict_text", verdictText);
@@ -303,7 +497,28 @@ public final class Verdict {
         out.put("anchor", or(Json.get(bri, "anchor"), ""));
         out.put("anchor_status", or(Json.get(bri, "anchor_status"), ""));
         out.put("svace_checker", or(Json.get(j, "svace_checker"), ""));
+        // LAST, AND ONLY WHEN THERE IS SOMETHING TO SAY. An argument that was attempted — however it
+        // went — writes no key here, so the item a normal run returns keeps exactly the keys, in exactly
+        // the order, that it always had. @see #SKIPPED
+        if (skipped) {
+            out.put("verdict_status", SKIPPED);
+        }
         return out;
+    }
+
+    /**
+     * The verdict a row parked {@code infra_stuck} carries — composed, never argued, and written from
+     * ONE place because there are two ways to reach that parking: the retry ceiling, and an
+     * {@code exhaustedBuild} hatch whose argument did not materialise. A marker no run will select
+     * again is terminal, so whichever route it took the artifact has to say the same thing.
+     *
+     * <p>ONLY the reason and the count reach it: the JS hands {@code execVerdict} a two-field object
+     * here, and an {@code infra_stuck} row must not pick up a test path or a PR title from a run that
+     * never got that far.
+     */
+    private static ExecVerdict.Verdict stuck(Object rec, double attempts) {
+        return ExecVerdict.of("infra_stuck",
+                evidence(null, null, null, Json.get(rec, "infra_reason"), attempts, ""));
     }
 
     /**
@@ -382,7 +597,8 @@ public final class Verdict {
                         + "argue from the code)."
                 : "SVACE DETAIL: " + detail.message() + "\nSVACE TRACE: " + detail.trace();
 
-        return PROMPT.formatted(Llm.concat(req.verdictStamp()), Js.numberToString(attempts),
+        return req.promptTemplate().formatted(Llm.concat(req.verdictStamp()),
+                Js.numberToString(attempts),
                 Llm.concat(j, "repo"), Llm.concat(j, "file"),
                 Js.string(or(Json.get(j, "svace_checker"), "?")),
                 Js.string(or(Json.get(j, "svace_severity"), "?")),
@@ -397,8 +613,15 @@ public final class Verdict {
      * The rebuttal prompt, as a Java 25 text block. Byte-identical to the JS concatenation, which
      * {@code VerdictTest} pins against a second copy and the differential harness checks over every
      * fixture.
+     *
+     * <p>PUBLIC, AND NAMED {@code DEFAULT_}, because it is the FALLBACK now: {@code prompts/verdict.txt}
+     * at the repo root wins over it, {@code DEFAULT_VERDICT_PROMPT} in the environment comes between, and
+     * this text is what a deployment with neither gets — which is every deployment that existed before
+     * the directory did. Its thirteen {@code %s} are positional; see {@link #argumentPrompt}, which is
+     * what defines them, and {@code PromptSource}, which rejects a file that carries the wrong number of
+     * them at START-UP rather than an hour into a prove.
      */
-    private static final String PROMPT = """
+    public static final String DEFAULT_PROMPT = """
             %s
             You are adjudicating ONE static-analysis marker that could not be demonstrated by an\s\
             executable test, after %s attempt(s). Write the verdict a reviewer will read INSTEAD of a\s\
@@ -510,6 +733,18 @@ public final class Verdict {
     /** {@code x || fallback} as a VALUE — see the note on {@code FixSkeptic.or}. */
     private static Object or(Object v, Object fallback) {
         return Json.truthy(v) ? v : fallback;
+    }
+
+    /**
+     * Append one more entry to an audit column WITHOUT losing what is already on it.
+     *
+     * <p>Same {@code "; "} separator {@code RecordOutcome} joins its reasons with, so
+     * {@code infra_reason} stays one greppable list however many stages contributed to it — and an
+     * EMPTY column gains no leading separator, because a row whose only entry is this one must read as
+     * that entry and not as something that lost its first half.
+     */
+    private static String also(String existing, String entry) {
+        return existing.isEmpty() ? entry : existing + "; " + entry;
     }
 
     /** {@code s.slice(0, n)} — a cut past the end is the whole string, never an exception. */

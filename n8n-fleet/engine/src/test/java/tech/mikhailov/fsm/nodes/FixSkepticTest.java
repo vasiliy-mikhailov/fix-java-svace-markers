@@ -396,7 +396,7 @@ class FixSkepticTest {
                 "timeout", 3_600_000L);
         assertEquals(expected, shell.stub.calls.get(0));
         assertEquals(item("proven", true, "skeptic_verdict", "sound",
-                "skeptic_reason", "a general whitelist"), r);
+                "skeptic_reason", "a general whitelist", "skeptic_answered", true), r);
     }
 
     @Test
@@ -437,7 +437,8 @@ class FixSkepticTest {
                 .fixrun(item("proven", true, "green_passed", true, "red_output", "x", "attempt", 2L))
                 .run();
         assertEquals(item("proven", true, "green_passed", true, "red_output", "x", "attempt", 2L,
-                "skeptic_verdict", "sound", "skeptic_reason", "a general whitelist"), r);
+                "skeptic_verdict", "sound", "skeptic_reason", "a general whitelist",
+                "skeptic_answered", true), r);
     }
 
     @Test
@@ -458,7 +459,8 @@ class FixSkepticTest {
         Map<String, Object> anError = new Shell()
                 .throwing(new RuntimeException("ECONNREFUSED 10.0.0.4:8000")).run();
         assertEquals(item("proven", true, "skeptic_verdict", "unknown",
-                "skeptic_reason", "skeptic call failed: ECONNREFUSED 10.0.0.4:8000"), anError);
+                "skeptic_reason", "skeptic call failed: ECONNREFUSED 10.0.0.4:8000",
+                "skeptic_answered", false), anError);
 
         // n8n's own request errors put the text in `description`, not in `message`.
         assertEquals("skeptic call failed: The service refused the connection",
@@ -502,6 +504,44 @@ class FixSkepticTest {
         assertEquals("unknown", notAnObject.get("skeptic_verdict"));
         assertTrue(String.valueOf(notAnObject.get("skeptic_reason"))
                 .startsWith("skeptic call failed: "));
+    }
+
+    /**
+     * THE RECEIPT: {@code skeptic_answered}, and why {@code unknown} on its own is not one.
+     *
+     * <p>ORIGIN (2026-07-30): {@code unknown} is what this stage returns for a model that was reached and
+     * said something useless AND for a call that never got an answer at all. Both route to
+     * {@code needs_review}, so four markers of a 53-marker run settled as "a human should look at this"
+     * with nothing anywhere saying whether the skeptic had doubts or had never spoken — and
+     * {@code needs_review} is ZERO in the validated baseline, so all four were unexplainable.
+     *
+     * <p>The reason string already differed, but a reason is prose in a banner: nothing downstream can
+     * branch on it without matching on wording. This boolean is the machine-readable half, and it is
+     * exactly {@code PrMaker}'s {@code pr_curated} — true on the ONE path where the model's own answer
+     * was parsed.
+     */
+    @Test
+    void aCallThatFailedIsMarkedUNANSWEREDAndAUselessReplyIsNot() {
+        Map<String, Object> failed = new Shell().throwing(new RuntimeException("ECONNRESET")).run();
+        assertEquals("unknown", failed.get("skeptic_verdict"));
+        assertEquals(Boolean.FALSE, failed.get("skeptic_answered"),
+                "the endpoint never answered, and that is not the same event as a bad answer");
+
+        // The model WAS reached and answered something the parser cannot use. That is a fact about the
+        // model, not about the network, and reading it as an outage would send an operator to the wrong
+        // dependency.
+        Map<String, Object> useless = new Shell().reply(reply("looks fine to me")).run();
+        assertEquals("unknown", useless.get("skeptic_verdict"));
+        assertEquals(Boolean.TRUE, useless.get("skeptic_answered"));
+
+        assertEquals(Boolean.TRUE, new Shell().run().get("skeptic_answered"),
+                "and a certification is an answer like any other");
+
+        // Skipped: there was no call to answer. The verdict already says `not-run`, so the pair reads
+        // "never asked" rather than "asked and silent".
+        Map<String, Object> skipped = new Shell().fixrun(item("proven", false)).run();
+        assertEquals("not-run", skipped.get("skeptic_verdict"));
+        assertEquals(Boolean.FALSE, skipped.get("skeptic_answered"));
     }
 
     @ParameterizedTest(name = "{0} -> {1}")

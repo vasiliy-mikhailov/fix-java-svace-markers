@@ -1,0 +1,74 @@
+package tech.mikhailov.fsm.orch.web;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * The Svace report row plus what the pipeline made of it, joined onto every artifact — the Java form
+ * of {@code MARKER_COLS} and the join loop in {@code dashboard/src/server.js}.
+ *
+ * <p>ONE DEFINITION, ON PURPOSE. Both {@code /api/state} and {@code /api/bug} enrich a {@code bugs}
+ * row with the marker it answers, and the Node dashboard has a test asserting that the column list
+ * appears exactly once ({@code dashboard/test/endpoints.test.js}) precisely because two literal lists
+ * drift: the bug tab gains a column, the modal does not, and nobody notices until a reviewer asks why
+ * the severity is blank in one place and not the other.
+ *
+ * <p>WHY JOIN AT ALL. A verdict is only reviewable next to the marker it answers — Severity, Checker,
+ * File and Line are the four columns of the Svace report. {@code bugs} stores only
+ * {@code svace_checker}, so the rest is joined here rather than duplicated into a second table that
+ * could drift out of step.
+ */
+final class MarkerColumns {
+
+    private MarkerColumns() {
+    }
+
+    /**
+     * The columns carried from the marker onto its artifact, in the order server.js lists them.
+     *
+     * <p>These are wire names, not Java names: the page reads {@code v.svace_line} and
+     * {@code v.anchor_status} directly off the JSON, so this list is part of the contract with
+     * {@code public/app.js} and not an internal detail.
+     */
+    static final List<String> ALL = List.of("svace_severity", "svace_checker", "svace_line",
+            "marker_id", "category", "severity", "line", "class_name", "method", "anchor",
+            "anchor_status", "description", "evidence", "status", "prove_attempts", "note");
+
+    /**
+     * Copy the marker's columns onto the artifact, and record whether the marker still exists.
+     *
+     * <p>THE ARTIFACT ALWAYS WINS. {@code if (!String(b[c] ?? '').trim())} in server.js — a value the
+     * artifact owns is never clobbered by the join. That matters for exactly one column today,
+     * {@code bugs.svace_checker}, which the Verdict stage writes onto the artifact itself; if the join
+     * overwrote it, a re-ingest that changed the checker name would rewrite history on a verdict that
+     * had already been argued.
+     *
+     * <p>A MISSING MARKER IS A FACT, NOT AN ERROR. The suspicion can be re-ingested out from under an
+     * artifact — the two tables are deliberately not joined by a foreign key, so evidence survives a
+     * re-scan. The columns then fill with null and {@code marker_orphaned} goes true, which the page
+     * renders as "marker row gone — re-ingested since" rather than showing a verdict whose question
+     * has silently changed.
+     *
+     * @param bug    the artifact row, mutated in place
+     * @param marker the marker row keyed by {@code bugs.suspicion_key}, or null when it has gone
+     */
+    static void join(Map<String, Object> bug, Map<String, Object> marker) {
+        for (String column : ALL) {
+            if (blank(bug.get(column))) {
+                bug.put(column, marker == null ? null : marker.get(column));
+            }
+        }
+        bug.put("marker_orphaned", marker == null);
+    }
+
+    /**
+     * {@code !String(v ?? '').trim()} — absent, null, and whitespace all count as "the artifact has no
+     * value of its own here".
+     *
+     * <p>A numeric zero does NOT: {@code String(0)} is {@code "0"}, so a line number of 0 that the
+     * artifact really carries is kept rather than being replaced by the marker's.
+     */
+    private static boolean blank(Object value) {
+        return value == null || String.valueOf(value).trim().isEmpty();
+    }
+}

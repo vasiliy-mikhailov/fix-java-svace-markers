@@ -1,0 +1,163 @@
+{
+  "cases": 2199,
+  "identical": 2185,
+  "divergent": 14,
+  "divergenceClasses": 25,
+  "byNode_totalThenIdentical": {
+    "prep prover": [1500,1491],
+    "build reproduce input": [537,534],
+    "build fix input": [162,160]
+  },
+  "classes": [
+    {
+      "cases": 4,
+      "at": "threw",
+      "js": "s:TypeError",
+      "java": "u"
+    },
+    {
+      "cases": 2,
+      "at": "out.suspicion_key",
+      "js": "u",
+      "java": "(missing)"
+    },
+    {
+      "cases": 2,
+      "at": "out.repo",
+      "js": "u",
+      "java": "(missing)"
+    },
+    {
+      "cases": 2,
+      "at": "out.method",
+      "js": "u",
+      "java": "(missing)"
+    },
+    {
+      "cases": 2,
+      "at": "out.category",
+      "js": "u",
+      "java": "(missing)"
+    },
+    {
+      "cases": 2,
+      "at": "out.severity",
+      "js": "u",
+      "java": "(missing)"
+    },
+    {
+      "cases": 2,
+      "at": "out.title",
+      "js": "u",
+      "java": "(missing)"
+    },
+    {
+      "cases": 2,
+      "at": "out.description",
+      "js": "u",
+      "java": "(missing)"
+    },
+    {
+      "cases": 1,
+      "at": "out (keys)",
+      "js": "suspicion_key,repo,branch,branch_ok,branch_error,prove_attempts,file,module,pkg,class_name,method,test_class,test_path,category,severity,title,description,evidence,marker_id,svace_checker,svace_severity,svace_line,settle…(223)",
+      "java": "repo,branch,branch_ok,branch_error,prove_attempts,file,module,pkg,class_name,method,test_class,test_path,category,severity,title,description,evidence,marker_id,svace_checker,svace_severity,svace_line,settle_by"
+    },
+    {
+      "cases": 1,
+      "at": "out (keys)",
+      "js": "suspicion_key,repo,branch,branch_ok,branch_error,prove_attempts,file,module,pkg,class_name,method,test_class,test_path,category,severity,title,description,evidence,marker_id,svace_checker,svace_severity,svace_line,settle…(223)",
+      "java": "suspicion_key,branch,branch_ok,branch_error,prove_attempts,file,module,pkg,class_name,method,test_class,test_path,category,severity,title,description,evidence,marker_id,svace_checker,svace_severity,svace_line,settle_by"
+    },
+    {
+      "cases": 1,
+      "at": "out (keys)",
+      "js": "suspicion_key,repo,branch,branch_ok,branch_error,prove_attempts,file,module,pkg,class_name,method,test_class,test_path,category,severity,title,description,evidence,marker_id,svace_checker,svace_severity,svace_line,settle…(223)",
+      "java": "suspicion_key,repo,branch,branch_ok,branch_error,prove_attempts,file,module,pkg,class_name,test_class,test_path,category,severity,title,description,evidence,marker_id,svace_checker,svace_severity,svace_line,settle_by"
+    },
+    {
+      "cases": 1,
+      "at": "out (keys)",
+      "js": "suspicion_key,repo,branch,branch_ok,branch_error,prove_attempts,file,module,pkg,class_name,method,test_class,test_path,category,severity,title,description,evidence,marker_id,svace_checker,svace_severity,svace_line,settle…(223)",
+      "java": "suspicion_key,repo,branch,branch_ok,branch_error,prove_attempts,file,module,pkg,class_name,method,test_class,test_path,severity,title,description,evidence,marker_id,svace_checker,svace_severity,svace_line,settle_by"
+    },
+    {
+      "cases": 1,
+      "at": "out (keys)",
+      "js": "suspicion_key,repo,branch,branch_ok,branch_error,prove_attempts,file,module,pkg,class_name,method,test_class,test_path,category,severity,title,description,evidence,marker_id,svace_checker,svace_severity,svace_line,settle…(223)",
+      "java": "suspicion_key,repo,branch,branch_ok,branch_error,prove_attempts,file,module,pkg,class_name,method,test_class,test_path,category,title,description,evidence,marker_id,svace_checker,svace_severity,svace_line,settle_by"
+    },
+    {
+      "cases": 1,
+      "at": "out (keys)",
+      "js": "suspicion_key,repo,branch,branch_ok,branch_error,prove_attempts,file,module,pkg,class_name,method,test_class,test_path,category,severity,title,description,evidence,marker_id,svace_checker,svace_severity,svace_line,settle…(223)",
+      "java": "suspicion_key,repo,branch,branch_ok,branch_error,prove_attempts,file,module,pkg,class_name,method,test_class,test_path,category,severity,description,evidence,marker_id,svace_checker,svace_severity,svace_line,settle_by"
+    },
+    {
+      "cases": 1,
+      "at": "out (keys)",
+      "js": "suspicion_key,repo,branch,branch_ok,branch_error,prove_attempts,file,module,pkg,class_name,method,test_class,test_path,category,severity,title,description,evidence,marker_id,svace_checker,svace_severity,svace_line,settle…(223)",
+      "java": "suspicion_key,repo,branch,branch_ok,branch_error,prove_attempts,file,module,pkg,class_name,method,test_class,test_path,category,severity,title,evidence,marker_id,svace_checker,svace_severity,svace_line,settle_by"
+    },
+    {
+      "cases": 1,
+      "at": "out (keys)",
+      "js": "suspicion_key,repo,branch,branch_ok,branch_error,prove_attempts,file,module,pkg,class_name,method,test_class,test_path,category,severity,title,description,evidence,marker_id,svace_checker,svace_severity,svace_line,settle…(223)",
+      "java": "branch,branch_ok,branch_error,prove_attempts,file,module,pkg,class_name,test_class,test_path,evidence,marker_id,svace_checker,svace_severity,svace_line,settle_by"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i]",
+      "js": "(missing)",
+      "java": "[\"o\",[\"url\",\"s:https://api.github.com/repos/undefined\"],[\"headers\",[\"o\",[\"User-Agent\",\"s:n8n-fsm\"],[\"Accept\",\"s:application/vnd.github+json\"],[\"Authorization\",\"s:Bearer tok\"],[\"Connection\",\"s:close\"]]],[\"json\",\"b:true\"],…(242)"
+    },
+    {
+      "cases": 1,
+      "at": "out",
+      "js": "u",
+      "java": "[\"o\",[\"branch\",\"s:\"],[\"branch_ok\",\"b:false\"],[\"branch_error\",\"s:no network\"],[\"prove_attempts\",\"n:0\"],[\"file\",\"s:\"],[\"module\",\"s:\"],[\"pkg\",\"s:\"],[\"class_name\",\"s:\"],[\"test_class\",\"s:FsmProofTest\"],[\"test_path\",\"s:src/tes…(375)"
+    },
+    {
+      "cases": 1,
+      "at": "out (keys)",
+      "js": "repo,branch,module,file,pkg,class_name,test_class,test_path,svace_checker,svace_severity,svace_line,description,src,src_truncated,agent_input,anchor,anchor_status,anchor_note,line_text,method_text",
+      "java": "repo,branch,module,file,pkg,class_name,test_class,test_path,svace_checker,svace_severity,svace_line,description,src,src_truncated,agent_input,anchor,anchor_status,anchor_note,method_text"
+    },
+    {
+      "cases": 1,
+      "at": "out.line_text",
+      "js": "u",
+      "java": "(missing)"
+    },
+    {
+      "cases": 1,
+      "at": "out (keys)",
+      "js": "repo,branch,module,file,pkg,class_name,test_class,test_path,svace_checker,svace_severity,svace_line,description,src,src_truncated,agent_input,anchor,anchor_status,anchor_note,line_text,method_text",
+      "java": "repo,branch,module,file,pkg,class_name,test_class,test_path,svace_checker,svace_severity,description,src,src_truncated,agent_input,anchor,anchor_status,anchor_note,line_text,method_text"
+    },
+    {
+      "cases": 1,
+      "at": "out.svace_line",
+      "js": "u",
+      "java": "(missing)"
+    },
+    {
+      "cases": 1,
+      "at": "out",
+      "js": "u",
+      "java": "[\"o\",[\"src\",\"s:package a;\\npublic class B {\\n  public void login(String u) {\\n    Statement s = c.createStatement();\\n    s.execute(u);\\n  }\\n  public int other() {\\n    return 1;\\n  }\\n}\"],[\"src_truncated\",\"b:false\"],[\"…(1190)"
+    },
+    {
+      "cases": 1,
+      "at": "out",
+      "js": "u",
+      "java": "[\"o\",[\"repo\",\"s:o/r\"],[\"branch\",\"s:develop\"],[\"module\",\"s:webgoat-container\"],[\"file\",\"s:src/main/java/a/B.java\"],[\"pkg\",\"s:a\"],[\"class_name\",\"s:B\"],[\"test_class\",\"s:BFsmProofTest\"],[\"test_path\",\"s:src/test/java/a/BFsmPr…(1140)"
+    },
+    {
+      "cases": 1,
+      "at": "out",
+      "js": "u",
+      "java": "[\"o\",[\"test_code\",\"s:class BFsmProofTest {\\n  @Test void leaks() { assertNull(B.handle()); }\\n}\"],[\"red_reproduced\",\"b:true\"],[\"red_output\",\"s:expected: <null> but was: <Statement@1a2b>\"],[\"agent_input\",\"s:Repository: un…(894)"
+    }
+  ]
+}

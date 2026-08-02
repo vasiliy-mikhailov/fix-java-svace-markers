@@ -49,12 +49,33 @@ public final class TestRealness {
     private static final Pattern STUBS =
             Pattern.compile("\\bwhen\\s*\\(|\\bmock\\s*\\(|\\bgiven\\s*\\(|@Mock\\b");
 
-    private static final String STUB_MOCK_REASON =
+    /**
+     * The four reason strings that are COMPLAINTS rather than commendations, and the reason all four
+     * are public: {@code tech.mikhailov.fsm.feedback.Critiques} harvests them into the feedback store
+     * under stable kinds, and it recognises them by these exact strings.
+     *
+     * <p>They are shared constants rather than substrings re-spelled over there for the same reason
+     * {@code JudgingCall}'s stage names are shared with {@code RecordOutcome}'s: a wording that drifts
+     * between the place it is WRITTEN and the place it is COUNTED does not fail — the harvest simply
+     * stops matching, the kind stops recurring, and the evidence for changing a prompt quietly goes to
+     * zero while every log line still reads correctly.
+     */
+    public static final String STUB_MOCK_REASON =
             " stub/mock setup(s) for collaborators (legitimate when the real ones need a DB/network)";
+
+    /** @see #STUB_MOCK_REASON */
+    public static final String INTERACTION_ONLY_REASON =
+            "asserts only on interactions (verify), not on returned values/state";
+
+    /** @see #STUB_MOCK_REASON */
+    public static final String MOCKS_SUBJECT_REASON =
+            "the class under test is itself mocked/spied — the test observes stubs, not ";
+
+    /** @see #STUB_MOCK_REASON */
+    public static final String NEVER_TOUCHES_REASON = "the test never constructs ";
+
     private static final String NO_STUBS_REASON =
             "no stubbing at all — drives the real objects end to end";
-    private static final String INTERACTION_ONLY_REASON =
-            "asserts only on interactions (verify), not on returned values/state";
 
     /**
      * @param src the test source the reproducer wrote
@@ -95,12 +116,10 @@ public final class TestRealness {
         long stubs = count(s, STUBS);
 
         if (mocksSubject) {
-            reasons.add("the class under test is itself mocked/spied — the test observes stubs, not "
-                    + name);
+            reasons.add(MOCKS_SUBJECT_REASON + name);
         }
         if (constructs == 0 && statics == 0) {
-            reasons.add("the test never constructs " + name
-                    + " and never calls a static method on it");
+            reasons.add(NEVER_TOUCHES_REASON + name + " and never calls a static method on it");
         }
         if (!touchesReal) {
             return new Result(false, 0, List.copyOf(reasons), mocksSubject, false);

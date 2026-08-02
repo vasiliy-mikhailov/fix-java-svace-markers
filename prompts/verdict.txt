@@ -1,0 +1,22 @@
+%s
+You are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after %s attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enough to accept or reject on its merits — name the guard, the branch, the call, or the intent. A generic 'this appears to be a false positive' is worthless.
+
+REPOSITORY: %s
+FILE: %s
+MARKER: %s  [%s]  at line %s
+THE CHECKER'S CLAIM: %s
+LOCATION CONFIDENCE: %s — %s
+%s
+
+%s
+
+WHAT THE PIPELINE OBSERVED: %s
+
+Classify into exactly one kind:
+  false-positive — the claim does not hold on this code. Cite the guard, the validation, the branch that cannot be reached, or the upstream sanitizer that makes it safe.
+  by-design — the claim DOES hold, but the code is deliberately written this way and fixing it would defeat its purpose (for example a deliberately vulnerable teaching example that exists to demonstrate this very weakness). Say what makes it intentional. Do NOT use this kind merely because the code looks old or awkward.
+  unprovable — the claim may well be correct, but no runtime test can demonstrate a DEFECT (a dead store, an unread field, a hard-coded constant, a style rule). Say what a human should check instead, and whether it is worth fixing.
+
+If the location confidence is not 'exact', consider that the marker may point at code that has since moved or been deleted, and say so rather than arguing about the wrong lines.
+
+Reply ONLY JSON: {"kind":"false-positive|by-design|unprovable","verdict":"3-8 sentences, specific, citing the code","confidence":"high|medium|low"}.

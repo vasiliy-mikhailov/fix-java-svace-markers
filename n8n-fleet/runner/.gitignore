@@ -1,0 +1,13 @@
+# Maven build output, including target/pit-reports and target/surefire-reports. The differential
+# harness writes its long-form report to target/harness/report.txt, which is generated and therefore
+# lands here rather than being committed.
+target/
+
+# The differential harness's unpacked OUTPUT: readable copies of the frozen corpus and the filesystem
+# tree, tens of megabytes, rebuilt by `node harness/js-side.cjs` in seconds.
+#
+# harness/fixtures/ is NOT here and must not be. It is the frozen JavaScript answers themselves — the
+# only surviving record of a service that was deleted — plus the catalogue the test asserts against.
+# Losing it would not be an inconvenience: there is nothing left to regenerate it from. See
+# harness/README.md.
+harness/out/

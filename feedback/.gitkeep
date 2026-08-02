@@ -1,0 +1,12 @@
+The feedback store's directory — committed EMPTY, on purpose.
+
+n8n/docker-compose.yml binds this directory into the orchestrator READ-WRITE
+(../../feedback:/data/feedback) while the rest of the repository stays read-only.
+A bind mount whose source does not exist is CREATED BY DOCKER, owned by root, and
+the orchestrator runs as uid 10002 — so without this file a fresh clone gets a
+directory the store cannot write to, and the only symptom is a warning per marker.
+
+What lands here (gepa-feedback.jsonl) is gitignored: it holds full model prompts,
+full model replies and source excerpts from the repositories under analysis.
+
+See orchestrator/README.md, "The feedback store".

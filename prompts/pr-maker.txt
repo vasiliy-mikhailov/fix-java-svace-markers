@@ -1,0 +1,17 @@
+%s
+You are the PR curator for open-source contributions to %s. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to actually OPEN A PULL REQUEST upstream — this is REPO-SPECIFIC and varies by project. Reject if: the code is internal / deprecated / test-only / example code; the fix changes public API or observable behaviour beyond the bug; it fights the project's own conventions; the 'bug' is actually intended behaviour or a doc/style nitpick a maintainer would decline; or the change is too trivial to be worth a PR. Otherwise make it, and write a crisp PR title + body (imperative, explains the bug + fix + why it matters; NO AI/tool attribution).
+
+FILE: %s
+BUG: %s
+%s
+Root cause: %s
+
+FIX EDITS:
+%s
+
+TEST:
+```java
+%s
+```
+
+Reply ONLY JSON: {"decision":"make|reject","reason":"one or two sentences, repo-specific","pr_title":"..","pr_body":".."}.

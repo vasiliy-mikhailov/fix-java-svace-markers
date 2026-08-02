@@ -1,28 +1,29 @@
 #!/bin/sh
-# Differential harness for slice 2: verdict, fix skeptic, PR maker.
+# Differential harnesses for the engine — the MANUAL entry point. The enforcement is `mvn test`.
 #
-# Runs the ORIGINAL JavaScript and the PORTED Java over the same generated cases and reports every
-# divergence, type-tagged. Not part of `mvn test` — it is the evidence for a port, run by hand when
-# the ported nodes change.
+# WHAT CHANGED, 2026-07-31. Three shell scripts used to run the ORIGINAL JavaScript node bodies from
+# n8n/agentic/src/{lib,nodes} and this port over the same generated cases, then diff them with two Node
+# scripts. That JavaScript has been deleted. Its ANSWERS are frozen under harness/fixtures, and the
+# three comparisons are now JUnit tests in src/test/java/tech/mikhailov/fsm/harness — so a divergence
+# is a RED TEST on every build rather than a report somebody remembered to run.
 #
-#   sh harness/run.sh
+#   sh harness/run.sh            # unpack the frozen corpora, run all three comparisons, show them
+#
+# See harness/README.md for what each family's fixtures cover, when they were generated, and — read
+# this one before promising anybody a refresh — what it would take to regenerate them.
 set -eu
 cd "$(dirname "$0")/.."
 
-echo "== compiling the engine"
-javac -d target/classes --release 25 -Xlint:all -Werror -encoding UTF-8 \
-  $(find src/main/java -name '*.java')
-
-echo "== compiling the harness driver"
-javac -d harness/out/classes -cp target/classes --release 25 -encoding UTF-8 \
-  harness/java/tech/mikhailov/fsm/harness/Diff.java
-
-echo "== running the JavaScript"
+echo "== unpacking the frozen JavaScript answers (readable copies, nothing depends on them)"
 node harness/js-side.cjs
 
-echo "== running the Java"
-java -cp target/classes:harness/out/classes tech.mikhailov.fsm.harness.Diff \
-  harness/out/cases.json harness/out/java-results.json
+echo "== running the three comparisons"
+mvn -B -q -f ../pom.xml -pl engine test \
+  -Dtest='NodeFamilyHarnessTest,InputFamilyHarnessTest,JsonFamilyHarnessTest' \
+  -Dsurefire.failIfNoSpecifiedTests=false
 
-echo "== comparing"
-node harness/compare.cjs
+for f in node-family input-family json-family; do
+  echo
+  echo "================ $f ================"
+  cat "target/harness/$f-expected-report.txt"
+done

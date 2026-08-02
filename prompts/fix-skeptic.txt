@@ -1,0 +1,15 @@
+%s
+A bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER-FIT — makes THIS one test pass without truly fixing the bug (e.g. special-casing the tested input) or risks regressing other behaviour.
+
+BUG: %s
+%s
+
+TEST:
+```java
+%s
+```
+
+FIX EDITS (search/replace on the source file):
+%s
+
+Reply ONLY JSON: {"verdict":"sound|over-fit|regression-risk","reason":"one sentence"}.

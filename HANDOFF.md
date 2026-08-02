@@ -1,4 +1,4 @@
-# fix-java-svace-markers — handoff
+# fix-java-svace-markers-spring — handoff
 
 **Written 2026-07-27. For a fresh session picking this up. This is a to-do list, ordered.**
 
@@ -12,7 +12,7 @@ Turn a **Svace static-analysis report** into two useful outputs per marker:
 
 ## Already done — do NOT redo
 
-- This repo is cloned in all three places: GitHub `vasiliy-mikhailov/fix-java-svace-markers` (private), mh `~/fix-java-svace-markers`, local `/Users/vmihaylov/projects/fix-java-svace-markers`. **You start from an existing checkout.**
+- This repo is cloned in all three places: GitHub `vasiliy-mikhailov/fix-java-svace-markers-spring` (private), mh `~/fix-java-svace-markers-spring`, local `/Users/vmihaylov/projects/fix-java-svace-markers-spring`. **You start from an existing checkout.** (The GitHub slug is written here as the post-migration name; `git remote -v` is the authority, and it was deliberately left untouched — renaming a GitHub repository leaves the old URL redirecting, so the remote keeps working either way.)
 - It is a faithful, unmodified copy of the fix-java-bugs `n8n-fleet` pipeline. Nothing Svace-specific is built yet.
 - The input fixture is committed: `data/svace/webgoat-markers-356.csv` (356 WebGoat markers).
 - WebGoat is **not** cloned by hand — the java-runner clones it automatically on first run.
@@ -35,9 +35,9 @@ Both pipelines share a host and **will collide** unless renamed. Fork the runtim
 - n8n workflow IDs (`fjbprover00001`, `fjbsuspector0001`, `fjborchestr0001`, `fjbdedup000001`, `fjbsetup00000001`) → new IDs, in the `gen_*.py` files.
 - Docker volumes + the `/cache` dir + the n8n-data dir → separate names, so the two stacks never share a build workspace or DB.
 - Create `.env` on mh from `.env.example` (real `QWEN_*` + `GITHUB_TOKEN`).
-- Add a Caddy block: `fix-java-svace-markers.mikhailov.tech` → this stack's dashboard + n8n, with its own basic_auth. (fix-java-bugs uses the `inference-caddy` container.)
+- Add a Caddy block: `fix-java-svace-markers-spring.mikhailov.tech` → this stack's dashboard + n8n, with its own basic_auth. (fix-java-bugs uses the `inference-caddy` container.)
 
-**Done when:** the new n8n is reachable on its own port, the dashboard answers at `fix-java-svace-markers.mikhailov.tech`, and it does not touch fix-java-bugs' containers/DB.
+**Done when:** the new n8n is reachable on its own port, the dashboard answers at `fix-java-svace-markers-spring.mikhailov.tech`, and it does not touch fix-java-bugs' containers/DB.
 
 ## Step 2 — Initialize the schema
 
@@ -80,7 +80,7 @@ Today a marker that won't reproduce lands as `not_reproduced`. Add a proper term
 
 ## Step 6 — Dashboard
 
-- Retarget `dashboard/dashboard.py` to `fix-java-svace-markers.mikhailov.tech`.
+- Retarget `dashboard/dashboard.py` to `fix-java-svace-markers-spring.mikhailov.tech`.
 - Add a per-marker **verdicts** view: `pr_ready` / `needs_review` / `false_positive (+ text)` / `not_reproduced` / `infra`. The false-positive text is a first-class output, not a footnote.
 
 ---

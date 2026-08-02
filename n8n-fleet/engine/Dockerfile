@@ -81,6 +81,11 @@ COPY pom.xml ./
 RUN mvn -B -q dependency:go-offline || true
 
 COPY src ./src
+# THE FROZEN DIFFERENTIAL FIXTURES, which are a TEST INPUT and not documentation. Three of this
+# module's tests replay 6 910 cases that the retired JavaScript node bodies answered, and the answers
+# live here as gzipped data — src/test alone does not build. `harness/out/` stays out (it is generated
+# and is in .dockerignore); `harness/fixtures/` is 236 KB and has to be in the context.
+COPY harness/fixtures ./harness/fixtures
 # Tests run IN THE IMAGE BUILD. This service decides whether a marker is retried or retired for good,
 # and the suite is the ported specification of those rules — an image that ships without having run it
 # is an image nobody checked. Use `--build-arg SKIP_TESTS=-DskipTests` only to reproduce a build whose
@@ -132,7 +137,13 @@ EXPOSE 8092
 # MaxRAMPercentage rather than a fixed -Xmx: the host runs several stacks and this one's ceiling is
 # whatever the compose file gives it. A fixed heap sized for an uncapped host is a heap the OOM killer
 # takes out the moment somebody adds `mem_limit`.
-ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75"
+#
+# stdout/stderr.encoding, because this image has no locale (LANG is unset in debian-slim) and Java
+# picks the platform encoding for the CONSOLE even though the file.encoding default has been UTF-8
+# since 18. The lines that come out of here are not decoration: NodeRoutes returns each node's log
+# line so the shim can echo it into the n8n execution log, and `[realness] … no stubbing at all —
+# drives the real objects end to end` was arriving as `at all ? drives`. An operator greps these.
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8"
 
 # GET, because that is what a HEALTHCHECK can issue without a body. The endpoint accepts POST too, which
 # is the shape the n8n shims use.

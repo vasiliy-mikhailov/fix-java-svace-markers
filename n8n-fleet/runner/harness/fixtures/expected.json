@@ -1,0 +1,116 @@
+{
+  "cases": 23401,
+  "identical": 22656,
+  "divergent": 745,
+  "divergenceKinds": 14,
+  "distinctValuePairs": 438,
+  "byFamily_totalThenIdentical": {
+    "wsNorm": [458,458],
+    "applyEdit": [17524,16943],
+    "applyEditCoerced": [11,9],
+    "fixTarget": [1931,1794],
+    "coerce": [28,28],
+    "summarize": [543,541],
+    "requiredJdk": [758,758],
+    "keyFor": [15,15],
+    "tail": [40,33],
+    "buildCmd": [1510,1510],
+    "outcome": [433,417],
+    "readFile": [42,42],
+    "keyForCoerced": [108,108]
+  },
+  "kinds": [
+    {
+      "kind": "applyEdit | out.text | s -> s",
+      "fieldDifferences": 581,
+      "distinctValuePairs": 326
+    },
+    {
+      "kind": "fixTarget | out.edit_error | s -> s",
+      "fieldDifferences": 106,
+      "distinctValuePairs": 53
+    },
+    {
+      "kind": "fixTarget | out.path | null -> s",
+      "fieldDifferences": 84,
+      "distinctValuePairs": 34
+    },
+    {
+      "kind": "fixTarget | out.error | s -> null",
+      "fieldDifferences": 84,
+      "distinctValuePairs": 1
+    },
+    {
+      "kind": "fixTarget | out.path | s -> null",
+      "fieldDifferences": 27,
+      "distinctValuePairs": 5
+    },
+    {
+      "kind": "fixTarget | out.error | null -> s",
+      "fieldDifferences": 27,
+      "distinctValuePairs": 1
+    },
+    {
+      "kind": "fixTarget | out.error | s -> s",
+      "fieldDifferences": 26,
+      "distinctValuePairs": 2
+    },
+    {
+      "kind": "outcome | out.tests | s -> s",
+      "fieldDifferences": 16,
+      "distinctValuePairs": 1
+    },
+    {
+      "kind": "outcome | out.ran | n -> n",
+      "fieldDifferences": 16,
+      "distinctValuePairs": 1
+    },
+    {
+      "kind": "tail | out.tail | s -> s",
+      "fieldDifferences": 7,
+      "distinctValuePairs": 7
+    },
+    {
+      "kind": "fixTarget | out.edit_error | s -> null",
+      "fieldDifferences": 4,
+      "distinctValuePairs": 2
+    },
+    {
+      "kind": "applyEditCoerced | out | null -> tree",
+      "fieldDifferences": 2,
+      "distinctValuePairs": 2
+    },
+    {
+      "kind": "applyEditCoerced | threw | s -> null",
+      "fieldDifferences": 2,
+      "distinctValuePairs": 1
+    },
+    {
+      "kind": "summarize | out.ran | n -> n",
+      "fieldDifferences": 2,
+      "distinctValuePairs": 2
+    }
+  ],
+  "invariants_applicableThenViolations": {
+    "js": {
+      "a file that was served is inside the repository": [16,0],
+      "a note accompanies a text and only a text": [17524,0],
+      "a unique exact match is applied on the exact path": [5345,0],
+      "an accepted edit path is inside the workspace": [1120,0],
+      "an ambiguous whitespace-insensitive match is refused": [286,0],
+      "applyEdit answers exactly one of {text} and {error}": [17524,0],
+      "several exact matches are refused as not unique": [728,0],
+      "the whitespace fallback replaces one span and not the file": [5272,0]
+    },
+    "java": {
+      "a file that was served is inside the repository": [16,0],
+      "a note accompanies a text and only a text": [17524,0],
+      "a unique exact match is applied on the exact path": [5345,0],
+      "an accepted edit path is inside the workspace": [1177,0],
+      "an ambiguous whitespace-insensitive match is refused": [286,0],
+      "applyEdit answers exactly one of {text} and {error}": [17524,0],
+      "several exact matches are refused as not unique": [728,0],
+      "the whitespace fallback replaces one span and not the file": [5272,0]
+    }
+  }
+}

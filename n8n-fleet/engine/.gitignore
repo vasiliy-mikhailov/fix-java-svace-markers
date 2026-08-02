@@ -1,8 +1,12 @@
 # Maven build output, including target/pit-reports. The repo root has no `target` rule because
-# nothing here was a Maven project before the engine.
+# nothing here was a Maven project before the engine. The three differential harnesses write their
+# long-form reports to target/harness/, which is generated and therefore lands here.
 target/
 
-# Differential-harness output: the generated cases and both sides' results run to tens of megabytes
-# and are reproduced by `sh harness/<slice>-run.sh` in seconds. The *-report.txt summaries are the
-# evidence for a port and ARE committed.
+# The differential harnesses' unpacked OUTPUT: readable copies of the three frozen corpora, tens of
+# megabytes, rebuilt by `node harness/js-side.cjs` in seconds.
+#
+# harness/fixtures/ is NOT here and must not be. It is the frozen JavaScript answers themselves — the
+# only surviving record of eleven node bodies that were deleted — plus the catalogues the three tests
+# assert against. There is nothing left to regenerate them from. See harness/README.md.
 harness/out/

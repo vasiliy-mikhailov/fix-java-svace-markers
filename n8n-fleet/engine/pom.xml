@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  fsm-engine — the judgement half of the fix-java-svace-markers pipeline.
+  fsm-engine — the judgement half of the fix-java-svace-markers-spring pipeline.
 
   n8n keeps what n8n is good at: the schedule, the queue, Data Tables and run history. Everything
   that DECIDES something — the verdict routing, the infra-vs-verdict state machine, the checker map —
@@ -41,6 +41,7 @@
     <surefire.version>3.5.6</surefire.version>
     <pitest.version>1.25.8</pitest.version>
     <pitest.junit5.version>1.2.3</pitest.junit5.version>
+    <jacoco.version>0.8.15</jacoco.version>
 
     <exec.mainClass>tech.mikhailov.fsm.engine.Engine</exec.mainClass>
   </properties>
@@ -102,6 +103,37 @@
         </configuration>
       </plugin>
 
+      <!-- LINE COVERAGE, the other half of MAC (= line coverage x mutation score). PIT reports a
+           line-coverage figure of its own, but it is coverage as PIT saw it — over PIT's target set,
+           gathered by PIT's own instrumentation — so quoting it next to PIT's mutation score is one
+           tool marking its own homework. JaCoCo measures the same production classes independently,
+           from the ordinary surefire run, with NO excludes: every class in src/main/java counts, and
+           one with no test contributes its lines to the denominator and nothing to the numerator. -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>${jacoco.version}</version>
+        <executions>
+          <execution>
+            <id>prepare-agent</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <!-- `verify`, not `test`: the exec file is only complete once surefire's forked JVM has
+                 exited, and binding the report to the same phase that writes it is a race whose
+                 symptom is a report that is silently one run stale. `mvn test jacoco:report` is the
+                 short form when a full verify is not wanted. -->
+            <id>report</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
       <plugin>
         <groupId>org.pitest</groupId>
         <artifactId>pitest-maven</artifactId>
@@ -120,12 +152,14 @@
           <targetTests>
             <param>tech.mikhailov.fsm.*</param>
           </targetTests>
-          <excludedClasses>
-            <!-- Engine/EngineServer are wiring: a socket, an executor and a shutdown hook. Mutating
-                 them produces mutants only an integration test could kill, and a low score there
-                 would be read as "the logic is untested" when the logic lives in lib/ and nodes/. -->
-            <param>tech.mikhailov.fsm.engine.Engine</param>
-          </excludedClasses>
+          <!-- NOTHING IS EXCLUDED, and the empty list is the statement.
+               `tech.mikhailov.fsm.engine.Engine` used to sit here, on the argument that an entrypoint
+               is "wiring" whose mutants only an integration test could kill. That argument is exactly
+               backwards for a baseline: Engine has no test at all, so excluding it did not report a
+               fair score for an untestable class — it removed an untested class from the denominator
+               and made the module's number better than the module. A class nobody tests must drag the
+               score down until somebody tests it. Read the per-class report, not one aggregate, if you
+               want to know whether a survivor is worth killing. -->
 
           <!-- MUTATOR SET = PIT's STRONGER, spelled out so the guild can see and edit what runs.
                DEFAULTS covers the arithmetic and the returns; the ported code is a scoring function
@@ -155,7 +189,7 @@
           <timestampedReports>false</timestampedReports>
           <reportsDirectory>${project.build.directory}/pit-reports</reportsDirectory>
 
-          <!-- No mutationThreshold, matching stryker.conf.json's `"break": null`. A break threshold
+          <!-- No mutationThreshold, as the Stryker config this replaced also declined to set one. A break threshold
                fails the build the moment a new class lands before its tests do, which trains people
                to pass -DskipTests rather than to write the test. The score is read, not enforced. -->
         </configuration>

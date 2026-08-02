@@ -1,64 +1,57 @@
-# fix-java-bugs — n8n fleet
+# n8n-fleet — the Maven reactor
 
-A plain **n8n workflow** that orchestrates the bug-finding fleet with **Docker**,
-replacing the bash `head_watchdog.sh`/`head_worker.sh`. One container == one repo;
-the fleet holds up to `MAX` running and drains a queue seeded from **synthetic**
-and **warm** repos.
+**Start at the [repository README](../README.md).** It has the quickstart, the configuration table and
+the operational notes. This file is the map of what is in this directory.
 
-```
-n8n (Schedule Trigger, every 2 min)
-   └─ HTTP Request  →  dispatch service (:8080)
-                          └─ dispatch.sh:  count running fjbn8n-* containers
-                             while running < MAX and queue not empty:
-                               pop a repo → docker run -d --name fjbn8n-<repo> bugfind <repo>
-```
+The directory name is historical. This pipeline ran on n8n until July 2026; nothing here runs n8n now,
+and no Node, Python or n8n service is left. `n8n/docker-compose.yml` keeps that path because moving it
+would break every runbook and the volume names holding live data — `migrate-to-spring.sh` moves it
+properly, with backups and a post-flight that verifies the marker count survived.
 
-n8n stays a pure scheduler (Schedule + HTTP Request, no shell) — the docker/queue
-work lives in a tiny `dispatch` sidecar that has the socket. Each `bugfind`
-container runs a fresh, stdlib-only FIND → PROVE → FIX per Java file against the
-vLLM endpoint and writes `results_n8n/<repo>.json`.
+## The reactor
 
-## Pieces
+`pom.xml` aggregates three modules. Build them together: `mvn -B test`.
 
-| Path | What |
-|---|---|
-| `bugfind/find_bugs.py` + `Dockerfile` | fresh per-repo pipeline (python + git, no OpenHands). Bounds Qwen thinking with `enable_thinking`/`thinking_budget`. |
-| `dispatch.sh` | POSIX-sh "maintain MAX containers, drain the queue" step (flock-guarded, idempotent). |
-| `dispatch-server/` | ~20-line HTTP wrapper around `dispatch.sh` (has the docker socket). |
-| `n8n/workflow.json` | Schedule → HTTP Request(`http://dispatch:8080/`) → Status. |
-| `n8n/docker-compose.yml` | `dispatch` + stock `n8n` (port **5679**; 5678 is taken by another n8n). |
-| `seed.sh` + `warm_repos.txt` | build `queue.txt` = `synth:*` (from `synth_bench.py`) + warm repos. |
+| module | what it is | depends on |
+|---|---|---|
+| **engine** | The judgement, as pure functions over maps. Ten node classes, no I/O, ~900 tests. Also runs standalone over HTTP so one stage can be replayed by hand. | nothing |
+| **orchestrator** | Spring Batch drives each marker through the chain. Owns H2, the dashboard, the REST API and the WebSocket. **Embeds `engine` as a library** — no HTTP hop between the queue and the judgement. | engine |
+| **runner** | Clones the target repo, writes the test, applies the patch, runs Maven twice. Ships JDK 8/11/17/21/25 + Maven. Ported from a Node service, with a 23,401-case differential harness proving the two agree. | engine |
 
-## Repo forms in the queue
+Each module has its own README with the detail — endpoints, configuration, and why particular decisions
+were made the way they were.
 
-- `owner/repo`   — shallow-cloned from GitHub (warm repos).
-- `synth:<name>` — local planted-bug repo at `$WORK/data/repos/<name>` (from `synth_bench.py`); ground truth in `results/synth_oracle.json`.
+## Deployment
 
-## Run (on mh)
+`n8n/docker-compose.yml` is the whole deployment: three services. Two tests pin that list, so a fourth
+service is a red test rather than a discovery. `n8n/.env.example` documents every variable it reads.
+
+Images build from the **reactor root**, not from a module directory, because `orchestrator` and `runner`
+resolve `tech.mikhailov.fsm:engine` from the reactor and nothing publishes that jar:
 
 ```bash
-cd ~/fix-java-bugs/n8n-fleet
-docker build -t bugfind:latest bugfind/          # per-repo image
-#   .env has QWEN_BASE_URL / QWEN_API_KEY / QWEN_MODEL / MAX_FILES / PROVE_TOP / THINK_BUDGET
-bash seed.sh                                      # queue.txt = synthetic + warm
-cd n8n
-docker run --rm -v "$PWD/n8n-data":/d alpine chown -R 1000:1000 /d   # n8n runs as uid 1000
-docker compose up -d --build                      # dispatch + n8n
-docker exec fjb-n8n n8n import:workflow --input=/data/n8n/workflow.json
-docker exec fjb-n8n n8n update:workflow --id=fjbdispatcher001 --active=true
-docker restart fjb-n8n                             # register the schedule
-# UI: http://<host>:5679   (the workflow then runs itself every 2 min)
+docker compose build                                    # all three, resolving from Central
+
+DOCKER_BUILDKIT=0 docker build --network mvn-cache \
+  --build-arg MAVEN_MIRROR_URL=http://nexus:8081/repository/maven-public/ \
+  -f orchestrator/Dockerfile -t fsm-orchestrator:latest .
 ```
 
-Tune: `MAX` (compose, concurrent containers), `MAX_FILES` / `PROVE_TOP` /
-`THINK_BUDGET` (`.env`). Results land under `~/fix-java-bugs/results_n8n/` for
-downstream (human) verification. The vLLM endpoint is the public `QWEN_BASE_URL`,
-so the `bridge` network gives containers both GitHub and inference reachability.
+The second form is not a stylistic preference. `docker compose build` cannot join a network and BuildKit
+rejects custom network modes, so a Maven mirror that only resolves on `mvn-cache` needs the legacy
+builder. Without it the build fails minutes in with `nexus: No address associated with hostname`.
 
-## Environment notes (hard-won)
+## Tests
 
-- The `n8nio/n8n:latest` image is **hardened Alpine**: no package manager, runs as
-  **uid 1000**, task **runners are mandatory** in 2.30 (`N8N_RUNNERS_ENABLED` is
-  ignored). The **Execute Command** node is unreliable under that setup — hence the
-  HTTP-Request → dispatch-sidecar design.
-- `n8n-data` must be writable by uid 1000 or workflows don't persist across restart.
+```bash
+mvn -B test                        # 1727 tests across the three modules
+orchestrator/playwright/run.sh     # the browser suite, inside the Playwright image
+```
+
+The browser tests are excluded from `mvn test` deliberately — they need the browsers that ship in that
+image. The build prints one line saying so and giving the command, and a test asserts that line still
+matches reality, so the notice cannot quietly become a lie.
+
+## `tools/`
+
+Helpers that are not part of the running system. Nothing on the build path, nothing deployed.

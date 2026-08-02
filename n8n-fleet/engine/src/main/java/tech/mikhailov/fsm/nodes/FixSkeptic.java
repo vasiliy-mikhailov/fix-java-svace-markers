@@ -31,6 +31,14 @@ import tech.mikhailov.fsm.lib.Llm;
  * <p>EVERY DEFAULT HERE IS FAIL-CLOSED. A block that never ran, a dead endpoint and a word nobody
  * recognises must all come out as something OTHER than {@code sound}, because {@code sound} is the
  * claim that somebody checked this fix.
+ *
+ * <p>…AND THE THREE ARE DISTINGUISHABLE, which is the other half of failing closed. The node returns
+ * {@code not-run} for a block that was skipped, and for a block that ran it returns
+ * {@code skeptic_answered} beside the verdict: TRUE when the model's own reply was read back (whatever it
+ * said), FALSE when the call never produced one. Without that boolean, a dead endpoint and a model
+ * answering "looks fine to me" both reach {@link RecordOutcome} as {@code unknown} and both settle as
+ * {@code needs_review} — which is how four markers of a 53-marker run became unexplainable while the run
+ * history stayed green.
  */
 public final class FixSkeptic {
 
@@ -61,8 +69,15 @@ public final class FixSkeptic {
      * every fixture by the differential harness. The {@code \s\} at a line end is a space that survives
      * incidental-whitespace stripping; the trailing {@code \} joins the line to the next without a
      * newline.
+     *
+     * <p>PUBLIC, AND NAMED {@code DEFAULT_}, because it is now the FALLBACK rather than the only text.
+     * {@code prompts/fix-skeptic.txt} at the repo root wins over it and {@code DEFAULT_FIX_SKEPTIC_PROMPT}
+     * in the environment comes between them — see {@code tech.mikhailov.fsm.orch.PromptSource}, which
+     * resolves the three and hands the winner in on {@link Request#promptTemplate}. This node still
+     * decides NOTHING about where the text came from: it formats what it was given, which is what keeps
+     * it a pure function of its request.
      */
-    private static final String PROMPT = """
+    public static final String DEFAULT_PROMPT = """
             %s
             A bug fix passed its regression test (the test FAILED before the fix and PASSES after).\s\
             Judge whether the FIX is a genuine, general correction, or whether it is OVER-FIT — makes\s\
@@ -106,7 +121,22 @@ public final class FixSkeptic {
      * @param item the {@code run_test fix} verdict the node runs on; the whole of it flows through
      */
     public record Request(Object prepProver, Object parseTest, Object parseFix, Object item,
-                          Llm.Endpoint llm, String skepticStamp) {
+                          Llm.Endpoint llm, String skepticStamp, String promptTemplate) {
+
+        /**
+         * The request as every existing caller writes it: {@link #DEFAULT_PROMPT} as the template.
+         *
+         * <p>A DELEGATING CONSTRUCTOR RATHER THAN A SEVENTH ARGUMENT EVERYWHERE. The template is a
+         * DEPLOYMENT choice — the file the orchestrator resolved — and the HTTP route has no opinion
+         * about it at all. Making every call site pass one would have put that choice into the engine's
+         * own tests, where it is noise, and into {@link #of}, which reads an n8n body that carries no
+         * such key. Callers that do not care keep the text this class ships with; the one caller that
+         * does passes the resolved file.
+         */
+        public Request(Object prepProver, Object parseTest, Object parseFix, Object item,
+                       Llm.Endpoint llm, String skepticStamp) {
+            this(prepProver, parseTest, parseFix, item, llm, skepticStamp, DEFAULT_PROMPT);
+        }
 
         /** Read the request out of a posted body. The keys are the n8n node names, snake-cased. */
         public static Request of(Object body) {
@@ -132,12 +162,24 @@ public final class FixSkeptic {
                         + " chars — reply verdict 'unknown' if you cannot judge the whole change]";
     }
 
-    /** Assemble the prompt. Pure, so it can be asserted byte for byte offline. */
+    /** Assemble the prompt from {@link #DEFAULT_PROMPT}. Pure, so it can be asserted byte for byte. */
     public static String skepticPrompt(PromptInput in) {
+        return skepticPrompt(in, DEFAULT_PROMPT);
+    }
+
+    /**
+     * Assemble the prompt from an arbitrary template — the resolved file, when there is one.
+     *
+     * <p>The template's five {@code %s} are positional and this method is what defines them: stamp,
+     * title, description, test code, fix edits. A file with the wrong number of them is rejected at
+     * START-UP by {@code PromptSource}, not here, because a marker discovering it mid-run would take a
+     * prove down after an hour of Maven builds.
+     */
+    public static String skepticPrompt(PromptInput in, String template) {
         // '[]' rather than '' for an absent edit list: '[]' is a JSON array the model reads as "no
         // edits", where a blank line after the heading reads as a truncated prompt and the model
         // answers 'unknown' instead of judging.
-        return PROMPT.formatted(Llm.concat(in.stamp()), Js.orEmptyString(in.title()),
+        return template.formatted(Llm.concat(in.stamp()), Js.orEmptyString(in.title()),
                 Js.orEmptyString(in.description()), cut(in.testCode()),
                 cut(or(in.fixEditsJson(), "[]")));
     }
@@ -202,10 +244,17 @@ public final class FixSkeptic {
         // declined) nothing has certified this fix, and 'sound' would have claimed otherwise.
         String verdict = "not-run";
         String reason = "skeptic did not run";
+        // THE RECEIPT — true on the one path where the model's own answer was read back, exactly as
+        // PrMaker's `pr_curated` is. ORIGIN (2026-07-30): 'unknown' is returned BOTH for a call that
+        // never answered and for a reply nobody could use, and both route to `needs_review`. Four
+        // markers of a 53-marker run settled there with no way to tell which had happened — the reason
+        // strings differ, but a reason is prose in a banner and nothing downstream can branch on it
+        // without matching on wording. `false` here is the machine-readable half of "never answered".
+        boolean answered = false;
         if (proven && Json.truthy(req.parseFix(), "can_fix")) {
             String prompt = skepticPrompt(new PromptInput(req.skepticStamp(), Json.get(j, "title"),
                     Json.get(j, "description"), Json.get(req.parseTest(), "test_code"),
-                    Json.get(req.parseFix(), "fix_edits_json")));
+                    Json.get(req.parseFix(), "fix_edits_json")), req.promptTemplate());
             // The parse is INSIDE the try: a malformed body throws out of the JSON parser, and that is
             // a failed call, not a verdict. Outside it, the failure would escape the node and the
             // prove would end with the marker's lease stranded.
@@ -214,6 +263,10 @@ public final class FixSkeptic {
                 Reply parsed = parseSkepticReply(http.request(Llm.chat(req.llm(), prompt, 0)));
                 verdict = parsed.verdict();
                 reason = parsed.reason();
+                // LAST, and only if both the call and the parse got this far: a body that threw in the
+                // parser is a failed CALL, and a receipt set before it would certify that the model had
+                // spoken when what it sent could not be read.
+                answered = true;
             } catch (Exception e) {
                 verdict = "unknown";
                 reason = "skeptic call failed: " + Llm.failureText(e, REASON_CUT, "error");
@@ -223,6 +276,7 @@ public final class FixSkeptic {
         Map<String, Object> out = spread(fixrun);
         out.put("skeptic_verdict", verdict);
         out.put("skeptic_reason", reason);
+        out.put("skeptic_answered", answered);
         return out;
     }
 

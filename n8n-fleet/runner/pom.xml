@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  fsm-runner — java-runner/src/server.js, in Java.
+
+  WHAT IT IS. The prover's hands: clone a repo, write the reproducer test, build RED, apply the fixer's
+  edits, build GREEN, and answer with what happened. It decides nothing — every judgement about the
+  result belongs to `engine`, which is why this module holds no verdict logic and reads no marker state.
+
+  WHY IT IS A PORT AND NOT A REWRITE. The endpoints are LIVE: n8n's prover workflow posts to /lease,
+  /lease/release and /run_test, the dashboard posts to /fs/read_file, and the orchestrator's
+  RunnerClient documents the /run_test reply field by field. So the contract is fixed from the outside,
+  and the JS stays on disk as the reference this is proven against.
+
+  DEPENDENCY POLICY, same as the engine's: NO third-party runtime dependencies. The one dependency is
+  `engine`, and it is not a framework — it is the JavaScript semantics this port is specified in
+  (Json.parse/stringify, String(x), JS whitespace). A second JSON implementation here would be a second
+  thing to get right, and the first divergence between them would show up as a marker recorded wrong.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>tech.mikhailov.fsm</groupId>
+  <artifactId>runner</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+  <name>fsm-runner</name>
+  <description>Clones a repo, runs a JUnit test red then green, and holds the prove lease.</description>
+
+  <!-- No <parent>, for the reason the aggregator's comment gives for `engine`: this module is
+       deployed and built on its own, and its zero-third-party-dependency policy is the point. -->
+  <properties>
+    <!-- Java 25, via `release` so the compiler also checks the API surface and cannot silently link
+         against a newer JDK's methods when built on one. -->
+    <maven.compiler.release>25</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+    <!-- JUnit 5, not 6: pitest-junit5-plugin is still built against the JUnit 5 platform, and the
+         ported suite is graded by whether it kills mutants. Same versions as the engine, deliberately
+         — two modules in one reactor disagreeing about the test framework is a trap for whoever adds
+         the third. -->
+    <junit.version>5.14.4</junit.version>
+    <surefire.version>3.5.6</surefire.version>
+    <pitest.version>1.25.8</pitest.version>
+    <pitest.junit5.version>1.2.3</pitest.junit5.version>
+    <jacoco.version>0.8.15</jacoco.version>
+
+    <engine.version>0.1.0-SNAPSHOT</engine.version>
+    <exec.mainClass>tech.mikhailov.fsm.runner.Runner</exec.mainClass>
+  </properties>
+
+  <dependencies>
+    <!-- The JavaScript semantics, not a utility belt: Json (JSON.parse/JSON.stringify, strict),
+         Js.string (the ToString the JS templates rely on) and JsText.isSpace (JS `\s`, verified
+         against Node over the whole BMP). applyEdit's whitespace fallback is defined in terms of that
+         predicate, so restating it here is exactly the drift that would let a fix apply in one
+         service and be discarded in the other. -->
+    <dependency>
+      <groupId>tech.mikhailov.fsm</groupId>
+      <artifactId>engine</artifactId>
+      <version>${engine.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>fsm-runner</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.14.1</version>
+        <configuration>
+          <compilerArgs>
+            <!-- Same reason as the engine: this code is string- and regex-heavy and its failures are
+                 silent by nature — a wrong branch reports a real defect as unreproducible instead of
+                 crashing. Warnings are the cheapest place to catch that class of mistake. -->
+            <arg>-Xlint:all</arg>
+            <arg>-Werror</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${surefire.version}</version>
+        <configuration>
+          <!-- RunnerServerTest binds a real socket; every test asks the OS for port 0 so a parallel
+               run, or a developer with the fleet up, cannot collide with it. -->
+          <trimStackTrace>false</trimStackTrace>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.2</version>
+        <configuration>
+          <archive>
+            <manifest>
+              <mainClass>${exec.mainClass}</mainClass>
+            </manifest>
+            <manifestEntries>
+              <Implementation-Version>${project.version}</Implementation-Version>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+
+      <!-- LINE COVERAGE, the other half of MAC — same configuration and same reasoning as the
+           engine's: an independent measurement over ALL of src/main/java, no excludes, so an
+           untested class shows up as untested rather than as absent. -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>${jacoco.version}</version>
+        <executions>
+          <execution>
+            <id>prepare-agent</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.pitest</groupId>
+        <artifactId>pitest-maven</artifactId>
+        <version>${pitest.version}</version>
+        <dependencies>
+          <dependency>
+            <groupId>org.pitest</groupId>
+            <artifactId>pitest-junit5-plugin</artifactId>
+            <version>${pitest.junit5.version}</version>
+          </dependency>
+        </dependencies>
+        <configuration>
+          <targetClasses>
+            <param>tech.mikhailov.fsm.runner.*</param>
+          </targetClasses>
+          <targetTests>
+            <param>tech.mikhailov.fsm.runner.*</param>
+          </targetTests>
+          <!-- NOTHING IS EXCLUDED. `tech.mikhailov.fsm.runner.Runner` used to be listed here as "the
+               entrypoint only". Same correction as the engine's: Runner has no test, so excluding it
+               did not spare an untestable class from an unfair score — it took an untested class out
+               of the denominator, which is the one thing a baseline must never do. It stays in and
+               drags the number down until it has a test. -->
+
+          <!-- PIT's STRONGER, spelled out — identical to the engine's set and for the same reasons. -->
+          <mutators>
+            <mutator>DEFAULTS</mutator>
+            <mutator>REMOVE_CONDITIONALS</mutator>
+            <mutator>EXPERIMENTAL_SWITCH</mutator>
+          </mutators>
+
+          <outputFormats>
+            <param>HTML</param>
+            <param>XML</param>
+          </outputFormats>
+          <timestampedReports>false</timestampedReports>
+          <reportsDirectory>${project.build.directory}/pit-reports</reportsDirectory>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -11,6 +11,8 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -325,5 +327,337 @@ class JsonTest {
         assertEquals(0, Json.num(m, "junk"));
         assertEquals(0, Json.num(m, "absent"),
                 "`(Number(j.prove_attempts) || 0) + 1` must count a missing counter as the first try");
+    }
+
+    @Test
+    void numReadsNaNAsZeroFromANumberAndFromACell() {
+        // `Number(x) || 0` — NaN is falsy in JS, so the idiom yields 0. Both arrivals are real: a
+        // Double.NaN comes out of arithmetic in a previous node, and the STRING "NaN" comes out of a
+        // Data Table cell that a previous run wrote a NaN into.
+        //
+        // Letting NaN through is the worst possible failure here because it is silent and permanent:
+        // `prove_attempts` is compared with `>= 3` to decide when a marker stops being retried, and
+        // EVERY comparison against NaN is false. The marker would be re-proved on every scheduler
+        // tick forever, burning a model call each time, and would never be retired for a human to
+        // look at.
+        assertEquals(0, Json.num(Map.of("prove_attempts", Double.NaN), "prove_attempts"));
+        assertEquals(0, Json.num(Map.of("prove_attempts", "NaN"), "prove_attempts"));
+        assertEquals(3, Json.num(Map.of("prove_attempts", " 3 "), "prove_attempts"),
+                "a Data Table hands text back with whatever spacing it was written with");
+    }
+
+    @Test
+    void strWritesTheValueWheneverItIsNotOneOfTheFalsyOnes() {
+        // The other half of `String(x || '')`. The falsy list is already pinned above; this is the
+        // path that has to carry a value THROUGH, and both ways of getting it wrong are silent.
+        //
+        // A number that read as "" would blank the `prove_attempts` column of the row a reviewer
+        // triages from — the row would still look like a considered outcome. A container that threw
+        // instead of serialising would take out the record step entirely: `fix_edits_json` is read
+        // this way, and the marker would be left mid-fix with a PR that was never opened.
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("prove_attempts", 3L);
+        m.put("test_score", 0.5d);
+        m.put("fix_edits", List.of(Map.of("path", "A.java")));
+        m.put("red_reproduced", Boolean.TRUE);
+        assertEquals("3", Json.str(m, "prove_attempts"));
+        assertEquals("0.5", Json.str(m, "test_score"));
+        assertEquals("[{\"path\":\"A.java\"}]", Json.str(m, "fix_edits"));
+        assertEquals("true", Json.str(m, "red_reproduced"));
+    }
+
+    // ---- a cut candidate is REJECTED, never a crash ----------------------------------------------
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "\"src\\",                  // the slice fell on a backslash, with nothing after it
+        "{\"code\":\"if (x) {\\",
+        "\"\\u12",                  // ...or in the middle of the four hex digits
+        "{\"code\":\"\\u00",
+        "-",                        // ...or between a minus and its first digit
+        "{\"delta\":-}",
+        "[-]",
+        "[1,-",
+    })
+    void aCandidateCutInsideATokenIsRejectedRatherThanCrashing(String cut) {
+        // json-extract.js scans candidate SUBSTRINGS of a model reply, so a candidate can end at any
+        // character — including halfway through an escape or between a minus and its digits. Every
+        // one of those has to come back as a rejection.
+        //
+        // The distinction being pinned is not "fails" but "fails as a JsonException". parseOrNull
+        // catches JsonException and NOTHING else, so a StringIndexOutOfBoundsException out of the
+        // parser does not end one candidate — it escapes the extractor, escapes the handler, and is
+        // answered as a 500. The orchestrator records that as an infra failure against a marker whose
+        // reply was perfectly good everywhere except where the slice happened to land.
+        assertNull(Json.parseOrNull(cut), () -> "must not parse: " + cut);
+        assertThrows(Json.JsonException.class, () -> Json.parse(cut),
+                () -> "must fail as a parse error, not as a crash: " + cut);
+    }
+
+    // ---- exactly as strict as JSON.parse, on the shapes a model actually emits -------------------
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "{kind\": \"by-design\"}",              // the key's OPENING quote was dropped
+        "{\"kind\"=\"by-design\"}",             // '=' where JSON wants ':'
+        "{\"kind\",\"by-design\"}",             // ',' where JSON wants ':'
+        "{\"kind\":\"by-design\";\"why\":\"x\"}",   // ';' between members
+        "[1;2]",
+        "{\"a\":1 \"b\":2}",                    // the comma dropped altogether
+    })
+    void punctuationJsonDoesNotDefineIsRejected(String text) {
+        // These are what a model writes when it drifts out of JSON, and each one has a lenient
+        // reading that would produce a DIFFERENT object rather than an error — `{kind": "x"}` reads
+        // as the key "ind" if the opening quote is not required. That is the failure this parser
+        // exists to prevent: json-extract.js takes the FIRST candidate that parses, so a parser
+        // looser than JSON.parse settles on a candidate the JS walked past, and the verdict is then
+        // read out of an object whose keys are not the ones the model wrote — `kind` is absent, the
+        // router falls through to its default, and a marker is recorded with a judgement nobody made.
+        assertNull(Json.parseOrNull(text), () -> "must not parse: " + text);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "{\"s\":\"a\\xb\"}",        // \x is not in the grammar (JS regexes reach the model this way)
+        "{\"s\":\"\\uZZZZ\"}",
+        "{\"s\":\"\\u00Z1\"}",      // a bad digit anywhere in the four, not just the first
+        "{\"s\":\"\\u 041\"}",
+    })
+    void anEscapeJsonDoesNotDefineIsRejected(String text) {
+        // Same contract, inside a string. This one also protects the PAYLOAD and not just the
+        // routing: with the hex-digit check gone, an escape spelled with letters that are not hex
+        // does not fail — Character.digit returns -1 and the arithmetic runs on anyway, yielding
+        // some arbitrary character, which lands in `test_code` or in an edit's `old_str`. (Written
+        // as prose because Java replaces a backslash-u sequence before it lexes, in a COMMENT as
+        // readily as in a string, so naming one here would be a compile error.) An old_str with a
+        // corrupted character matches nothing in the file, so the fix is refused as un-appliable and
+        // a real defect goes back on the pile as if the model had answered badly.
+        assertNull(Json.parseOrNull(text), () -> "must not parse: " + text);
+    }
+
+    // ---- whitespace, at the two spots the fixtures never had it ----------------------------------
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{ }", "{\n}", "{\t}", "{\r\n  }"})
+    void anEmptyObjectMayBePrettyPrinted(String text) {
+        // "No edits" and "no verdict fields" arrive as `{ }` from anything that pretty-prints, which
+        // is both n8n and the model. Rejecting it would drop a reply that is not merely valid but
+        // MEANINGFUL — the extractor would fall through to a worse candidate or to none, and a clean
+        // "nothing to fix" would be recorded as an unparseable reply and retried as infra.
+        assertEquals(Map.of(), Json.parse(text), () -> "must parse as an empty object: " + text);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"[ ]", "[\n]", "[\r\n  ]"})
+    void anEmptyArrayMayBePrettyPrinted(String text) {
+        assertEquals(List.of(), Json.parse(text), () -> "must parse as an empty array: " + text);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")                       // parse() documents the two container types
+    void anEmptyContainerIsAsUsableAsAFullOne() {
+        // The empty case must not be a DIFFERENT KIND of container from the general case, because no
+        // caller can tell which one it got. The engine's whole shape is "read a few fields off the
+        // item, add a few, hand it on", and runner/Http.readJson manufactures `Json.parse("{}")` for
+        // a body-less POST and passes that straight to the lease handlers. A shared immutable empty
+        // map would turn the documented "curl with no body releases the default lease" into a 500.
+        Map<String, Object> item = (Map<String, Object>) Json.parse("{}");
+        item.put("kind", "by-design");
+        assertEquals("{\"kind\":\"by-design\"}", Json.stringify(item));
+
+        List<Object> edits = (List<Object>) Json.parse("[]");
+        edits.add(Map.of("path", "A.java"));
+        assertEquals("[{\"path\":\"A.java\"}]", Json.stringify(edits));
+    }
+
+    // ---- the depth limit is one limit, not four --------------------------------------------------
+
+    @Test
+    void theDeepestReplyThatParsesCanAlsoBeWrittenBack() {
+        // The parser's limit and the writer's limit have to be the SAME limit. The engine parses an
+        // item and then serialises it back out; if the writer gave up one level earlier than the
+        // parser, the service would answer 500 while echoing an item it had just accepted — a
+        // failure that appears only for deeply nested input and looks like the item, not the code.
+        String deepest = "[".repeat(513) + "]".repeat(513);
+        assertEquals(deepest, Json.stringify(Json.parse(deepest)),
+                "the deepest value the parser accepts must survive the round trip");
+        assertNull(Json.parseOrNull("[".repeat(514) + "]".repeat(514)),
+                "and one level deeper must still be refused");
+    }
+
+    @Test
+    void theDepthLimitCountsObjectsToo() {
+        // The existing bound is proven with arrays; nesting a model reply as OBJECTS is at least as
+        // likely, and the limit exists so a nested reply is rejected as bad input rather than
+        // arriving as a StackOverflowError inside the request handler, which no caller can read.
+        assertNull(Json.parseOrNull("{\"a\":".repeat(600) + "1" + "}".repeat(600)));
+        assertInstanceOf(Map.class, Json.parse("{\"a\":".repeat(100) + "1" + "}".repeat(100)),
+                "a legitimately nested reply is single digits deep and must still parse");
+    }
+
+    @Test
+    void writingIsDepthBoundedForObjectsToo() {
+        // Symmetrical, on the writing side: a pathological or accidentally cyclic map must be refused
+        // rather than overflow the stack with a response already half-written on the wire.
+        Map<String, Object> nest = new LinkedHashMap<>();
+        nest.put("a", 1L);
+        for (int i = 0; i < 600; i++) {
+            Map<String, Object> outer = new LinkedHashMap<>();
+            outer.put("a", nest);
+            nest = outer;
+        }
+        Map<String, Object> deep = nest;
+        assertThrows(IllegalArgumentException.class, () -> Json.stringify(deep));
+    }
+
+    // ---- the rest of the grammar the fixtures never reached --------------------------------------
+
+    @Test
+    void everyEscapeTheGrammarDefinesIsAccepted() {
+        // `\/` is the one that matters most: a model asked for a file path writes
+        // "src\/main\/java\/a\/B.java" often enough that rejecting it would drop good replies, and
+        // the path is what the edit is applied to. `\r` matters because the repositories being fixed
+        // are checked out with CRLF endings, so `old_str` carries carriage returns; if they did not
+        // survive the round trip the edit would not match the file and a correct fix would be
+        // recorded as un-appliable.
+        Map<?, ?> m = (Map<?, ?>) Json.parse(
+                "{\"path\":\"src\\/main\\/java\\/a\\/B.java\",\"old\":\"if (x)\\r\\n\","
+                        + "\"ctl\":\"x\\by\\fz\"}");
+        assertEquals("src/main/java/a/B.java", m.get("path"));
+        assertEquals("if (x)\r\n", m.get("old"));
+        assertEquals("x\by\fz", m.get("ctl"));
+        // ...and back out again. A raw CR inside a JSON string is not valid JSON, so a writer that
+        // did not escape it would produce a payload n8n rejects wholesale.
+        assertEquals("{\"path\":\"src/main/java/a/B.java\",\"old\":\"if (x)\\r\\n\","
+                + "\"ctl\":\"x\\by\\fz\"}", Json.stringify(m));
+    }
+
+    @Test
+    void anExponentMayCarryASign() {
+        // JSON.parse accepts it, so this parser must, for the same reason the pretty-printed cases
+        // matter: a candidate rejected here is a candidate the extractor skips while the JS took it.
+        assertEquals(100.0d, Json.parse("1e+2"));
+        assertEquals(0.01d, Json.parse("1E-2"));
+        assertEquals("{\"t\":0.001}", Json.stringify(Json.parse("{\"t\":1e-3}")));
+        // ...and a sign with no digits after it is still not a number.
+        assertNull(Json.parseOrNull("1e+"));
+        assertNull(Json.parseOrNull("1e-"));
+    }
+
+    @Test
+    void anIntegerTooBigForALongKeepsGoingAsADouble() {
+        // A run id, an epoch-nanos timestamp or a GitHub node number can exceed a long, and JS has no
+        // long at all — it would carry the value as a double with exactly this precision loss. The
+        // value has to arrive as a NUMBER: dropping it (null) would silently empty a field that the
+        // state machine may route on, and letting NumberFormatException out would not be caught by
+        // parseOrNull and would fail the whole extraction instead of this one candidate.
+        Object big = Json.parse("99999999999999999999");
+        assertInstanceOf(Double.class, big, "past Long.MAX_VALUE the value keeps JS's precision loss");
+        assertEquals(1.0e20d, big);
+        assertEquals(Long.valueOf(Long.MAX_VALUE), Json.parse("9223372036854775807"),
+                "the largest value that still fits stays integral");
+        assertInstanceOf(Double.class, Json.parse("9223372036854775808"), "one past it does not");
+    }
+
+    @Test
+    void theWriterRefusesAValueWithNoJsonSpelling() {
+        // The type map in the class comment is the contract, and a node that puts something else in a
+        // reply — an array instead of a List is the easy mistake, since neither is a compile error —
+        // has to be stopped at the boundary. The alternative is a Data Table cell holding
+        // `[Ljava.lang.String;@1b6d3586`, which reads as a value and is not one.
+        assertThrows(IllegalArgumentException.class, () -> Json.stringify(new Object()));
+        assertThrows(IllegalArgumentException.class,
+                () -> Json.stringify(Map.of("files", new String[] {"A.java"})));
+    }
+
+    // ---- what the 400 says -----------------------------------------------------------------------
+    //
+    // These pin the MESSAGE, which is unusual and deliberate. Http.readJson answers
+    // `400 the request body is not valid JSON: <message>` and RunnerServer answers
+    // `400 bad json: <message>`, and NEITHER echoes the body back — by design, because the body may
+    // be a 300 000-character source file and quoting it would push the complaint off the screen.
+    // The wording and the offset are therefore the whole of what an operator gets: they are the
+    // product here, not an implementation detail. An offset that points two characters past the
+    // problem sends the reader to the wrong place in a payload they cannot see.
+
+    private static Json.JsonException rejected(String text) {
+        return assertThrows(Json.JsonException.class, () -> Json.parse(text),
+                () -> "must not parse: " + text);
+    }
+
+    /** The position the message carries, checked to be a position in the text that was parsed. */
+    private static int offsetIn(String text, Json.JsonException e) {
+        Matcher m = Pattern.compile(" at offset (\\d+)$").matcher(e.getMessage());
+        assertTrue(m.find(), () -> "no offset in: " + e.getMessage());
+        int at = Integer.parseInt(m.group(1));
+        assertTrue(at >= 0 && at <= text.length(),
+                () -> "offset " + at + " is not a position in a " + text.length() + "-char input");
+        return at;
+    }
+
+    @Test
+    void aBadSeparatorIsNamedAndPointedAt() {
+        String obj = "{\"kind\":\"by-design\";\"why\":\"x\"}";
+        Json.JsonException e = rejected(obj);
+        assertTrue(e.getMessage().startsWith("expected ',' or '}'"), e.getMessage());
+        assertEquals(';', obj.charAt(offsetIn(obj, e)),
+                "the offset must land ON the character that broke the parse");
+
+        String arr = "[1;2]";
+        Json.JsonException f = rejected(arr);
+        assertTrue(f.getMessage().startsWith("expected ',' or ']'"), f.getMessage());
+        assertEquals(';', arr.charAt(offsetIn(arr, f)));
+    }
+
+    @Test
+    void aTrailingCommaIsDiagnosedAsATrailingComma() {
+        // The diagnosis is the value here. A trailing comma means the reply was truncated or
+        // over-generated, and that is what the operator needs to read; "expected a quoted key" sends
+        // them looking for a malformed field name that does not exist. Pretty-printed on purpose:
+        // the comma and the brace are what a truncated reply leaves, whitespace and all.
+        String obj = "{\"kind\":\"by-design\", }";
+        Json.JsonException e = rejected(obj);
+        assertTrue(e.getMessage().startsWith("trailing comma"), e.getMessage());
+        assertEquals('}', obj.charAt(offsetIn(obj, e)));
+
+        String arr = "[1, ]";
+        Json.JsonException f = rejected(arr);
+        assertTrue(f.getMessage().startsWith("trailing comma"), f.getMessage());
+        assertEquals(']', arr.charAt(offsetIn(arr, f)));
+    }
+
+    @Test
+    void aBrokenStringIsDiagnosedAtTheCharacterThatBrokeIt() {
+        // The commonest malformed payload of all: an embedded Java file whose newlines were not
+        // escaped. In a 20 000-character `src` field the offset is the only way to find the line.
+        String raw = "{\"code\":\"line one\nline two\"}";
+        Json.JsonException e = rejected(raw);
+        assertTrue(e.getMessage().startsWith("unescaped control character"), e.getMessage());
+        assertEquals('\n', raw.charAt(offsetIn(raw, e)));
+
+        String badEscape = "{\"code\":\"a\\xb\"}";
+        Json.JsonException f = rejected(badEscape);
+        assertTrue(f.getMessage().startsWith("invalid escape \\x"), f.getMessage());
+        assertEquals('x', badEscape.charAt(offsetIn(badEscape, f)));
+
+        String badHex = "{\"s\":\"\\u00Z1\"}";
+        Json.JsonException g = rejected(badHex);
+        assertTrue(g.getMessage().startsWith("invalid \\u escape"), g.getMessage());
+        assertEquals('Z', badHex.charAt(offsetIn(badHex, g)),
+                "the offset must name the digit that is not hex, not the start of the escape");
+    }
+
+    @Test
+    void aCutReplySaysWhereItWasCut() {
+        // "truncated" and "unterminated" are different findings for the operator: the first says the
+        // model stopped mid-escape, the second says the string itself never closed. They are one
+        // character apart in the input and must not be swapped.
+        Json.JsonException insideTheEscape = rejected("{\"s\":\"\\u00");
+        assertTrue(insideTheEscape.getMessage().startsWith("truncated \\u escape"),
+                insideTheEscape.getMessage());
+
+        Json.JsonException justAfterIt = rejected("{\"s\":\"\\u0041");
+        assertTrue(justAfterIt.getMessage().startsWith("unterminated string"),
+                justAfterIt.getMessage());
     }
 }

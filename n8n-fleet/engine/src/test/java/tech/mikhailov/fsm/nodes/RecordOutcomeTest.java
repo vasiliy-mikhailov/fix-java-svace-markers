@@ -341,6 +341,151 @@ class RecordOutcomeTest {
         assertEquals("run_test(reproduce): the runner container died", r.infraReason());
     }
 
+    // ---- …and neither is a FIX build that never executed the test --------------------------------
+
+    /**
+     * A fix run whose GREEN build came back having run no test, with {@code out} as its log.
+     *
+     * <p>This is the shape the runner really sends for a build it KILLED at its 20-minute timeout: a
+     * normal 200 (well inside the client's 90-minute ceiling, so nothing throws), {@code ok: true},
+     * the RED build compiled and the test failed, and a green summary saying the test never ran with
+     * no compile error under it.
+     */
+    private static Marker greenNeverExecuted(String out) {
+        return marker().prMaker("ok", true, "green_passed", false, "proven", false, "jdk", "21",
+                "green_summary", item("tests", null, "ran", 0, "failures", 0, "errors", 0,
+                        "test_executed", false, "build", "?", "compile_error", false,
+                        "source", "console"),
+                "green_output", out);
+    }
+
+    /**
+     * THE GREEN COUNTERPART of the guard above, and it exists for exactly the same reason.
+     *
+     * <p>ORIGIN (2026-07-30): the red side has had "a test that never executed is infra, not a verdict"
+     * since the port; the green side had nothing. A fix run whose GREEN build is killed at the runner's
+     * 20-minute timeout answers {@code green_passed: false} on a build that ran ZERO tests, and
+     * {@code reproduced && !green} routed that straight to {@code fix_failed} — which the verdict
+     * writer publishes as "CONFIRMED as a real defect, but UNFIXED … No source-only fix could be
+     * produced that made it pass", and which parks the suspicion as {@code reproduced}, a status
+     * neither {@code claimNext} nor {@code claimAnotherSample} ever selects again. A judgement about
+     * the fixer's work, written from a build that never ran a test, terminal on the FIRST attempt.
+     */
+    @Test
+    void aGreenBuildKilledAtTheTimeoutIsNotAVerdictThatNoFixCouldBeFound() {
+        Outcome r = greenNeverExecuted("[INFO] Building WebGoat 2023.8\n"
+                + "[INFO] Downloading from central: …\n[TIMEOUT]").run();
+        assertEquals(MarkerState.INFRA_ERROR, r.state(),
+                "the fix was never verified, so nothing here is a judgement about the fix");
+        // The reason is asserted in full: it is the only record of which step broke, and the
+        // "[TIMEOUT]" the runner appends is otherwise read by nothing anywhere — green_output is not
+        // even persisted, so without this line the evidence that the build was KILLED is lost.
+        assertEquals("fix verification never ran the test (green build failed, jdk 21): "
+                + "killed at the build timeout [TIMEOUT]", r.infraReason());
+        assertTrue(r.redVerified(), "the red proof still stands and is still recorded");
+        assertFalse(r.greenVerified());
+    }
+
+    @Test
+    void aGreenBuildThatCouldNotResolveItsDependenciesIsInfraToo() {
+        // Same shape, no timeout: the build failed before surefire, so again nothing was learned about
+        // the fix. Any non-compile green failure lands here.
+        Outcome r = greenNeverExecuted("[ERROR] Failed to execute goal on project webgoat: Could not "
+                + "resolve dependencies\n[INFO] BUILD FAILURE").run();
+        assertEquals(MarkerState.INFRA_ERROR, r.state());
+        assertEquals("fix verification never ran the test (green build failed, jdk 21): BUILD FAILURE",
+                r.infraReason());
+    }
+
+    @Test
+    void aFixThatDOESNOTCOMPILEIsTheFixersOwnFailureAndStaysFixFailed() {
+        // THE BOUNDARY OF THE GUARD, and the reason it is not simply "the test did not run". Edits that
+        // do not compile are the FIXER's failure and the one thing this stage is entitled to judge:
+        // "no source-only fix could be produced that made it pass" is then true. Sweeping them into
+        // infra would retry a bad patch to the ceiling and then retire a marker that DID reproduce as
+        // "not settled", throwing away a true-positive-unfixed finding worth having.
+        Outcome r = greenNeverExecuted("[ERROR] COMPILATION ERROR\n"
+                        + "[ERROR] /src/main/java/a/B.java:[4,9] cannot find symbol\n[INFO] BUILD FAILURE")
+                .prMaker("green_summary", item("test_executed", false, "compile_error", true,
+                        "build", "BUILD FAILURE", "source", "console"))
+                .run();
+        assertEquals(MarkerState.FIX_FAILED, r.state());
+        assertEquals("", r.infraReason(), "nothing broke: the fixer's patch did not compile");
+    }
+
+    @Test
+    void aMarkerThatNeverWentRedIsNotRequeuedOverItsGreenBuild() {
+        // With no red on record the marker is decided by the RED run alone and its green build says
+        // nothing either way. Reporting this would requeue every not_reproduced marker whose fix run
+        // happened not to reach a test.
+        Outcome r = greenNeverExecuted("[TIMEOUT]").repro("red_reproduced", false).run();
+        assertEquals(MarkerState.NOT_REPRODUCED, r.state());
+        assertEquals("", r.infraReason());
+    }
+
+    @Test
+    void aFixRunThatReportedNoGreenSummaryIsNotTurnedIntoABuildFailureReport() {
+        // Strictly false, exactly as on the red side: an ABSENT test_executed is a reply from a stage
+        // that reported nothing, not a build that ran nothing, and inventing a build failure out of it
+        // would requeue every marker whose fix run answered in an older shape.
+        Outcome r = marker().prMaker("ok", true, "green_passed", false, "proven", false).run();
+        assertEquals(MarkerState.FIX_FAILED, r.state());
+        assertEquals("", r.infraReason());
+    }
+
+    @Test
+    void aFixRunThatNeverReportedOkIsQuotedForItsOwnFailureNotForABuildItNeverReached() {
+        // The mirror of the red-side rule: ok=false means run_test itself did not complete, so a green
+        // build that ran nothing is not news — nothing got as far as a build.
+        Outcome r = greenNeverExecuted("[TIMEOUT]")
+                .prMaker("ok", false, "error", "the runner container died").run();
+        assertEquals(MarkerState.INFRA_ERROR, r.state());
+        assertEquals("run_test(fix): the runner container died", r.infraReason());
+    }
+
+    /**
+     * THE SIBLING, found by looking for the same hole on the fix run's OTHER half.
+     *
+     * <p>The fix run builds RED itself before applying the edits, and that build can be killed too — a
+     * cold dependency cache is the obvious way, and it is the FIRST build of the run that pays for it.
+     * The warm green build then runs the test and passes, so the reply is {@code green_passed: true}
+     * with {@code proven: false}, and the routing falls all the way through to {@code not_reproduced}:
+     * "a test was written, ran, and passed on the unpatched code" — on a row whose {@code red_verified}
+     * is TRUE, from a build that ran no test, with an empty infra_reason. Two samples of that and the
+     * verdict writer argues the marker away as a false positive.
+     */
+    @Test
+    void aFixRunWhoseOwnRedBuildNeverRanIsNotAVerdictThatTheTestPassesUnpatched() {
+        Outcome r = marker().prMaker("ok", true, "green_passed", true, "proven", false, "jdk", "21",
+                "red_summary", item("test_executed", false, "compile_error", false, "build", "?"),
+                "green_summary", item("test_executed", true, "compile_error", false),
+                "red_output", "[INFO] Downloading from central: …\n[TIMEOUT]").run();
+        assertEquals(MarkerState.INFRA_ERROR, r.state(),
+                "the reproducer already drove this marker red; nothing here refutes that");
+        assertEquals("fix run never re-established red (its own red build ran no test, jdk 21): "
+                + "killed at the build timeout [TIMEOUT]", r.infraReason());
+    }
+
+    @Test
+    void aFixRunWhoseRedBuildRanIsUntouchedHoweverTheGreenEnded() {
+        // The ordinary shape of the same reply — the fix run's red build ran, and the green run simply
+        // does not amount to a proof — stays exactly where it was.
+        Outcome r = marker().prMaker("ok", true, "green_passed", true, "proven", false,
+                "red_summary", item("test_executed", true)).run();
+        assertEquals(MarkerState.NOT_REPRODUCED, r.state());
+        assertEquals("", r.infraReason());
+    }
+
+    @Test
+    void aRedBuildKilledAtTheTimeoutSaysSoRatherThanReportingABareBuildFailure() {
+        // The same marker on the red side. It was already infra — that guard has always existed — but
+        // the row said only "build failed", with the one fact that distinguishes a killed build from a
+        // broken one dropped on the floor.
+        assertEquals("reproducer test never executed (build failed, jdk 25): "
+                + "killed at the build timeout [TIMEOUT]",
+                neverExecuted("[INFO] Building WebGoat 2023.8\n[TIMEOUT]").infraReason());
+    }
+
     // ---- a green flip that proves nothing cannot reach pr_ready ----------------------------------
 
     @Test
@@ -439,6 +584,49 @@ class RecordOutcomeTest {
         assertEquals("⚠ FIX SKEPTIC (unknown): no reply\n\n", r.prBody());
     }
 
+    /**
+     * A SKEPTIC THAT NEVER ANSWERED IS NOT A SKEPTIC THAT WAS UNSURE.
+     *
+     * <p>ORIGIN (2026-07-30): both come out {@code needs_review}, and a run of 53 markers left four of
+     * them there against a baseline where {@code needs_review} is ZERO — with no way to tell which had
+     * been judged. The row is the artifact; if the two look the same on it, nobody can explain the four
+     * without re-running them.
+     *
+     * <p>{@code infra_reason} is the machine-readable half — the column that already exists to record
+     * WHICH STEP BROKE — and it is greppable: every judging call that failed closed says
+     * {@code never answered}. The state does NOT change, because the fix is still execution-proven and
+     * still needs a human; what changes is that the row says why it is waiting for one.
+     */
+    @Test
+    void aSkepticThatNeverANSWEREDIsNotASkepticThatWasUnsure() {
+        Outcome unreachable = marker().prMaker("skeptic_verdict", "unknown", "skeptic_answered", false,
+                "skeptic_reason", "skeptic call failed: HTTP 503 from the model front end").run();
+        assertEquals(MarkerState.NEEDS_REVIEW, unreachable.state());
+        assertEquals("⚠ FIX SKEPTIC NEVER ANSWERED — nobody checked this fix for over-fitting, so it "
+                + "is held back UNCERTIFIED rather than doubted (skeptic call failed: HTTP 503 from "
+                + "the model front end)\n\n", unreachable.prBody());
+        assertEquals("fix skeptic never answered: skeptic call failed: HTTP 503 from the model front "
+                + "end", unreachable.infraReason());
+
+        Outcome unsure = marker().prMaker("skeptic_verdict", "over-fit", "skeptic_answered", true,
+                "skeptic_reason", "asserts on the stub").run();
+        assertEquals(MarkerState.NEEDS_REVIEW, unsure.state());
+        assertEquals("⚠ FIX SKEPTIC (over-fit): asserts on the stub\n\n", unsure.prBody());
+        assertEquals("", unsure.infraReason(),
+                "nothing broke: the skeptic was reached, and it doubted the fix");
+    }
+
+    @Test
+    void aSkepticThatAnsweredUnusablyIsStillASkepticThatAnswered() {
+        // Reached, and it said something the parser could not use. A fact about the MODEL, not about the
+        // endpoint: filing it as an outage sends an operator to restart a dependency that is healthy.
+        Outcome r = marker().prMaker("skeptic_verdict", "unknown", "skeptic_answered", true,
+                "skeptic_reason", "skeptic returned no usable verdict").run();
+        assertEquals(MarkerState.NEEDS_REVIEW, r.state());
+        assertEquals("⚠ FIX SKEPTIC (unknown): skeptic returned no usable verdict\n\n", r.prBody());
+        assertEquals("", r.infraReason());
+    }
+
     @Test
     void anOverFitVerdictHoldsTheFixBack() {
         Outcome r = marker().prMaker("skeptic_verdict", "over-fit",
@@ -449,12 +637,35 @@ class RecordOutcomeTest {
         assertEquals("⚠ FIX SKEPTIC (over-fit): asserts on the stub\n\n", r.prBody());
     }
 
+    /**
+     * A CURATOR THAT DECIDED NOTHING IS NOT A SKEPTIC THAT HAD DOUBTS.
+     *
+     * <p>ORIGIN (2026-07-30): this row used to read {@code ⚠ FIX SKEPTIC (sound):} with an empty reason —
+     * a banner naming the one stage that had PASSED the fix, as the reason the fix was held back. A
+     * reviewer reading it learns that the skeptic was happy and nothing else, which is the most
+     * expensive kind of unexplainable row: it looks like a considered outcome and describes nothing.
+     * The blocker is the curator, so the banner names the curator.
+     */
     @Test
-    void aCrashedCuratorDoesNotAutoApprove() {
+    void aCrashedCuratorDoesNotAutoApproveAndIsNotBlamedOnTheSkeptic() {
         Outcome r = marker().prMaker("pr_decision", "").run();
         assertEquals(MarkerState.NEEDS_REVIEW, r.state());
-        assertEquals("⚠ FIX SKEPTIC (sound): \n\n", r.prBody(),
-                "the skeptic was fine; the curator is why");
+        assertEquals("⚠ PR CURATOR RETURNED NO DECISION (`unknown`) — the skeptic certified this fix "
+                + "SOUND, so nothing here doubts it; it is held back because nobody decided whether to "
+                + "propose it\n\n", r.prBody());
+        assertEquals("pr curator never answered: pr_decision `unknown`", r.infraReason());
+    }
+
+    @Test
+    void aCuratorThatAnsweredWithAWordNobodyRecognisesIsQuotedBack() {
+        // 'n/a' is the curator's own fail-closed default for a reply that carried no JSON object, and a
+        // decision the pipeline does not know is a third thing again. Both are quoted, because which one
+        // it was decides whether an operator re-runs the marker or fixes the prompt.
+        Outcome r = marker().prMaker("pr_decision", "maybe", "pr_reason", "I am not sure").run();
+        assertEquals(MarkerState.NEEDS_REVIEW, r.state());
+        assertTrue(r.prBody().startsWith("⚠ PR CURATOR RETURNED NO DECISION (`maybe`)"), r::prBody);
+        assertTrue(r.prBody().contains("I am not sure"), r::prBody);
+        assertEquals("pr curator never answered: I am not sure", r.infraReason());
     }
 
     @Test
@@ -491,6 +702,10 @@ class RecordOutcomeTest {
         // and the reviewer needs to know whether to re-run it or read the draft with their own eyes.
         assertEquals("⚠ PR CURATOR NEVER RAN — this is the fixer's own unreviewed draft (llm down)"
                 + "\n\ndraft", r.prBody());
+        // …and the same greppable clause as the other two judging failures, because a draft nobody
+        // curated is a step that broke and `pr_ready` alone does not say so. The state is unchanged: an
+        // execution-proven fix is not thrown away over a hiccup at the curator.
+        assertEquals("pr curator never answered: llm down", r.infraReason());
     }
 
     // ---- outcomes short of a proven fix ----------------------------------------------------------
