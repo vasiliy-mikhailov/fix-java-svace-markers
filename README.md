@@ -88,6 +88,9 @@ not from console text.
 
 ---
 
+> **A worked example** — the WebGoat Svace report, the 282 verdicts it produced, and what to expect
+> if you run it yourself: [examples/webgoat/](examples/webgoat/).
+
 ## Where the judgement actually lives
 
 **`prompts/*.txt` at the repo root** — `reproducer`, `fixer`, `fix-skeptic`, `pr-maker`, `verdict`. Edit
