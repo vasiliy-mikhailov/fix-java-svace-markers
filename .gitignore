@@ -2,14 +2,14 @@
 .env
 *.env
 !.env.example
-n8n-fleet/n8n/n8n-data/
-n8n-fleet/**/node_modules/
+pipeline/deploy/n8n-data/
+pipeline/**/node_modules/
 **/__pycache__/
 *.pyc
 .DS_Store
 # runtime outputs & caches
 results_n8n/
-n8n-fleet/**/*cache*/
+pipeline/**/*cache*/
 *.log
 
 # THE FEEDBACK STORE — full model prompts, full model replies and source excerpts from the

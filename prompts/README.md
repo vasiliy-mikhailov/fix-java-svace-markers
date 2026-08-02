@@ -29,7 +29,7 @@ Per **stage**, not per directory: dropping in one file tunes one stage and leave
 exactly as they were. A deployment with no prompts directory at all resolves every stage to the
 built-in text and behaves precisely as it did before this directory existed.
 
-`FSM_PROMPTS_DIR` defaults to `/data/prompts`. `n8n/docker-compose.yml` mounts the repository root at
+`FSM_PROMPTS_DIR` defaults to `/data/prompts`. `deploy/docker-compose.yml` mounts the repository root at
 `/data` read-only for `fsm-orchestrator`, so that path is this directory seen from inside the
 container. Read-only is fine — nothing writes here — and there is no image to rebuild, because the
 orchestrator Dockerfile deliberately copies only `orchestrator/`, `engine/` and `pom.xml`.
@@ -82,5 +82,5 @@ identical run histories.
   changes when the run keeps sending the other. The briefs now live in this directory and, as a
   compiled-in last resort, in `tech.mikhailov.fsm.orch.Prompts`.
 
-The behaviour is pinned in `n8n-fleet/orchestrator/src/test/java/tech/mikhailov/fsm/orch/PromptSourceTest.java`
+The behaviour is pinned in `pipeline/orchestrator/src/test/java/tech/mikhailov/fsm/orch/PromptSourceTest.java`
 and `PromptFilesTest.java`.

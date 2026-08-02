@@ -1,0 +1,329 @@
+# Compose project name. WITHOUT this, Compose derives the project from the directory basename. That
+# was `n8n` for this stack AND for fix-java-bugs' stack, so both resolved the same `n8n_default`
+# network and the two pipelines silently shared one bridge. This directory is now `deploy` and the
+# sibling's is still `n8n`, so that particular collision is gone — but the line stays, because what
+# keeps the two apart is naming the project, not the basename that happens to be under it today.
+# Renaming the containers alone does not do it, and neither does renaming this directory: drop this
+# line and the project silently becomes whatever the directory is next called. (The volumes below are
+# additionally pinned by physical name, for the separate reason argued at the bottom of this file.)
+#
+# THREE SERVICES, AND THAT IS THE WHOLE DEPLOYMENT: engine, orchestrator, runner. Node and n8n are
+# gone — `n8n`, `java-runner` and `dashboard` were deleted here after their containers were removed
+# from the host. The orchestrator serves the dashboard (Caddy routes /dashboard/ to
+# fsm-orchestrator:8085) and the runner proves the markers. Nothing here starts a second prover:
+# /run_test is serialised inside ONE process around one workspace per repository, and two processes
+# have no lock between them at all. The orchestrator's DeploymentTest pins the service list, so a
+# fourth service is a red test rather than a discovery. It is the only test over this file: the Node
+# half of the fleet held a second one (n8n/agentic/test/compose.test.js) and every assertion it made
+# was moved into DeploymentTest before that tree was deleted.
+name: fsm
+
+services:
+  # The build/test service: all JDKs (8/11/17/21/25) + Maven + Gradle, and the port of the Node runner
+  # that used to do this job. Same five routes, same port, same /run_test reply field for field.
+  #
+  #   docker compose build runner          # Central; works on a fresh clone anywhere
+  #   docker compose build --build-arg MAVEN_MIRROR_URL=http://nexus:8081/repository/maven-public/ runner
+  #                                        # …on this host, with `--network mvn-cache`; see the Dockerfile
+  #
+  # The orchestrator posts POST http://fsm-runner:8090/run_test to prove a marker (JUnit red before the
+  # fix, green after). Maven resolves through the Nexus mirror. See runner/README.md.
+  runner:
+    build:
+      # THE REACTOR ROOT, like the orchestrator's. This module depends on tech.mikhailov.fsm:engine and
+      # resolves it FROM THE REACTOR — nothing publishes that jar to a repository — so a context of
+      # ../runner cannot build the image at all, and says so minutes in.
+      context: ..
+      dockerfile: runner/Dockerfile
+      args:
+        MAVEN_MIRROR_URL: ${MAVEN_MIRROR_URL:-}
+    image: fsm-runner:latest
+    container_name: fsm-runner
+    restart: unless-stopped
+    networks:
+      # reachable as http://fsm-runner:8090 by the orchestrator — its RunnerClient posts the proves and
+      # its SourceWindowService reads the checkout the dashboard renders. No published port, so this
+      # network is the only way in.
+      - default
+      # NEXUS, AND THIS LINE IS LOAD-BEARING. runner/settings.xml sets mirrorOf=*, so the mirror on this
+      # network is not a cache in front of Central — it is the only repository Maven will talk to. Off
+      # mvn-cache the container starts, answers /health with all five JDKs and then fails EVERY Maven
+      # build of every target repository with hundreds of lines about unresolvable artifacts, which reads
+      # as a broken repository rather than as broken wiring. DeploymentTest pins it.
+      - mvn-cache
+    environment:
+      # The clone credential, and the ONLY secret this service takes. It never reaches a command line or
+      # a config file: Workspace hands it to git through a credential helper in the environment, so
+      # unlike the JS it is not written into any checkout's .git/config. See the volume note below.
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - PORT=8090
+      # Restated even though the image defaults it, so the mount below and the path it serves are visible
+      # together — the same reason FSM_DB_PATH is restated on the orchestrator.
+      - CACHE=/cache
+    volumes:
+      # ITS OWN VOLUME — deliberately NOT the JS runner's `fsm_fsm-java-runner-cache`, which outlives
+      # the deleted service on this host until somebody removes it.
+      #
+      # THE LEAKED TOKEN is why that matters and why the name must never be changed back. Every clone
+      # the JS made carries `https://<token>@github.com/…` verbatim in its .git/config as
+      # remote.origin.url, because that is the URL it cloned with. This service does not do that
+      # (Workspace.CREDENTIAL_HELPER) — but it ADOPTS an existing checkout instead of re-cloning it
+      # (prepareWs takes any directory with a .git, prepareFs any tree whose HEAD resolves), and
+      # adoption never rewrites remote.origin.url. Pointing at the old volume would therefore carry the
+      # credential forward indefinitely, surviving a rotation of GITHUB_TOKEN in .env.
+      #
+      #   docker volume rm fsm_fsm-java-runner-cache
+      #
+      # is what actually deletes those copies, and nothing in this file needs that volume any more.
+      # A named volume, not a bind mount, holding both the build workspaces and the read-only /cache/fs
+      # checkouts the orchestrator's source window reads through this service. Unmounted, /cache would
+      # be the container's writable layer and every `docker compose up -d` would throw away every
+      # checkout and every `target/` behind it.
+      - fsm-runner-cache:/cache
+
+  # The judgement engine, over HTTP. Each stage is one POST here (see engine/src/main/java/.../
+  # NodeRoutes.java for the paths and the request contract).
+  #
+  #   docker compose build engine        # Central, works on a fresh clone anywhere
+  #   docker compose build --build-arg MAVEN_MIRROR_URL=http://nexus:8081/repository/maven-public/ engine
+  #                                      # …on this host, with `--network mvn-cache`; see the Dockerfile
+  #
+  # THE ORCHESTRATOR DOES NOT CALL IT. It embeds the same code as a LIBRARY (orchestrator/pom.xml), so
+  # there is no HTTP hop between the queue and the judgement. This service is how that judgement is
+  # reachable on its own — one stage at a time, from a shell, against a request you wrote by hand,
+  # which is the only way to reproduce a single stage without a 6-26 hour run around it.
+  #
+  # IT HOLDS NO SECRETS, and that is a property worth keeping. The model endpoint, the Svace endpoint
+  # and the GitHub token all arrive IN THE REQUEST, so the engine has one source of truth for them —
+  # the caller's — instead of a second copy that can drift. Nothing here needs QWEN_* or GITHUB_TOKEN.
+  engine:
+    build:
+      context: ../engine
+      args:
+        MAVEN_MIRROR_URL: ${MAVEN_MIRROR_URL:-}
+    image: fsm-engine:latest
+    container_name: fsm-engine
+    restart: unless-stopped
+    networks:
+      - default            # reachable as http://fsm-engine:8092 — NOT published to the host
+      # …AND proxy-net, because the model is on it. `QWEN_BASE_URL=http://inference-vllm:8000` is a
+      # compose name, and it only ever resolved because the Code node making that call ran inside
+      # fsm-n8n, which was on proxy-net. Turning those nodes into shims moved the call here.
+      #
+      # THE FAILURE THIS FIXES WAS SILENT, which is why it is worth the paragraph. Without this line,
+      # Fix skeptic, PR maker and Verdict all reached a name that does not resolve; the port kept the
+      # JS's own try/catch, so each failed CLOSED and answered 200 — skeptic_verdict 'unknown',
+      # pr_decision 'n/a', a deterministic verdict — and the marker settled as `needs_review` with a
+      # green run history and no error anywhere. A marker that had previously reached `pr_ready` came
+      # back downgraded, and the only evidence was the word "unknown" inside a Data Table cell.
+      #
+      # DeploymentTest pins it. fsm-n8n used to be the reference it compared against — "every
+      # network n8n is on" — so when that service was deleted the comparison was re-anchored to the
+      # ORCHESTRATOR, which runs this same judgement code as a library and needs the same routes, and
+      # proxy-net is now additionally named outright. A check whose reference container is gone asserts
+      # nothing at all, which is the same green-and-empty failure in a different place.
+      #
+      # This joins a shared bridge; it publishes nothing. The engine still has no ports and no secrets.
+      - proxy-net
+    environment:
+      - PORT=8092
+    volumes:
+      # `Parse markers` reads the Svace report off the mounted repo: `csv_path` is resolved inside this
+      # container. Without this mount every ingest answers 422 "no CSV at /data/data/svace/... (is the
+      # repo mounted at /data?)". Read-only — the engine only ever reads a request and writes a reply.
+      - ../../:/data:ro
+
+  # WHAT REPLACED n8n, AND THE NODE DASHBOARD WITH IT: the schedule, the single-flight queue, the two
+  # Data Tables, the run history and the live read-only dashboard, in one process with the judgement
+  # engine it calls as a LIBRARY. There is no HTTP hop between the queue and the judgement, which is
+  # why this service does not depend on `engine` and never talks to it — see orchestrator/pom.xml.
+  #
+  #   docker compose build orchestrator     # Central; works on a fresh clone anywhere
+  #   docker compose build --build-arg MAVEN_MIRROR_URL=http://nexus:8081/repository/maven-public/ orchestrator
+  #                                         # …on this host, with `--network mvn-cache`
+  #
+  # THE ONLY PROVER IN THE STACK. n8n's workflows and the Node runner are gone, so nothing else claims
+  # a marker or posts /run_test, and the single-flight queue in this process is once again the whole
+  # of the mutual exclusion rather than half of it.
+  orchestrator:
+    build:
+      # THE REACTOR ROOT, not ./../orchestrator. This module depends on tech.mikhailov.fsm:engine and
+      # resolves it FROM THE REACTOR — nothing publishes that jar to a repository — so a context that
+      # holds only this module cannot build the image at all, and says so several minutes in.
+      context: ..
+      dockerfile: orchestrator/Dockerfile
+      args:
+        MAVEN_MIRROR_URL: ${MAVEN_MIRROR_URL:-}
+    image: fsm-orchestrator:latest
+    container_name: fsm-orchestrator
+    restart: unless-stopped
+    ports:
+      # Loopback only: public access is Caddy over proxy-net with basic-auth in front, and it routes
+      # /dashboard/ here. The published port is what makes `curl -XPOST localhost:8085/api/prove/marker`
+      # work from an SSH session, which is the supported way to reproduce ONE marker on the host.
+      - "127.0.0.1:8085:8085"
+    networks:
+      # the runner, as http://fsm-runner:8090 — POST /run_test is a clone plus two Maven builds
+      - default
+      # …AND proxy-net, because the model is on it and THIS is the container that calls it now. All five
+      # model calls — the reproducer, the fixer, Fix skeptic, PR maker and Verdict — leave from this
+      # process, and the last three fail CLOSED by design. So a name that does not resolve here does not
+      # produce an error: it produces a green run in which every marker settles as `needs_review` with
+      # skeptic_verdict 'unknown' and a downgraded verdict, exactly as it did when the ENGINE was left off
+      # this network. DeploymentTest used to assert this against "every network fsm-n8n is on"; with that
+      # service deleted it names proxy-net outright, because a comparison against a container that no
+      # longer exists passes by finding nothing.
+      #
+      # It also lets inference-caddy reverse_proxy fsm-orchestrator:8085 for the dashboard, which this
+      # process now serves itself — /dashboard/ is a controller here, not the deleted Node service.
+      - proxy-net
+    environment:
+      # WHERE THE DATABASE LIVES, and this line is the one that must never be dropped. The default in
+      # application.yml is `./data/fsm`, relative to the working directory — which in a container is a
+      # writable layer discarded with the container. A run is 282 markers and 6-26 hours; losing it is
+      # silent, because the service starts, serves, accepts an ingest and simply reads zero after the
+      # next `docker compose up -d`. The image defaults this to /state/fsm too; it is restated here so
+      # that the volume below and the path are visible in one place.
+      - FSM_DB_PATH=/state/fsm
+      - FSM_PORT=8085
+      # WHICH RUNNER PROVES THE MARKERS. It has to be listed here to exist at all: an env var set only
+      # in .env, or exported in the shell before `docker compose up`, reaches Compose's variable
+      # INTERPOLATION but never the container — so repointing it looked like it worked (Compose printed
+      # "Running", i.e. no change) while every prove kept going to the old service. Silent no-op.
+      #
+      # THE DEFAULT IS fsm-runner, and it was `fsm-java-runner` until that service was deleted. A
+      # default left pointing at a container that no longer exists breaks nothing on the way up —
+      # compose starts a clean stack, /healthz is green, the schedule fires — and then the first marker
+      # of the run spends three connect attempts on a name nothing serves and is recorded as an
+      # infrastructure failure, which reads as a runner that is down. The same string is compiled into
+      # HttpRunnerClient.DEFAULT_BASE_URL and written in application.yml; all three move together, and
+      # DeploymentTest checks this one against the services this file declares.
+      - FSM_RUNNER_URL=${FSM_RUNNER_URL:-http://fsm-runner:8090}
+      # secrets — read straight from the process environment by tech.mikhailov.fsm.orch.Secrets, never
+      # from application.yml. Unset ones are named in a WARN line on the way up rather than guessed at.
+      - QWEN_BASE_URL=${QWEN_BASE_URL}
+      - QWEN_API_KEY=${QWEN_API_KEY}
+      - QWEN_MODEL=${QWEN_MODEL}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      # Optional: with no Svace endpoint, Verdict argues from the code instead of failing.
+      - SVACE_BASE_URL=${SVACE_BASE_URL:-}
+      - SVACE_TOKEN=${SVACE_TOKEN:-}
+      # The prove schedule. Set FSM_PROVE_SCHEDULE=false to run this as a REST-only orchestrator, which
+      # is what you want while debugging one marker.
+      - FSM_PROVE_SCHEDULE=${FSM_PROVE_SCHEDULE:-true}
+      # ONE dedup_key to prove on the way up and nothing else. Empty in every normal deployment; see
+      # orchestrator/README.md, "Prove one marker".
+      - FSM_PROVE_MARKER=${FSM_PROVE_MARKER:-}
+      # WHETHER A MARKER THAT WILL NOT REPRODUCE IS ARGUED. `true` everywhere; set it to false only
+      # while tuning the reproducer's or the fixer's prompt, where the rebuttal is an unbounded model
+      # call per marker arguing against prompts that are about to change again.
+      #
+      # It skips the CALL, not the stage: every marker still settles, and the ones that would have been
+      # argued carry bugs.verdict_status='skipped' with a `[skipped]` note instead of a verdict. Turn it
+      # back on and re-queue them with
+      #   UPDATE suspicions SET status='new' WHERE note LIKE '[skipped]%';
+      - FSM_PROVE_VERDICT=${FSM_PROVE_VERDICT:-true}
+      # THE FIVE STAGE PROMPTS, and this line is what makes them tunable without a rebuild.
+      #
+      # /data is the repository root, mounted read-only below — the same mount the CSV ingest reads — so
+      # /data/prompts IS the repo's own prompts/ directory. Editing prompts/verdict.txt in the worktree
+      # and restarting this one container is the whole loop; there is no image to rebuild, because the
+      # orchestrator Dockerfile deliberately copies only orchestrator/, engine/ and pom.xml.
+      #
+      # Read-only is FINE: nothing here writes. A file that is present wins; DEFAULT_<STAGE>_PROMPT in
+      # the environment is the fallback; the text compiled into the class is what a deployment with
+      # neither gets. All five sources are named, per stage, in the boot log — `docker compose logs
+      # fsm-orchestrator | grep '\[prompts\]'` is the answer to "is the prompt I edited the prompt it
+      # sent?".
+      - FSM_PROMPTS_DIR=${FSM_PROMPTS_DIR:-/data/prompts}
+      # THE FEEDBACK STORE, and it is OFF. One JSON line per settled marker — the resolved prompts, the
+      # raw model replies, the code in and out, and the concrete complaints the pipeline already makes
+      # about each — appended to the repo's feedback/gepa-feedback.jsonl and accumulated ACROSS RUNS.
+      # It is what the prompts above get tuned from.
+      #
+      # Default OFF because the completeness is also the cost: full prompts, full replies and source
+      # excerpts from the third-party repositories, gigabytes over a few runs. Turning it on needs the
+      # writable mount below and nothing else. See orchestrator/README.md, "The feedback store".
+      - FSM_FEEDBACK=${FSM_FEEDBACK:-false}
+      - FSM_FEEDBACK_PATH=${FSM_FEEDBACK_PATH:-/data/feedback/gepa-feedback.jsonl}
+    volumes:
+      # A NAMED VOLUME, not a bind mount. It holds a live H2 store — every settled verdict, every
+      # marker's evidence, every drafted PR body — and a bind mount would put that inside the git
+      # worktree that is mounted read-only below.
+      - fsm-orchestrator-state:/state
+      # repo root, read-only, so an ingest can read /data/data/svace/*.csv. `csv_path` is resolved in
+      # THIS container: ParseMarkers is called in-process, so the path is this process's and not the
+      # engine's. Same mount point as the engine has, so an operator's existing csv_path keeps working.
+      - ../../:/data:ro
+      # THE ONE WRITABLE PATH INSIDE THE REPOSITORY, and it is ONE DIRECTORY rather than the repo.
+      #
+      # The feedback store (fsm.feedback.*, off by default) appends one JSON line per settled marker to
+      # /data/feedback/gepa-feedback.jsonl, which is the repo's own feedback/ directory — the repo root
+      # is where the user wants it and where a prompt-tuning pass will look. The mount above is `:ro`,
+      # so without this line the feature works perfectly on a laptop and silently no-ops on the
+      # deployed stack, one WARN per marker into a log nobody is reading during a 26-hour run.
+      #
+      # A SECOND BIND OVER ONE SUBDIRECTORY, not `:rw` on the line above. This service clones and
+      # patches THIRD-PARTY code and runs Maven over it; making the whole worktree writable to it would
+      # put the engine's source, the prompts, the compose file and .git itself inside the blast radius
+      # of anything that goes wrong in there. Docker layers this mount over the read-only one, so
+      # everything except this directory stays exactly as read-only as it was — `touch /data/x` still
+      # fails inside the container.
+      #
+      # IT MUST BE WRITABLE BY UID 10002, which is the `orchestrator` user the image runs as (see
+      # orchestrator/Dockerfile). A bind mount carries the HOST's ownership, so an unprepared directory
+      # — or one Docker created because it was absent — is root-owned and the store cannot write to it.
+      # `feedback/.gitkeep` is committed so a clone has the directory, and the deployment step is one
+      # line, in orchestrator/README.md, "The feedback store":
+      #     sudo chown 10002:10002 feedback
+      # The store probes this on the way up and says so with an ERROR naming the fix, rather than
+      # discovering it 40 markers in.
+      - ../../feedback:/data/feedback
+    depends_on:
+      # Start order only — it does not wait for readiness, and it does not need to: the runner client
+      # retries a refused CONNECT (and only a connect), so a runner that is still binding its port costs
+      # a few seconds rather than the first marker of the run.
+      #
+      # It named `java-runner` until that service was deleted. A depends_on pointing at a service that
+      # is not declared is NOT a silent no-op — `docker compose up` refuses to start the whole stack —
+      # so this one is the cheap half of the cleanup. FSM_RUNNER_URL above is the expensive half.
+      - runner
+
+networks:
+  default:
+  proxy-net:
+    external: true                     # shared with inference-caddy
+  mvn-cache:
+    external: true                     # shared with nexus
+
+# EVERY volume below pins its PHYSICAL name explicitly, and that is what makes renaming this project
+# safe. Without `name:`, Compose derives the real volume as <project>_<key> — so today's store is
+# `fsm_fsm-orchestrator-state`, and the project name is load-bearing data-retention config. Changing
+# `name: fsm` at the top of this file would then make Compose look for a volume that does not exist,
+# CREATE IT EMPTY, and start a healthy-looking orchestrator that serves an empty backlog: schema.sql
+# recreates the tables, so nothing errors and nothing is red. That is how 8 hours of validated run
+# history would disappear with no signal at all.
+#
+# Pinning the physical name decouples the two: the project can be renamed (fsm -> fsms, or the whole
+# thing to fix-java-svace-markers-spring) and these volumes keep resolving to the same bytes on disk.
+# The names below are the ones ALREADY LIVE — verified with `docker volume ls` — so this is a no-op for
+# the running stack and only removes a hazard from the next rename.
+volumes:
+  # fsm-runner's clones. `fsm-java-runner-cache` was declared here for the deleted Node runner and is
+  # gone with it — a declaration nothing mounts is not inert, it is the name the next person wires a
+  # service to, and those checkouts carry a tokenized remote.origin.url this runner would ADOPT rather
+  # than rewrite. The full argument is on the `runner` service. The physical volume outlives this file:
+  #
+  #   docker volume rm fsm_fsm-java-runner-cache
+  #
+  # is what retires those credentials from disk, and nothing in the stack needs it first.
+  fsm-runner-cache:
+    name: fsm_fsm-runner-cache
+  # The orchestrator's H2 store: the whole backlog, every settled verdict, every marker's evidence and
+  # every drafted PR body, for a run that takes 6-26 hours. It survives `docker compose up -d --build`,
+  # which is the entire point — see FSM_DB_PATH on that service. To read it while a run is going, see
+  # orchestrator/README.md, "Looking inside the database"; to throw a run away deliberately,
+  # `docker compose down && docker volume rm fsm_fsm-orchestrator-state`.
+  fsm-orchestrator-state:
+    # THE one that must not move. 282 markers, every settled verdict, every drafted PR body.
+    name: fsm_fsm-orchestrator-state

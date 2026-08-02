@@ -28,7 +28,7 @@ It is **all Java**. Three containers, no Node, no n8n, no Python.
 
 ```bash
 git clone git@github.com:vasiliy-mikhailov/fix-java-svace-markers.git
-cd fix-java-svace-markers/n8n-fleet/n8n
+cd fix-java-svace-markers/pipeline/deploy
 
 cp .env.example .env      # then fill in QWEN_* and GITHUB_TOKEN — see "Configuration" below
 docker compose build      # engine, orchestrator, runner
@@ -93,7 +93,7 @@ you which came from a file and which fell back to a compiled-in default:
 [prompts] reproducer <- FILE /data/prompts/reproducer.txt (2895 chars)
 ```
 
-**`n8n-fleet/engine/src/main/java/tech/mikhailov/fsm/nodes/`** — the ten decision classes. They are pure
+**`pipeline/engine/src/main/java/tech/mikhailov/fsm/nodes/`** — the ten decision classes. They are pure
 functions over maps with no I/O, which is why they have 900 tests and why you can call one from a unit
 test without a container.
 
@@ -121,7 +121,7 @@ Set `FSM_PROVE_SCHEDULE=true` to have it drain on a timer instead of on demand.
 ## Tests
 
 ```bash
-cd n8n-fleet
+cd pipeline
 mvn -B test            # 1727 tests across engine, orchestrator, runner
 ```
 
@@ -194,12 +194,15 @@ code. If you change that, you break the only property that makes the output trus
 prompts/                 the five prompts — edit these to change behaviour
 data/svace/              Svace reports (CSV)
 feedback/                recorded prompts, replies and critiques (gitignored)
-n8n-fleet/
+pipeline/
   pom.xml                the reactor: engine, orchestrator, runner
   engine/                judgement, as pure functions
   orchestrator/          Spring Batch + dashboard + H2
   runner/                clone, patch, build, run tests
-  n8n/docker-compose.yml the deployment (the directory name is historical)
+  deploy/docker-compose.yml the deployment
 ```
 
-The `n8n-fleet/n8n/` path is a leftover from when this ran on n8n. Nothing in it runs n8n any more.
+This tree was called `n8n-fleet/`, and `deploy/` was called `n8n/`, until the pipeline was ported off
+n8n in July 2026. Nothing here runs n8n now — the live stack is three Java services. The rename was
+safe to do late because every volume in `deploy/docker-compose.yml` pins its PHYSICAL name (`name:
+fsm_fsm-orchestrator-state`), so no directory name has ever been what keeps the live data addressable.

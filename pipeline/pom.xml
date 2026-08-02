@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  pipeline — the reactor that builds the judgement engine and the orchestrator that drives it.
+
+  WHY AN AGGREGATOR AND NOT A PARENT. `engine` deliberately has no <parent>: it is deployed on its own,
+  built on its own, and its pom documents a zero-runtime-dependency policy that a parent could quietly
+  break by contributing managed dependencies. Maven only needs <modules> here to build them in one
+  reactor and to let `orchestrator` resolve `tech.mikhailov.fsm:engine` from the reactor instead of
+  from a repository — inheritance is not required for either, so it is not imposed.
+
+  The consequence is that NEITHER module inherits the properties below; each pins Java 25 itself
+  (engine via maven.compiler.release, orchestrator via spring-boot-starter-parent's java.version).
+  The properties here exist so `mvn help:evaluate` at the root reports the same answer, and so a third
+  module added later has one obvious place to read the target from.
+
+  Build order is by dependency, not by listing order: orchestrator depends on engine, so engine is
+  always built first regardless of how the <modules> happen to be ordered.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>tech.mikhailov.fsm</groupId>
+  <artifactId>pipeline</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>pipeline</name>
+  <description>Reactor for the Svace-marker pipeline: the judgement engine and its orchestrator.</description>
+
+  <properties>
+    <maven.compiler.release>25</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+  </properties>
+
+  <modules>
+    <module>engine</module>
+    <module>orchestrator</module>
+    <module>runner</module>
+  </modules>
+</project>
