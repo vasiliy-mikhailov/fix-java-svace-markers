@@ -53,6 +53,11 @@ curl -s -X POST localhost:8085/api/prove
 Then open **http://localhost:8085/** — the dashboard shows every marker, its verdict, the test that was
 written, the fix diff and the drafted PR body.
 
+> **No git, no build, or no route to Maven Central on the target machine?**
+> [DOCKER.md](DOCKER.md) covers two alternatives to building from source: handing over saved images
+> (`docker save` / `docker load`, ~2.6 GB, no build and no source), and a registry. It also has the
+> model-endpoint and volume traps in one place.
+
 The report is a four-column CSV: `Severity,Checker,File,Line`. Put yours under `data/svace/`; the
 container reads it from `/data/data/svace/`.
 
