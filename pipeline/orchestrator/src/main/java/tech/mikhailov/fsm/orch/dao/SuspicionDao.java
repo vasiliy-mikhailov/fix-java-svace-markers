@@ -427,12 +427,32 @@ public class SuspicionDao {
     }
 
     /**
+     * ADD ONE MARKER THE BACKLOG DOES NOT HOLD — the additive ingest's only write, and the one that
+     * must not be able to overwrite a verdict.
+     *
+     * <p>A PLAIN INSERT, WHICH IS THE POINT. {@link #upsert} REPLACES the whole row, {@code status},
+     * {@code note} and {@code prove_attempts} included; it is the right statement for an ingest that
+     * has just cleared the table and the wrong one for an ingest that has not, and the difference
+     * between them is 282 settled markers. {@link tech.mikhailov.fsm.orch.batch.IngestTasklet} decides
+     * which markers are new by reading {@link #allKeys()} first, and this method is what makes that
+     * decision SAFE rather than merely careful: if the read were wrong, the primary key refuses the
+     * write and the whole transactional ingest rolls back, loudly. An {@code upsert} in the same place
+     * would silently reset the marker instead, which is precisely the failure being fixed.
+     *
+     * <p>Bounded columns are clipped exactly as {@link #upsert} clips them — same reason, same widths.
+     */
+    public int insertNew(Suspicion s) {
+        return jdbc.update("INSERT INTO suspicions (" + COLS + ") "
+                + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", clipped(s));
+    }
+
+    /**
      * Insert or replace one ingested row, keyed on {@code dedup_key}.
      *
      * <p>H2's {@code MERGE INTO ... KEY (...)}. Note that it REPLACES the whole row, {@code status}
-     * included — that is correct for the ingester,
-     * which owns the backlog and re-raises a marker as {@code new}, and is why the prover uses
-     * {@link #settle} instead of coming through here.
+     * included — which is correct ONLY where the backlog has just been cleared (a confirmed reset) or
+     * where the caller has established that the row is the ingester's to own. The additive path uses
+     * {@link #insertNew} instead, and the prover uses {@link #settle}.
      *
      * <p>Bounded columns are clipped to their declared width, {@code dedup_key} excepted — see
      * {@link Clip}. What arrives here is a marker report written by something outside this process, and
@@ -441,7 +461,19 @@ public class SuspicionDao {
      */
     public int upsert(Suspicion s) {
         return jdbc.update("MERGE INTO suspicions (" + COLS + ") KEY (dedup_key) "
-                + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", clipped(s));
+    }
+
+    /**
+     * The 23 column values in {@link #COLS} order, every bounded one cut to its declared width.
+     *
+     * <p>ONE ARRAY FOR BOTH WRITES. {@link #insertNew} and {@link #upsert} differ in exactly one thing —
+     * what happens when the key is already there — and a second hand-written argument list would be a
+     * second chance to put {@code severity} where {@code svace_severity} goes, silently, in the
+     * statement that builds the whole backlog.
+     */
+    private static Object[] clipped(Suspicion s) {
+        return new Object[] {
                 s.dedupKey(),
                 Clip.to(s.markerId(), MARKER_ID_MAX, "suspicions.marker_id"),
                 Clip.to(s.repo(), REPO_MAX, "suspicions.repo"),
@@ -461,7 +493,7 @@ public class SuspicionDao {
                 Clip.to(s.status(), STATUS_MAX, "suspicions.status"),
                 s.note(), s.proveAttempts(),
                 Clip.to(s.version(), VERSION_MAX, "suspicions.version"),
-                Clip.to(s.methodKey(), METHOD_KEY_MAX, "suspicions.method_key"));
+                Clip.to(s.methodKey(), METHOD_KEY_MAX, "suspicions.method_key")};
     }
 
     /** One row by key, or empty. */
@@ -506,6 +538,37 @@ public class SuspicionDao {
     public long count() {
         Long n = jdbc.queryForObject("SELECT COUNT(*) FROM suspicions", Long.class);
         return n == null ? 0L : n;
+    }
+
+    /**
+     * HOW MANY MARKERS A RESET WOULD DESTROY A JUDGEMENT ABOUT.
+     *
+     * <p>Settled is defined by exclusion here — everything that is neither {@link #STATUS_NEW} nor
+     * {@link #STATUS_PROVING} — and that is the opposite of the rule {@link #reconcileInFlight} follows,
+     * on purpose. The reconciler names the status it MOVES because being wrong there means re-opening a
+     * verdict; this number guards a DELETE, so being wrong here means under-counting what is about to be
+     * destroyed. A settled status a future engine version adds must be caught by this clause without
+     * anybody remembering to add it, which is exactly what excluding the two queue tokens achieves.
+     *
+     * <p>It is the same partition {@code DashboardService} shows as {@code settled = total - queued -
+     * proving}, so the number in the refusal is the number on the screen.
+     */
+    public long countSettled() {
+        Long n = jdbc.queryForObject("SELECT COUNT(*) FROM suspicions WHERE status NOT IN (?, ?)",
+                Long.class, STATUS_NEW, STATUS_PROVING);
+        return n == null ? 0L : n;
+    }
+
+    /**
+     * Every key in the backlog, as the additive ingest needs it: one query instead of one per row.
+     *
+     * <p>A report is 282 markers and a backlog is the same size, so the alternative — {@link #find} per
+     * parsed row — is 282 round trips inside one transaction to answer a question one {@code SELECT}
+     * answers. It is read INSIDE the ingest's transaction, after any reset has cleared, so it is the
+     * true "what does the backlog already hold" for this run.
+     */
+    public List<String> allKeys() {
+        return jdbc.queryForList("SELECT dedup_key FROM suspicions", String.class);
     }
 
     /**

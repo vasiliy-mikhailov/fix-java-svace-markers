@@ -41,9 +41,17 @@ import tech.mikhailov.fsm.nodes.ParseMarkers;
  * @param includeTests null = absent = false; the engine's own strict test decides.
  * @param onlyCheckers empty = no filter. Names are trimmed inside the engine.
  * @param minSeverity  empty = no filter.
+ * @param reset        whether this ingest DISCARDS the backlog before writing it. NULL IS A THIRD
+ *                     VALUE and not a default: it means the request said nothing, so
+ *                     {@code fsm.ingest.reset} decides — and the run history can still tell "somebody
+ *                     asked for this" from "this deployment always does it", which is the question an
+ *                     incident starts with. See {@link ResetPolicy}.
+ * @param resetConfirm the number of SETTLED markers the caller says it is discarding. It has to match,
+ *                     or the reset is refused; see {@link ResetPolicy#refuse}.
  */
 public record IngestRequest(String csvPath, String repo, String branch, String pathPrefix,
-                            Boolean includeTests, List<String> onlyCheckers, String minSeverity) {
+                            Boolean includeTests, List<String> onlyCheckers, String minSeverity,
+                            Boolean reset, Long resetConfirm) {
 
     /** Job parameter names, spelled as the job is launched with them. */
     public static final String CSV_PATH = "csvPath";
@@ -66,6 +74,12 @@ public record IngestRequest(String csvPath, String repo, String branch, String p
     /** @see #CSV_PATH */
     public static final String MIN_SEVERITY = "minSeverity";
 
+    /** @see #CSV_PATH */
+    public static final String RESET = "reset";
+
+    /** @see #CSV_PATH */
+    public static final String RESET_CONFIRM = "resetConfirm";
+
     /**
      * How a checker list travels through a job parameter, which holds one scalar.
      *
@@ -76,6 +90,26 @@ public record IngestRequest(String csvPath, String repo, String branch, String p
     /** Normalised on the way in, so every later read sees the same shape. */
     public IngestRequest {
         onlyCheckers = onlyCheckers == null ? List.of() : List.copyOf(onlyCheckers);
+    }
+
+    /**
+     * The seven-field request every caller that predates the reset flag builds — an ordinary,
+     * non-destructive ingest that lets the deployment decide.
+     *
+     * <p>A convenience constructor rather than a defaulted component, for the reason
+     * {@link tech.mikhailov.fsm.orch.model.Bug} has one: a new component silently defaulted at every
+     * call site is a component nobody notices is wrong, and the two that matter here decide whether a
+     * day of settled verdicts survives.
+     */
+    public IngestRequest(String csvPath, String repo, String branch, String pathPrefix,
+                         Boolean includeTests, List<String> onlyCheckers, String minSeverity) {
+        this(csvPath, repo, branch, pathPrefix, includeTests, onlyCheckers, minSeverity, null, null);
+    }
+
+    /** The same request, asking to reset — {@code confirm} is the settled count; see {@link ResetPolicy}. */
+    public IngestRequest withReset(Boolean reset, Long confirm) {
+        return new IngestRequest(csvPath, repo, branch, pathPrefix, includeTests, onlyCheckers,
+                minSeverity, reset, confirm);
     }
 
     /**
@@ -96,7 +130,15 @@ public record IngestRequest(String csvPath, String repo, String branch, String p
                         ? Boolean.valueOf("true".equalsIgnoreCase(parameters.getString(INCLUDE_TESTS)))
                         : null,
                 split(checkers),
-                parameters.getString(MIN_SEVERITY));
+                parameters.getString(MIN_SEVERITY),
+                // containsKey again, and for the identical reason: absent means "the deployment
+                // decides" and an explicit `false` means "do NOT reset whatever the deployment
+                // prefers". Collapsing them would take away the only way to ask for the safe thing on
+                // a host configured to reset.
+                present.containsKey(RESET)
+                        ? Boolean.valueOf("true".equalsIgnoreCase(parameters.getString(RESET)))
+                        : null,
+                parameters.getLong(RESET_CONFIRM));
     }
 
     /**
@@ -124,6 +166,15 @@ public record IngestRequest(String csvPath, String repo, String branch, String p
             b.addString(ONLY_CHECKERS, String.join(CHECKER_SEPARATOR, onlyCheckers));
         }
         putIfPresent(b, MIN_SEVERITY, minSeverity);
+        // IDENTIFYING, like everything else here: "the run that reset the backlog" and "the run that
+        // added to it" must be two JobInstances, so the run history can never show one where the other
+        // happened.
+        if (reset != null) {
+            b.addString(RESET, reset.toString());
+        }
+        if (resetConfirm != null) {
+            b.addLong(RESET_CONFIRM, resetConfirm);
+        }
         return b.toJobParameters();
     }
 
@@ -163,7 +214,12 @@ public record IngestRequest(String csvPath, String repo, String branch, String p
                 + " tests=" + (includeTests != null && includeTests)
                 + " checkers=" + (onlyCheckers.isEmpty() ? "(all)" : onlyCheckers)
                 + " minSeverity=" + (minSeverity == null || minSeverity.isEmpty()
-                        ? "(none)" : minSeverity);
+                        ? "(none)" : minSeverity)
+                // Named even when absent, because the destructive question must never be answered by
+                // a missing word: "(deployment default)" is a statement, an empty space is not.
+                + " reset=" + (reset == null ? "(deployment default)" : reset)
+                + " " + ResetPolicy.CONFIRM_FIELD + "="
+                + (resetConfirm == null ? "(none)" : resetConfirm);
     }
 
     private static void putIfPresent(JobParametersBuilder b, String key, String value) {

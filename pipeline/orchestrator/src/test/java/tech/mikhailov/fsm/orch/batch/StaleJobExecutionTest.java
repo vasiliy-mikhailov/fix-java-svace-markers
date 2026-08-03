@@ -153,6 +153,15 @@ class StaleJobExecutionTest {
             assertThat(suspicions.find(ProveScript.KEY).orElseThrow().status()).isEqualTo("verified");
             assertThat(afterTheRestart.getBean(BugDao.class).find(ProveScript.KEY).orElseThrow()
                     .state()).isEqualTo(MarkerState.PR_READY.wire());
+
+            // AND THEN WAIT FOR THE RUN ITSELF, not only for the marker. The launch is asynchronous:
+            // the marker settles inside the chunk, and the step and the job are ended AFTERWARDS, by
+            // the job thread. Leaving this block closes the context and shuts the DataSource down
+            // underneath that thread, so a run this test did not wait for is a run whose END_TIME is
+            // never written — and the two assertions below, which exist to prove that NOTHING is left
+            // open, would then fail on the very execution this test started. That is a red build
+            // reporting the opposite of what happened.
+            await(() -> !launches.isRunning(BatchConfig.PROVE_JOB), "the drain to end");
         }
 
         // The dead execution was ENDED, not deleted: the run history still shows that a prove was
@@ -169,16 +178,28 @@ class StaleJobExecutionTest {
 
     /** One orchestrator, started as {@code main} starts it — the DEFAULT profile, so the file DB. */
     private static ConfigurableApplicationContext boot() {
-        return new SpringApplicationBuilder(OrchestratorApplication.class, ScriptedNetwork.class)
+        ConfigurableApplicationContext ctx = new SpringApplicationBuilder(OrchestratorApplication.class, ScriptedNetwork.class)
                 .web(WebApplicationType.NONE)
                 .properties(
                         "FSM_DB_PATH=" + dataDirectory.resolve("fsm"),
                         // The tick would launch the prove underneath the assertion about whether a
                         // launch is possible at all, which is the one thing this test measures.
-                        "fsm.prove.schedule-enabled=false",
-                        "fsm.live.enabled=false",
+                        // FSM_PROVE_SCHEDULE and FSM_LIVE, not fsm.prove.schedule-enabled and
+                        // fsm.live.enabled. SpringApplicationBuilder.properties(...) contributes
+                        // DEFAULT properties — the LOWEST-precedence source in the Environment, below
+                        // application.yml — and the yml binds both keys from placeholders
+                        // (${FSM_PROVE_SCHEDULE:true}, ${FSM_LIVE:true}). So the property spellings
+                        // lose to the yml and both resolve to TRUE: the scheduler and the watcher ran
+                        // underneath these assertions. It passed only because the tick's initial delay
+                        // is PT30S and this test finishes in about a second — a timing accident.
+                        // The env-var spellings ARE what the placeholders read, and nothing else
+                        // defines those keys, so lowest precedence is enough. pinned() proves it.
+                        "FSM_PROVE_SCHEDULE=false",
+                        "FSM_LIVE=false",
                         "spring.main.banner-mode=off")
                 .run();
+        pinned(ctx);
+        return ctx;
     }
 
     /** One column, read straight off the file with no context of ours open on it. */
@@ -206,4 +227,25 @@ class StaleJobExecutionTest {
         }
         throw new AssertionError("timed out waiting for " + what);
     }
+
+    /**
+     * The two switches actually took effect.
+     *
+     * <p>Without this, a spelling that does not reach the yml placeholder leaves the scheduler and the
+     * watcher RUNNING underneath every assertion below, and the suite still passes — the tick's initial
+     * delay is PT30S and this test finishes in about a second. The failure that eventually arrives is a
+     * marker claimed by a background thread, which is indistinguishable from the defect being tested
+     * for. So assert the Environment resolved them, not that they were asked for.
+     */
+    private static void pinned(ConfigurableApplicationContext context) {
+        assertThat(context.getEnvironment().getProperty("fsm.prove.schedule-enabled"))
+                .as("the schedule is still on: the property spelling loses to application.yml, so this "
+                        + "must be set as FSM_PROVE_SCHEDULE, which is what the placeholder reads")
+                .isEqualTo("false");
+        assertThat(context.getEnvironment().getProperty("fsm.live.enabled"))
+                .as("the live watcher is still on, and it stamps marker_progress from a background "
+                        + "thread; set it as FSM_LIVE for the same reason")
+                .isEqualTo("false");
+    }
+
 }

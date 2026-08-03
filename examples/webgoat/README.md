@@ -107,6 +107,17 @@ has inside the container — `-d '{"csvPath": "/data/data/svace/webgoat-markers-
 works because the file is on the `/data` mount; your own report will not be, which is why the upload
 above is the form worth learning.
 
+**The ingest is safe to re-run, and you will want to.** This run is roughly a day long and the
+container will be restarted inside it — for a deploy, after an OOM, on a host reboot. Re-running the
+command above **adds**: every marker already in the backlog keeps its status, its verdict, its
+artifact and its attempt count, so nothing you have paid for is lost, and a marker the report raises
+that is not yet queued is picked up. `curl -s localhost:8085/api/ingest/last` says exactly what the
+last one did (`"added": 0, "kept": 282`).
+
+To start these 282 markers over from scratch, ask for it and name the number of settled markers you
+are throwing away — `-F 'reset=true' -F 'reset_confirm=<n>'`. Send the wrong number and the refusal
+tells you the right one. Comments you wrote on a verdict survive either way.
+
 Roughly a day at ~10 markers/hour, most of it Maven. Watch it at `http://localhost:8085/`.
 
 **You will not get these numbers exactly.** Five model calls per marker means run-to-run variance, and

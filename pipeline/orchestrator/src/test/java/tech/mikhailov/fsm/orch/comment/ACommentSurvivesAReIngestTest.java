@@ -26,22 +26,24 @@ import tech.mikhailov.fsm.orch.model.Bug;
 import tech.mikhailov.fsm.orch.model.Suspicion;
 
 /**
- * A RE-INGEST WIPES THE TABLES. IT MUST NOT WIPE WHAT A PERSON WROTE.
+ * A RESET WIPES THE TABLES. IT MUST NOT WIPE WHAT A PERSON WROTE — AND NOR MUST ANYTHING ELSE.
  *
- * <p>{@code IngestTasklet} clears {@code suspicions} and {@code bugs} and rewrites them from the CSV —
- * "cleared N suspicion(s) and N bug(s)" — and it is right to: the backlog is whatever the newest Svace
- * report says, and keeping rows the new report no longer raises would leave markers on the dashboard
- * that nothing explains. Every one of those rows can be rebuilt by running something again.
+ * <p>An ordinary ingest is additive now: markers already in the backlog keep their status, verdict,
+ * artifact and attempt count, so the comments about them were never in danger on that path. A
+ * {@link tech.mikhailov.fsm.orch.batch.ResetPolicy reset} still clears {@code suspicions} and
+ * {@code bugs} and rewrites them from the CSV, and it is right to: an operator asking for one is
+ * saying the report is the whole truth, and every row it destroys can be rebuilt by running something
+ * again.
  *
  * <p>A COMMENT CANNOT. "I don't like too many mocks, this one and this one are redundant" is a
  * judgement somebody made about a specific reproducer's output, and no amount of re-running produces it
  * a second time. It is the most expensive data in the system by that measure, and the obvious place to
  * put it — a column on the {@code bugs} row it criticises — is inside the blast radius of an operation
- * an operator performs routinely, with no warning and no visible connection to their paragraph.
+ * an operator performs deliberately, with no visible connection to their paragraph.
  *
- * <p>SO THE TEST RUNS THE REAL JOB, twice over, and in the second case the new report does not raise
- * the marker at all — which is the harder half. A design that kept comments by re-inserting them
- * alongside the new backlog would pass the first case and lose everything in the second.
+ * <p>SO THE TEST RUNS THE REAL JOB, on BOTH PATHS, and in the destructive cases the new report does
+ * not raise the marker at all — which is the harder half. A design that kept comments by re-inserting
+ * them alongside the new backlog would pass the additive cases and lose everything in the reset ones.
  *
  * <p>It is deliberately written against the JOB and not against {@code IngestTasklet}'s two DELETEs. A
  * unit test of the tasklet would pin the code that exists today; this pins the PROPERTY, so a future
@@ -98,7 +100,7 @@ class ACommentSurvivesAReIngestTest {
     }
 
     @Test
-    void aCommentOutlivesTheReIngestThatRewritesTheMarkerItIsAbout(@TempDir Path dir)
+    void aCommentOutlivesTheReIngestOfTheReportTheMarkerCameFrom(@TempDir Path dir)
             throws Exception {
         String key = ingestAndTakeTheKey(dir, CSV);
         // The artifact goes in too, because that is the row the comment is ABOUT and the row a
@@ -112,10 +114,10 @@ class ACommentSurvivesAReIngestTest {
         JobExecution again = launch(write(dir.resolve("second"), CSV), "acme/app", "main");
         assertThat(again.getStatus()).isEqualTo(BatchStatus.COMPLETED);
 
-        // The artifact is gone, exactly as the ingest promises: every bug row points at a suspicion_key
-        // and orphans on the dashboard are what clearing it prevents.
-        assertThat(bugs.count()).isZero();
-        // The comment is not.
+        // An ordinary re-ingest keeps the artifact — it is evidence, and re-running the first command
+        // in the runbook after a restart must not cost it.
+        assertThat(bugs.count()).isEqualTo(1L);
+        // And the comment.
         List<MarkerComment> kept = service.forMarker(key, false);
         assertThat(kept).extracting(MarkerComment::text).containsExactly(THE_COMMENT);
         assertThat(kept.get(0).author()).isEqualTo("vasiliy");
@@ -126,8 +128,33 @@ class ACommentSurvivesAReIngestTest {
     }
 
     /**
-     * THE HARDER HALF. The new report does not mention this marker at all, so there is no row for a
-     * comment to be re-attached to — and it still has to be there, readable, with its text intact.
+     * THE DESTRUCTIVE PATH. A confirmed reset really does delete the marker and its artifact, which is
+     * what the operator asked for — and the comment about them is still there afterwards.
+     */
+    @Test
+    void aCommentOutlivesAResetThatDeletesTheMarkerAndItsArtifact(@TempDir Path dir)
+            throws Exception {
+        String key = ingestAndTakeTheKey(dir, CSV);
+        bugs.upsert(artifact(key));
+        service.write(key, "reproducer", "excessive_mocking", THE_COMMENT, "vasiliy");
+
+        JobExecution again = reset(write(dir.resolve("second"), CSV_WITHOUT_IT));
+        assertThat(again.getStatus()).isEqualTo(BatchStatus.COMPLETED);
+
+        assertThat(suspicions.find(key))
+                .as("the reset did what it was asked to do — the marker is gone")
+                .isEmpty();
+        assertThat(bugs.count()).isZero();
+
+        List<MarkerComment> kept = service.forMarker(key, false);
+        assertThat(kept).extracting(MarkerComment::text).containsExactly(THE_COMMENT);
+        assertThat(kept.get(0).markerPresent()).isFalse();
+    }
+
+    /**
+     * THE HARDER HALF. The new report does not mention this marker at all — so an additive ingest has
+     * no row to re-attach anything to, and a comment that lived on the backlog would have nowhere to
+     * be. It is there, readable, with its text intact, and the marker it is about is untouched.
      */
     @Test
     void aCommentOutlivesAReIngestWhoseReportNoLongerRaisesTheMarkerAtAll(@TempDir Path dir)
@@ -139,15 +166,17 @@ class ACommentSurvivesAReIngestTest {
         assertThat(again.getStatus()).isEqualTo(BatchStatus.COMPLETED);
 
         assertThat(suspicions.find(key))
-                .as("the marker itself is correctly gone — the new report does not raise it")
-                .isEmpty();
+                .as("a report is a statement about the markers it CONTAINS: one it omits is kept, "
+                        + "because `min_severity` and `only_checkers` mean an omission is not a claim "
+                        + "that the marker is gone")
+                .isPresent();
 
         List<MarkerComment> kept = service.forMarker(key, false);
         assertThat(kept).extracting(MarkerComment::text).containsExactly(THE_COMMENT);
         // AND IT SAYS SO. The comment is served, not hidden; what changes is one flag, so a panel can
         // render "about a marker the current report no longer raises" instead of implying the backlog
         // still holds it.
-        assertThat(kept.get(0).markerPresent()).isFalse();
+        assertThat(kept.get(0).markerPresent()).isTrue();
     }
 
     /**
@@ -180,8 +209,20 @@ class ACommentSurvivesAReIngestTest {
     }
 
     private JobExecution launch(String csvPath, String repo, String branch) throws Exception {
-        return launcher.run(ingestJob, new JobParametersBuilder(
-                new IngestRequest(csvPath, repo, branch, null, null, null, null).toJobParameters())
+        return launch(new IngestRequest(csvPath, repo, branch, null, null, null, null));
+    }
+
+    /**
+     * A reset of a backlog holding exactly one marker, none of it settled — so the confirmation token
+     * is not needed and the test says nothing about a number it did not choose.
+     */
+    private JobExecution reset(String csvPath) throws Exception {
+        return launch(new IngestRequest(csvPath, "acme/app", "main", null, null, null, null)
+                .withReset(true, null));
+    }
+
+    private JobExecution launch(IngestRequest request) throws Exception {
+        return launcher.run(ingestJob, new JobParametersBuilder(request.toJobParameters())
                 .addLong("launchedAt", System.nanoTime())
                 .toJobParameters());
     }

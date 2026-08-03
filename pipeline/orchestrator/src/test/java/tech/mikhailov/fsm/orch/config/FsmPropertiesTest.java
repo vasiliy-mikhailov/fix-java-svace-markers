@@ -63,6 +63,7 @@ import tech.mikhailov.fsm.runner.CloneUrl;
         "fsm.github.api-base-url=https://github.example.test/api/v3",
         "fsm.ingest.max-csv-bytes=4242",
         "fsm.ingest.spool-dir=/tmp/fsm-properties-test/spool",
+        "fsm.ingest.reset=true",
         "fsm.github.timeout-ms=11000",
         "fsm.github.attempts=6",
         "fsm.github.retry-delay-ms=1500",
@@ -109,6 +110,9 @@ class FsmPropertiesTest {
 
     @Autowired
     private CsvSpool spool;
+
+    @Autowired
+    private tech.mikhailov.fsm.orch.batch.ResetPolicy resetPolicy;
 
     @Autowired
     private IngestSizeLimit requestLimit;
@@ -212,6 +216,25 @@ class FsmPropertiesTest {
         assertThat(spool.dir()).isEqualTo(java.nio.file.Path.of("/tmp/fsm-properties-test/spool"));
     }
 
+    /**
+     * THE DESTRUCTIVE KNOB REACHES THE OBJECT THAT ACTS ON IT.
+     *
+     * <p>Worth its own case rather than a line in the one above, because this is the setting whose
+     * failure mode is silent in the WRONG direction: a {@code fsm.ingest.reset} that bound to nothing
+     * would leave a deployment believing every ingest replaces its backlog while every ingest quietly
+     * added to it — or, on the next edit, the reverse. Both readers are asserted, because the endpoint
+     * and the job answering differently is the same defect wearing a different hat.
+     */
+    @Test
+    void theResetKnobReachesTheOnePolicyBothTheEndpointAndTheJobAsk() {
+        assertThat(properties.ingest().reset()).isTrue();
+        assertThat(resetPolicy.deploymentDefault()).isTrue();
+        // …and it is the rule itself that moved, not just a boolean: an ingest that says nothing now
+        // resets, and one that says `false` still does not.
+        assertThat(resetPolicy.resets(null)).isTrue();
+        assertThat(resetPolicy.resets(Boolean.FALSE)).isFalse();
+    }
+
     @Test
     void theDefaultsAreStillTheOnesTheWorkflowUsed() {
         // Bound with nothing set, which is what an orchestrator started with no configuration gets.
@@ -255,6 +278,10 @@ class FsmPropertiesTest {
         // Blank means the container's own temp directory. A default that named a MOUNT would put back
         // exactly the requirement the upload exists to remove.
         assertThat(defaults.ingest().spoolDir()).isEmpty();
+        // RE-INGESTING IS ADDITIVE, and this default is the difference between re-running the first
+        // command in the runbook after a redeploy and losing a day of settled verdicts to it. Flip it
+        // and every deployment that configured nothing destroys its own backlog on the next ingest.
+        assertThat(defaults.ingest().reset()).isFalse();
     }
 
     @Test

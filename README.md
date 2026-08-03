@@ -49,6 +49,11 @@ curl -sS -X POST localhost:8085/api/ingest \
 curl -s -X POST localhost:8085/api/prove
 ```
 
+**Both are safe to re-run.** The ingest *adds*: markers already in the backlog keep their status,
+their verdict, their artifact and their attempt count. See
+[Re-running the ingest is safe](#re-running-the-ingest-is-safe) below for what it takes to discard
+anything.
+
 Three ways to hand over the report, all the same endpoint:
 
 | | when |
@@ -59,6 +64,63 @@ Three ways to hand over the report, all the same endpoint:
 
 An oversized report is **refused with 413**, never truncated: half a report is a backlog silently
 missing markers.
+
+### Re-running the ingest is safe
+
+**`POST /api/ingest` adds. It never discards anything unless you ask it to.** Run it again after a
+redeploy, after a crash, with the same report, as often as you like:
+
+* a marker already in the backlog **keeps its status, its verdict, its artifact and its attempt
+  count** — it is not re-queued and not re-proved;
+* a marker the report raises that the backlog does not hold is **queued as new work**;
+* a marker in the backlog that the report does *not* raise is **left exactly as it is**, and counted.
+  A report is a statement about the markers it contains — `min_severity` and `only_checkers` mean an
+  omission is not a claim that a marker is gone.
+
+The reply says which of those you are about to get, before anything happens:
+
+```json
+{"started": true, "executionId": 12, "mode": "additive", "discards": 0,
+ "backlogBefore": 282, "settledBefore": 268,
+ "effect": "markers already in the backlog keep their status, verdict, artifact and attempt count; …"}
+```
+
+and `GET /api/ingest/last` says what it actually did, long after the log has rotated:
+
+```bash
+curl -s localhost:8085/api/ingest/last
+# {"ran":true,"status":"COMPLETED","account":{"mode":"additive","added":14,"kept":268,"absent":3,
+#  "absentKeys":[…],"discardedMarkers":0,"written":14}}
+```
+
+### …and how to reset, when you really mean it
+
+To throw the backlog away and rebuild it from the report, say so **and say how much you are
+destroying**:
+
+```bash
+curl -sS -X POST localhost:8085/api/ingest \
+  -F 'csv=@my-svace-report.csv' -F 'repo=WebGoat/WebGoat' -F 'branch=main' \
+  -F 'reset=true' -F 'reset_confirm=268'
+```
+
+`reset_confirm` is the number of **settled** markers being discarded. Get it wrong, or leave it out,
+and the request is refused with the right number in the message — so the refusal is also the dry run:
+
+```
+a reset would DISCARD the whole backlog — 282 marker(s), 268 of them carrying a verdict, and
+240 artifact(s) — and there is no undo. no `reset_confirm` was sent. To go ahead, re-send with
+`reset_confirm`: 268. To ADD this report to the backlog instead, which keeps every settled marker
+exactly as it is, send it without `reset`.
+```
+
+Nothing is required when there is nothing settled to lose. **Comments people wrote survive both
+paths** — they live in their own table precisely so no ingest can reach them.
+
+For a deployment whose backlog is disposable — a nightly scan reloaded from scratch — set
+`FSM_INGEST_RESET=true` once and every ingest resets with no token. That is a standing decision, kept
+in git and announced in the boot log on every start; a request may still override it with
+`"reset": false`.
 
 Then open **http://localhost:8085/** — the dashboard shows every marker, its verdict, the test that was
 written, the fix diff and the drafted PR body.

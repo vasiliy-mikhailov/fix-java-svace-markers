@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,8 +21,11 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartFile;
 import tech.mikhailov.fsm.orch.batch.BatchConfig;
 import tech.mikhailov.fsm.orch.batch.CsvSpool;
+import tech.mikhailov.fsm.orch.batch.IngestAccount;
+import tech.mikhailov.fsm.orch.batch.IngestHistory;
 import tech.mikhailov.fsm.orch.batch.IngestRequest;
 import tech.mikhailov.fsm.orch.batch.JobLaunches;
+import tech.mikhailov.fsm.orch.batch.ResetPolicy;
 import tech.mikhailov.fsm.runner.CloneUrl;
 
 /**
@@ -37,16 +41,26 @@ import tech.mikhailov.fsm.runner.CloneUrl;
  * that has already settled — see {@link #proveMarker}. Nothing in the queue can serve that question,
  * because the claim takes the lowest-keyed {@code new} row and a settled marker is never {@code new}.
  *
+ * <p>RE-INGESTING IS SAFE, AND THE REPLY SAYS SO BEFORE ANYTHING HAPPENS. {@code POST /api/ingest} is
+ * additive: markers already in the backlog keep their status, verdict, artifact and attempt count.
+ * Because the job answers {@code 202} and runs afterwards, the reply cannot carry "added 14, kept 268"
+ * — nothing has been added yet — so it carries the thing that actually matters to the person holding
+ * the terminal: {@code mode}, and how much this run is going to discard. The per-marker counts follow
+ * in the log and in {@link #lastIngest}.
+ *
  * <p>THE STATUS CODES ARE THE CONTRACT:
  * <ul>
  *   <li>{@code 202} — accepted; a job execution exists and is running.</li>
  *   <li>{@code 409} — refused because something else is running. NOT an error: it is the single-flight
  *       guarantee answering, and a caller polling every minute should treat it as "not yet".</li>
  *   <li>{@code 400} — the ingest body has no {@code repo}, or the single-marker body has no
- *       {@code dedup_key}. The engine refuses the first too, but a job that fails on its first statement
- *       is a worse answer than a request that never started: the caller would have to read the run
- *       history to learn it made a typo. The second could not be forwarded at all — a blank key falling
- *       through to a drain would answer "reproduce this one marker" by proving 282 of them.</li>
+ *       {@code dedup_key}, or a {@code reset} does not name the number of settled verdicts it would
+ *       discard. The engine refuses the first too, but a job that fails on its first statement is a
+ *       worse answer than a request that never started: the caller would have to read the run history
+ *       to learn it made a typo. The second could not be forwarded at all — a blank key falling
+ *       through to a drain would answer "reproduce this one marker" by proving 282 of them. The third
+ *       is the destructive one, and its refusal names the count to send back, so it doubles as the dry
+ *       run of a reset.</li>
  * </ul>
  */
 @RestController
@@ -64,9 +78,30 @@ public class JobsController {
      */
     private final CsvSpool spool;
 
-    public JobsController(JobLaunches launches, CsvSpool spool) {
+    /**
+     * Whether an ingest discards the backlog, and what it must prove first.
+     *
+     * <p>The SAME bean the job asks. Re-deriving the rule here would be two answers to the one question
+     * in this service that destroys a day of work, and the two would disagree the first time either was
+     * edited.
+     */
+    private final ResetPolicy resetPolicy;
+
+    /** What the last ingest DID, for {@link #lastIngest}. */
+    private final IngestHistory history;
+
+    /**
+     * ONE CONSTRUCTOR, and the unit tests of the trigger endpoints pass {@code null} for the history
+     * rather than being given a second one to choose from. Two public constructors are ambiguous to the
+     * container, and the shape that saves four characters in a test is not worth a bean that is wired
+     * differently in production from the way it is asserted on.
+     */
+    public JobsController(JobLaunches launches, CsvSpool spool, ResetPolicy resetPolicy,
+                          IngestHistory history) {
         this.launches = launches;
         this.spool = spool;
+        this.resetPolicy = resetPolicy;
+        this.history = history;
     }
 
     /**
@@ -94,11 +129,13 @@ public class JobsController {
                              @JsonAlias("path_prefix") String pathPrefix,
                              @JsonAlias("include_tests") Boolean includeTests,
                              @JsonAlias("only_checkers") List<String> onlyCheckers,
-                             @JsonAlias("min_severity") String minSeverity) {
+                             @JsonAlias("min_severity") String minSeverity,
+                             Boolean reset,
+                             @JsonAlias("reset_confirm") Long resetConfirm) {
 
         IngestRequest toRequest(String resolvedCsvPath) {
             return new IngestRequest(resolvedCsvPath, repo, branch, pathPrefix, includeTests,
-                    onlyCheckers, minSeverity);
+                    onlyCheckers, minSeverity, reset, resetConfirm);
         }
     }
 
@@ -162,7 +199,7 @@ public class JobsController {
     }
 
     /**
-     * Replace the backlog from a Svace report — sent inline, or named by a path on this container.
+     * ADD a Svace report to the backlog — sent inline, or named by a path on this container.
      *
      * <pre>
      *   curl -sS -XPOST http://localhost:8085/api/ingest \
@@ -170,6 +207,21 @@ public class JobsController {
      *        -d '{"repo":"https://gitlab.company/grp/proj.git","branch":"main",
      *             "path_prefix":"","csv_text":"Severity,Checker,File,Line\n…"}'
      * </pre>
+     *
+     * <p>SAFE TO RE-RUN. Markers already in the backlog keep their status, their verdict, their
+     * artifact and their attempt count; markers this report raises that the backlog does not hold are
+     * queued as new work; markers in the backlog that this report does not raise are left exactly as
+     * they are and counted. Nothing is discarded.
+     *
+     * <p>TO DISCARD THE BACKLOG, say so and say how much:
+     *
+     * <pre>
+     *   -d '{"repo":"…","branch":"main","reset":true,"reset_confirm":268}'
+     * </pre>
+     *
+     * where 268 is the number of SETTLED markers being destroyed. Send it wrong, or leave it out, and
+     * the request is refused with the right number in the message — which makes the refusal the dry
+     * run. See {@link ResetPolicy} for why the token is a count and not a magic word.
      *
      * <p>{@code csv_text} is the half that was missing. Without it the only way in was {@code csvPath},
      * resolved in THIS container's filesystem — so a caller needed write access to a mount before it
@@ -179,11 +231,19 @@ public class JobsController {
     public ResponseEntity<Map<String, Object>> ingest(
             @RequestBody(required = false) IngestBody body) {
         IngestBody given = body == null
-                ? new IngestBody(null, null, null, null, null, null, null, null) : body;
+                ? new IngestBody(null, null, null, null, null, null, null, null, null, null) : body;
 
         ResponseEntity<Map<String, Object>> refusal = refuse(given.repo(), given.branch());
         if (refusal != null) {
             return refusal;
+        }
+        // ONE census for the refusal AND the reply — read before anything is launched. See
+        // #refuseUnconfirmedReset for why it cannot be read twice.
+        ResetPolicy.Census before = resetPolicy.census();
+        ResponseEntity<Map<String, Object>> unconfirmed =
+                refuseUnconfirmedReset(given.reset(), given.resetConfirm(), before);
+        if (unconfirmed != null) {
+            return unconfirmed;
         }
         boolean inline = given.csvText() != null && !given.csvText().isBlank();
         if (inline && given.csvPath() != null && !given.csvPath().isBlank()) {
@@ -203,7 +263,7 @@ public class JobsController {
                 return unwritable(cannotSpool);
             }
         }
-        return answer(launches.ingest(given.toRequest(csvPath), "api"));
+        return answerIngest(launches.ingest(given.toRequest(csvPath), "api"), given.reset(), before);
     }
 
     /**
@@ -237,16 +297,25 @@ public class JobsController {
             @RequestParam(name = "path_prefix", required = false) String pathPrefix,
             @RequestParam(name = "include_tests", required = false) Boolean includeTests,
             @RequestParam(name = "only_checkers", required = false) List<String> onlyCheckers,
-            @RequestParam(name = "min_severity", required = false) String minSeverity)
+            @RequestParam(name = "min_severity", required = false) String minSeverity,
+            @RequestParam(name = "reset", required = false) Boolean reset,
+            @RequestParam(name = "reset_confirm", required = false) Long resetConfirm)
             throws IOException {
 
         ResponseEntity<Map<String, Object>> refusal = refuse(repo, branch);
         if (refusal != null) {
             return refusal;
         }
+        ResetPolicy.Census before = resetPolicy.census();
+        ResponseEntity<Map<String, Object>> unconfirmed =
+                refuseUnconfirmedReset(reset, resetConfirm, before);
+        if (unconfirmed != null) {
+            return unconfirmed;
+        }
         if (csv == null || csv.isEmpty()) {
-            // NOT "ingest an empty report". The job clears both tables before it parses, so an empty
-            // part accepted here is a backlog deleted by a mis-typed curl.
+            // NOT "ingest an empty report". An empty part accepted here would parse to nothing, and
+            // under `reset` that is a backlog deleted by a mis-typed curl; the engine refuses it too,
+            // but a request that never started is the better place to say so.
             return badRequest("the `csv` part is missing or empty; send the report with "
                     + "-F 'csv=@your-report.csv'");
         }
@@ -258,8 +327,50 @@ public class JobsController {
         } catch (IOException cannotSpool) {
             return unwritable(cannotSpool);
         }
-        return answer(launches.ingest(new IngestRequest(csvPath, repo, branch, pathPrefix,
-                includeTests, onlyCheckers, minSeverity), "api"));
+        return answerIngest(launches.ingest(new IngestRequest(csvPath, repo, branch, pathPrefix,
+                includeTests, onlyCheckers, minSeverity, reset, resetConfirm), "api"), reset, before);
+    }
+
+    /**
+     * WHAT THE LAST INGEST ACTUALLY DID — "added 14, kept 268" or "discarded 282".
+     *
+     * <pre>
+     *   curl -s http://localhost:8085/api/ingest/last
+     * </pre>
+     *
+     * <p>WHY A SECOND ENDPOINT AND NOT A RICHER 202. The ingest starts a job and answers immediately,
+     * which is the honest shape for work that outlives a connection — so at the moment the reply is
+     * written, nothing has been added or kept and there is no outcome to report. The reply says what
+     * the run is ABOUT to do; this says what it DID, read back out of the step's own execution context
+     * so it is still there a week later, after the log has rotated and after however many restarts.
+     *
+     * <p>{@code null} for {@code account} is a real answer and not an empty one: an ingest that failed
+     * before it could write its account, or one from a build that predates this record, did not do
+     * "nothing" — it did something nobody recorded, and zeroes would state that as a measurement.
+     */
+    @GetMapping("/ingest/last")
+    public ResponseEntity<Map<String, Object>> lastIngest() {
+        Map<String, Object> answer = new LinkedHashMap<>();
+        answer.put("job", BatchConfig.INGEST_JOB);
+        IngestHistory.Entry last = history.lastIngest();
+        if (last == null) {
+            answer.put("ran", false);
+            answer.put("reason", "no ingest has run against this database");
+            return ResponseEntity.ok(answer);
+        }
+        answer.put("ran", true);
+        answer.put("executionId", last.executionId());
+        answer.put("status", last.status());
+        answer.put("startedAt", last.startedAt());
+        answer.put("endedAt", last.endedAt());
+        if (last.account() == null) {
+            answer.put("account", null);
+            answer.put("reason", "that execution recorded no account of itself — it failed before it "
+                    + "could write one, or it predates this record");
+        } else {
+            answer.put("account", last.account().toMap());
+        }
+        return ResponseEntity.ok(answer);
     }
 
     /**
@@ -284,6 +395,54 @@ public class JobsController {
      * hours into a run, as {@code branch_error} on every row of the backlog. Refusing the REQUEST is the
      * same fact delivered while it can still be acted on.
      */
+    /**
+     * The destructive refusal: a reset that cannot say what it is discarding. Null means "carry on".
+     *
+     * <p>Answered HERE as well as inside the job, and the two are not redundant. The tasklet's check is
+     * the GUARANTEE — nothing can go around it, and its count is true at the moment of the DELETE. This
+     * one is what makes the guarantee usable: without it the operator gets a {@code 202}, goes away,
+     * and finds out from the run history that their reset never happened. If the two ever disagree —
+     * a marker settled between this line and the DELETE — the tasklet wins, which is the correct
+     * direction: the reset is refused rather than performed on a number nobody checked.
+     *
+     * @param before the census taken ONCE, before the launch, and shared with the reply. Reading it
+     *               again after {@code launches.ingest} would be reading it after an asynchronous job
+     *               has started — so a reset's reply could report a backlog the job had already
+     *               emptied, i.e. {@code "discards": 0} for the run that discarded everything. That is
+     *               the exact sentence this whole change exists to make impossible.
+     */
+    private ResponseEntity<Map<String, Object>> refuseUnconfirmedReset(Boolean reset, Long confirm,
+                                                                       ResetPolicy.Census before) {
+        return resetPolicy.refuse(reset, confirm, before)
+                .map(JobsController::badRequest)
+                .orElse(null);
+    }
+
+    /**
+     * The {@code 202} for an ingest, saying which of the two things is about to happen.
+     *
+     * <p>The counts are read BEFORE the job starts and are labelled as such ({@code backlogBefore}),
+     * because that is what they are: a photograph of the backlog at the moment the request was made.
+     * What the run then did is {@link #lastIngest}.
+     */
+    private ResponseEntity<Map<String, Object>> answerIngest(JobLaunches.Launch launch,
+                                                             Boolean requestedReset,
+                                                             ResetPolicy.Census census) {
+        Map<String, Object> body = describe(launch);
+        boolean resets = resetPolicy.resets(requestedReset);
+        body.put("mode", resets ? IngestAccount.RESET : IngestAccount.ADDITIVE);
+        body.put("effect", ResetPolicy.effect(resets));
+        body.put("backlogBefore", census.markers());
+        body.put("settledBefore", census.settled());
+        body.put("artifactsBefore", census.artifacts());
+        // ZERO IS THE HEADLINE on the additive path. The message this replaces read the same whether it
+        // had destroyed a day of model and Maven time or nothing at all.
+        body.put("discards", resets ? census.markers() : 0L);
+        body.put("discardsSettled", resets ? census.settled() : 0L);
+        body.put("discardsArtifacts", resets ? census.artifacts() : 0L);
+        return status(launch, body);
+    }
+
     private ResponseEntity<Map<String, Object>> refuse(String repo, String branch) {
         if (repo == null || repo.isBlank()) {
             return badRequest("`repo` is required (e.g. \"WebGoat/WebGoat\", "

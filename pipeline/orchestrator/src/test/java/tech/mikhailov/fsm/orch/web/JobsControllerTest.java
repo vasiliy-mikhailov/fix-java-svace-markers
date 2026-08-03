@@ -12,6 +12,7 @@ import tech.mikhailov.fsm.orch.batch.BatchConfig;
 import tech.mikhailov.fsm.orch.batch.CsvSpool;
 import tech.mikhailov.fsm.orch.batch.IngestRequest;
 import tech.mikhailov.fsm.orch.batch.JobLaunches;
+import tech.mikhailov.fsm.orch.batch.ResetPolicy;
 
 /**
  * The two trigger endpoints.
@@ -77,7 +78,15 @@ class JobsControllerTest {
      * below started spooling something without saying so.
      */
     private static JobsController controller(JobLaunches launches) {
-        return new JobsController(launches, new CsvSpool(1, null));
+        // An empty backlog and no run history: no case in this class asks to reset or reads back what
+        // an ingest did — AnIngestReplySaysWhatItWillDoTest owns both, over a stated census.
+        return new JobsController(launches, new CsvSpool(1, null),
+                new ResetPolicy(null, null, false) {
+                    @Override
+                    public Census census() {
+                        return new Census(0, 0, 0);
+                    }
+                }, null);
     }
 
     @Test
@@ -144,7 +153,8 @@ class JobsControllerTest {
         Recorder launches = new Recorder(false);
 
         ResponseEntity<Map<String, Object>> answer = controller(launches).ingest(
-                new JobsController.IngestBody("/data/x.csv", null, "  ", null, null, null, null, null));
+                new JobsController.IngestBody("/data/x.csv", null, "  ", null, null, null, null, null, null,
+                        null));
 
         assertThat(answer.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(String.valueOf(answer.getBody().get("reason"))).contains("`repo` is required");
@@ -158,7 +168,7 @@ class JobsControllerTest {
 
         ResponseEntity<Map<String, Object>> answer = controller(launches).ingest(
                 new JobsController.IngestBody("/data/svace.csv", null, "WebGoat/WebGoat", "develop",
-                        "", Boolean.TRUE, List.of("DEREF_OF_NULL"), "Major"));
+                        "", Boolean.TRUE, List.of("DEREF_OF_NULL"), "Major", null, null));
 
         assertThat(answer.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(launches.ingested).isEqualTo(new IngestRequest("/data/svace.csv",

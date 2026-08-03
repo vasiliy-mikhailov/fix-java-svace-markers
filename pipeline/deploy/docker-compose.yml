@@ -163,6 +163,16 @@ services:
       # exactly the requirement the upload removes.
       - FSM_INGEST_MAX_CSV_BYTES
       - FSM_INGEST_SPOOL_DIR=${FSM_INGEST_SPOOL_DIR:-}
+      # WHETHER AN INGEST DISCARDS THE BACKLOG. `false` here and in the application: re-running the
+      # ingest after a redeploy is the most natural thing an operator does, and it must not cost the
+      # settled verdicts of a 26-hour drain. Markers already in the backlog keep their status, verdict,
+      # artifact and attempt count; the report can only add.
+      #
+      # Set it to true ONLY for a deployment whose backlog is disposable — a nightly scan reloaded from
+      # scratch. It makes EVERY ingest destructive, with no confirmation, and this process says so in a
+      # WARN line on every start. On a one-off request, ask for it there instead:
+      # {"reset": true, "reset_confirm": <number of settled markers>}.
+      - FSM_INGEST_RESET=${FSM_INGEST_RESET:-false}
       # Optional: with no Svace endpoint, Verdict argues from the code instead of failing.
       - SVACE_BASE_URL=${SVACE_BASE_URL:-}
       - SVACE_TOKEN=${SVACE_TOKEN:-}

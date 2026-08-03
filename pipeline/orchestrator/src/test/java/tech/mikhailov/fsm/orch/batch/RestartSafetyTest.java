@@ -150,8 +150,9 @@ class RestartSafetyTest {
      *
      * <p>The schedule and the live watcher are the two things that would run underneath the assertions:
      * a tick would claim the marker before the test looked at it, and the watcher stamps
-     * {@code marker_progress} from a background thread. Both are switched off in production the same
-     * way, by the same properties.
+     * {@code marker_progress} from a background thread. Both are switched off here through the
+     * ENVIRONMENT-VARIABLE spellings the yml interpolates, because the property spellings would
+     * be overridden by it and neither would actually be off — see the comment on the builder.
      *
      * <p>{@link ScriptedNetwork} is handed to the builder as a SOURCE rather than left to the component
      * scan, and the test asserts below that the clients the chain was given are the scripted ones. A
@@ -160,14 +161,26 @@ class RestartSafetyTest {
      * instead of assuming.
      */
     private static ConfigurableApplicationContext boot() {
-        return new SpringApplicationBuilder(OrchestratorApplication.class, ScriptedNetwork.class)
+        ConfigurableApplicationContext ctx = new SpringApplicationBuilder(OrchestratorApplication.class, ScriptedNetwork.class)
                 .web(WebApplicationType.NONE)
                 .properties(
                         "FSM_DB_PATH=" + dataDirectory.resolve("fsm"),
-                        "fsm.prove.schedule-enabled=false",
-                        "fsm.live.enabled=false",
+                        // FSM_PROVE_SCHEDULE and FSM_LIVE, not fsm.prove.schedule-enabled and
+                        // fsm.live.enabled. SpringApplicationBuilder.properties(...) contributes
+                        // DEFAULT properties — the LOWEST-precedence source in the Environment, below
+                        // application.yml — and the yml binds both keys from placeholders
+                        // (${FSM_PROVE_SCHEDULE:true}, ${FSM_LIVE:true}). So the property spellings
+                        // lose to the yml and both resolve to TRUE: the scheduler and the watcher ran
+                        // underneath these assertions. It passed only because the tick's initial delay
+                        // is PT30S and this test finishes in about a second — a timing accident.
+                        // The env-var spellings ARE what the placeholders read, and nothing else
+                        // defines those keys, so lowest precedence is enough. pinned() proves it.
+                        "FSM_PROVE_SCHEDULE=false",
+                        "FSM_LIVE=false",
                         "spring.main.banner-mode=off")
                 .run();
+        pinned(ctx);
+        return ctx;
     }
 
     /** The prove job of THAT context, driven the way every other job test drives it. */
@@ -178,4 +191,25 @@ class RestartSafetyTest {
         utils.setJobRepository(context.getBean(JobRepository.class));
         return utils;
     }
+
+    /**
+     * The two switches actually took effect.
+     *
+     * <p>Without this, a spelling that does not reach the yml placeholder leaves the scheduler and the
+     * watcher RUNNING underneath every assertion below, and the suite still passes — the tick's initial
+     * delay is PT30S and this test finishes in about a second. The failure that eventually arrives is a
+     * marker claimed by a background thread, which is indistinguishable from the defect being tested
+     * for. So assert the Environment resolved them, not that they were asked for.
+     */
+    private static void pinned(ConfigurableApplicationContext context) {
+        assertThat(context.getEnvironment().getProperty("fsm.prove.schedule-enabled"))
+                .as("the schedule is still on: the property spelling loses to application.yml, so this "
+                        + "must be set as FSM_PROVE_SCHEDULE, which is what the placeholder reads")
+                .isEqualTo("false");
+        assertThat(context.getEnvironment().getProperty("fsm.live.enabled"))
+                .as("the live watcher is still on, and it stamps marker_progress from a background "
+                        + "thread; set it as FSM_LIVE for the same reason")
+                .isEqualTo("false");
+    }
+
 }

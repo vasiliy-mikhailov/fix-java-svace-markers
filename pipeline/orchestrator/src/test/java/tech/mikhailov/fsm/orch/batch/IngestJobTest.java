@@ -28,9 +28,15 @@ import tech.mikhailov.fsm.orch.model.Suspicion;
  * The ingest job against a real H2 and a real CSV on disk.
  *
  * <p>The transform itself is the engine's and is pinned by its own differential suite. What is pinned
- * here is what the JOB does around it: that the clears and the insert are one transaction, that the
- * severity ordering the engine produced survives into the queue, and that a refusal leaves the
- * existing backlog alone rather than destroying it.
+ * here is what the JOB does around it: that the whole step is one transaction, that the severity
+ * ordering the engine produced survives into the queue, and that a refusal leaves the existing backlog
+ * alone rather than destroying it.
+ *
+ * <p>WHOSE SUBJECT IS WHOSE. That an ordinary re-ingest keeps every settled marker, verdict, artifact
+ * and attempt count — and what a reset must prove before it may discard them — belongs to
+ * {@link AReIngestIsSafeByDefaultTest}, which is written against those properties alone. Two cases
+ * here state the same rule in miniature, because it is now part of what "the job" means and a file
+ * describing the job that did not mention it would read as though the old behaviour still stood.
  *
  * <p>The ordering claim in that sentence was, for a while, only a claim: the queue ordered by
  * {@code dedup_key} and the assertion below had been softened to match. The queue is what changed —
@@ -94,17 +100,43 @@ class IngestJobTest {
                 .containsExactly("Critical", "Minor");
     }
 
+    /**
+     * A RE-INGEST KEEPS THE OLD BACKLOG AND ITS ARTIFACTS. It used to delete both, which is what
+     * {@link AReIngestIsSafeByDefaultTest} exists to hold in full; this is the same statement made
+     * against the plain job, beside the other things the job does.
+     */
     @Test
-    void aReIngestClearsTheOldBacklogAndItsArtifacts(@TempDir Path dir) throws Exception {
+    void aReIngestKeepsTheOldBacklogAndItsArtifacts(@TempDir Path dir) throws Exception {
         suspicions.upsert(stale());
         bugs.upsert(artifactOf(stale()));
 
         JobExecution execution = launch(write(dir, CSV), "acme/app", "main");
 
         assertThat(execution.getStatus()).isEqualTo(BatchStatus.COMPLETED);
+        Suspicion kept = suspicions.find("stale").orElseThrow();
+        assertThat(kept.status()).isEqualTo("verified");
+        assertThat(kept.proveAttempts()).isEqualTo(2L);
+        assertThat(bugs.find("stale")).isPresent();
+        // …and the report's own markers are queued alongside it.
+        assertThat(suspicions.findByStatus(SuspicionDao.STATUS_NEW)).hasSize(2);
+    }
+
+    /**
+     * AND A RESET DOES CLEAR — asked for, and confirmed with the number of settled markers it destroys.
+     *
+     * <p>The clear takes the artifacts with it: every bug row points at a {@code suspicion_key}, and
+     * keeping them while wiping the backlog leaves orphans on the dashboard that no marker explains.
+     */
+    @Test
+    void aConfirmedResetClearsTheOldBacklogAndItsArtifacts(@TempDir Path dir) throws Exception {
+        suspicions.upsert(stale());
+        bugs.upsert(artifactOf(stale()));
+
+        JobExecution execution = launch(new IngestRequest(write(dir, CSV), "acme/app", "main", null,
+                null, null, null).withReset(true, 1L));
+
+        assertThat(execution.getStatus()).isEqualTo(BatchStatus.COMPLETED);
         assertThat(suspicions.find("stale")).isEmpty();
-        // Every bug row points at a suspicion_key; keeping artifacts while wiping the backlog leaves
-        // orphans on the dashboard that no marker explains.
         assertThat(bugs.count()).isZero();
     }
 

@@ -18,6 +18,7 @@ import tech.mikhailov.fsm.orch.batch.BatchConfig;
 import tech.mikhailov.fsm.orch.batch.CsvSpool;
 import tech.mikhailov.fsm.orch.batch.IngestRequest;
 import tech.mikhailov.fsm.orch.batch.JobLaunches;
+import tech.mikhailov.fsm.orch.batch.ResetPolicy;
 
 /**
  * A CLIENT CAN SEND ITS OWN REPORT — the first of the two gaps, at the edge where it is closed.
@@ -80,7 +81,8 @@ class TheReportCanTravelInTheRequestTest {
             Recorder launches = new Recorder();
 
             controller(launches, dir, 4096).ingest(new JobsController.IngestBody(null, REPORT,
-                    "acme/app", "develop", "", Boolean.TRUE, List.of("DEREF_OF_NULL"), "Major"));
+                    "acme/app", "develop", "", Boolean.TRUE, List.of("DEREF_OF_NULL"), "Major",
+                    null, null));
 
             // path_prefix "" is PRESENT-BUT-EMPTY: "do not strip", a different request from sending
             // none. The upload path must not flatten it on the way through.
@@ -156,7 +158,7 @@ class TheReportCanTravelInTheRequestTest {
             ResponseEntity<Map<String, Object>> answer = controller(launches, dir, 4096).ingestUpload(
                     new MockMultipartFile("csv", "svace-report.csv", "text/csv",
                             REPORT.getBytes(StandardCharsets.UTF_8)),
-                    "acme/app", "main", null, null, null, null);
+                    "acme/app", "main", null, null, null, null, null, null);
 
             assertThat(answer.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
             assertThat(read(Path.of(launches.ingested.csvPath()))).isEqualTo(REPORT);
@@ -171,7 +173,7 @@ class TheReportCanTravelInTheRequestTest {
             controller(launches, dir, 4096).ingestUpload(
                     new MockMultipartFile("csv", "../../../etc/passwd", "text/csv",
                             REPORT.getBytes(StandardCharsets.UTF_8)),
-                    "acme/app", "main", null, null, null, null);
+                    "acme/app", "main", null, null, null, null, null, null);
 
             assertThat(Path.of(launches.ingested.csvPath())).hasParent(dir);
             assertThat(launches.ingested.csvPath()).doesNotContain("passwd");
@@ -184,7 +186,7 @@ class TheReportCanTravelInTheRequestTest {
             ResponseEntity<Map<String, Object>> answer = controller(launches, dir, 16).ingestUpload(
                     new MockMultipartFile("csv", "r.csv", "text/csv",
                             REPORT.getBytes(StandardCharsets.UTF_8)),
-                    "acme/app", "main", null, null, null, null);
+                    "acme/app", "main", null, null, null, null, null, null);
 
             assertThat(answer.getStatusCode()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
             assertThat(launches.ingested).isNull();
@@ -197,7 +199,7 @@ class TheReportCanTravelInTheRequestTest {
 
             ResponseEntity<Map<String, Object>> answer = controller(launches, dir, 4096).ingestUpload(
                     new MockMultipartFile("csv", "r.csv", "text/csv", new byte[0]),
-                    "acme/app", "main", null, null, null, null);
+                    "acme/app", "main", null, null, null, null, null, null);
 
             assertThat(answer.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
             assertThat(launches.ingested).isNull();
@@ -211,7 +213,7 @@ class TheReportCanTravelInTheRequestTest {
             ResponseEntity<Map<String, Object>> answer = controller(launches, dir, 4096).ingestUpload(
                     new MockMultipartFile("csv", "r.csv", "text/csv",
                             REPORT.getBytes(StandardCharsets.UTF_8)),
-                    "  ", "main", null, null, null, null);
+                    "  ", "main", null, null, null, null, null, null);
 
             assertThat(answer.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
             assertThat(String.valueOf(answer.getBody().get("reason"))).contains("`repo` is required");
@@ -273,13 +275,27 @@ class TheReportCanTravelInTheRequestTest {
         }
     }
 
+    /**
+     * A controller over a backlog of no particular size and no run history.
+     *
+     * <p>Every case in this class is about the REPORT's journey into the job, and none of them asks to
+     * reset — so an empty census is the honest fixture: it cannot make a reset look confirmed, because
+     * no case here requests one.
+     */
     private static JobsController controller(JobLaunches launches, Path dir, long maxBytes) {
-        return new JobsController(launches, new CsvSpool(maxBytes, dir.toString()));
+        return new JobsController(launches, new CsvSpool(maxBytes, dir.toString()),
+                new ResetPolicy(null, null, false) {
+                    @Override
+                    public Census census() {
+                        return new Census(0, 0, 0);
+                    }
+                }, null);
     }
 
     private static JobsController.IngestBody body(String csvPath, String csvText, String repo,
                                                   String branch) {
-        return new JobsController.IngestBody(csvPath, csvText, repo, branch, null, null, null, null);
+        return new JobsController.IngestBody(csvPath, csvText, repo, branch, null, null, null, null,
+                null, null);
     }
 
     private static String read(Path path) {

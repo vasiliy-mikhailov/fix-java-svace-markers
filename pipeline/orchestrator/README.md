@@ -161,7 +161,9 @@ running one prove cannot act on that. The key is in the cause of the step's
 |---|---|---|
 | `POST` | `/api/prove` | drain the backlog. No body. `202` + execution id, or `409`. |
 | `POST` | `/api/prove/marker` | prove ONE marker. `{"dedup_key": "…"}`. |
-| `POST` | `/api/ingest` | replace the backlog from a Svace CSV. `{"repo": "owner/name", …}`. **Clears both tables**, in one transaction, so a refusal costs nothing. |
+| `POST` | `/api/ingest` | **add** a Svace CSV to the backlog. `{"repo": "owner/name", …}`. Markers already present keep their status, verdict, artifact and attempt count; the report can only add. Safe to re-run. One transaction, so a refusal costs nothing. |
+| `POST` | `/api/ingest` | …**discarding** the backlog first: `{"reset": true, "reset_confirm": <settled marker count>}`. Refused, with the right number in the message, if that count is wrong or absent. `FSM_INGEST_RESET=true` makes it the default for a deployment whose backlog is disposable. |
+| `GET` | `/api/ingest/last` | what the last ingest DID — `{"mode": "additive", "added": 14, "kept": 268, "absent": 3, …}` — out of the run history, so it survives the log. |
 | `GET` | `/api/state` | the whole dashboard view: markers, artifacts, activity, effort, progress. |
 | `GET` | `/api/bug?key=…` | one artifact. `{}` and a 200 when there is none — never a 404. |
 | `GET` | `/api/source?repo=…&file=…&line=…` | a window of source from the runner's cached checkout. |
@@ -169,9 +171,11 @@ running one prove cannot act on that. The key is in the cause of the step's
 | `GET` | `/actuator/health` | the same probe, per component. Details off unless `FSM_HEALTH_DETAILS=always`. |
 | `WS` | `/ws` (STOMP, SockJS too) | `/topic/state`, `/topic/counts`, `/topic/markers`, `/topic/progress` — pushed while a browser is attached. |
 
-An ingest is refused while a prove is running: it clears the table the prove is working in, and the
-prove would then settle a row that no longer exists — 45 minutes of prover time for an artifact nothing
-explains.
+An ingest is refused while a prove is running. A reset clears the table the prove is working in, and
+the prove would then settle a row that no longer exists — 45 minutes of prover time for an artifact
+nothing explains. The rule is not relaxed for the additive shape either: a marker inserted above the
+drain's cursor mid-run is one silently left for the next tick, and "why was that one never proved" is
+not a question worth buying with a saved minute.
 
 ---
 

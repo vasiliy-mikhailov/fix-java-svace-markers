@@ -24,10 +24,14 @@ import org.springframework.stereotype.Service;
  * <ol>
  *   <li>ONE PROVE AT A TIME. Two would build two markers in one cached workspace and patch each
  *       other's tree.</li>
- *   <li>NO INGEST WHILE A PROVE IS RUNNING. An ingest CLEARS both tables; run one mid-prove and the
- *       marker being proved is deleted underneath it, so the prove finishes and settles a row that no
- *       longer exists — an artifact with no marker, and 45 minutes of runner time spent on work
- *       nothing will show.</li>
+ *   <li>NO INGEST WHILE A PROVE IS RUNNING. An ingest MAY clear both tables — an additive one does
+ *       not, but a {@link ResetPolicy reset} does, and this rule has to hold for the destructive shape
+ *       or it holds for neither. Run one mid-prove and the marker being proved is deleted underneath
+ *       it, so the prove finishes and settles a row that no longer exists — an artifact with no
+ *       marker, and 45 minutes of runner time spent on work nothing will show. It is not relaxed for
+ *       the additive case either: an insert landing above the reader's cursor mid-drain is a marker
+ *       silently left for the next tick, and "why did that one never get proved" is not a question
+ *       worth buying with a saved minute.</li>
  * </ol>
  *
  * <p>{@code synchronized} because the check and the launch have to be one step: two requests that both
@@ -138,10 +142,11 @@ public class JobLaunches {
     }
 
     /**
-     * Re-ingest the backlog, unless a prove is running.
+     * Ingest a report into the backlog, unless a prove is running.
      *
-     * <p>The ingest itself is refused while ANOTHER ingest runs too — two of them clearing and
-     * inserting into the same two tables is not something either would survive intact.
+     * <p>The ingest itself is refused while ANOTHER ingest runs too — two of them comparing and
+     * inserting into the same two tables would each see a backlog the other is changing, and the
+     * second's "already present" is the first's uncommitted insert.
      */
     public synchronized Launch ingest(IngestRequest request, String trigger) {
         if (isRunning(BatchConfig.PROVE_JOB)) {

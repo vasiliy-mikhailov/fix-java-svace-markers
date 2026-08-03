@@ -144,6 +144,27 @@ curl -s -X POST localhost:8085/api/prove
 
 Dashboard at **http://localhost:8085/**.
 
+**Re-run both as often as you like.** This matters here more than anywhere: a drain is 6–26 hours and
+this container gets redeployed, rebooted and crash-looped inside that window, so re-running the ingest
+afterwards is the normal thing to do. It **adds** — a marker already in the backlog keeps its status,
+its verdict, its artifact and its attempt count, and nothing is discarded. The `202` says so before
+anything happens (`"mode": "additive", "discards": 0`), and `GET /api/ingest/last` says what the run
+actually did (`"added": 14, "kept": 268`) after the log is long gone.
+
+To discard the backlog and rebuild it from the report, say so *and* say how much you are destroying:
+
+```bash
+curl -sS -X POST localhost:8085/api/ingest \
+  -F 'csv=@svace-report.csv' -F 'repo=WebGoat/WebGoat' -F 'branch=main' \
+  -F 'reset=true' -F 'reset_confirm=268'      # 268 = the number of SETTLED markers
+```
+
+Send the wrong number, or none, and the request is **refused with the right one in the message** — the
+refusal doubles as the dry run. Nothing is asked for when nothing has settled. Comments people wrote
+survive both paths. A deployment whose backlog is disposable can set `FSM_INGEST_RESET=true` once, and
+then every ingest resets with no token; it is announced in the boot log on every start, and a request
+can still override it with `-F 'reset=false'`.
+
 ### …and the same thing against a GitLab
 
 ```bash

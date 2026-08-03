@@ -36,7 +36,7 @@ import tech.mikhailov.fsm.orch.model.Suspicion;
 /**
  * The two jobs that replace the two workflows.
  *
- * <p>{@code ingest} is a tasklet, because it is one indivisible transform: clear, parse, insert, and
+ * <p>{@code ingest} is a tasklet, because it is one indivisible transform: parse, compare, add, and
  * either all of it happened or none of it did. {@code prove} is chunk-oriented with a chunk of ONE,
  * because a marker takes minutes and each one is its own unit of restartable work — a chunk of two
  * would mean re-proving a completed marker whenever its neighbour failed.
@@ -278,7 +278,32 @@ public class BatchConfig {
         return spool;
     }
 
-    /** The ingest job: one transactional tasklet — clear, parse, insert, or none of it. */
+    /**
+     * WHETHER AN INGEST DISCARDS THE BACKLOG, and the answer said out loud on the way up.
+     *
+     * <p>A bean rather than a field of the tasklet for the reason {@code PromptSource} and
+     * {@code FeedbackStore} are beans: the endpoint and the job both need this rule, and two copies of
+     * "may this reset go ahead?" is two answers to the one question in the codebase that can destroy a
+     * day of work. It is also announced here, because {@code fsm.ingest.reset=true} makes EVERY ingest
+     * on this deployment destructive and the boot log is where an operator looks after finding an empty
+     * backlog.
+     */
+    @Bean
+    public ResetPolicy resetPolicy(SuspicionDao suspicions, BugDao bugs, FsmProperties properties) {
+        ResetPolicy policy = new ResetPolicy(suspicions, bugs, properties);
+        if (policy.deploymentDefault()) {
+            log.warn("[ingest] fsm.ingest.reset=true (FSM_INGEST_RESET): EVERY ingest on this "
+                    + "deployment DISCARDS the backlog and every artifact before writing the report. "
+                    + "Send \"reset\": false on a request to keep the settled markers.");
+        } else {
+            log.info("[ingest] re-ingesting is additive and safe: markers already in the backlog keep "
+                    + "their status, verdict, artifact and attempt count. A reset must be asked for "
+                    + "with \"reset\": true and the count of settled markers it would discard.");
+        }
+        return policy;
+    }
+
+    /** The ingest job: one transactional tasklet — parse, compare, add, or none of it. */
     @Bean
     public Job ingestJob(JobRepository jobRepository, @Qualifier("ingestStep") Step ingestStep) {
         return new JobBuilder(INGEST_JOB, jobRepository).start(ingestStep).build();
@@ -286,9 +311,9 @@ public class BatchConfig {
 
     @Bean
     public Step ingestStep(JobRepository jobRepository, PlatformTransactionManager transactionManager,
-                           SuspicionDao suspicions, BugDao bugs) {
+                           SuspicionDao suspicions, BugDao bugs, ResetPolicy resetPolicy) {
         return new StepBuilder("ingestStep", jobRepository)
-                .tasklet(new IngestTasklet(suspicions, bugs), transactionManager)
+                .tasklet(new IngestTasklet(suspicions, bugs, resetPolicy), transactionManager)
                 .build();
     }
 

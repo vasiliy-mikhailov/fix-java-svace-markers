@@ -254,6 +254,25 @@ fsm:
     # mount for it would put the gap straight back. The file lives for the seconds an ingest takes and
     # stale ones are swept by age on the next upload.
     spool-dir: ${FSM_INGEST_SPOOL_DIR:}
+    # WHETHER AN INGEST THAT SAYS NOTHING DISCARDS THE BACKLOG. `false`, and the default is the whole
+    # point of it.
+    #
+    # A drain is 6-26 hours across 282 markers and this container is redeployed, rebooted and
+    # crash-looped inside that window, so re-running the ingest — the first command in every runbook —
+    # is the most natural thing an operator does afterwards. It used to CLEAR both tables and rewrite
+    # them, throwing away every settled verdict, every drafted PR body and every proof, with no
+    # confirmation and no way back. Additive means markers already in the backlog keep their status,
+    # their verdict, their artifact and their attempt count, and the report can only add.
+    #
+    # `true` is the AUTOMATED route: a deployment whose backlog is disposable and re-loaded from a fresh
+    # scan on a schedule. It is destructive on EVERY ingest, and it stands in for the confirmation the
+    # request route demands — a standing decision, set once, visible in `docker compose config`, kept in
+    # git, and announced in this process's boot log on every start. A request may always override it
+    # with "reset": false.
+    #
+    # On a request instead: {"reset": true, "reset_confirm": <settled marker count>}. The count has to
+    # match or the request is refused with the right number in the message.
+    reset: ${FSM_INGEST_RESET:false}
   github:
     # Only an enterprise install or a test moves this, and it is read only under fsm.source.mode=github.
     # It reaches BOTH callers of the contents API — the source fetch and Prep prover's default-branch

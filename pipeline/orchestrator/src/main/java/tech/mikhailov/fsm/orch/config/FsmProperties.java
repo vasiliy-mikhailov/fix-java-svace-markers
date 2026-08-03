@@ -125,9 +125,26 @@ public record FsmProperties(@DefaultValue Prove prove, @DefaultValue Github gith
      *                    a volume this container shares, so requiring a new one would put the gap back.
      *                    A container's temp directory is writable by definition, the file lives for the
      *                    seconds an ingest takes, and stale ones are swept by age on the next upload.
+     * @param reset       WHETHER AN INGEST THAT SAYS NOTHING DISCARDS THE BACKLOG. Read by
+     *                    {@code BatchConfig}, which builds the {@link
+     *                    tech.mikhailov.fsm.orch.batch.ResetPolicy} the endpoint and the job both ask.
+     *                    <p>{@code false}, and the default is the entire point: a drain is 6-26 hours
+     *                    across 282 markers and the container is redeployed inside that window, so
+     *                    re-running the ingest — the first command in every runbook — must be safe.
+     *                    Markers already in the backlog keep their status, verdict, artifact and
+     *                    attempt count.
+     *                    <p>{@code true} is the AUTOMATED route: a deployment whose backlog is
+     *                    disposable, re-loaded from a fresh scan on a schedule. It stands in for the
+     *                    confirmation token the request route requires, because it is a standing
+     *                    decision — set once, visible in {@code docker compose config}, in git, and
+     *                    announced in this process's boot log on every start — rather than something
+     *                    typed in the moment. A count in an environment variable would be neither; it
+     *                    is stale the moment a marker settles. A request may always override it with
+     *                    {@code "reset": false}.
      */
     public record Ingest(@DefaultValue("33554432") long maxCsvBytes,
-                         @DefaultValue("") String spoolDir) {
+                         @DefaultValue("") String spoolDir,
+                         @DefaultValue("false") boolean reset) {
     }
 
     /**
