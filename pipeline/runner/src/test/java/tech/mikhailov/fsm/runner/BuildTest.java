@@ -47,8 +47,8 @@ class BuildTest {
 
     @Test
     void aMavenCompilationFailureIsRecognisedWhateverTheCase() {
-        // Maven writes "COMPILATION ERROR" and the failure summary writes "Compilation failure"; the JS
-        // matched the second case-insensitively. Locale.ROOT is the port's part: the default locale would
+        // Maven writes "COMPILATION ERROR" and the failure summary writes "Compilation failure"; the
+        // second is matched case-insensitively. Locale.ROOT matters: the default locale would
         // lower-case 'I' to a dotless one on a Turkish host and stop matching.
         assertTrue(Build.summarize("[INFO] BUILD FAILURE\nCompilation failure").compileError());
     }
@@ -279,8 +279,8 @@ class BuildTest {
 
     @Test
     void anEmptyModuleIsNoModule(@TempDir Path ws) throws IOException {
-        // FOUND BY harness/run.sh. The JS asked `module_ ?`, which is false for "", and Java's `!= null`
-        // is not that test: an empty string produced `-pl "" -am`, which Maven rejects outright, and
+        // FOUND BY the differential harness. The contract is `module_ ?`, which is false for "", and
+        // Java's `!= null` is not that test: an empty string produces `-pl "" -am`, which Maven rejects outright, and
         // `::test` for Gradle, which resolves to no project. Prove normalises "" to null before it gets
         // here, so the service was never wrong — but a caller should not have to know that to be safe.
         Files.writeString(ws.resolve("pom.xml"), "<project/>");

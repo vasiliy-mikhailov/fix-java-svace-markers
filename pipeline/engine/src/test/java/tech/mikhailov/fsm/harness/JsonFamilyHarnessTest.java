@@ -10,14 +10,13 @@ import org.junit.jupiter.api.Test;
 /**
  * THE DIFFERENTIAL HARNESS for the JSON/reply-parsing family, as a test.
  *
- * <p>{@code JsonExtract}, {@code ParseTest} and {@code ParseFix} replaced
- * {@code n8n/agentic/src/lib/{json-extract,test-realness}.js} and
- * {@code src/nodes/{parse-test,parse-fix}.js}. The corpus is systematic rather than sampled: every
- * branch of the three modules, plus hostile, absent and wrong-typed fields — and the truncation family
+ * <p>The corpus over {@code JsonExtract}, {@code ParseTest} and {@code ParseFix} is systematic rather
+ * than sampled: every branch of the three, plus hostile, absent and wrong-typed fields — and the
+ * truncation family
  * is EXHAUSTIVE, every prefix length of four representative replies, because the repair path is the
- * subtlest code in the port and a hand-picked cut only ever finds the bugs you already thought of.
+ * subtlest code in this module and a hand-picked cut only ever finds the bugs you already thought of.
  *
- * <p><b>This family's JavaScript was alive when the fixtures were frozen.</b> It was run one last time
+ * <p><b>This family's reference was alive when the fixtures were frozen.</b> It was run one last time
  * on 2026-07-31, its 1 354 answers were committed, and then it was deleted. That makes this the most
  * expensive of the three freezes and the one where the honest cost statement matters most: 82
  * divergences in 11 classes are pinned here against a reference that can no longer be consulted about
@@ -41,7 +40,7 @@ class JsonFamilyHarnessTest {
     }
 
     @Test
-    @DisplayName("the divergences against the retired JavaScript are exactly the catalogued ones")
+    @DisplayName("the divergences from the recorded reference answers are exactly the catalogued ones")
     void theDivergencesAreTheCataloguedOnes() {
         Catalogue.assertMatches("json-family-expected", JsonFamilyCompare.catalogue(report),
                 JsonFamilyCompare.render(report));

@@ -10,31 +10,31 @@ import java.util.Map;
  *
  * WHY THIS IS NOT JACKSON. Three reasons, in order of weight:
  *
- * 1. The strictness is load-bearing, not incidental. json-extract.js settles an LLM reply by TRYING
- *    candidate substrings and taking the first that parses — that is the whole algorithm, and it only
- *    works because {@code JSON.parse} rejects a string with anything after the closing brace. Jackson's
+ * 1. The strictness is load-bearing, not incidental. {@link JsonExtract} settles an LLM reply by
+ *    TRYING candidate substrings and taking the first that parses — that is the whole algorithm, and it
+ *    only works because the parser REJECTS a string with anything after the closing brace. Jackson's
  *    {@code readValue(String, Map.class)} accepts trailing content unless FAIL_ON_TRAILING_TOKENS is
  *    switched on, so a reply like {@code {"kind":"by-design"} — and here is my reasoning...} would
- *    parse to the first object and the extractor would stop scanning at a candidate the JS rejects.
- *    Porting the extractor onto Jackson means configuring the library back to JSON.parse behaviour and
- *    then trusting that nobody constructs a plain ObjectMapper later.
+ *    parse to the first object and the extractor would stop on a candidate it must walk past. Moving
+ *    to Jackson means configuring the library back to this behaviour and then trusting that nobody
+ *    constructs a plain ObjectMapper later.
  *
- * 2. Nothing here binds to a POJO. n8n hands the engine whatever the workflow item holds; the engine
- *    reads a handful of fields and echoes the rest back untouched. Jackson's value is databind, and
+ * 2. Nothing here binds to a POJO. A stage is handed whatever the item holds, reads a handful of
+ *    fields and echoes the rest back untouched. Jackson's value is databind, and
  *    the shape we would actually use is {@code Map<String,Object>} — the same untyped tree this file
  *    produces in 200 lines.
  *
- * 3. A dependency is an operational commitment in this deployment, not a line in the pom.
- *    java-runner/settings.xml points Maven at a Nexus with {@code mirrorOf=*}, so every artifact must
- *    be present there or the image does not build, and the JS services all ship with zero runtime
- *    dependencies today. jackson-databind alone is three jars, and it is the single most
+ * 3. A dependency is an operational commitment in this deployment, not a line in the pom. A
+ *    deployment behind a Maven mirror has to have every artifact present there or the image does not
+ *    build, and this module's contract is zero third-party runtime dependencies.
+ *    jackson-databind alone is three jars, and it is the single most
  *    CVE-tracked library in the Java ecosystem — an upgrade treadmill for a service whose entire JSON
  *    need is "parse a tree, write a tree".
  *
  * The honest cost: this parser is ours to get right. That is why it is mutation-tested along with the
  * rest of lib/ rather than trusted.
  *
- * TYPE MAPPING, chosen to survive the round trip through n8n and the Data Tables:
+ * TYPE MAPPING, chosen so a value survives the round trip out to a store and back unchanged:
  * <pre>
  *   null    -> null                object -> LinkedHashMap&lt;String,Object&gt;  (key order preserved)
  *   true    -> Boolean             array  -> ArrayList&lt;Object&gt;
@@ -42,7 +42,7 @@ import java.util.Map;
  * </pre>
  * The Long/Double split exists because JS has one number type and Java has two. {@code attempts} is
  * compared with {@code >= 3} and then written into a Data Table cell a human reads: parsing every
- * number as a double would render it as {@code 3.0}, which is not what the row said before the port.
+ * number as a double would render it as {@code 3.0}, which is not what any stored row says.
  */
 public final class Json {
 
@@ -151,9 +151,9 @@ public final class Json {
     }
 
     /**
-     * JS prints a whole-valued double without its fraction — {@code JSON.stringify(3.0)} is "3", not
-     * "3.0". Arithmetic in the ported scoring code produces doubles, and a score that reads "65.0"
-     * where the JS wrote "65" is a diff in every recorded row for no reason.
+     * A whole-valued double is written without its fraction — "3", not "3.0" — because that is what
+     * the wire format has always carried. The scoring code computes doubles, and a score that suddenly
+     * reads "65.0" where every stored row says "65" is a diff in every row for no reason.
      */
     private static void writeDouble(StringBuilder out, double d) {
         if (Double.isNaN(d) || Double.isInfinite(d)) {
@@ -207,10 +207,10 @@ public final class Json {
         return false;
     }
 
-    // ---- the JS coercions the node ports depend on -----------------------------------------------
+    // ---- the coercions the stages depend on ------------------------------------------------------
     //
-    // record-outcome.js is written in terms of `(pm.pr_title || '')` and `!!repro.red_reproduced`, and
-    // those two idioms decide whether a marker is retried or retired. Ported field by field they would
+    // The routing is written in terms of `(pm.pr_title || '')` and `!!repro.red_reproduced`, and those
+    // two idioms decide whether a marker is retried or retired. Spelled out field by field they would
     // become a different ad-hoc null check each time, and the one that got it wrong would not crash —
     // it would silently retire a real defect. They are spelled out once, here, instead.
 
@@ -232,10 +232,10 @@ public final class Json {
     }
 
     /**
-     * JS truthiness of a VALUE. Split out from the field read because json-extract.js leans on it for
-     * values it never named a key for: {@code tryParse(x) || repair(x)} falls through to the repair
-     * when a candidate parsed to {@code 0}, {@code false} or {@code ""}, and a port that treated
-     * "parsed successfully" as "usable" would settle on a candidate the JS walked past.
+     * JavaScript truthiness of a VALUE. Split out from the field read because {@link JsonExtract}
+     * leans on it for values it never named a key for: {@code tryParse(x) || repair(x)} falls through
+     * to the repair when a candidate parsed to {@code 0}, {@code false} or {@code ""}, and treating
+     * "parsed successfully" as "usable" would settle on a candidate that must be walked past.
      */
     public static boolean truthy(Object v) {
         return switch (v) {
@@ -248,8 +248,8 @@ public final class Json {
     }
 
     /**
-     * {@code Number(x) || 0}: the JS reads attempt counters out of items that may carry them as a
-     * string ("3" out of a Data Table cell) or not at all.
+     * {@code Number(x) || 0}: attempt counters arrive off items that may carry them as a string ("3"
+     * out of a stored cell) or not at all.
      */
     public static double num(Object container, String key) {
         Object v = get(container, key);
@@ -284,8 +284,8 @@ public final class Json {
 
         void skipWhitespace() {
             // Exactly the four characters JSON calls whitespace. A vertical tab or a form feed
-            // between tokens is invalid, and accepting it here would let this parser succeed where
-            // the JS side fails — which in the extractor means picking a different candidate object.
+            // between tokens is invalid, and accepting it here would let this parser succeed on a
+            // candidate it must reject — which in the extractor means picking a different object.
             while (pos < s.length()) {
                 char c = s.charAt(pos);
                 if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
@@ -508,7 +508,7 @@ public final class Json {
                 try {
                     return Long.valueOf(text);
                 } catch (NumberFormatException overflow) {
-                    return Double.valueOf(text);         // beyond long, keep JS's precision loss
+                    return Double.valueOf(text);         // beyond long: the wire format's own precision loss
                 }
             }
             return Double.valueOf(text);

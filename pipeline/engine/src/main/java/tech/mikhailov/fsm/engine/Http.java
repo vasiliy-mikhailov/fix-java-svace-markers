@@ -19,11 +19,10 @@ final class Http {
     /**
      * A request the engine can name a FIX for, rather than merely refuse.
      *
-     * <p>Every message this carries finishes the sentence "the shim should…": the body was not JSON,
-     * it was not an object, a key the node cannot decide without is missing. The shim that sees it
-     * re-throws — deliberately, and NOT under {@code onError=continueRegularOutput}, which forwards a
-     * throwing node's INPUT and makes the run read as "no findings". So this message
-     * is what an operator finds in the red execution: it has to name the fix, because a 500 with a
+     * <p>Every message this carries finishes the sentence "the caller should…": the body was not JSON,
+     * it was not an object, a key the stage cannot decide without is missing. A caller that sees it has
+     * to FAIL rather than continue with its own input, or the run reads as "no findings". So this
+     * message is what an operator finds in the red execution: it has to name the fix, because a 500 with a
      * stack trace in it is a report nobody can act on.
      */
     static final class BadRequest extends RuntimeException {
@@ -35,11 +34,11 @@ final class Http {
     }
 
     /**
-     * Cap on a request body. record-outcome.js already treats a source file over 300 000 chars as an
-     * infra failure ("a verdict on it is not trustworthy"), and a marker item carries that file plus
-     * the test, the fix and the model's reply. 16 MiB is far above any legitimate item and far below
-     * what would let one malformed request exhaust the heap — the engine holds the whole body in
-     * memory because the JS it replaces did too.
+     * Cap on a request body. {@link tech.mikhailov.fsm.nodes.RecordOutcome} already treats a source
+     * file over 300 000 chars as an infra failure ("a verdict on it is not trustworthy"), and a marker
+     * item carries that file plus the test, the fix and the model's reply. 16 MiB is far above any
+     * legitimate item and far below what would let one malformed request exhaust the heap, which
+     * matters because the whole body is held in memory.
      */
     static final int MAX_BODY_BYTES = 16 * 1024 * 1024;
 
@@ -57,8 +56,8 @@ final class Http {
      *
      * <p>The body is read even when a handler does not want it. com.sun.net.httpserver only reuses a
      * keep-alive connection when the request body has been consumed; leaving it unread makes the
-     * server close the socket, and n8n's HTTP Request node then reconnects for every single item of a
-     * 356-marker run.
+     * server close the socket, and the caller then reconnects for every single item of a 356-marker
+     * run.
      */
     static String readBody(HttpExchange exchange) throws IOException {
         try (InputStream in = exchange.getRequestBody()) {
@@ -83,10 +82,10 @@ final class Http {
     /**
      * Read the body and insist it is the JSON OBJECT every node endpoint takes.
      *
-     * <p>The three refusals are separate messages on purpose. "not valid JSON" sends the shim author
-     * to how the body is built; "not an object" sends them to what it wrapped it in; "empty" sends
-     * them to whether {@code body} was passed to {@code httpRequest} at all. One generic
-     * "malformed request" would send all three to the same dead end.
+     * <p>The three refusals are separate messages on purpose. "not valid JSON" sends the caller to how
+     * the body is built; "not an object" sends them to what it wrapped it in; "empty" sends them to
+     * whether a body was passed at all. One generic "malformed request" would send all three to the
+     * same dead end.
      */
     static Object readJson(HttpExchange exchange) throws IOException {
         String text = readBody(exchange);
@@ -128,7 +127,7 @@ final class Http {
      * The one error shape the whole service answers with: {@code {"error": …, "code": …}}.
      *
      * <p>{@code error} is the sentence for the human reading the run history; {@code code} is the
-     * stable token a shim can branch on, because the sentences will be reworded and the codes will
+     * stable token a caller can branch on, because the sentences will be reworded and the codes will
      * not. A successful row is NEVER this shape — see {@link NodeRoutes} for why the rows travel
      * inside {@code items}.
      */

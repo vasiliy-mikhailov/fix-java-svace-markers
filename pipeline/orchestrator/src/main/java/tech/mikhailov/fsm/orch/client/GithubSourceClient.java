@@ -12,12 +12,12 @@ import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.JsValue;
 
 /**
- * {@link SourceClient} against the GitHub contents API — the n8n {@code Fetch source} node.
+ * {@link SourceClient} against the GitHub contents API.
  *
- * <p>That node, transcribed — with the ONE field that no longer matches it marked:
+ * <p>The request, in full:
  * <pre>
  *   GET https://api.github.com/repos/{repo}/contents/{file}?ref={branch}
- *   User-Agent: svace-marker-fixer      // was "n8n-fsm"; renamed 2026-08-02, see {@link #USER_AGENT}
+ *   User-Agent: svace-marker-fixer      // see {@link #USER_AGENT} before changing this
  *   Accept: application/vnd.github+json
  *   Authorization: Bearer $GITHUB_TOKEN
  *   Connection: close
@@ -53,10 +53,9 @@ public class GithubSourceClient implements SourceClient {
      * What GitHub sees this pipeline as, and the same string {@code PrepProver} sends on the branch
      * lookup — the two calls come from one client and must read as one client in an access log.
      *
-     * <p>It was {@code "n8n-fsm"} until 2026-08-02, after the workflow runner it was named for had
-     * stopped running anything here; a repository owner reading their log learned nothing from it.
-     * That rename is a deliberate divergence from the retired JavaScript — see
-     * {@code engine/harness/README.md}, "Re-baselines".
+     * <p>CHANGING IT MOVES A FROZEN CATALOGUE. The differential corpus recorded the previous value on
+     * 378 cases, so this string is pinned as a DECISION rather than as a measurement — see
+     * {@code engine/harness/README.md}, "Re-baselines", and go there before changing it again.
      */
     public static final String USER_AGENT = "svace-marker-fixer";
 
@@ -78,7 +77,7 @@ public class GithubSourceClient implements SourceClient {
     private final int attempts;
     private final Duration backoff;
 
-    /** The documented defaults — the numbers the n8n node carried. */
+    /** The documented defaults: 60s, 3 attempts, 3s apart. */
     public GithubSourceClient(HttpTransport transport, String apiBaseUrl) {
         this(transport, apiBaseUrl, TIMEOUT, ATTEMPTS, BACKOFF);
     }
@@ -183,8 +182,8 @@ public class GithubSourceClient implements SourceClient {
     /**
      * {@code /repos/{repo}/contents/{path}?ref={branch}}, with the components escaped.
      *
-     * <p>n8n interpolated these into a string raw. Java will not send an illegal URI at all, so the
-     * multi-argument {@link URI} constructor does the quoting: a path with a space, a {@code #} or a
+     * <p>The multi-argument {@link URI} constructor does the quoting rather than string
+     * interpolation: a path with a space, a {@code #} or a
      * {@code ?} in it reaches GitHub as the file it names instead of failing as a malformed request or
      * — worse — silently truncating at the fragment and fetching a DIFFERENT file that exists.
      */

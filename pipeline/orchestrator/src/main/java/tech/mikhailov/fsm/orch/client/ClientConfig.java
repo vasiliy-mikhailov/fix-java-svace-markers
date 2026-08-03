@@ -28,10 +28,11 @@ import tech.mikhailov.fsm.runner.MavenSettings;
  * configuration: a constructor call spells out exactly what each client is given, and there is no
  * second constructor for the container to choose wrongly between.
  *
- * <p>ONE PROPERTIES CLASS, {@link FsmProperties}. There used to be a second one here, also claiming the
- * {@code fsm} prefix, with a different shape for {@code fsm.runner} — so the two binders quietly
- * discarded each other's keys and the five retry knobs in the yaml reached nothing. Endpoints and
- * budgets for these three clients now come from the same record as everything else under {@code fsm};
+ * <p>ONE PROPERTIES CLASS, {@link FsmProperties}, and a second one claiming the {@code fsm} prefix
+ * here would be a defect rather than a duplication: two binders with different shapes for
+ * {@code fsm.runner} quietly discard each other's keys, and the retry knobs in the yaml then reach
+ * nothing. Endpoints and budgets for these three clients come from the same record as everything else
+ * under {@code fsm};
  * see the note at the top of that class.
  *
  * <p>NO {@code Secrets} BEAN IS DEFINED HERE. {@link Secrets} is the foundation's, it is already a

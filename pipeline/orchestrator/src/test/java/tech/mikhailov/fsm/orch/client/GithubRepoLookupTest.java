@@ -17,8 +17,8 @@ import tech.mikhailov.fsm.nodes.PrepProver;
  *
  * <p>Hardcoding {@code main} destroyed every finding on any repo that uses develop / master / 4.x, so
  * an unresolvable branch has to be FLAGGED with a cause rather than guessed. That cause travels as the
- * rejected VALUE, and {@code PrepProver} reads a message off a Throwable and a description off n8n's
- * object shape — so a lookup that collapsed the failure to a string would report "no default_branch
+ * failure VALUE, and {@code PrepProver} reads a message off a Throwable and a description off an
+ * HTTP-level failure — so a lookup that collapsed it to a string would report "no default_branch
  * returned" (GitHub's answer) for a request that never got one.
  */
 class GithubRepoLookupTest {

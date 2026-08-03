@@ -30,7 +30,8 @@ import java.util.regex.Pattern;
  * substrings and take the first that PARSES", which only distinguishes candidates because
  * {@code JSON.parse} rejects trailing content. Jackson accepts it unless FAIL_ON_TRAILING_TOKENS is
  * set, so {@code {"can_prove":true} — and here is my reasoning...} would parse to the first object
- * and the scan would stop somewhere the JS kept going. See the class comment on {@link Json}.
+ * and the scan would stop on a candidate that must be walked past. See the class comment on
+ * {@link Json}.
  *
  * <p>Both bounds below are there because a model that collapses into repetition is a real failure
  * mode, and neither the candidate scan nor the rewind may become quadratic on a reply whose prose is
@@ -68,8 +69,8 @@ public final class JsonExtract {
      * @param keys the fields the answer should have — an object carrying NONE of them is not an
      *             answer, it is an example or a fragment of prose, and returning it would let a stage
      *             read a missing {@code can_prove} as a considered {@code false}. They are spliced
-     *             into a regex unescaped, exactly as the JS does: every caller passes compile-time
-     *             constants.
+     *             into a regex UNESCAPED, which is safe only because every caller passes compile-time
+     *             constants — keep it that way.
      * @return the object, or null when nothing usable is in there
      */
     public static Map<String, Object> extractJson(String text, List<String> keys) {
@@ -108,7 +109,7 @@ public final class JsonExtract {
         Pattern keyRe = Pattern.compile("^[" + JsText.SPACE_CLASS + "]*\"("
                 + String.join("|", keys) + ")\"[" + JsText.SPACE_CLASS + "]*:");
         for (int p : starts) {
-            // find() on a ^-anchored pattern is JS's .test(); matches() would demand the whole tail.
+            // find() on a ^-anchored pattern tests the prefix; matches() would demand the whole tail.
             if (keyRe.matcher(t.substring(p + 1)).find()) {
                 Map<String, Object> r = tryAt(t, p, keys);
                 if (r != null) {
@@ -156,7 +157,7 @@ public final class JsonExtract {
     /**
      * Is this an ANSWER, or merely something that parsed?
      *
-     * <p>The JS is {@code o && typeof o === 'object' && keys.some(k => k in o)}. An array is
+     * <p>The test is {@code o && typeof o === 'object' && keys.some(k => k in o)}. An array is
      * {@code typeof 'object'} too, but no array has a key called {@code can_prove}, so requiring a
      * map is the same test. The bare-value case is the one that matters: a fence holding {@code 42}
      * parses fine, and asking {@code 'can_prove' in 42} would THROW — the stage would see a crash
@@ -268,7 +269,7 @@ public final class JsonExtract {
         }
         // Trailing whitespace and commas go together, and as a RUN: a pretty-printed reply cut after
         // a member trails ",\n  ", and dropping only the last character would leave "{...,}", which
-        // does not parse. JS's \s here, not Java's — see JsText.
+        // does not parse. JavaScript's \s here, not Java's — see JsText.
         int end = out.length();
         while (end > 0 && (JsText.isSpace(out.charAt(end - 1)) || out.charAt(end - 1) == ',')) {
             end--;

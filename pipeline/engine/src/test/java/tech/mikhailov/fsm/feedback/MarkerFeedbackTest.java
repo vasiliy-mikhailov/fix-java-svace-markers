@@ -153,7 +153,7 @@ class MarkerFeedbackTest {
         }
 
         @Test
-        void eachStageCarriesTheParsedResultItsNodeExtracted() {
+        void eachStageCarriesTheParsedResultItExtracted() {
             Map<String, Object> stages = section(Traces.clean().build(), "stages");
 
             assertEquals(true, cast(cast(stages.get("reproducer")).get("parsed")).get("can_prove"));

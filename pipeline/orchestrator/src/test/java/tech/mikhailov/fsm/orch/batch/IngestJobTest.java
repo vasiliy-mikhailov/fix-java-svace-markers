@@ -30,8 +30,7 @@ import tech.mikhailov.fsm.orch.model.Suspicion;
  * <p>The transform itself is the engine's and is pinned by its own differential suite. What is pinned
  * here is what the JOB does around it: that the clears and the insert are one transaction, that the
  * severity ordering the engine produced survives into the queue, and that a refusal leaves the
- * existing backlog alone rather than destroying it — which is the behaviour the n8n workflow did not
- * have.
+ * existing backlog alone rather than destroying it.
  *
  * <p>The ordering claim in that sentence was, for a while, only a claim: the queue ordered by
  * {@code dedup_key} and the assertion below had been softened to match. The queue is what changed —
@@ -114,8 +113,8 @@ class IngestJobTest {
         suspicions.upsert(stale());
         bugs.upsert(artifactOf(stale()));
 
-        // No such file. In n8n the two clear nodes had already run by the time Parse markers refused,
-        // and the operator was left with two empty tables and a red execution.
+        // No such file. Outside one transaction the two clears have already run by the time Parse
+        // markers refuses, and the operator is left with two empty tables and a red execution.
         JobExecution execution = launch(dir.resolve("absent.csv").toString(), "acme/app", "main");
 
         assertThat(execution.getStatus()).isEqualTo(BatchStatus.FAILED);

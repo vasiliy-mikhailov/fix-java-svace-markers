@@ -1,10 +1,10 @@
 package tech.mikhailov.fsm.orch.client;
 
 /**
- * Fetch the source file a marker points at — the n8n {@code Fetch source} node.
+ * Fetch the source file a marker points at.
  *
- * <p>Replaces this request, and nothing more — the User-Agent being the one field deliberately
- * changed since (renamed 2026-08-02; see {@link GithubSourceClient#USER_AGENT}):
+ * <p>This request, and nothing more (see {@link GithubSourceClient#USER_AGENT} before changing the
+ * User-Agent):
  * <pre>
  *   GET https://api.github.com/repos/{repo}/contents/{file}?ref={branch}
  *   User-Agent: svace-marker-fixer
@@ -22,8 +22,8 @@ package tech.mikhailov.fsm.orch.client;
  * that node already handles every awkward shape: a {@code content} that is not a string, a path that
  * resolved to a directory and came back as an array, an empty file.
  *
- * <p>{@code Connection: close} is not decoration — the shared vLLM front end and the GitHub client
- * both ran out of sockets when n8n kept them alive.
+ * <p>{@code Connection: close} is not decoration: a client that keeps them alive runs the shared model
+ * front end and this one out of sockets.
  */
 public interface SourceClient {
 
@@ -65,8 +65,8 @@ public interface SourceClient {
      *   <li>a 200 whose body is not JSON.</li>
      * </ul>
      *
-     * <p>Implementations own the retry budget (3 attempts, 3s apart, matching n8n) and throw only once
-     * it is spent, so a single 502 does not cost a marker its place in the queue.
+     * <p>Implementations own the retry budget (3 attempts, 3s apart) and throw only once it is spent,
+     * so a single 502 does not cost a marker its place in the queue.
      *
      * @param repo   {@code owner/name}, from the suspicion row
      * @param path   the repository-relative file path, from the suspicion row

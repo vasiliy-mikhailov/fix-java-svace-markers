@@ -10,16 +10,15 @@ import org.junit.jupiter.api.Test;
 /**
  * THE DIFFERENTIAL HARNESS for the input-building family, as a test.
  *
- * <p>{@code PrepProver}, {@code BuildReproduceInput} and {@code BuildFixInput} replaced
- * {@code n8n/agentic/src/nodes/{prep-prover,build-reproduce-input,build-fix-input}.js}. 2 199 cases
- * were generated, both sides were run, and 14 divergences in 25 classes were catalogued — by a shell
- * script that nothing ever invoked again.
+ * <p>2 199 cases were generated against {@code PrepProver}, {@code BuildReproduceInput} and
+ * {@code BuildFixInput} and against the implementation they replaced, and 14 divergences in 25 classes
+ * were catalogued — by a shell script that nothing ever invoked again.
  *
- * <p>The JavaScript is gone. Its answers are frozen under {@code harness/fixtures} and the comparison
+ * <p>The reference implementation is gone. Its answers are frozen under {@code harness/fixtures} and the comparison
  * runs here, on every {@code mvn test}.
  *
- * <p><b>This family's freeze is the cheap one.</b> The JavaScript had already been deleted when the
- * fixtures were committed, and the port still reproduces the 2026-07-29 report EXACTLY — 2 199 cases,
+ * <p><b>This family's freeze is the cheap one.</b> The reference had already been deleted when the
+ * fixtures were committed, and this module still reproduces the 2026-07-29 report EXACTLY — 2 199 cases,
  * 2 185 identical, 14 divergent in 25 classes. So the frozen answers are provably still the right
  * reference for the code as it stands, and freezing them rescued an artifact that was otherwise one
  * {@code rm -rf harness/out} from being gone for good.
@@ -44,7 +43,7 @@ class InputFamilyHarnessTest {
     }
 
     @Test
-    @DisplayName("the divergences against the retired JavaScript are exactly the catalogued ones")
+    @DisplayName("the divergences from the recorded reference answers are exactly the catalogued ones")
     void theDivergencesAreTheCataloguedOnes() {
         Catalogue.assertMatches("input-family-expected", TaggedDiff.catalogue(report),
                 TaggedDiff.render(report));

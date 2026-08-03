@@ -18,8 +18,8 @@ import tech.mikhailov.fsm.lib.Llm;
  * <p>Split three ways so the deterministic halves are reachable offline: {@link #buildPrPrompt}
  * assembles the text, {@link #parsePrReply} reads the answer back, and {@link #prMaker} is the thin
  * shell that makes the call and glues the two together. Only the judgement in between needs a live
- * endpoint, and that is what n8n/agentic/test/model.skeptic-prmaker.test.js exercises against a real
- * model — including the case that matters most here: 217 of the 282 markers are in {@code lessons/},
+ * endpoint, and the case that matters most there is worth stating: 217 of the 282 markers are in
+ * {@code lessons/},
  * where the vulnerability IS the product, and a curator that waved those through would have opened
  * hundreds of pull requests destroying the exercises.
  *
@@ -97,13 +97,13 @@ public final class PrMaker {
             """;
 
     /**
-     * {@code x.slice(0, n)} on a value nobody type-checked — a JS {@code TypeError}, reproduced.
+     * Cutting a value nobody type-checked, and THROWING rather than coercing it.
      *
-     * <p>pr-maker.js cuts its two payloads with {@code (parseFix.fix_edits_json || '[]').slice(0,5000)},
-     * with no {@code String(...)} around it. A number there throws in the JS, the prompt is built
-     * OUTSIDE the shell's try so the catch never sees it, and the row comes back with no {@code pr_*}
-     * fields at all. A port that quietly coerced would turn a loud upstream bug into a curated-looking
-     * decision, so the throw is kept.
+     * <p>The two payloads are cut with {@code (parseFix.fix_edits_json || '[]').slice(0, 5000)} and no
+     * {@code String(...)} around it, so a number there throws. The prompt is built OUTSIDE the shell's
+     * try, so the catch never sees it, and the row comes back with no {@code pr_*} fields at all —
+     * loudly. Coercing instead would turn an upstream bug into a curated-looking decision, which is the
+     * one outcome this stage must never produce.
      */
     public static final class NotSliceable extends RuntimeException {
         private static final long serialVersionUID = 1L;
@@ -114,7 +114,7 @@ public final class PrMaker {
         }
     }
 
-    /** What the prompt is built from; loosely typed because the upstream nodes are not ported yet. */
+    /** What the prompt is built from; loosely typed because the upstream items are untyped. */
     public record PromptInput(String prStamp, Object prepProver, Object parseTest, Object parseFix) {
     }
 
@@ -142,7 +142,7 @@ public final class PrMaker {
             this(prepProver, parseTest, parseFix, reproduce, item, llm, prStamp, DEFAULT_PROMPT);
         }
 
-        /** Read the request out of a posted body. The keys are the n8n node names, snake-cased. */
+        /** Read the request out of a posted body. The keys are the stage names, snake-cased. */
         public static Request of(Object body) {
             return new Request(Json.get(body, "prep_prover"), Json.get(body, "parse_test"),
                     Json.get(body, "parse_fix"), Json.get(body, "run_test_reproduce"),
@@ -258,7 +258,7 @@ public final class PrMaker {
         String body = Js.orEmptyString(Json.get(parseFix, "pr_body"));
 
         if (proven && skepticSound) {
-            // Built outside the try, exactly as the JS builds it: see NotSliceable.
+            // Built OUTSIDE the try on purpose: see NotSliceable.
             String prompt = buildPrPrompt(new PromptInput(req.prStamp(), j, req.parseTest(), parseFix),
                     req.promptTemplate());
             try {
@@ -287,8 +287,8 @@ public final class PrMaker {
     }
 
     /**
-     * {@code (x || fallback).slice(0, n)}, with JS's dispatch: a string is cut, an array is cut AS AN
-     * ARRAY and then rendered by the concatenation, and anything else throws.
+     * {@code (x || fallback).slice(0, n)}, dispatching on the value: a string is cut, an array is cut
+     * AS AN ARRAY and then rendered by the concatenation, and anything else throws.
      */
     private static String cut(Object value, int n) {
         return switch (value) {

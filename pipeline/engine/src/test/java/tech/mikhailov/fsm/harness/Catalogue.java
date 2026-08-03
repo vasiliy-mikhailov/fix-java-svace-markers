@@ -44,7 +44,7 @@ final class Catalogue {
             assertTrue(Files.exists(expected), "the catalogue is missing: "
                     + expected.toAbsolutePath() + " — regenerate with -Dharness.record=true");
             assertEquals(Files.readString(expected, StandardCharsets.UTF_8).strip(), pretty(found),
-                    "This port's difference from the retired JavaScript has changed.\n\n"
+                    "This module's difference from the recorded reference has changed.\n\n"
                     + "Read " + out + " for the case-by-case detail. If the change is deliberate:\n\n"
                     + "    mvn -pl engine test -Dtest=" + name.replace('-', ' ')
                     + " -Dharness.record=true\n\n"

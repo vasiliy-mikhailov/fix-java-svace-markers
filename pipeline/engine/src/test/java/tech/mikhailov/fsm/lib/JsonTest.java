@@ -18,12 +18,11 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * {@link Json} — the primitive the JS got free from its runtime.
+ * {@link Json} — the JSON reader and writer this module owns.
  *
- * <p>There is no JS test file to port here: {@code JSON.parse} was V8's problem. Writing our own put
- * it back inside the blast radius, so this suite is the price of that decision, and it is aimed at the
- * two things the pipeline actually depends on — that the parser is EXACTLY as strict as
- * {@code JSON.parse}, and that a number survives the round trip looking like the number the JS wrote.
+ * <p>Owning a JSON parser puts it inside the blast radius, so this suite is the price of that
+ * decision. It is aimed at the two things the pipeline actually depends on — that the parser is EXACTLY as strict as
+ * {@code JSON.parse}, and that a number survives the round trip looking like the number that was written.
  */
 class JsonTest {
 
@@ -34,7 +33,7 @@ class JsonTest {
         // The extractor settles an LLM reply by trying candidate substrings and taking the first that
         // parses. That only picks the right candidate because a parse must consume the WHOLE string:
         // a lenient parser stops at the first closing brace and the extractor then accepts a
-        // truncated object where the JS went on scanning. This is the single assertion that makes
+        // truncated object the scan has to walk past. This is the single assertion that makes
         // hand-rolling defensible over configuring a library back to this behaviour.
         assertThrows(Json.JsonException.class,
                 () -> Json.parse("{\"kind\":\"by-design\"} — and here is my reasoning..."));
@@ -70,7 +69,7 @@ class JsonTest {
     @Test
     void rawControlCharacterInAStringIsAnError() {
         // A raw newline inside a string is how a model's embedded Java file most often arrives broken.
-        // Accepting it would let the extractor return a "successful" parse of a reply the JS treats as
+        // Accepting it would let the extractor return a "successful" parse of a reply that has to be
         // unparseable, and record-outcome.js turns an unparseable reply into an infra retry — an
         // outcome that must not be skipped, because it is what keeps a tooling failure from being
         // recorded as a judgement about the code.
@@ -81,7 +80,7 @@ class JsonTest {
 
     @Test
     void whitespaceIsAllowedEverywhereTheGrammarAllowsIt() {
-        // n8n and the model both pretty-print. A parser that only tolerates whitespace where the
+        // Callers and the model both pretty-print. A parser that only tolerates whitespace where the
         // fixtures happened to have it rejects a perfectly good reply, and the extractor then moves
         // on to a worse candidate rather than reporting a parse failure.
         String pretty = "{\n  \"a\" : [ 1 , 2 ] ,\n  \"b\" : { \"c\" : true }\n}";
@@ -129,7 +128,7 @@ class JsonTest {
     void integralNumbersStayIntegral() {
         // `attempts` is compared with >= 3 and then written into a Data Table cell a human reads.
         // Parsing every number as a double renders it "3.0", which is not what the row said before
-        // the port, and the dashboard shows the cell verbatim.
+        // this code, and the dashboard shows the cell verbatim.
         Object parsed = Json.parse("{\"attempts\":3,\"score\":65,\"ratio\":0.5,\"exp\":1e2}");
         Map<?, ?> m = (Map<?, ?>) parsed;
         assertInstanceOf(Long.class, m.get("attempts"));
@@ -141,8 +140,9 @@ class JsonTest {
 
     @Test
     void wholeValuedDoublesPrintWithoutAFraction() {
-        // JSON.stringify(3.0) is "3". The ported scoring arithmetic produces doubles, and a score
-        // written as "65.0" where the JS wrote "65" is a diff in every recorded row for no reason.
+        // A whole-valued double is written "3", not "3.0". The scoring arithmetic produces doubles,
+        // and a score written as "65.0" where every stored row says "65" is a diff in every row for no
+        // reason.
         assertEquals("65", Json.stringify(65.0d));
         assertEquals("-1", Json.stringify(-1.0d));
         assertEquals("0.5", Json.stringify(0.5d));
@@ -184,8 +184,8 @@ class JsonTest {
 
     @Test
     void javaNumberTypesWriteLikeTheirJsCounterparts() {
-        // The ported code hands over ints, longs and the odd float from ordinary Java arithmetic,
-        // not just the Longs the parser produced. All of them have to print the way the JS did.
+        // Callers hand over ints, longs and the odd float from ordinary Java arithmetic, not just the
+        // Longs the parser produced. All of them have to print the same way.
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("i", Integer.valueOf(1));
         m.put("l", Long.valueOf(2));
@@ -198,7 +198,7 @@ class JsonTest {
     void veryLargeDoublesStayValidJson() {
         // Past 1e15 the integer form is dropped and Java's exponent notation takes over. That is
         // still legal JSON, and the assertion is that it round-trips rather than that it matches
-        // JS's digit-for-digit spelling — no field in this pipeline holds a number that big.
+        // the digit-for-digit spelling — no field in this pipeline holds a number that big.
         assertEquals(1e16, Json.parse(Json.stringify(1e16d)));
         assertEquals("999999999999999", Json.stringify(999_999_999_999_999.0d));
     }
@@ -217,9 +217,9 @@ class JsonTest {
 
     @Test
     void objectKeyOrderSurvivesTheRoundTrip() {
-        // The engine echoes an n8n item back with a few fields changed. Reordering the keys turns
-        // every response into a diff against the JS output, which makes a real change impossible to
-        // spot when the two are compared during the migration.
+        // A stage echoes its item back with a few fields changed. Reordering the keys turns every
+        // response into a diff against every recorded row, which makes a real change impossible to spot
+        // among them.
         String src = "{\"z\":1,\"a\":2,\"m\":{\"y\":3,\"b\":4}}";
         assertEquals(src, Json.stringify(Json.parse(src)));
     }
@@ -267,11 +267,11 @@ class JsonTest {
                 + "here, and every caller treats both as 'nothing usable'");
     }
 
-    // ---- the JS coercions ------------------------------------------------------------------------
+    // ---- the coercions the routing is written in terms of ----------------------------------------
 
     @Test
     void strMirrorsTheJsOrEmptyStringIdiom() {
-        // record-outcome.js is written in terms of `(pm.pr_title || '')`. Ported field by field this
+        // The routing is written in terms of `(pm.pr_title || '')`. Spelled out field by field this
         // becomes a different ad-hoc null check each time, and the one that gets it wrong does not
         // crash — it writes an empty PR title onto a row that reads as a considered outcome.
         Map<String, Object> m = new LinkedHashMap<>();
@@ -307,7 +307,7 @@ class JsonTest {
         assertFalse(Json.truthy(m, "zero"));
         assertFalse(Json.truthy(m, "empty"));
         assertTrue(Json.truthy(m, "text"));
-        assertTrue(Json.truthy(m, "list"), "an empty array is truthy in JS, and the ported code "
+        assertTrue(Json.truthy(m, "list"), "an empty array is truthy, and the calling code "
                 + "checks Array.isArray separately where it means to test emptiness");
         assertFalse(Json.truthy(m, "absent"));
         // NaN is falsy in JS. It reaches here from `Number(cell)` on a Data Table value that is not a
@@ -410,7 +410,7 @@ class JsonTest {
         // reading that would produce a DIFFERENT object rather than an error — `{kind": "x"}` reads
         // as the key "ind" if the opening quote is not required. That is the failure this parser
         // exists to prevent: json-extract.js takes the FIRST candidate that parses, so a parser
-        // looser than JSON.parse settles on a candidate the JS walked past, and the verdict is then
+        // looser than JSON.parse settles on a candidate that has to be walked past, and the verdict is then
         // read out of an object whose keys are not the ones the model wrote — `kind` is absent, the
         // router falls through to its default, and a marker is recorded with a judgement nobody made.
         assertNull(Json.parseOrNull(text), () -> "must not parse: " + text);
@@ -441,7 +441,7 @@ class JsonTest {
     @ValueSource(strings = {"{ }", "{\n}", "{\t}", "{\r\n  }"})
     void anEmptyObjectMayBePrettyPrinted(String text) {
         // "No edits" and "no verdict fields" arrive as `{ }` from anything that pretty-prints, which
-        // is both n8n and the model. Rejecting it would drop a reply that is not merely valid but
+        // is what any pretty-printer produces. Rejecting it would drop a reply that is not merely valid but
         // MEANINGFUL — the extractor would fall through to a worse candidate or to none, and a clean
         // "nothing to fix" would be recorded as an unparseable reply and retried as infra.
         assertEquals(Map.of(), Json.parse(text), () -> "must parse as an empty object: " + text);
@@ -527,7 +527,7 @@ class JsonTest {
         assertEquals("if (x)\r\n", m.get("old"));
         assertEquals("x\by\fz", m.get("ctl"));
         // ...and back out again. A raw CR inside a JSON string is not valid JSON, so a writer that
-        // did not escape it would produce a payload n8n rejects wholesale.
+        // did not escape it would produce a payload a strict reader rejects wholesale.
         assertEquals("{\"path\":\"src/main/java/a/B.java\",\"old\":\"if (x)\\r\\n\","
                 + "\"ctl\":\"x\\by\\fz\"}", Json.stringify(m));
     }
@@ -535,7 +535,7 @@ class JsonTest {
     @Test
     void anExponentMayCarryASign() {
         // JSON.parse accepts it, so this parser must, for the same reason the pretty-printed cases
-        // matter: a candidate rejected here is a candidate the extractor skips while the JS took it.
+        // matter: a candidate rejected here is a candidate the extractor skips.
         assertEquals(100.0d, Json.parse("1e+2"));
         assertEquals(0.01d, Json.parse("1E-2"));
         assertEquals("{\"t\":0.001}", Json.stringify(Json.parse("{\"t\":1e-3}")));
@@ -552,7 +552,7 @@ class JsonTest {
         // state machine may route on, and letting NumberFormatException out would not be caught by
         // parseOrNull and would fail the whole extraction instead of this one candidate.
         Object big = Json.parse("99999999999999999999");
-        assertInstanceOf(Double.class, big, "past Long.MAX_VALUE the value keeps JS's precision loss");
+        assertInstanceOf(Double.class, big, "past Long.MAX_VALUE the value keeps the wire format's precision loss");
         assertEquals(1.0e20d, big);
         assertEquals(Long.valueOf(Long.MAX_VALUE), Json.parse("9223372036854775807"),
                 "the largest value that still fits stays integral");

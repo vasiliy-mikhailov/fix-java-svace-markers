@@ -84,8 +84,9 @@ class CsvTest {
 
     @Test
     void aQuoteAtTheVeryEndOfTheInputClosesTheFieldRatherThanDoublingUp() {
-        // `t[i + 1] === '"'` in the JS compares against undefined, which is never true. Reading past
-        // the end in Java has to be guarded or it throws where the JS quietly closed the field.
+        // The lookahead for a doubled quote at the very end has nothing to compare against, so it is
+        // never a match — and reading past the end has to be guarded or it throws where the field
+        // simply closes.
         assertEquals(List.of(List.of("a", "7\"")), parse("a,\"7\"\""));
         assertEquals(List.of(List.of("a", "7")), parse("a,\"7\""));
     }
@@ -116,7 +117,7 @@ class CsvTest {
 
     @Test
     void aSurrogatePairSurvivesTheCodeUnitLoop() {
-        // Iteration is over UTF-16 code units, matching the JS's t[i]. A surrogate is never equal to a
+        // Iteration is over UTF-16 code units. A surrogate is never equal to a
         // delimiter, so splitting one across iterations is harmless and rejoining it is exact.
         assertEquals(List.of(List.of("😀.java", "7")), parse("😀.java,7"));
     }

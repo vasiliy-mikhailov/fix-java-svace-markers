@@ -13,10 +13,9 @@ import tech.mikhailov.fsm.lib.Llm;
  *
  * <p>{@code QWEN_BASE_URL}, {@code QWEN_API_KEY}, {@code QWEN_MODEL}, {@code GITHUB_TOKEN},
  * {@code SVACE_BASE_URL} (and {@code SVACE_TOKEN}). None of them is bound from configuration, because
- * a bound property is one that ends up in a committed yaml file. In n8n they travelled from
- * {@code $env} in a Code node into the request body precisely so there was ONE source of truth for
- * each rather than a second copy in another container that could drift; the same rule holds here, with
- * this class as that source.
+ * a bound property is one that ends up in a committed yaml file. There is ONE source of truth for each
+ * of them and this class is it: a second reader anywhere is a second answer to "what does unset mean",
+ * and they drift silently.
  *
  * <p>AN UNSET VARIABLE IS PASSED THROUGH, NOT DEFAULTED. That is deliberate and it is the engine's
  * contract: an unset {@code QWEN_BASE_URL} produces a call to {@code undefined/chat/completions}, which

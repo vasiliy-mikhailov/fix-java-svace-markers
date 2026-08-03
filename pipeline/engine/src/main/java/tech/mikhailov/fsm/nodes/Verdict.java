@@ -154,7 +154,7 @@ public final class Verdict {
          * <p>The template is a DEPLOYMENT choice — {@code prompts/verdict.txt} at the repo root, or
          * {@code DEFAULT_VERDICT_PROMPT}, resolved once at start-up by
          * {@code tech.mikhailov.fsm.orch.PromptSource}. Every caller that has no opinion about it, the
-         * HTTP shim included, keeps {@link #DEFAULT_PROMPT}.
+         * HTTP caller included, keeps {@link #DEFAULT_PROMPT}.
          */
         public Request(Object item, Object prepProver, Object parseTest, Object parseFix,
                        Object reproduce, Object buildReproduceInput, Object prMaker, Llm.Endpoint llm,
@@ -181,7 +181,7 @@ public final class Verdict {
                     svaceBaseUrl, svaceToken, minAttempts, verdictStamp, true);
         }
 
-        /** Read the request out of a posted body. The keys are the n8n node names, snake-cased. */
+        /** Read the request out of a posted body. The keys are the stage names, snake-cased. */
         public static Request of(Object body) {
             Object env = Json.get(body, "env");
             return new Request(Json.get(body, "item"), Json.get(body, "prep_prover"),
@@ -193,8 +193,8 @@ public final class Verdict {
         }
 
         /**
-         * {@code attempts < minAttempts} is FALSE whenever the ceiling is not a number, because the JS
-         * compares against NaN. {@link Json#num} folds NaN to 0, which would read an unset ceiling as
+         * {@code attempts < minAttempts} must be FALSE whenever the ceiling is not a number, which is
+         * what comparing against NaN gives. {@link Json#num} folds NaN to 0, which would read an unset ceiling as
          * "never retry" for a positive attempt count and as "always retry" for a negative one, so the
          * NaN is kept here rather than defaulted.
          */
@@ -205,9 +205,9 @@ public final class Verdict {
 
         /**
          * ABSENT MEANS ON, which is the opposite of what {@link Json#truthy} would say and is the whole
-         * reason this is spelled out. The shims that post this body have no such key and never will —
-         * the toggle is an orchestrator setting — so reading it as falsy would switch the argument OFF
-         * for every caller that never heard of it.
+         * reason this is spelled out. A caller that posts this body need not carry the key at all —
+         * the toggle is an orchestrator setting — so reading an absent one as falsy would switch the
+         * argument OFF for every caller that never heard of it.
          */
         private static boolean verdictEnabled(Object body) {
             return Json.get(body, "verdict_enabled") == null || Json.truthy(body, "verdict_enabled");
@@ -221,9 +221,9 @@ public final class Verdict {
     /**
      * Argue, compose or retry — and decide what the suspicion's next status is.
      *
-     * @param log where the JS wrote {@code console.log}. Two outcomes leave NOTHING in the row at all —
-     *            a retry, and a verdict call that produced no text — so the run log is their only
-     *            trace, and it is asserted on like any other output.
+     * @param log the run log. Two outcomes leave NOTHING in the row at all — a retry, and a verdict
+     *            call that produced no text — so this is their only trace, and it is asserted on like
+     *            any other output.
      */
     public static Map<String, Object> verdict(Request req, Llm.Http http, Consumer<String> log) {
         Object rec = req.item();                                     // Record outcome
@@ -254,7 +254,7 @@ public final class Verdict {
         String stateText = Llm.concat(rec, "state");
 
         // `Number(x) || 1`: an uncounted attempt is the FIRST attempt, not the zeroth. Json.num folds
-        // NaN to 0, so the two together are exactly the JS's fallback chain.
+        // NaN to 0, so the two together are the whole fallback chain.
         double attempts0 = Json.num(rec, "attempts");
         if (attempts0 == 0) {
             attempts0 = 1;
@@ -404,9 +404,9 @@ public final class Verdict {
             verdictText = vi.text();
         }
 
-        // The suspicion's next status is decided HERE, in code, rather than as a nested ternary inside
-        // an n8n {{ }} expression. The parent's version was a single 300-character expression; one
-        // wrong branch there silently retires a marker, and it cannot be tested.
+        // The suspicion's next status is decided HERE, in code, and must stay here. As a nested
+        // ternary in a template expression it is one 300-character line: one wrong branch silently
+        // retires a marker, and there is nothing a test can reach.
         double attempts = Json.num(rec, "attempts");     // `Number(x) || 0` — NOT the `|| 1` above
         String suspicionStatus;
         String suspicionNote = "";
@@ -512,9 +512,9 @@ public final class Verdict {
      * {@code exhaustedBuild} hatch whose argument did not materialise. A marker no run will select
      * again is terminal, so whichever route it took the artifact has to say the same thing.
      *
-     * <p>ONLY the reason and the count reach it: the JS hands {@code execVerdict} a two-field object
-     * here, and an {@code infra_stuck} row must not pick up a test path or a PR title from a run that
-     * never got that far.
+     * <p>ONLY the reason and the count reach it — a two-field object, deliberately: an
+     * {@code infra_stuck} row must not pick up a test path or a PR title from a run that never got
+     * that far.
      */
     private static ExecVerdict.Verdict stuck(Object rec, double attempts) {
         return ExecVerdict.of("infra_stuck",
@@ -610,9 +610,9 @@ public final class Verdict {
     }
 
     /**
-     * The rebuttal prompt, as a Java 25 text block. Byte-identical to the JS concatenation, which
-     * {@code VerdictTest} pins against a second copy and the differential harness checks over every
-     * fixture.
+     * The rebuttal prompt, as a Java 25 text block. The BYTES are the contract: {@code VerdictTest}
+     * pins them against a second, independently written copy, and the differential harness checks them
+     * over every fixture.
      *
      * <p>PUBLIC, AND NAMED {@code DEFAULT_}, because it is the FALLBACK now: {@code prompts/verdict.txt}
      * at the repo root wins over it, {@code DEFAULT_VERDICT_PROMPT} in the environment comes between, and

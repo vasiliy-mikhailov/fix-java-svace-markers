@@ -16,7 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
  * The execFile replacement, against real processes.
  *
  * <p>Every other test in this module fakes this class away, which is exactly why it needs one of its own:
- * if the exit status, the output or the timeout is wrong here, every build in the fleet is summarised from
+ * if the exit status, the output or the timeout is wrong here, every build in this deployment is summarised from
  * the wrong text and nothing else in the suite would notice.
  *
  * <p>{@code /bin/sh} rather than git or Maven: the point is the plumbing, and the plumbing is the same.
@@ -140,9 +140,9 @@ class ProcTest {
 
     @Test
     void aCommandThatCannotBeRunIsAResultAndNotAnException() {
-        // The JS lost this case: execFile reported ENOENT through err.code, so `out` was EMPTY and a clone
-        // failure came back with nothing in it at all. Never a throw either way — everything above this
-        // treats a build as a result to be summarised.
+        // A spawn that cannot even start reports ENOENT out of band, and the easy mistake is to leave
+        // `out` EMPTY — a clone failure whose reply says nothing at all. Never a throw either way:
+        // everything above this treats a build as a result to be summarised.
         Proc.Result r = Proc.execFile(List.of("/definitely/not/a/binary"), null, null, 10_000);
         assertEquals(1, r.code());
         assertTrue(r.out().contains("/definitely/not/a/binary"), r.out());
@@ -217,7 +217,7 @@ class ProcTest {
     }
 
     @Test
-    void theDefaultTimeoutIsTheTwentyMinutesTheN8nNodeBudgetedFor() {
+    void theDefaultTimeoutIsTwentyMinutesPerBuild() {
         // Two builds plus a clone inside the caller's 90-minute ceiling. Shorter does not fail safely: it
         // aborts a build that was going to succeed and the marker is requeued having burnt the time.
         assertEquals(1_200_000L, Proc.DEFAULT_TIMEOUT_MS);

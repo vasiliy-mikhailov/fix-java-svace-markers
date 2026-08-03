@@ -18,19 +18,19 @@ import tech.mikhailov.fsm.nodes.PrepProver;
  * The engine's HTTP surface.
  *
  * <p>com.sun.net.httpserver, not a framework. It is a supported, exported JDK API (module
- * {@code jdk.httpserver}) — not a {@code sun.misc} internal — and the fleet's other two services are
+ * {@code jdk.httpserver}) — not a {@code sun.misc} internal — and this deployment's other two services are
  * ~20-line Node servers with no framework either. A framework here would be the single largest
  * dependency in a project whose whole argument for moving to Java is that the guild can read and
  * change the logic; a router they have to learn first works against that.
  *
- * <p>{@code /health} plus one endpoint per ported node — see {@link NodeRoutes}, which owns the paths,
+ * <p>{@code /health} plus one endpoint per stage — see {@link NodeRoutes}, which owns the paths,
  * the request contract and the error taxonomy.
  */
 public final class EngineServer implements AutoCloseable {
 
     /**
-     * 8090 is java-runner and 8091 is the dashboard, so the engine takes the next port in the fleet's
-     * block. Nothing publishes it to the host — n8n reaches it over the compose network by name.
+     * Published on 127.0.0.1:8092 by the compose profile that starts this service, because reaching
+     * it by hand is the whole reason it exists.
      */
     public static final int DEFAULT_PORT = 8092;
 
@@ -105,9 +105,8 @@ public final class EngineServer implements AutoCloseable {
         // tens of requests an hour, each of which may take minutes.
         HttpServer server = HttpServer.create(new InetSocketAddress(host, port), 0);
 
-        // VIRTUAL THREADS. The handlers this server will grow block for a long time: verdict.js calls
-        // the model with `timeout: 3600000`, and the compose file lifts n8n's own task timeout to two
-        // hours to accommodate it. On a fixed platform-thread pool, a handful of in-flight verdict
+        // VIRTUAL THREADS. These handlers block for a long time: the verdict stage calls the model
+        // with an hour's timeout. On a fixed platform-thread pool, a handful of in-flight verdict
         // calls occupy every thread and the next request — including a health probe — waits behind
         // them, so a busy engine is indistinguishable from a dead one. A virtual thread parked on a
         // socket read costs a heap object, not an OS thread, so the concurrency ceiling stops being a
@@ -140,8 +139,7 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * POST /health — the shape n8n's HTTP Request node speaks, and the shape the rest of the engine's
-     * endpoints will take.
+     * POST /health — the same shape as the rest of this service's endpoints.
      *
      * <p>GET is accepted too. Every generic prober — a Docker HEALTHCHECK, curl, a reverse proxy —
      * issues GET, and refusing it would mean the container's own liveness check has to be a
@@ -185,8 +183,8 @@ public final class EngineServer implements AutoCloseable {
             Http.sendJson(exchange, 200, body);
         } catch (RuntimeException e) {
             // A handler that throws past this point makes com.sun.net.httpserver drop the connection
-            // with no status line at all, and n8n reports that as a network error rather than as this
-            // service failing. Answering 500 keeps the cause in the caller's run history.
+            // with no status line at all, and a caller reports that as a NETWORK error rather than as
+            // this service failing. Answering 500 keeps the cause in the caller's run history.
             // getResponseCode() is -1 until the status line goes out; sending twice would itself throw
             // and lose the original failure.
             if (exchange.getResponseCode() == -1) {
@@ -217,7 +215,7 @@ public final class EngineServer implements AutoCloseable {
     @Override
     public void close() {
         // Zero-second delay: in-flight exchanges are already finished or will be cut, and a marker run
-        // is idempotent — n8n requeues the item. Waiting would make `docker compose restart` hang for
+        // is idempotent — the caller requeues it. Waiting would make `docker compose restart` hang for
         // the length of an LLM call, which is up to an hour.
         server.stop(0);
         executor.close();

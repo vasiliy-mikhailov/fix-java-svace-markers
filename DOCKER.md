@@ -167,13 +167,13 @@ the boot log says which is in force:
 [runner] in-process, cache /cache, maven /cache/maven-settings.xml
 ```
 
-**Use a public hostname.** A compose-internal name like `nexus:8081` only resolves inside the Docker
-network that stack is on, which is exactly why it cannot be a default — and why it was a bug when it
-was one. The image used to carry a committed `settings.xml` pinning `mirrorOf=*` at `http://nexus:8081`.
-A mirror of `*` is not a cache in front of Central; it is *the only repository Maven will talk to*. So
-on every machine but one, the container started, answered `/healthz`, cloned the repository — and then
-failed every build in hundreds of lines about unresolvable artifacts, which reads as a broken project
-rather than as an image carrying somebody else's infrastructure.
+**Use a public hostname, and never bake one into the image.** A compose-internal name like `nexus:8081`
+only resolves inside the Docker network that stack is on, which is exactly why it cannot be a default.
+And a mirror of `*` in a `settings.xml` inside the image is not a cache in front of Central; it is *the
+only repository Maven will talk to*. On any machine where that hostname does not resolve, the container
+starts, answers `/healthz`, clones the repository — and then fails every build in hundreds of lines about
+unresolvable artifacts, which reads as a broken project rather than as an image carrying somebody else's
+infrastructure.
 
 ---
 
@@ -213,16 +213,16 @@ started without it interpolates every credential to empty and then fails closed 
 accepts an ingest, runs for hours and then reads zero, with nothing red at any point. The compose file
 sets both correctly — if you deploy some other way, set them yourself.
 
-**No `external:` networks in the committed compose file, and please keep it that way.** It used to
-declare two that exist on one machine, and everywhere else `docker compose up -d` died on its first
-line with *"network mvn-cache declared as external, but could not be found"* — after a build that had
-succeeded. Host-specific wiring goes in `docker-compose.override.yml`, which is gitignored and which
-Compose merges automatically; the committed example is the template.
+**No `external:` networks in the committed compose file, and please keep it that way.** An `external:
+true` network is a name that exists on one machine; everywhere else `docker compose up -d` dies on its
+first line with *"network mvn-cache declared as external, but could not be found"* — after a build that
+had succeeded, with nothing started. Host-specific wiring goes in `docker-compose.override.yml`, which
+is gitignored and which Compose merges automatically; the committed example is the template.
 
 **`FSM_FEEDBACK=true` writes as uid 10002.** If the host directory is owned by someone else the service
 says so on startup and records nothing. `chown 10002:10002 feedback/`.
 
-**One prover at a time.** `/run_test` is serialised inside one process around one workspace per
+**One prover at a time.** Proving a marker (`/run_test` internally: clone, patch, build) is serialised inside one process around one workspace per
 repository, and two processes share no lock. Do not run a second container against the same cache
 volume.
 
@@ -231,13 +231,12 @@ judgement on `localhost:8092`, one stage per request, so you can reproduce a sin
 request you wrote by hand instead of a 6-26 hour run around it. Nothing in a run calls it, and it holds
 no secrets — the model endpoint, the Svace endpoint and the GitHub token all arrive in the request.
 
-**Want the prover in its own container after all?** `FSM_RUNNER_MODE=http` plus `FSM_RUNNER_URL` gives
-you exactly the split this deployment used to have. It is a real trade: `/run_test` runs third-party
-build scripts, and a container boundary between them and this pipeline's credentials is stronger than
-the denylist that protects them inside one process.
+**Want the prover in its own container?** `FSM_RUNNER_MODE=http` plus `FSM_RUNNER_URL` gives you that
+split. It is a real trade: `/run_test` runs third-party build scripts, and a container boundary between
+them and this pipeline's credentials is stronger than the denylist that protects them inside one process.
 
-**You supply the runner, and the same image is one.** There is no `runner` service and no
-`fsm-runner:latest`, but the fat jar carries the module, so Boot's `PropertiesLauncher` starts it:
+**You supply the runner, and the same image is one.** There is no `runner` service and no separate
+runner image, but the fat jar carries the module, so Boot's `PropertiesLauncher` starts it:
 
 ```bash
 docker run -d --name fsm-split-runner --network fsm_default -e PORT=8090 -e CACHE=/cache \
@@ -250,11 +249,12 @@ docker compose logs fsm | grep '\[runner\]'
 # [runner] http://fsm-split-runner:8090/run_test, up to 5400s per prove, 3 connect attempt(s)
 ```
 
-**Read that last line rather than trusting the command.** Both variables have to be listed under
-`environment:` in the compose file or Compose keeps them to itself: for one revision `FSM_RUNNER_MODE`
-was pass-through and `FSM_RUNNER_URL` was not, so this pair switched the mode, dropped the address, and
-sent every prove to a compiled-in `http://fsm-runner:8090` that nothing serves — discovered hours into a
-run as an infrastructure failure. `DeploymentTest` now pins the two to travel together.
+**Read that last line rather than trusting the command.** Compose passes a variable to the process only
+if it is listed under `environment:`; a name set in your shell or in `.env` otherwise reaches Compose's
+own interpolation and stops there. So with the mode listed and the address not, this pair switches the
+mode and **silently drops the address**, and every prove goes to `HttpRunnerClient.DEFAULT_BASE_URL`,
+which nothing in this stack serves — surfacing hours into a run as an infrastructure failure.
+`DeploymentTest` pins the two to travel together.
 
 ---
 
@@ -266,6 +266,7 @@ docker compose down -v                 # DESTROYS them
 ```
 
 The volumes pin their physical names (`fsm_fsm-orchestrator-state`, `fsm_fsm-runner-cache`), so renaming
-the project or moving the directory does **not** abandon them — and neither did collapsing three
-services into one, which is why an existing deployment keeps its run history and its checkouts across
-that change. `down -v` is the only thing here that deletes a completed run.
+the project or moving the directory does **not** abandon them. Keep the pins: without them Compose
+derives the real name from the project name, and a rename then makes it look for a volume that does not
+exist, create it empty, and serve an empty backlog with nothing red. `down -v` is the only thing here
+that deletes a completed run.

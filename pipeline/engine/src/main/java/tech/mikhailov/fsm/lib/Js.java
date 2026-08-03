@@ -10,9 +10,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The JavaScript primitives the ported nodes are SPECIFIED in terms of.
+ * The JavaScript primitives this pipeline's wire behaviour is SPECIFIED in terms of.
  *
- * <p>{@link Json} spells out the coercions used to read a loosely-typed n8n ITEM ({@code x.foo || ''},
+ * <p>{@link Json} spells out the coercions used to read a loosely-typed ITEM ({@code x.foo || ''},
  * {@code !!x.foo}). This class is the layer under that: the language operations themselves —
  * {@code String(x)}, {@code parseInt(s, 10)},
  * {@code Number.prototype.toString} and JS object key order — for the places where Java's nearest
@@ -32,7 +32,7 @@ import java.util.Map;
  *       marker's identity.</li>
  *   <li>{@link #parseInt10} vs {@code Integer.parseInt} — {@code parseInt("7abc", 10)} is 7 in JS and
  *       an exception in Java. The CSV's Line column is free text; a row that reads {@code "7 (col 3)"}
- *       is ingested by the JS, not dropped.</li>
+ *       has to be ingested with its line number, not dropped.</li>
  *   <li>{@link #propertyOrder} — JS enumerates integer-like keys first, in ascending numeric order,
  *       whatever order they were inserted in. The ingest summary is keyed by severity and by checker
  *       name, both of which come out of the report, so a report using numeric severities produces a
@@ -114,8 +114,8 @@ public final class Js {
      * {@code parseInt(s, 10)}: skip leading whitespace, take an optional sign, then read decimal digits
      * and STOP at the first character that is not one. Returns NaN when no digit was read.
      *
-     * <p>Returned as a double, not an int, because that is what the JS produces and the difference is
-     * observable: {@code isFinite} rejects an over-long digit string (which rounds to Infinity) and the
+     * <p>Returned as a double, not an int, and the difference is observable:
+     * {@code isFinite} rejects an over-long digit string (which rounds to Infinity) and the
      * row is counted as {@code bad_row}, where a Java {@code long} would have silently wrapped to some
      * plausible-looking line number and sent the prover to it.
      */

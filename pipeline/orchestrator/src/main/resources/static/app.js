@@ -4,11 +4,10 @@ let DASH = {files:[],suspicions:[],bugs:[]};
 // at the bottom of the file with the rest of the live plumbing.
 let LIVE = {sock:null, connected:false, last:0};
 async function jget(u){try{return await (await fetch(u,{cache:'no-store'})).json();}catch(e){return null;}}
-// The pipeline's booleans arrive as real JSON booleans from the Spring orchestrator and arrived as
-// sqlite's 0/1 from the n8n dashboard. Reading them with String(v)==='1' was correct for exactly one of
-// those and silently wrong for the other — a proven marker would have shown an empty Reproducer dot and
-// dropped out of the "verified red→green" count, with nothing failing anywhere. One helper, so there is
-// one answer to "is this true".
+// A boolean can arrive as a real JSON boolean or as 0/1 depending on the column it came out of, and
+// reading one of those shapes with String(v)==='1' is silently wrong for the other — a proven marker
+// shows an empty Reproducer dot and drops out of the "verified red→green" count, with nothing failing
+// anywhere. ONE helper, so there is one answer to "is this true".
 function yes(v){return v===true||v===1||v==='1'||v==='true';}
 function stopLiveTimer(){if(window.__LIVET){clearInterval(window.__LIVET);window.__LIVET=null;}}
 function closeModal(){stopLiveTimer();document.getElementById('modalbg').classList.remove('on');}
@@ -87,7 +86,7 @@ function showBug(b){ if(!b)return;
 // reviewer needs here is the report row itself — Severity, Checker, File, Line — beside what the
 // pipeline made of it: where the line actually landed after re-anchoring, and how it was settled.
 // Source around the marker, fetched when the tab opens and dropped into a placeholder. Lazy because
-// it crosses to the java-runner: the tab must render immediately with everything we already know,
+// it crosses to the prover's checkout: the tab must render immediately with what we already know,
 // and the code arrives a moment later rather than holding the whole modal on a network call.
 async function loadMarkerSource(su){
   const el=document.getElementById('markersrc'); if(!el) return;
@@ -247,8 +246,8 @@ function encRef(r){return String(r).split('/').map(encodeURIComponent).join('/')
 // separator and ask GitHub for a single file with slashes in its name.
 function encPath(p){return String(p==null?'':p).trim().replace(/^\/+/,'')
   .split('/').map(encodeURIComponent).join('/');}
-// A line number as a link can use one: a positive whole number, or 0 for "there isn't one". n8n Data
-// Table `number` columns come back as REAL, so 42 arrives as 42.0 — see num().
+// A line number as a link can use one: a positive whole number, or 0 for "there isn't one". A numeric
+// column comes back as REAL, so 42 arrives as 42.0 — see num().
 function lineNo(...v){for(const x of v){const n=Number(x);
   if(x!==null&&x!==undefined&&x!==''&&isFinite(n)&&n>=1)return Math.round(n);} return 0;}
 /**
@@ -488,11 +487,11 @@ function render(s){
     s.activity.map(a=>['<span class="dot d-'+esc(a.status)+'"></span>'+fmtTime(a.started),esc(a.wf),
       '<span class=tiny>'+esc(a.file)+'</span>','<span class=st-'+esc(a.status)+'>'+esc(a.status)+'</span>',dur(a.dur)]));
 }
-// Metric tile in the same shape the improve-java-tests-n8n dashboard uses: label, big value, note.
+// Metric tile: label, big value, note.
 function card(k,v,d,cls){return '<div class="card'+(cls?' '+cls:'')+'"><div class=k>'+k+'</div>'
   +'<div class=v>'+v+'</div><div class=d>'+(d||'')+'</div></div>';}
-// n8n Data Table `number` columns come back as REAL, so a line number arrives as 26.0 and a source
-// location reads "Foo.java:26.0". Render whole numbers as whole numbers.
+// A numeric column comes back as REAL, so a line number arrives as 26.0 and a source location reads
+// "Foo.java:26.0". Render whole numbers as whole numbers.
 function num(x){const n=Number(x);return (x===null||x===undefined||x===''||isNaN(n))?'?':String(Math.round(n));}
 function redgreen(v){return v?'<span class=st-green>●</span>':'<span class=st-red>○</span>';}
 // lightweight single-pass Java highlighter (esc first, then one alternation so keywords inside

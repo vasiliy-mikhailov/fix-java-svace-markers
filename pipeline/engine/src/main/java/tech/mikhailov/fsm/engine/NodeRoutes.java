@@ -21,18 +21,16 @@ import tech.mikhailov.fsm.nodes.RecordOutcome;
 import tech.mikhailov.fsm.nodes.Verdict;
 
 /**
- * One endpoint per ported node: {@code POST /node/<kebab-name>}.
+ * One endpoint per stage: {@code POST /node/<kebab-name>}.
  *
- * <p>THE PROBLEM EVERY ENDPOINT HERE HAD TO SOLVE. The JS nodes read their inputs through n8n's item
- * graph — {@code $('Prep prover').item.json}, {@code $('Parse test').item.json} — and HTTP has no item
- * graph. The port already answered it: each node's {@code Request.of} names the upstream items it
- * needs as top-level keys, snake-cased after the n8n node they come from. This class does not invent a
+ * <p>THE CONTRACT IS THE STAGES' OWN. Each stage's {@code Request.of} names the upstream items it
+ * needs as top-level keys, snake-cased after the stage they come from. This class does not invent a
  * second answer; it wires those factories to paths and adds the two things a request boundary owes a
  * caller that a function call does not: VALIDATION and an ERROR TAXONOMY.
  *
  * <p>WHY A ROW TRAVELS INSIDE {@code items} AND NOT AT THE TOP LEVEL. A successful row can itself
  * carry a key called {@code error} — {@code Fix skeptic} and {@code PR maker} spread the run_test
- * verdict through, and that verdict carries {@code error} whenever the build failed. A shim written as
+ * verdict through, and that verdict carries {@code error} whenever the build failed. A caller written as
  * {@code if (res.error) throw} would then throw on a perfectly good row, and under
  * {@code onError=continueRegularOutput} a throw forwards the node's INPUT — so a marker with a real
  * build failure recorded would come out looking like a marker with nothing to report. Wrapping the
@@ -40,37 +38,37 @@ import tech.mikhailov.fsm.nodes.Verdict;
  * {@code {"error": …, "code": …}} with a 4xx/5xx on failure, and the two shapes share no key. It also
  * makes {@code Parse markers}, which returns 282 items, the same shape as the nine that return one.
  *
- * <p>WHY {@code logs}. Two of the ported nodes deliberately RETURN what the JS printed rather than
- * printing it: {@code Parse test}'s realness line is the only place an operator can ever see why a
+ * <p>WHY {@code logs}. Two stages deliberately RETURN their log line rather than printing it:
+ * {@code Parse test}'s realness line is the only place an operator can ever see why a
  * proof was rejected, and {@code Verdict}'s two lines are the only trace of a retry or of a verdict
- * call that produced no text. They are written to the engine's own stdout here AND handed back, so the
- * shim can echo them into the n8n execution log — which is where that operator has always looked, and
- * where the line is still correlated with the marker it belongs to.
+ * call that produced no text. They are written to this service's own stdout AND handed back in the
+ * reply, so a caller can put them in its own log, where the line stays correlated with the marker it
+ * belongs to.
  *
  * <p>THE ERROR TAXONOMY, which is a contract in its own right:
  * <table border="1">
- *   <caption>What the shim can tell apart</caption>
+ *   <caption>What the caller can tell apart</caption>
  *   <tr><th>status</th><th>code</th><th>means</th></tr>
  *   <tr><td>400</td><td>{@code bad_request}</td><td>the body is not JSON, is not an object, or is
- *       missing a key the node cannot decide without. The shim is wrong; the message says how.</td></tr>
+ *       missing a key the stage cannot decide without. The caller is wrong; the message says how.</td></tr>
  *   <tr><td>405</td><td>{@code method_not_allowed}</td><td>not a POST</td></tr>
  *   <tr><td>413</td><td>{@code body_too_large}</td><td>past {@link Http#MAX_BODY_BYTES}</td></tr>
  *   <tr><td>422</td><td>{@code ingest_failed}</td><td>{@code Parse markers} refused the request on its
- *       own terms — no {@code repo}, no CSV at the path, every row filtered out. The message is the
- *       JS's, verbatim, because operators already grep for it.</td></tr>
+ *       own terms — no {@code repo}, no CSV at the path, every row filtered out. The message is
+ *       passed through verbatim, because operators grep for it.</td></tr>
  *   <tr><td>422</td><td>{@code not_sliceable}</td><td>{@code PR maker} was handed a
- *       {@code fix_edits_json} that is not a string. The JS threw a TypeError here and the port keeps
+ *       {@code fix_edits_json} that is not a string. The stage throws rather than coercing, and keeps
  *       it: an upstream bug must stay loud rather than become a curated-looking decision.</td></tr>
  *   <tr><td>500</td><td>{@code engine_error}</td><td>a bug in the engine. Distinguishable from all of
- *       the above by both status and code, so a shim can report "the engine is broken" rather than
+ *       the above by both status and code, so a caller can report "the engine is broken" rather than
  *       "this marker is bad" — they need different people.</td></tr>
  * </table>
  *
  * <p>WHAT IS REQUIRED AND WHAT IS NOT. The rule is: a key is required when its ABSENCE WOULD CHANGE A
- * DECISION SILENTLY. Every upstream item is required, because {@code $('Prep prover').item.json} can
- * never be absent in n8n — a missing one can only be a shim that forgot it, and the node would answer
- * with a confident row about a marker it knows nothing of (state {@code not_reproduced}, a real defect
- * retired). {@code min_attempts} is required for the same reason: without it {@code Verdict} writes a
+ * DECISION SILENTLY. Every upstream item is required, because a stage that ran produced one — a
+ * missing one can only be a caller that forgot it, and the stage would then answer with a confident row
+ * about a marker it knows nothing of (state {@code not_reproduced}: a real defect retired).
+ * {@code min_attempts} is required for the same reason: without it {@code Verdict} writes a
  * verdict after one sample instead of retrying. Everything else — {@code env}, the version stamps,
  * {@code versions}, {@code github_token} — is optional, because its absence is LOUD: an unset endpoint
  * produces {@code undefined/chat/completions} and a failed call that fails closed, an unset stamp
@@ -82,7 +80,7 @@ final class NodeRoutes {
     /** The prefix every node endpoint shares, so nothing here can collide with {@code /health}. */
     static final String PREFIX = "/node/";
 
-    /** What a node answers: the items the JS node returned, plus the lines it would have printed. */
+    /** What a stage answers: the items it returned, plus the lines it would have printed. */
     record Answer(List<Map<String, Object>> items, List<String> logs) {
 
         static Answer of(Map<String, Object> row) {
@@ -95,7 +93,7 @@ final class NodeRoutes {
         }
     }
 
-    /** A ported node, reduced to what an endpoint needs of it. */
+    /** A stage, reduced to what an endpoint needs of it. */
     @FunctionalInterface
     interface Node {
         Answer invoke(Object body);
@@ -140,7 +138,7 @@ final class NodeRoutes {
         return new Required(key, Kind.ITEM, "send $('" + node + "').item.json");
     }
 
-    /** The item the node itself runs on. n8n calls it {@code $json}; the wire calls it {@code item}. */
+    /** The item the stage itself runs on; on the wire it is {@code item}. */
     private static Required self(String key, String node) {
         return new Required(key, Kind.ITEM,
                 "the item this node runs on: " + node + " ($json in the Code node)");
@@ -150,16 +148,15 @@ final class NodeRoutes {
         List<Route> out = new ArrayList<>();
 
         // Ingest. The only endpoint that returns many items, and the only one that reads the disk:
-        // `body.csv_path` is resolved inside the ENGINE container, so the report has to be mounted
-        // there, not only into n8n.
+        // `body.csv_path` is resolved inside THIS container, so the report has to be mounted here.
         out.add(new Route("parse-markers",
                 List.of(new Required("body", Kind.ITEM,
                         "the ingest webhook's body ($('Ingest webhook').first().json.body)")),
                 body -> {
                     ParseMarkers.Result r = ParseMarkers.parseMarkers(ParseMarkers.Request.of(body));
-                    // The JS ended with console.log('[ingest] ' + JSON.stringify(summary)) so the
-                    // account of what was filtered survives even when the next node throws. It is the
-                    // same line, byte for byte, so an operator's grep still works.
+                    // The `[ingest] ` line is returned rather than only printed, so the account of
+                    // what was filtered survives even when the next stage throws. The prefix is fixed,
+                    // because an operator's grep is written against it.
                     return new Answer(r.items(), List.of("[ingest] " + r.summary().json()));
                 }));
 
@@ -248,8 +245,8 @@ final class NodeRoutes {
         String path = PREFIX + route.name();
         // NOT try-with-resources. It closes the exchange BEFORE the catch clause runs, and closing an
         // exchange that has sent no status line drops the connection — after which the 500 below
-        // cannot be written at all. n8n then reports a network error, so the run history blames the
-        // network for a bug in this process. The close belongs in the finally, after the catch.
+        // cannot be written at all. The caller then reports a network error, so the run history blames
+        // the network for a bug in this process. The close belongs in the finally, after the catch.
         try {
             if (!"POST".equals(exchange.getRequestMethod())) {
                 exchange.getResponseHeaders().set("Allow", "POST");
@@ -259,7 +256,7 @@ final class NodeRoutes {
                 return;
             }
             // com.sun.net.httpserver matches a context by PREFIX, so /node/verdict also catches
-            // /node/verdict/anything. A typo in a shim's URL has to 404 rather than quietly reach the
+            // /node/verdict/anything. A typo in a caller's URL has to 404 rather than quietly reach the
             // right handler and look like it worked.
             if (!path.equals(exchange.getRequestURI().getPath())) {
                 // Not drained, unlike the success path: an unread body costs the keep-alive
@@ -296,11 +293,11 @@ final class NodeRoutes {
                 Http.sendError(exchange, 422, "ingest_failed", refused.getMessage());
                 return;
             } catch (PrMaker.NotSliceable refused) {
-                // The JS TypeError, kept: fix_edits_json arrived as something other than a string,
-                // which is an upstream bug and not a decision about this marker.
+                // Refused rather than coerced: fix_edits_json arrived as something other than a
+                // string, which is an upstream bug and not a decision about this marker.
                 Http.sendError(exchange, 422, "not_sliceable",
                         "POST " + path + ": " + refused.getMessage()
-                        + " — `parse_fix.fix_edits_json` must be a string (the JS threw here too)");
+                        + " — `parse_fix.fix_edits_json` must be a string");
                 return;
             }
 
@@ -313,13 +310,13 @@ final class NodeRoutes {
             Http.sendJson(exchange, 200, out);
         } catch (RuntimeException e) {
             // A handler that throws past this point makes com.sun.net.httpserver drop the connection
-            // with no status line, and n8n reports THAT as a network error rather than as this service
-            // failing — so the run history would blame the wrong component. getResponseCode() is -1
+            // with no status line, and the caller reports THAT as a network error rather than as this
+            // service failing — so the run history blames the wrong component. getResponseCode() is -1
             // until the status line goes out; sending twice would throw and lose the original failure.
             //
             // The class name is included and the stack is not. The name is what makes an engine bug
             // reportable ("IllegalArgumentException: not representable in JSON: Infinity" names both
-            // the fault and the value); a stack would fill the Data Table cell the shim writes it to.
+            // the fault and the value); a stack would fill the row the caller writes it into.
             if (exchange.getResponseCode() == -1) {
                 Http.sendError(exchange, 500, "engine_error",
                         "POST " + path + " failed inside the engine: "
@@ -333,7 +330,7 @@ final class NodeRoutes {
     /**
      * Every missing or mistyped key, in one message.
      *
-     * <p>ALL of them, not the first: a shim author fixing ten endpoints one 400 at a time is a loop
+     * <p>ALL of them, not the first: a caller author fixing ten endpoints one 400 at a time is a loop
      * nobody finishes, and the whole point of validating here is that the mistake is cheap to find.
      */
     private static String problems(Object body, List<Required> required) {

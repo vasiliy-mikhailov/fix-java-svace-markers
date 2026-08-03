@@ -13,9 +13,10 @@ import org.slf4j.LoggerFactory;
 import tech.mikhailov.fsm.lib.Json;
 
 /**
- * {@link RunnerClient} over {@link HttpTransport}: one {@code POST /run_test} against the java-runner.
+ * {@link RunnerClient} over {@link HttpTransport}: one {@code POST /run_test} against a prover running
+ * in its own container ({@code FSM_RUNNER_MODE=http}).
  *
- * <p>THE CONTRACT IS LIVE AND IS NOT NEGOTIATED HERE. {@code java-runner/src/server.js} reads
+ * <p>THE CONTRACT IS NOT NEGOTIATED HERE. The prover reads
  * {@code repo}, {@code branch}, {@code jdk}, {@code module}, {@code build}, {@code test_class},
  * {@code test_path}, {@code test_code} and {@code fix_edits} off the posted object, and answers with
  * {@code ok}, {@code red_reproduced}, {@code green_passed}, {@code proven}, {@code jdk},
@@ -28,7 +29,7 @@ import tech.mikhailov.fsm.lib.Json;
  *
  * <p>THE ONLY THING RETRIED IS THE CONNECT, AND THE LINE IS EXACT. Every other client here repeats a
  * transient failure freely; this one must not, because a repeated POST re-runs a clone plus two Maven
- * builds — up to 90 minutes of the single serialised workspace the whole fleet shares — and the FIRST
+ * builds — up to 90 minutes of the single serialised workspace every prove shares — and the FIRST
  * one may still be running. So the budget covers only failures that happened before the runner saw a
  * byte: {@link HttpTransport#connectFailed} decides which those are, and everything else — a reset, an
  * EOF, a read timeout, any status at all — is reported once and never repeated. When the exchange fails
@@ -47,15 +48,15 @@ public class HttpRunnerClient implements RunnerClient {
     private static final Logger log = LoggerFactory.getLogger(HttpRunnerClient.class);
 
     /**
-     * Where {@code deploy/docker-compose.yml} puts the runner on the fleet's default network.
+     * Where {@code deploy/docker-compose.yml} puts the runner on this deployment's default network.
      *
      * <p>THE LAST FALLBACK IN A CHAIN OF THREE — this constant, the {@code ${FSM_RUNNER_URL:…}}
      * placeholder in {@code application.yml}, and the environment line on the compose service — and the
-     * one nobody looks at, because it is only reached when the placeholder resolves to blank. It said
-     * {@code fsm-java-runner} after that container was deleted, and nothing was red: the address is not
-     * exercised until a marker is proved, so the symptom is a connect failure on the first prove of a
-     * 6-26 hour run, which reads as a runner that is down rather than as a name nothing serves.
-     * {@code DeploymentTest} pins all three to each other and to a service the compose file declares.
+     * one nobody looks at, because it is only reached when the placeholder resolves to blank. A wrong
+     * value here is not red anywhere: the address is not exercised until a marker is proved, so the
+     * symptom is a connect failure on the first prove of a 6-26 hour run, which reads as a prover that
+     * is down rather than as a name nothing serves. {@code DeploymentTest} pins the three to each
+     * other.
      */
     public static final String DEFAULT_BASE_URL = "http://fsm-runner:8090";
 

@@ -9,8 +9,7 @@ import tech.mikhailov.fsm.lib.MarkerState;
  * One row of the {@code bugs} table — the artifact a marker leaves behind: the test, the diff, the
  * drafted PR and the verdict.
  *
- * <p>The first 21 components are BUG_COLS from the {@code Upsert bug} node in
- * {@code n8n/agentic/src/gen-prover.js}, in that order. That is 19 fields from
+ * <p>The first 21 components are the {@code bugs} columns, in table order: 19 fields from
  * {@link tech.mikhailov.fsm.nodes.RecordOutcome.Outcome} MINUS {@code attempts}, PLUS the three the
  * {@code Verdict} stage adds on top ({@code verdict_text}, {@code verdict_kind},
  * {@code svace_checker}).
@@ -24,9 +23,9 @@ import tech.mikhailov.fsm.lib.MarkerState;
  * question nobody asked. The first two already differ in {@code infra_reason}; without this the third
  * looked exactly like the first.
  *
- * <p>{@code attempts} IS DELIBERATELY ABSENT. Record outcome emits it and the Data Table had no column
- * for it — the generator's own comment records that an autoMap here crashed every prove until the
- * column list was made explicit. The retry count lives on {@code suspicions.prove_attempts}, which is
+ * <p>{@code attempts} IS DELIBERATELY ABSENT. Record outcome emits it and this table has no column for
+ * it, which is why the column list is written out rather than mapped automatically — an automatic
+ * mapping fails on it, per row. The retry count lives on {@code suspicions.prove_attempts}, which is
  * the row the retry logic reads; a second copy here could disagree with it, and the disagreement would
  * be invisible.
  *

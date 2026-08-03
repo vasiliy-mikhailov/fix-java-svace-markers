@@ -1,7 +1,7 @@
 # Worked example — WebGoat, 282 markers
 
 The input, the output, and what to expect if you run it yourself. This is a real run, not a sample:
-from empty volumes on 2026-08-01, ~28 hours unattended, three Java containers.
+from empty volumes on 2026-08-01, ~28 hours unattended.
 
 | file | what it is |
 |---|---|
@@ -104,9 +104,9 @@ Roughly a day at ~10 markers/hour, most of it Maven. Watch it at `http://localho
 
 **You will not get these numbers exactly.** Five model calls per marker means run-to-run variance, and
 the repository moves. What should hold is the *shape*: `false_positive` largest, `verified` close
-behind, `needs_review` small, and every marker settling with a verdict. On the validated comparison
-against the previous implementation, `false_positive` (106) and `by_design` (19) matched exactly while
-`verified` moved by 3 — that is the size of drift to expect.
+behind, `needs_review` small, and every marker settling with a verdict. On the validated comparison used
+to accept these numbers, `false_positive` (106) and `by_design` (19) matched exactly while `verified`
+moved by 3 — that is the size of drift to expect.
 
 If `needs_review` is large, the model endpoint is probably unreachable: the judging stages fail *closed*
 and answer HTTP 200, so the run history stays green while nothing is really being judged. See the model

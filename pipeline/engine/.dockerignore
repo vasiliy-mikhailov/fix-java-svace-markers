@@ -6,7 +6,7 @@ target/
 .idea/
 
 # The differential harness's unpacked OUTPUT — tens of megabytes of cases and answers, rebuilt by
-# `node harness/js-side.cjs` and read by nobody but a person.
+# `node harness/unpack-fixtures.cjs` and read by nobody but a person.
 #
 # harness/fixtures/ is deliberately NOT here: it is the frozen JavaScript answers themselves, it is
 # committed, and this module's harness tests read it during `mvn package` in the image build. Excluding

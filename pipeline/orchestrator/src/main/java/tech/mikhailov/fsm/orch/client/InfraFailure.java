@@ -13,8 +13,7 @@ package tech.mikhailov.fsm.orch.client;
  *       the marker. The prove ABORTS: the caller releases the claim with
  *       {@link tech.mikhailov.fsm.orch.dao.SuspicionDao#releaseClaim}, the marker returns to
  *       {@code new} with its attempt count untouched, no {@code bugs} row is written, and no
- *       {@link tech.mikhailov.fsm.lib.MarkerState} is ever assigned. This mirrors n8n exactly, where a
- *       hard node failure fired the error trigger, released the lease, and left the row alone.</dd>
+ *       {@link tech.mikhailov.fsm.lib.MarkerState} is ever assigned.</dd>
  *
  *   <dt>JUDGEMENT — return it, never throw</dt>
  *   <dd>The question WAS answered and the answer is bad news about the marker. A 404 from GitHub (the

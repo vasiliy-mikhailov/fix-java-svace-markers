@@ -175,7 +175,7 @@ class VerdictTest {
         private boolean argue = true;
         private Object row = rec;
 
-        /** The Record-outcome item, for the hostile shapes n8n can hand a node. */
+        /** The Record-outcome item, for the hostile shapes a stage can be handed. */
         Marker row(Object v) {
             row = v;
             return this;
@@ -694,11 +694,11 @@ class VerdictTest {
 
     @Test
     void anErrorWithNothingQuotableStillNamesItself() {
-        // undici and n8n both throw plain strings and objects; 'error: undefined' in the confidence
+        // A transport can throw a plain string or a bare object; 'error: undefined' in the confidence
         // column is unreadable, so the fallback wording is used instead
         assertEquals("error: verdict call failed",
                 marker().answers(new RuntimeException()).run().get("verdict_confidence"));
-        // …and n8n's own rejections carry their text in `description`
+        // …and an HTTP-level failure carries its text in `description`
         assertEquals("error: the service refused the connection",
                 marker().answers(new Llm.ApiException(null, "the service refused the connection"))
                         .run().get("verdict_confidence"));
@@ -740,7 +740,7 @@ class VerdictTest {
         assertEquals("Bearer t", Json.get(fetch.get("headers"), "Authorization"));
         assertEquals("application/json", Json.get(fetch.get("headers"), "Accept"));
         assertEquals("close", Json.get(fetch.get("headers"), "Connection"),
-                "n8n holds sockets open otherwise");
+                "without it a client holds sockets open and the front end runs out of them");
         assertEquals(Boolean.TRUE, fetch.get("json"),
                 "the reply is parsed, not handed on as a string");
 
@@ -806,15 +806,14 @@ class VerdictTest {
         assertEquals("http://svace/markers/AZaz09-_.!~*'()"
                 + "%20%2F%3F%23%26%3D%2B%25%3A%40%5B%5D"
                 + "%C3%A9%E2%98%83", m.stub.calls.get(0).get("url"),
-                "non-ASCII is percent-encoded per UTF-8 byte, uppercase, as the JS does");
+                "non-ASCII is percent-encoded per UTF-8 byte, uppercase");
     }
 
     @Test
     void aRecordOutcomeItemThatIsNotAnObjectStillProducesARow() {
-        // n8n can hand a node a string or a number where an item is expected. The JS spreads a string
-        // into indexed keys ({0:'a',1:' '…}); the port merges nothing, which is the honest reading of
-        // "there is no item here" — and either way the row must still carry the verdict fields rather
-        // than throwing and forwarding the input untouched.
+        // A stage can be handed a string or a number where an item is expected. Merging nothing is the
+        // honest reading of "there is no item here" — and either way the row must still carry the
+        // verdict fields rather than throwing and forwarding the input untouched.
         Map<String, Object> out = marker().row("a string").run();
         assertEquals(List.of("state", "retry", "verdict_text", "verdict_kind", "verdict_confidence",
                 "suspicion_status", "suspicion_note", "anchor", "anchor_status", "svace_checker"),
@@ -980,7 +979,7 @@ class VerdictTest {
     }
 
     @Test
-    void theRequestFactoryReadsTheNodeNamesTheShimPosts() {
+    void theRequestFactoryReadsTheStageNamesTheCallerPosts() {
         Object body = Json.parse("""
                 {"item":{"state":"not_reproduced","attempts":2},"prep_prover":{"suspicion_key":"k"},
                  "parse_test":{"can_prove":true},"parse_fix":{"fix_root_cause":"c"},
@@ -1122,7 +1121,7 @@ class VerdictTest {
     @Test
     void theArgumentIsONUnlessSomethingSaysOtherwise() {
         // Default ON in both directions a Request is built: the twelve-argument constructor every
-        // existing caller uses, and the shim body, which has no such key and never will.
+        // existing caller uses, and the caller body, which has no such key and never will.
         assertTrue(new Verdict.Request(item(), item(), item(), item(), item(), item(), item(),
                 new Llm.Endpoint("http://llm", "k", "m"), "", "", 2, "[stage vd1]").verdictEnabled());
         assertTrue(Verdict.Request.of(Json.parse("{}")).verdictEnabled());

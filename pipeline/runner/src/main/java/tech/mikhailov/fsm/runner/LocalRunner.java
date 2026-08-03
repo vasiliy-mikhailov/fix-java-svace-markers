@@ -151,9 +151,9 @@ public final class LocalRunner implements AutoCloseable {
     /**
      * {@code GET /health}.
      *
-     * <p>{@code jdks} lists the majors actually installed, not the ones the code knows about: the image
-     * builds them one at a time and a failed download used to leave a runner that accepted
-     * {@code jdk: "25"} and then could not compile with it.
+     * <p>{@code jdks} lists the majors actually INSTALLED, not the ones the code knows about: the image
+     * builds them one at a time, so a failed download otherwise leaves a prover that accepts
+     * {@code jdk: "25"} and then cannot compile with it.
      */
     public Map<String, Object> health() {
         Map<String, Object> out = new LinkedHashMap<>();
@@ -165,9 +165,9 @@ public final class LocalRunner implements AutoCloseable {
     /**
      * {@code String(e.stack).slice(-1500)}.
      *
-     * <p>The LAST 1500 characters, which is the JS's choice and worth keeping even though a Java stack
-     * puts the interesting frame first: the tail is where the frames of THIS service are, under the
-     * JDK's own. The message is on the first line either way.
+     * <p>The LAST 1500 characters, which is right even though a Java stack puts the interesting frame
+     * first: the tail is where the frames of THIS service are, under the JDK's own. The message is on
+     * the first line either way.
      */
     static String stack(Throwable t) {
         StringWriter out = new StringWriter();

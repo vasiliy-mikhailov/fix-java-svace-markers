@@ -4,9 +4,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * {@link SourceReader} over HTTP — {@code POST {RUNNER}/fs/read_file}, which is what
- * {@code dashboard/src/server.js} did and what a deployment that keeps the prover in its own container
- * still does.
+ * {@link SourceReader} over HTTP — {@code POST {RUNNER}/fs/read_file}, for a deployment that keeps the
+ * prover in its own container.
  *
  * <p>The base URL is the SAME one {@link HttpRunnerClient} posts proves to, taken from the same
  * property, because the code a reviewer is shown has to come from the checkout the prove ran in. Two
@@ -19,8 +18,8 @@ public class HttpSourceReader implements SourceReader {
     static final String PATH = "/fs/read_file";
 
     /**
-     * Long enough for a cold clone, short enough that a dead runner does not hang the modal. server.js
-     * used the same 60s; the marker tab renders immediately and fills this in when it arrives.
+     * Long enough for a cold clone, short enough that a dead prover does not hang the modal. The
+     * marker tab renders immediately and fills this in when it arrives.
      */
     static final long TIMEOUT_MS = 60_000;
 

@@ -17,19 +17,17 @@ import org.springframework.stereotype.Service;
 /**
  * The one way either job is started — from the schedule, from a REST call, or from a test.
  *
- * <p>WHAT THIS REPLACES. n8n had two triggers per workflow and a lease in a third process to stop them
- * colliding. The lease is gone; single flight is asserted here, against the run history that Spring
- * Batch is already keeping, and it covers the case the lease never did — the schedule racing a manual
- * POST.
+ * <p>SINGLE FLIGHT IS ASSERTED HERE, against the run history Spring Batch is already keeping — which
+ * covers the case an advisory lock in another process would not: the schedule racing a manual POST.
  *
  * <p>TWO RULES, AND THE SECOND ONE IS NOT OBVIOUS:
  * <ol>
- *   <li>ONE PROVE AT A TIME. Two would build two markers in the java-runner's single cached workspace
- *       and patch each other's tree.</li>
+ *   <li>ONE PROVE AT A TIME. Two would build two markers in one cached workspace and patch each
+ *       other's tree.</li>
  *   <li>NO INGEST WHILE A PROVE IS RUNNING. An ingest CLEARS both tables; run one mid-prove and the
  *       marker being proved is deleted underneath it, so the prove finishes and settles a row that no
  *       longer exists — an artifact with no marker, and 45 minutes of runner time spent on work
- *       nothing will show. n8n had this hazard and no guard for it.</li>
+ *       nothing will show.</li>
  * </ol>
  *
  * <p>{@code synchronized} because the check and the launch have to be one step: two requests that both
@@ -114,7 +112,7 @@ public class JobLaunches {
      * claim of that marker instead of a claim of the lowest-keyed queued one. The marker does NOT have
      * to be queued: re-proving something that already settled is the whole point.
      *
-     * <p>SINGLE FLIGHT STILL APPLIES, and it is not a formality. The java-runner serialises around one
+     * <p>SINGLE FLIGHT STILL APPLIES, and it is not a formality. The prover serialises around one
      * cached workspace, so a debug prove started under a running drain would be building a second
      * marker in the tree the drain is patching.
      *

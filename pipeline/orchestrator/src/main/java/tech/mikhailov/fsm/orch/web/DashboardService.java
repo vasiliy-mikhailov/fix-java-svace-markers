@@ -19,8 +19,7 @@ import tech.mikhailov.fsm.orch.model.Bug;
 import tech.mikhailov.fsm.orch.model.Suspicion;
 
 /**
- * The dashboard's read model — {@code state()} and {@code bugFor()} from {@code dashboard/src/server.js},
- * over H2 through the DAOs instead of over n8n's sqlite file.
+ * The dashboard's read model: {@code state()} and {@code bugFor()}, over H2 through the DAOs.
  *
  * <p>THE PAYLOAD SHAPE IS A CONTRACT WITH {@code public/app.js}, which is copied into
  * {@code src/main/resources/static} essentially unchanged. Every key below is read by name somewhere in
@@ -33,10 +32,10 @@ import tech.mikhailov.fsm.orch.model.Suspicion;
  * engine's nodes. Re-describing them as web DTOs would create a second column list that can drift from
  * the one the pipeline uses, which is the failure this whole module is built to avoid.
  *
- * <p>EVERY READ DEGRADES RATHER THAN FAILS. server.js wrapped its handler in a try/catch because a read
- * against a database that n8n was mid-write on must never take the dashboard down — it is the only view
- * onto a run that lasts days. The same rule holds here for the run history, which lives in tables that
- * a context running with batch disabled does not have.
+ * <p>EVERY READ DEGRADES RATHER THAN FAILS. A read against a database that a prove is mid-write on
+ * must never take the dashboard down — it is the only view onto a run that lasts days. The same rule
+ * holds for the run history, which lives in tables a context running with batch disabled does not
+ * have.
  */
 @Service
 public class DashboardService {
@@ -44,8 +43,7 @@ public class DashboardService {
     /**
      * What the page shows in the activity panel's {@code flow} column.
      *
-     * <p>n8n identified its two workflows by id ({@code fsmprover00001}, {@code fsmingest000001}) and
-     * the page rendered the short name. The equivalent here is the Spring Batch job name — see
+     * <p>It is the Spring Batch job name, rendered short — see
      * {@link tech.mikhailov.fsm.orch.batch.BatchConfig#PROVE_JOB} and
      * {@code BatchConfig#INGEST_JOB} — and {@link #flowOf(String)} maps it by SUBSTRING rather than by
      * equality. That is deliberate: the dashboard reports on the jobs, it does not own them, and
@@ -147,7 +145,7 @@ public class DashboardService {
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("scan", scan);
-        // Always empty, as in server.js: there is no file scan any more, only a marker backlog.
+        // Always empty: there is no file scan, only a marker backlog.
         out.put("files", List.of());
         out.put("suspicions", markerRows);
         out.put("bugs", artifactRows);
@@ -221,9 +219,8 @@ public class DashboardService {
      * The most recent runs, newest first — {@code wf}, {@code status}, {@code started}, {@code file}
      * and {@code dur}, exactly the five keys the activity table renders.
      *
-     * <p>{@code file} is always empty, as it was in server.js: n8n's execution row carried no marker
-     * reference either, and inventing one from the batch metadata would put a marker name against a run
-     * that touched several.
+     * <p>{@code file} is always EMPTY: an execution row carries no marker reference, and inventing one
+     * from the batch metadata would put a marker name against a run that touched several.
      */
     List<Map<String, Object>> activity() {
         List<Map<String, Object>> out = new ArrayList<>();
@@ -401,8 +398,8 @@ public class DashboardService {
     }
 
     /**
-     * The {@code secs()} helper from server.js: null when either end is missing (a run still going has
-     * no duration yet), and never negative.
+     * A run's duration in seconds: null when either end is missing (a run still going has no duration
+     * yet), and never negative.
      */
     static Double seconds(Long startedAtMs, Long stoppedAtMs) {
         if (startedAtMs == null || stoppedAtMs == null) {

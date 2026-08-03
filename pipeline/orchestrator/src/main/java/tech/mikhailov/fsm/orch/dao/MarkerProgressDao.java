@@ -8,14 +8,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * When each marker was last seen to change state — n8n's {@code updatedAt} column, which the
- * orchestrator's own tables do not have.
+ * When each marker was last seen to change state — the {@code updatedAt} the {@code suspicions} table
+ * deliberately does not carry.
  *
- * <p>WHY A SEPARATE TABLE AND NOT A COLUMN ON {@code suspicions}. That table is exactly SUS_COLS from
- * the ingester generator, in that order, so a row exported from the old n8n Data Table loads into it
- * without a mapping step; {@link SuspicionDao}'s column list and {@code schema.sql} both say so. A
- * 24th column would break that invariant for a field no part of the pipeline reads — only the effort
- * model does, and only to attribute machine time.
+ * <p>WHY A SEPARATE TABLE AND NOT A COLUMN ON {@code suspicions}. That table is exactly the 23 columns
+ * the ingester writes, in that order, so an exported row loads into it with no mapping step;
+ * {@link SuspicionDao}'s column list and {@code schema.sql} both say so. A 24th column would break that
+ * invariant for a field no part of the pipeline reads — only the effort model does, and only to
+ * attribute machine time.
  *
  * <p>WHO WRITES IT. The live watcher, and nothing else: it polls the backlog every couple of seconds
  * and stamps a row the moment it sees a status change. That makes this an OBSERVED time, which is the

@@ -11,8 +11,7 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 /**
- * The run history — what n8n's {@code execution_entity} table was, read out of Spring Batch's job
- * repository instead.
+ * The run history, read out of Spring Batch's job repository.
  *
  * <p>The dashboard needs exactly two things from it: the wall-clock of every FINISHED prover run (the
  * denominator of the FTE multiple) and the most recent handful of runs (the activity panel). Both are
@@ -27,8 +26,7 @@ import org.springframework.stereotype.Repository;
  *
  * <p>EVERY QUERY DEGRADES TO EMPTY. Boot creates the {@code BATCH_*} tables on start, but a context
  * that runs with batch switched off still has to serve the dashboard: an operator watching a 26-hour
- * run must not lose the whole page because the run history is unavailable. This is the same rule
- * server.js applied to a database n8n was mid-write on.
+ * run must not lose the whole page because the run history is unavailable.
  */
 @Repository
 public class JobRunDao {

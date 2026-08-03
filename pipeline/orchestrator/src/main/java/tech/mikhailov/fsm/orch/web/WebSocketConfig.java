@@ -17,7 +17,7 @@ import org.springframework.web.socket.config.annotation.WebSocketTransportRegist
  * answer before it). A push is neither.
  *
  * <p>THE IN-MEMORY BROKER IS THE RIGHT ONE HERE. There is exactly one orchestrator process — the prove
- * is single-flight around one java-runner workspace — so a relay to an external broker would add a
+ * is single-flight around one cached workspace — so a relay to an external broker would add a
  * daemon, a port and a failure mode in exchange for fan-out this deployment cannot use.
  *
  * <p>TWO ENDPOINT REGISTRATIONS, ONE PATH. The native registration handles a browser that can hold a

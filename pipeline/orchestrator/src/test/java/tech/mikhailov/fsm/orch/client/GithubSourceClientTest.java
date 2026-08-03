@@ -36,7 +36,7 @@ import tech.mikhailov.fsm.orch.LogLines;
  *   <li>THE WAIT AND THE LINE. The {@code pause()} and {@code retrying()} calls on both retry paths were
  *       reachable by no test at all — every existing retry test runs with {@code Duration.ZERO}. Three
  *       attempts inside one millisecond is the request pattern GitHub's abuse detection answers with a
- *       403 for the rest of the run, and a retry nobody logged is a fleet being throttled that looks in
+ *       403 for the rest of the run, and a retry nobody logged is a pipeline being throttled that looks in
  *       the log exactly like a healthy one.</li>
  *   <li>THE URL AND THE NUMBERS THAT BUILD IT. A base URL with a path (every GitHub Enterprise install),
  *       a marker row whose path has a leading slash or is absent, a {@code FSM_GITHUB_*} that arrived as
@@ -175,7 +175,7 @@ class GithubSourceClientTest {
      * <p>THE LINE is the only evidence the retry happened. Every one of these attempts ends in a
      * successful fetch, so a run in which GitHub failed every first attempt settles exactly like a
      * healthy one — same rows, same verdicts, green history — and the warning is the single place an
-     * operator can see that the fleet is being throttled. It has to name the attempt and the reason, or
+     * operator can see that the pipeline is being throttled. It has to name the attempt and the reason, or
      * it says only that something, somewhere, was slow.
      */
     @Test

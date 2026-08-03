@@ -6,8 +6,8 @@ package tech.mikhailov.fsm.orch.web;
  * <p>A destination is a string on both sides of a socket: the server publishes to it and
  * {@code static/app.js} subscribes to it by literal. A typo does not fail — the subscription simply
  * never receives anything and the page falls back to polling, which looks like a slow dashboard rather
- * than a broken one. Constants here, and the JS quoting them in one place at the bottom of app.js, are
- * what make the pair greppable.
+ * than a broken one. Constants here, and the page quoting them in one place at the bottom of app.js,
+ * are what make the pair greppable.
  *
  * <p>WHY FOUR TOPICS AND NOT ONE. They differ by SIZE and by RATE, and a single channel would have to
  * be the worst of both: {@link #STATE} is the whole document with 282 markers and their CLOB columns,

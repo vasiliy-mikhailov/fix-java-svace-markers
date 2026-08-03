@@ -17,8 +17,8 @@ import tech.mikhailov.fsm.lib.Json;
  * reads {@code settle_by}. None of it fails loudly when it is wrong.
  *
  * <p>THE REGRESSION THIS NODE CARRIES, found by e2e and not by any unit test. It split the file path on
- * {@code "/src/main/java/"} WITH a leading slash. That matches the parent pipeline's module-prefixed
- * paths and does not match the Svace ingester's repo-relative ones, so on a single-module repo like
+ * {@code "/src/main/java/"} WITH a leading slash. That matches a module-prefixed path and does NOT
+ * match the ingester's repo-relative one, so on a single-module repo like
  * WebGoat the separator never matched: module, package and package directory all came out empty and
  * every generated test landed in the default package at the root of {@code src/test/java}. Nothing
  * threw, and the test still compiled — it was simply in the wrong package, unable to see the
@@ -71,8 +71,8 @@ public final class PrepProver {
      * stays pure and the SHAPE of the request is testable — every field in it is load-bearing and each
      * one has failed in production at least once.
      *
-     * @param headers    insertion-ordered, because the assertion that reads them back is order-blind
-     *                   but a reader comparing this with the JS is not
+     * @param headers    insertion-ordered: the assertion that reads them back is order-blind, but a
+     *                   reader diffing two recorded requests is not
      * @param json       false hands back an unparsed string body, so {@code default_branch} would come
      *                   back absent for every repo — silently, as an empty branch
      * @param timeoutMs  see {@link #LOOKUP_TIMEOUT_MS}
@@ -81,8 +81,8 @@ public final class PrepProver {
     }
 
     /**
-     * The GitHub call, as a seam. The engine has no HTTP client of its own in this slice and the JS
-     * had none either — n8n's {@code helpers.httpRequest} was injected the same way.
+     * The GitHub call, as a seam. This module owns no HTTP client: the caller injects one, which is
+     * what keeps every stage in this package a pure function over its request.
      */
     @FunctionalInterface
     public interface RepoLookup {
@@ -92,13 +92,12 @@ public final class PrepProver {
     }
 
     /**
-     * A rejected lookup, carrying the value the JS promise rejected WITH.
+     * A failed lookup, carrying the VALUE it failed with rather than a message.
      *
-     * <p>The value and not a message, because the two shapes that arrive are read differently: n8n's
-     * {@code httpRequest} rejects HTTP-level failures with an object carrying {@code description},
-     * while a transport failure rejects with an Error carrying {@code message}. A port that collapsed
-     * them would report "no default_branch returned" — GitHub's answer — for a request that never got
-     * one, and triage cannot tell infra from verdict after that.
+     * <p>The value, because the two shapes that arrive are read differently: an HTTP-level failure
+     * carries {@code description}, and a transport failure carries {@code message}. Collapsing them
+     * reports "no default_branch returned" — which is GitHub's answer — for a request that never
+     * reached GitHub, and after that triage cannot tell infra from verdict.
      */
     public static final class LookupFailed extends RuntimeException {
         private static final long serialVersionUID = 1L;
@@ -110,7 +109,7 @@ public final class PrepProver {
             this.rejection = rejection;
         }
 
-        /** The rejected value: a Map for n8n's shape, a Throwable for a transport failure. */
+        /** The failure value: a Map for an HTTP-level failure, a Throwable for a transport one. */
         public Object rejection() {
             return rejection;
         }
@@ -119,11 +118,11 @@ public final class PrepProver {
     /**
      * One suspicion row plus the credential the branch lookup needs.
      *
-     * @param suspicion   the row from {@code Get new suspicions} — the JS's {@code $json}
-     * @param githubToken the JS's {@code $env.GITHUB_TOKEN}, kept as a raw value so an UNSET token
-     *                    still produces the header "Bearer undefined" the JS sent. GitHub answers that
-     *                    with 401, which is visible; "Bearer " with nothing after it looks like a
-     *                    request nobody meant to authenticate.
+     * @param suspicion   the claimed suspicion row, as the queue handed it over
+     * @param githubToken the GitHub token, kept as a RAW value so an unset one still produces the
+     *                    header "Bearer undefined". GitHub answers that with 401, which is visible;
+     *                    "Bearer " with nothing after it looks like a request nobody meant to
+     *                    authenticate.
      */
     public record Request(Object suspicion, Object githubToken) {
 
@@ -136,10 +135,10 @@ public final class PrepProver {
     /**
      * The prepared marker. Every later stage in the prove reads its fields off this item.
      *
-     * <p>Several components are {@code Object} rather than {@code String}: the JS passes them through
-     * untouched ({@code method: s.method}) or through {@code x || ''}, both of which preserve whatever
-     * type the ingester wrote. Typing them here would be a coercion the JS never performed, and it is
-     * the kind that shows up three nodes later as the word "null" inside a fenced Java block.
+     * <p>Several components are {@code Object} rather than {@code String}: they are passed through
+     * untouched, or through {@code x || ''}, both of which preserve whatever type the ingester wrote.
+     * Typing them here would insert a coercion nothing else performs, and that is the kind that shows
+     * up three stages later as the word "null" inside a fenced Java block.
      *
      * @param branch      may be a non-string when GitHub answers with an odd {@code default_branch};
      *                    {@code (ri && ri.default_branch) || ''} does not coerce
@@ -157,7 +156,7 @@ public final class PrepProver {
                           Object description, String evidence, Object markerId, Object svaceChecker,
                           Object svaceSeverity, double svaceLine, String settleBy) {
 
-        /** The response body, in the key order the JS object literal used. */
+        /** The response body, in a FIXED key order — see the note on {@link #put}. */
         public Map<String, Object> toMap() {
             Map<String, Object> m = new LinkedHashMap<>();
             put(m, "suspicion_key", suspicionKey);
@@ -189,9 +188,9 @@ public final class PrepProver {
         /**
          * {@code JSON.stringify} DROPS a key whose value is undefined, and the passthrough fields are
          * undefined whenever the ingester never set them. Emitting {@code "method": null} instead
-         * would be a claim the JS never made — and the next node reads it back with {@code || ''},
-         * where null and undefined happen to agree, but splices it into a prompt with {@code +},
-         * where they read as the words "null" and "undefined".
+         * would be a claim nobody made — and the next stage reads it back with {@code || ''}, where
+         * null and undefined happen to agree, but splices it into a prompt with {@code +}, where they
+         * read as the words "null" and "undefined".
          */
         private static void put(Map<String, Object> m, String key, Object value) {
             if (value != JsValue.UNDEFINED) {
@@ -271,10 +270,9 @@ public final class PrepProver {
         // for every row, and every marker in the run is recorded against an empty branch.
         //
         // The NAME is addressed to a repository owner reading their access log: it says what is
-        // reading their source and why. It was "n8n-fsm" until 2026-08-02 — the name of a workflow
-        // runner that has not executed anything here since July, which told that reader nothing.
-        // Changing it is a deliberate divergence from the retired JavaScript; see
-        // harness/README.md, "Re-baselines".
+        // reading their source and why. It is also a deliberate divergence from the frozen differential
+        // corpus, which recorded the old value — so changing it again means re-baselining a catalogue.
+        // See harness/README.md, "Re-baselines".
         headers.put("User-Agent", "svace-marker-fixer");
         headers.put("Accept", "application/vnd.github+json");
         headers.put("Authorization", "Bearer " + JsValue.string(token));
@@ -319,7 +317,7 @@ public final class PrepProver {
         return JsValue.prop(rejection, "message");
     }
 
-    /** {@code e.description} — the field n8n's httpRequest uses, which no Java exception carries. */
+    /** {@code e.description} — the field an HTTP-level failure carries and no Java exception does. */
     private static Object errorDescription(Object rejection) {
         return JsValue.prop(rejection, "description");
     }

@@ -33,8 +33,8 @@ class HealthEndpointTest {
         MvcResult result = mvc.perform(get("/healthz")).andReturn();
 
         assertThat(result.getResponse().getStatus()).isEqualTo(200);
-        // Plain text, as server.js answered it: whatever polls this was written against that, and a
-        // JSON body would need a parser on the other end.
+        // Plain text: whatever polls this is written against that, and a JSON body would need a
+        // parser on the other end.
         assertThat(result.getResponse().getContentAsString()).isEqualTo("ok");
         assertThat(result.getResponse().getHeader(HttpHeaders.CACHE_CONTROL)).isEqualTo("no-store");
     }

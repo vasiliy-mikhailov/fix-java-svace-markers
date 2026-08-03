@@ -50,7 +50,7 @@ public final class BuildFixInput {
     public record Request(Object prepProver, Object buildReproduceInput, Object parseTest,
                           Object reproduce) {
 
-        /** Read the request out of a posted body. The keys are the n8n node names, snake-cased. */
+        /** Read the request out of a posted body. The keys are the stage names, snake-cased. */
         public static Request of(Object body) {
             return new Request(Json.get(body, "prep_prover"), Json.get(body, "build_reproduce_input"),
                     Json.get(body, "parse_test"), Json.get(body, "run_test_reproduce"));

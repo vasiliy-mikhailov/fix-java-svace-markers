@@ -77,8 +77,8 @@ final class PathEncoding {
      *
      * <p>A NUL is SPELLABLE by this test and is still refused by {@code Path.of} afterwards, which is
      * deliberate: a NUL is not an encoding problem, no filesystem this service clones onto accepts one,
-     * and the callers already answer that case with the JavaScript's "file not found". Claiming the
-     * encoding for it would put a wrong cause in front of an operator.
+     * and the callers already answer that case with "file not found". Claiming the encoding for it
+     * would put a wrong cause in front of an operator.
      */
     static boolean spells(String name) {
         if (name == null || name.isEmpty()) {

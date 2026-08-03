@@ -24,9 +24,8 @@ import tech.mikhailov.fsm.lib.Llm;
  *
  * <p>THE TWO WAYS IN DO OPPOSITE THINGS WITH A FAILURE, and that is the entire point of this class:
  * <ul>
- *   <li>{@link #complete} is for the reproducer and the fixer. They were n8n Agent nodes with NO
- *       fallback — an unreachable model hard-failed the node, the prove aborted and the marker stayed
- *       queued. So a failure here becomes {@link InfraFailure} and the prove aborts. A dead endpoint
+ *   <li>{@link #complete} is for the reproducer and the fixer, which have NO fallback: a failure
+ *       becomes {@link InfraFailure}, the prove aborts and the marker stays queued. A dead endpoint
  *       must never look like a reproducer that declined to write a test, because that is recorded as
  *       {@code not-a-bug} and retires a marker nobody ever looked at.</li>
  *   <li>{@link #asHttp()} is for the three judging stages, which catch the failure themselves and
@@ -121,8 +120,8 @@ public class HttpLlmClient implements LlmClient {
      * The shared transport, and NOTHING ELSE — no conversion, no retry, no URL of its own.
      *
      * <p>TWO THINGS IT MUST NOT DO, both of which a wrapper is one line away from breaking.
-     * It must not convert the failure: the transport throws {@link Llm.ApiException} carrying
-     * n8n-style {@code description} wording, which is what {@link Llm#failureText} reads to write
+     * It must not convert the failure: the transport throws {@link Llm.ApiException} carrying the
+     * endpoint's own {@code description} wording, which is what {@link Llm#failureText} reads to write
      * {@code skeptic_reason} and the PR banner, so the exception reaches the node's catch UNTOUCHED. And
      * it must not pin the URL: {@code Verdict} makes its Svace detail call through the same
      * {@link Llm.Http} it was handed, so the options map travels to the transport exactly as the stage

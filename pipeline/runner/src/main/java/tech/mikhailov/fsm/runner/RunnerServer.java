@@ -24,20 +24,20 @@ import tech.mikhailov.fsm.lib.Json;
  *   POST /run_test        clone -> write the test -> RED -> apply the fix -> GREEN
  * </pre>
  *
- * <p>ONE HANDLER, EXACT PATHS. The JS matched {@code req.url.split('?')[0]} against string literals, and
- * com.sun.net.httpserver matches contexts by PREFIX — so a context per route would make
+ * <p>ONE HANDLER, EXACT PATHS. The route is the whole path, and com.sun.net.httpserver matches
+ * contexts by PREFIX — so a context per route would make
  * {@code /run_test/oops} silently start a build. One root context that compares the whole path keeps a
  * typo in a caller's URL a 404, which is where it has to fail.
  *
- * <p>THE STATUS CODES ARE THE JS's, and they are unusual on purpose: everything is 200 except a body that
- * is not JSON (400) and a path that does not exist (404). A build that failed answers
+ * <p>THE STATUS CODES ARE UNUSUAL ON PURPOSE: everything is 200 except a body that is not JSON (400)
+ * and a path that does not exist (404). A build that failed answers
  * {@code 200 {"ok": false, "error": …}} because that is an ANSWER about a marker — the orchestrator's
  * RunnerClient treats a non-2xx as "nothing was learned" and puts the marker back untouched, so promoting
  * a build failure to a 500 would erase the reason from the run history.
  */
 final class RunnerServer implements AutoCloseable {
 
-    /** Where {@code deploy/docker-compose.yml} publishes it, and what n8n's shim has hard-coded. */
+    /** The port the split shape expects; {@code HttpRunnerClient.DEFAULT_BASE_URL} names it too. */
     static final int DEFAULT_PORT = 8090;
 
     /** {@code process.env.CACHE || '/cache'} — the persistent volume both clones live in. */
@@ -75,10 +75,10 @@ final class RunnerServer implements AutoCloseable {
     /**
      * The HTTP surface over a runner that already exists.
      *
-     * <p>THE SERIALISATION IS NOT HERE ANY MORE, and that is the point of this signature. It used to be
-     * a single-thread executor owned by this class — which was fine while the only caller was a socket,
-     * and became a hazard the moment the orchestrator could call the same {@link Prove} in-process:
-     * two queues around one workspace are no queue at all. {@link LocalRunner} owns the one queue, and
+     * <p>THE SERIALISATION IS NOT HERE, and that is the point of this signature. A single-thread
+     * executor owned by this class would be fine if a socket were the only caller, and is a hazard the
+     * moment the orchestrator calls the same {@link Prove} in-process: two queues around one workspace
+     * are no queue at all. {@link LocalRunner} owns the ONE queue, and
      * both callers go through it.
      *
      * @param ownsRunner whether {@link #close()} also shuts the runner down. False when a caller
@@ -110,16 +110,16 @@ final class RunnerServer implements AutoCloseable {
     /**
      * One request.
      *
-     * <p>GET is answered without reading a body and never routes to a POST endpoint, which is what the JS
-     * did — {@code if (req.method === 'GET')} came first and returned. It has the consequence that
-     * {@code POST /health} is a 404; that is preserved, because the
+     * <p>GET is answered without reading a body and never routes to a POST endpoint: the method is
+     * checked first and returns. It has the consequence that {@code POST /health} is a 404, which is
+     * deliberate, because the
      * Docker HEALTHCHECK and every curl probe in the operators' notes use GET on /health and nothing uses
      * the other combinations.
      */
     private void handle(HttpExchange exchange) throws IOException {
         // NOT try-with-resources. It closes the exchange BEFORE the catch clause runs, and an exchange
         // closed without a status line cannot be answered at all — which would make the arm below dead
-        // code and turn any bug here into a dropped connection that n8n reports as a network error.
+        // code and turn any bug here into a dropped connection the caller reports as a network error.
         try {
             String path = exchange.getRequestURI().getPath();
             if ("GET".equals(exchange.getRequestMethod())) {
@@ -135,8 +135,8 @@ final class RunnerServer implements AutoCloseable {
                 Http.sendJson(exchange, 413, Prove.failure(tooLarge.getMessage()));
                 return;
             } catch (Json.JsonException notJson) {
-                // The wording is this parser's; the shape, the status and the prefix are the JS's, and
-                // the prefix is what an operator greps for.
+                // The wording is this parser's; the shape, the status and the "bad json: " prefix are
+                // the contract, and the prefix is what an operator greps for.
                 Http.sendJson(exchange, 400, Prove.failure("bad json: " + notJson.getMessage()));
                 return;
             }

@@ -14,7 +14,7 @@ import tech.mikhailov.fsm.nodes.Verdict;
 /**
  * Differential harness, Java side — slice 2 (verdict, fix skeptic, PR maker).
  *
- * <p>Runs this port over the 3 357 cases the retired JavaScript generated, through the same scripted
+ * <p>Runs this module over the 3 357 cases the recorded reference generated, through the same scripted
  * endpoint, in the same type-tagged encoding it answered in — so {@link NodeFamilyHarnessTest} can
  * diff the two on every {@code mvn test}. It used to be run by hand from {@code harness/run.sh} and
  * write a file that nothing read.
@@ -48,7 +48,7 @@ final class Diff {
                 throw new RuntimeException(Json.str(step, "throwError"));
             }
             if (has(step, "throwDescription")) {
-                // n8n's own rejections carry their text in `description`, not in `message`.
+                // An HTTP-level failure carries its text in `description`, not in `message`.
                 throw new Llm.ApiException(null, Json.str(step, "throwDescription"));
             }
             if (has(step, "throwNothing")) {
@@ -84,7 +84,7 @@ final class Diff {
         }
     }
 
-    /** This port's answer to every case, in the same type-tagged encoding the frozen JS side used. */
+    /** This module's answer to every case, in the same type-tagged encoding the frozen reference answers used. */
     static List<Object> answers(List<Object> cases) {
         List<Object> results = new ArrayList<>();
         for (Object c : cases) {
@@ -121,7 +121,7 @@ final class Diff {
     /**
      * The type-tagged encoding, matching js-side.cjs character for character.
      *
-     * <p>Java has no {@code undefined}, so a null here is tagged {@code z} and every place the JS
+     * <p>Java has no {@code undefined}, so a null here is tagged {@code z} and every place the reference
      * produced {@code u} instead shows up as a divergence — which is the honest outcome: the report is
      * the right place to argue that the two are the same event, not the encoder.
      */

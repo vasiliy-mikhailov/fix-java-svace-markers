@@ -15,13 +15,11 @@ import java.util.zip.GZIPInputStream;
 import tech.mikhailov.fsm.lib.Json;
 
 /**
- * The FROZEN JavaScript side of the runner's differential harness.
+ * The FROZEN REFERENCE ANSWERS the runner's differential harness compares against.
  *
- * <p>Until 2026-07-31 the harness ran {@code java-runner/lib/edit.js}, {@code lib/build.js} and
- * {@code src/server.js} under Node and diffed their answers against this port's. That JavaScript is
- * gone. What survives is its OUTPUT: the 23 851 cases it generated, the answers it gave, and the
- * filesystem tree four of the families read — committed under {@code harness/fixtures} as data, and
- * loaded here.
+ * <p>The implementation this module replaced was run over 23 851 generated cases and its answers were
+ * recorded. It is gone; what survives is that OUTPUT — the cases, the answers, and the filesystem tree
+ * four of the families read — committed under {@code harness/fixtures} as data, and loaded here.
  *
  * <p>WHAT THIS BUYS AND WHAT IT COSTS is spelled out in {@code harness/README.md}. The short form:
  * a divergence in a case somebody GENERATED is still caught, on every {@code mvn test}; a divergence
@@ -35,7 +33,7 @@ import tech.mikhailov.fsm.lib.Json;
  *   <li>{@code @FIXTURES@} — the root of the materialised filesystem tree. The fixture workspaces
  *       are rebuilt from {@code tree.json.gz} into a fresh directory under {@code target}, so the
  *       {@code fixTarget}, {@code buildCmd}, {@code outcome} and {@code readFile} families read the
- *       same bytes, the same mtimes and the same symlinks the JavaScript read.</li>
+ *       same bytes, the same mtimes and the same symlinks the reference read.</li>
  *   <li>{@code @CWD@} — the module directory. A handful of {@code fixTarget} cases pass a RELATIVE
  *       workspace, which both languages resolve against the working directory; Surefire runs with
  *       the working directory set to the module, exactly as {@code harness/run.sh} did.</li>
@@ -82,7 +80,7 @@ final class HarnessFixtures {
      */
     static HarnessFixtures materialise(Path into) throws IOException {
         if (!Files.isDirectory(DIR)) {
-            throw new IOException("the frozen JS side is missing: " + DIR.toAbsolutePath()
+            throw new IOException("the frozen reference answers is missing: " + DIR.toAbsolutePath()
                     + " (expected cases.json.gz, js-results.json.gz and tree.json.gz)");
         }
         deleteTree(into);
@@ -146,7 +144,7 @@ final class HarnessFixtures {
                         Files.createSymbolicLink(at, Path.of(Json.str(e, "target")));
                     } catch (IOException | UnsupportedOperationException ex) {
                         // A filesystem without symlinks runs the same cases without them, exactly as
-                        // the JavaScript side did — and the frozen answers then simply disagree,
+                        // the reference side did — and the frozen answers then simply disagree,
                         // loudly, instead of the run being quietly different.
                     }
                 }

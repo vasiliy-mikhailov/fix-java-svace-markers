@@ -87,8 +87,8 @@ import tech.mikhailov.fsm.orch.dao.SuspicionDao;
         // needs its own context, and FeedbackOffIsNotFeedbackEmptyTest adds a @TestPropertySource for
         // exactly that, then asserts it took effect rather than trusting it.
         "fsm.feedback.enabled=true",
-        // WHERE /api/source POINTS. The marker modal fetches a window of source from the java-runner;
-        // there is no runner here, and port 1 refuses instantly on loopback rather than spending the
+        // WHERE /api/source POINTS. The marker modal fetches a window of source from the prover's
+        // checkout; there is none here, and port 1 refuses instantly on loopback rather than spending the
         // client's timeout. SourceWindowService turns that into a 200 carrying `error`, which is the
         // documented behaviour and is what the modal renders as "source unavailable". Pointing it at a
         // real host would make this suite depend on a network.

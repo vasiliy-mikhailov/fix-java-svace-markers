@@ -1,7 +1,7 @@
 package tech.mikhailov.fsm.orch;
 
 /**
- * The system messages for the two agent stages — {@code n8n/agentic/src/prompts.js}, moved.
+ * The system messages for the two agent stages, compiled in.
  *
  * <p>THESE TWO CONSTANTS ARE NOW THE FALLBACK, NOT THE HOME. {@code prompts/reproducer.txt} and
  * {@code prompts/fixer.txt} at the repo root win over them, and {@code DEFAULT_REPRODUCER_PROMPT} /
@@ -16,9 +16,9 @@ package tech.mikhailov.fsm.orch;
  * handed. Editing one is a behaviour change, which is why they sit in their own class rather than
  * inside the processor.
  *
- * <p>WHY THE SYSTEM MESSAGE AND THE INPUT ARE CONCATENATED. In n8n these were the {@code systemMessage}
- * of a LangChain Agent node, sent as a separate {@code system} role alongside a {@code user} message
- * holding {@code agent_input}. The transport here is
+ * <p>WHY THE SYSTEM MESSAGE AND THE INPUT ARE CONCATENATED. The alternative is a separate
+ * {@code system} role alongside a {@code user} message holding {@code agent_input}. The transport here
+ * is
  * {@link tech.mikhailov.fsm.lib.Llm#chat(tech.mikhailov.fsm.lib.Llm.Endpoint, String, double)}, which
  * builds ONE user message — it is the request object the engine's own tests pin, and re-deriving it to
  * add a second role would put a second definition of the request in play. So {@link #agentPrompt}
@@ -33,10 +33,10 @@ public final class Prompts {
     private Prompts() {
     }
 
-    /** The placeholder {@link Versions#stamp(String)} fills in — the JS generator's own token. */
+    /** The placeholder {@link Versions#stamp(String)} fills in. Prompt files must contain it. */
     private static final String STAMP = "__STAMP__";
 
-    /** The reproducer's brief, byte for byte as prompts.js holds it. */
+    /** The reproducer's brief — the fallback when no prompt file and no DEFAULT_ variable supplies one. */
     public static final String REPRODUCER_SYS = """
             __STAMP__
             You are a Java test engineer adjudicating ONE static-analysis marker reported by Svace. You are given the full source file, the checker that fired, the exact claim it makes, and the location. Your job is to settle that specific claim — not to look for other bugs in the file.

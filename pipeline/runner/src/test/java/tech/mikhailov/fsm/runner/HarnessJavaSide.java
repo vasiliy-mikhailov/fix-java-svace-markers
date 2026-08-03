@@ -13,9 +13,9 @@ import tech.mikhailov.fsm.lib.Js;
 import tech.mikhailov.fsm.lib.Json;
 
 /**
- * Differential harness, Java side — the runner port.
+ * Differential harness: this module's answer to every frozen case.
  *
- * <p>Runs this port over the 23 851 cases the retired JavaScript generated, in the same type-tagged
+ * <p>Runs this module over the 23 851 cases the recorded reference generated, in the same type-tagged
  * encoding it answered in, so {@link DifferentialHarnessTest} can diff the two. It used to be run by
  * hand from {@code harness/run.sh} and write a file; it now runs on every {@code mvn test}, which is
  * the whole point of the exercise — a divergence is a RED TEST and not a report nobody opened.
@@ -78,7 +78,7 @@ final class HarnessJavaSide {
         };
     }
 
-    /** This port's answer to every case, in the same type-tagged encoding the frozen JS side used. */
+    /** This module's answer to every case, in the same type-tagged encoding the frozen reference answers used. */
     static List<Object> answers(List<Object> cases) {
         List<Object> results = new ArrayList<>();
         for (Object c : cases) {
@@ -192,7 +192,7 @@ final class HarnessJavaSide {
      *
      * <p>Same reason as {@link #bodyOf}: a key that is absent and a key whose value is null are two
      * different words in JavaScript, and {@code containsKey} is the only place that survives on this
-     * side. An explicit {@code "old_str": null} is PRESENT — the JS searched for the word "null" — so it
+     * side. An explicit {@code "old_str": null} is PRESENT — the reference searched for the word "null" — so it
      * has to be storable as a present key with a null value, which is what {@code put} does.
      */
     private static Map<String, Object> editOf(Object c) {
@@ -220,7 +220,7 @@ final class HarnessJavaSide {
      * <p>The internal return shape is compared because that is the unit; the {@code edit_error} line is
      * compared because that is the only part of it a reviewer ever reads, and the two can differ — a
      * path Java cannot even represent has no {@code {path}} to hand back, yet the request must still
-     * come back with the same single entry in {@code edit_errors} that the JavaScript produced.
+     * come back with the same single entry in {@code edit_errors} that the reference produced.
      */
     private static Map<String, Object> fixTarget(String ws, String p, String testPath) {
         Edit.Target t = Edit.fixTarget(Path.of(ws), p, testPath);
@@ -236,10 +236,10 @@ final class HarnessJavaSide {
      * A request body carrying the named values — with a key OMITTED entirely for {@code absent}.
      *
      * <p>This is the shape that makes the {@code coerce} and {@code keyForCoerced} families honest. Both
-     * compare what {@code `${body.field}`} produces, and on the JS side the two inputs are a property
+     * compare what {@code `${body.field}`} produces, and on the reference side the two inputs are a property
      * that is missing and a property that is null. Handing the Java a bare {@code null} would ask it a
      * question it cannot be asked — it would answer one word for both, and the harness would be reporting
-     * the limits of a local variable rather than the behaviour of the port.
+     * the limits of a local variable rather than the behaviour of this module.
      */
     private static Map<String, Object> bodyOf(Object... keysAndSpecNames) {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -275,7 +275,7 @@ final class HarnessJavaSide {
     /**
      * {@code summarize}'s own result — WITHOUT {@code source}.
      *
-     * <p>{@code source} is not something summarize computes in either language: the JS object simply
+     * <p>{@code source} is not something summarize computes in either language: the reference object simply
      * has no such property until {@code outcome} adds one, and the Java record carries a null slot for
      * it so that {@code outcome} can fill it in. Emitting the slot here would report the shape of a
      * record as a difference in behaviour. The {@code outcome} family compares the full map, source
@@ -301,9 +301,10 @@ final class HarnessJavaSide {
      * <p>JAVA_HOME and PATH are the two the function sets and they are compared by value. The REST is
      * {@code process.env} spread in, and the two sides are separate processes whose own environments
      * differ by construction — a shell sets {@code _} to the command it is running. So what is compared
-     * for the rest is the PROPERTY the port claims: every parent variable survives, and nothing is
-     * invented. Both sides therefore answer with two empty lists, and a port that dropped the parent
-     * environment (which would break Maven's local repository) reports a non-empty {@code missing}.
+     * for the rest is the PROPERTY this module claims: every parent variable survives, and nothing is
+     * invented. Both sides therefore answer with two empty lists, and an implementation that dropped the
+     * parent process's environment (which would break Maven's local repository) reports a non-empty
+     * {@code missing}.
      */
     private static Map<String, Object> buildCmd(Object c) {
         Object module = Json.get(c, "module");
@@ -344,7 +345,7 @@ final class HarnessJavaSide {
      *
      * <p>An HTTP reply is the only form of these two families a caller ever sees, and it is where
      * {@code undefined} stops being representable and where a non-finite number is decided. Comparing
-     * the in-memory Map against the JS's serialised answer would compare two different things.
+     * the in-memory Map against the reference's serialised answer would compare two different things.
      */
     private static Object wire(Object v) {
         return Json.parse(Json.stringify(v));
@@ -355,7 +356,7 @@ final class HarnessJavaSide {
      *
      * <p>A {@code Long} is written with its exact digits and only a {@code Double} goes through
      * {@link Js#numberToString}: {@link Json#stringify} writes an integral Long exactly, so rendering
-     * it through a double here would report a rounding this port does not actually perform.
+     * it through a double here would report a rounding this module does not actually perform.
      */
     private static Object tag(Object v) {
         return switch (v) {

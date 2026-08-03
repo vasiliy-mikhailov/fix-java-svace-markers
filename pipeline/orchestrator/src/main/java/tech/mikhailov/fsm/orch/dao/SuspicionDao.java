@@ -12,13 +12,12 @@ import tech.mikhailov.fsm.lib.Severity;
 import tech.mikhailov.fsm.orch.model.Suspicion;
 
 /**
- * The {@code suspicions} Data Table, as a DAO.
+ * The {@code suspicions} table, as a DAO.
  *
- * <p>THE CLAIM IS THE WHOLE DESIGN. In n8n the row stayed {@code 'new'} for the entire prove and
- * nothing marked it as taken — single-flight came from the java-runner's in-memory lease, which is a
- * lock in a different process from the state it was protecting. That worked because there was exactly
- * one runner, and it failed in the way you would expect: a prove that died left no trace at all, so
- * the only reason the marker was retried is that nothing had ever recorded it being started.
+ * <p>THE CLAIM IS THE WHOLE DESIGN. The alternative — leaving the row {@code 'new'} for the entire
+ * prove and keeping mutual exclusion in a lock somewhere else — puts the lock in a different process
+ * from the state it protects, and a prove that dies then leaves no trace at all. Here the claim IS the
+ * row: a conditional UPDATE the database adjudicates.
  *
  * <p>Here the claim is a conditional UPDATE on the row itself — {@link #claimNext()} — so the lock and
  * the state are the same row and cannot disagree. The cost is that a process which dies mid-prove now
@@ -244,8 +243,8 @@ public class SuspicionDao {
      * every marker anybody ever asks about by name.
      *
      * <p>SO THE ONE STATUS IT REFUSES IS {@link #STATUS_PROVING}, and it refuses it for the same reason
-     * the queue exists: the java-runner has one workspace, and two provers in it patch each other's
-     * tree. {@code AND status <> 'proving'} makes the database decide that, exactly as
+     * the queue exists: there is one cached workspace per repository, and two provers in it patch each
+     * other's tree. {@code AND status <> 'proving'} makes the database decide that, exactly as
      * {@code claimNext} does — a row somebody else holds returns an update count of zero and this
      * method reports it rather than joining in.
      *
@@ -275,12 +274,10 @@ public class SuspicionDao {
      *       settled status added by a future engine version therefore cannot accidentally be swept
      *       back onto the queue.</li>
      *   <li>{@code prove_attempts} is NOT incremented. The attempt never finished, so it never
-     *       counted — {@code RecordOutcome} is what adds one, and it never ran. This reproduces the
-     *       n8n behaviour exactly: there, a crashed prove left the row completely untouched. It also
-     *       means a marker that crashes the process every time is retried for ever rather than being
-     *       written off as {@code infra_stuck}, which is the same trade n8n made and is the right one:
-     *       a marker that kills the orchestrator is an orchestrator bug, and burning the retry budget
-     *       would hide it.</li>
+     *       counted — {@code RecordOutcome} is what adds one, and it never ran. It also means a marker
+     *       that crashes the process every time is retried for ever rather than being written off as
+     *       {@code infra_stuck}, and that trade is deliberate: a marker that kills the orchestrator is
+     *       an orchestrator bug, and burning the retry budget would hide it.</li>
      * </ul>
      *
      * @param note written into {@code note} so the requeue is visible on the dashboard rather than
@@ -294,7 +291,7 @@ public class SuspicionDao {
     }
 
     /**
-     * Write back what the prove decided — the n8n {@code Update suspicion} node, field for field.
+     * Write back what the prove decided: five columns, all authored by {@code Verdict}.
      *
      * <p>Those five columns and no others. {@code Verdict} authors all five and a partial write is how
      * a status and its note come to describe different attempts.
@@ -346,9 +343,8 @@ public class SuspicionDao {
      * Put a claimed marker back without recording anything about it.
      *
      * <p>The path for an INFRA failure that aborts the prove before {@code Record outcome} ever runs —
-     * see {@link tech.mikhailov.fsm.orch.client.InfraFailure}. It is the n8n {@code Release lease
-     * (err)} path: the row returns to the queue with its attempt count untouched, because no attempt
-     * was completed and no judgement was reached.
+     * see {@link tech.mikhailov.fsm.orch.client.InfraFailure}. The row returns to the queue with its
+     * attempt count UNTOUCHED, because no attempt was completed and no judgement was reached.
      *
      * <p>Guarded on {@link #STATUS_PROVING} so a late release cannot resurrect a marker that some other
      * path has already settled.
@@ -433,8 +429,8 @@ public class SuspicionDao {
     /**
      * Insert or replace one ingested row, keyed on {@code dedup_key}.
      *
-     * <p>H2's {@code MERGE INTO ... KEY (...)}, which is what the n8n Data Table upsert compiled to.
-     * Note that it REPLACES the whole row, {@code status} included — that is correct for the ingester,
+     * <p>H2's {@code MERGE INTO ... KEY (...)}. Note that it REPLACES the whole row, {@code status}
+     * included — that is correct for the ingester,
      * which owns the backlog and re-raises a marker as {@code new}, and is why the prover uses
      * {@link #settle} instead of coming through here.
      *
@@ -513,7 +509,7 @@ public class SuspicionDao {
     }
 
     /**
-     * The n8n {@code Clear suspicions} node: a re-ingest starts from an empty backlog.
+     * A re-ingest starts from an empty backlog.
      *
      * <p>The infra streaks go with it. They are per-marker state about a row that no longer exists, and
      * leaving them would mean a re-ingested marker inherits a run of failures from before the report it

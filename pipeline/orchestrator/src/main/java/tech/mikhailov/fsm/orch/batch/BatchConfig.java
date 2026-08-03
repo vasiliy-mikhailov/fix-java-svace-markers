@@ -43,9 +43,9 @@ import tech.mikhailov.fsm.orch.model.Suspicion;
  *
  * <h2>WHAT IS NOT PORTED, AND WHY</h2>
  *
- * <p>THE LEASE. n8n acquired a named lease on the java-runner before every tick, purely so two
- * schedule ticks could not drain the queue at once — a lock in a different process from the state it
- * protected. Here the claim is a conditional UPDATE on the marker's own row
+ * <p>NO LEASE. A named lease taken from the prover before every tick would be a lock in a different
+ * process from the state it protects, and advisory besides. Here the claim is a conditional UPDATE on
+ * the marker's own row
  * ({@link SuspicionDao#claimNext()}), the step is single-threaded, and the launcher refuses to start a
  * second execution while one is running. Three guarantees where there was one, and none of them can
  * disagree with the table.
@@ -83,10 +83,10 @@ import tech.mikhailov.fsm.orch.model.Suspicion;
  * chunk is one.
  *
  * <p>EVERYTHING ELSE FAILS THE STEP. {@link tech.mikhailov.fsm.nodes.PrMaker.NotSliceable} and any
- * other engine fault are bugs in this process, not facts about the marker, and the generator's own
- * comment records why they must be loud: under n8n's {@code continueRegularOutput} a broken stage
- * forwarded its INPUT, reached {@code Record outcome} looking like a stage that found nothing, and the
- * marker was written off as not-a-bug. Failing is also SAFE here — the chunk rolls back, which undoes
+ * other engine fault are bugs in this process, not facts about the marker, and they must be LOUD: a
+ * broken stage that swallows its own failure and forwards its INPUT reaches {@code Record outcome}
+ * looking like a stage that found nothing, and the marker is written off as not-a-bug. Failing is also
+ * SAFE here — the chunk rolls back, which undoes
  * the claim, so the marker is back on the queue without anyone having to remember to release it.
  */
 @Configuration
@@ -111,11 +111,11 @@ public class BatchConfig {
      * outage ends the execution in seconds and the next scheduled tick starts from a clean slate,
      * while scattered failures over a long drain are absorbed.
      *
-     * <p>THAT PARAGRAPH WAS FICTION UNTIL THE READER LEARNED TO ADVANCE, which is worth recording
-     * here because the two are one defect. {@link SuspicionReader} used to end the whole drain at the
-     * first requeued marker, so an execution never reached a SECOND skip: the limit was never
-     * approached, the job never went {@code FAILED}, and twelve consecutive executions against a dead
-     * runner and a dead model endpoint all logged {@code COMPLETED}. The line above described a safety
+     * <p>THAT PARAGRAPH IS ONLY TRUE BECAUSE THE READER ADVANCES, and the two are one property.
+     * A reader that ended the whole drain at the first requeued marker would never reach a SECOND
+     * skip: the limit is never approached, the job never goes {@code FAILED}, and consecutive
+     * executions against a dead prover and a dead model endpoint all log {@code COMPLETED}. This limit
+     * would then describe a safety
      * net that could not be reached from anywhere in the code.
      *
      * <p>It is also the line between "scattered" and "systemic" everywhere else in this package:

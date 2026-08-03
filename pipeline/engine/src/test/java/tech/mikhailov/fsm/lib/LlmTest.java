@@ -51,7 +51,7 @@ class LlmTest {
     }
 
     @Test
-    void theEndpointIsReadOffTheEnvironmentTheWayTheJavaScriptReadsIt() {
+    void theEndpointIsReadStraightOffTheProcessEnvironment() {
         assertEquals(new Llm.Endpoint("http://llm", "k", "m"),
                 Llm.Endpoint.of(item("QWEN_BASE_URL", "http://llm", "QWEN_API_KEY", "k",
                         "QWEN_MODEL", "m")));
@@ -95,7 +95,7 @@ class LlmTest {
     @Test
     void aFailureTextPrefersTheMessageThenTheDescriptionThenTheFallback() {
         assertEquals("boom", Llm.failureText(new RuntimeException("boom"), 150, "error"));
-        // n8n's own rejections put the text in `description`, not in `message`.
+        // An HTTP-level failure puts its text in `description`, not in `message`.
         assertEquals("refused", Llm.failureText(new Llm.ApiException(null, "refused"), 150, "error"));
         assertEquals("refused", Llm.failureText(new Llm.ApiException("", "refused"), 150, "error"));
         assertEquals("error", Llm.failureText(new Llm.ApiException("", ""), 150, "error"));

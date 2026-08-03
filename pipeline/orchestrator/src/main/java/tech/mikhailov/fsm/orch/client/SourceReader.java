@@ -3,20 +3,19 @@ package tech.mikhailov.fsm.orch.client;
 import java.util.Map;
 
 /**
- * ONE FILE OUT OF THE RUNNER'S READ-ONLY CHECKOUT — the {@code /fs/read_file} half of the runner, as a
- * seam.
+ * ONE FILE OUT OF THE PROVER'S READ-ONLY CHECKOUT — the {@code /fs/read_file} half of it, as a seam.
  *
- * <p>WHY IT IS AN INTERFACE AND NOT AN HTTP CALL INLINE. The runner serves two things: it proves markers
- * and it serves the source a reviewer is shown. Those move together — when the prove runs in this
- * process, the read has to as well. It used to be an {@code HttpTransport} call written straight into
- * {@code SourceWindowService}, which independently re-derived the runner's base URL from the same
- * property. That is a SECOND copy of the address, in a class whose failure mode is silent: a source
- * window pointed at a container that is not in the stack renders "source unavailable" on every marker,
+ * <p>WHY IT IS AN INTERFACE AND NOT AN HTTP CALL INLINE. The prover serves two things: it proves
+ * markers and it serves the source a reviewer is shown. Those move together — when the prove runs in
+ * this process, the read has to as well. An {@code HttpTransport} call written straight into
+ * {@code SourceWindowService} would re-derive the prover's base URL from the same property, which is a
+ * SECOND copy of the address in a class whose failure mode is silent: a source window pointed at a
+ * container that is not in the stack renders "source unavailable" on every marker,
  * with nothing red anywhere and every verdict still correct. So the choice is made once, in
  * {@code ClientConfig}, and both halves are chosen together.
  *
- * <p>IT MUST BE THE SAME CHECKOUT THE PROVE RAN IN, which is the whole reason this reads from the runner
- * rather than from GitHub: the window shows the code that was actually JUDGED, at the tree the test was
+ * <p>IT MUST BE THE SAME CHECKOUT THE PROVE RAN IN, which is the whole reason this reads from the
+ * prover rather than from GitHub: the window shows the code that was actually JUDGED, at the tree the test was
  * anchored against, and it costs no API rate limit.
  */
 public interface SourceReader {

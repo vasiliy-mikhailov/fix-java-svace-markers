@@ -54,35 +54,26 @@ import tech.mikhailov.fsm.orch.config.FsmProperties;
  * {@code Service.networks} was still parsed and read by no test, so this class documented a guard it
  * did not have.
  *
- * <p>THIRD: WHERE THE PROVE IS POSTED. Node and n8n were removed from the deployment —
- * {@code n8n}, {@code java-runner} and {@code dashboard} were deleted, and {@code runner} has since
- * followed them into {@code fsm} — and deleting a service does not break the file that points at it.
- * {@code FSM_RUNNER_URL} kept defaulting to {@code http://fsm-java-runner:8090}
- * after that container was gone, and compose starts such a stack without complaint. The failure arrives
- * hours later on the first marker, as a connect retried three times and then recorded as an
- * infrastructure failure — which reads as a runner that is down, not as a name nothing serves. So the
- * URL is checked against the services this very file declares.
+ * <p>THIRD: WHERE THE PROVE IS POSTED. Deleting a service does not break the file that points at it,
+ * and compose starts such a stack without complaint: /healthz is green, the schedule fires, and the
+ * failure arrives hours later on the first marker, as a connect retried three times and then recorded
+ * as an infrastructure failure — which reads as a prover that is down, not as a name nothing serves. So
+ * the URL is checked against the services this very file declares.
  *
  * <p>NOT AN ALLOWLIST. Nothing here says which hosts are legitimate; that
  * judgement is what took production down once already. It says only that the container the calls were
  * moved INTO has at least the routes of the containers they were moved out of, and that the names it
  * is configured with exist.
  *
- * <p>THIS IS THE ONLY PLACE THE COMPOSE FILE IS CHECKED. {@code n8n/agentic/test/compose.test.js} used
- * to assert the same class of property from the Node side and was deleted with the n8n generator tree it
- * lived in. Everything it asserted was moved here first, assertion for assertion — the engine's
- * {@code proxy-net} route and its superset relationship with the orchestrator's networks, the runner's
- * {@code mvn-cache} route, the runner's {@code /cache} named volume with its four conditions, and the
- * two-way closure between declared and mounted volumes. A guard is not something to lose to a tidy-up:
- * the whole reason these live in a test rather than a comment is that every failure they catch produces
+ * <p>THIS IS THE ONLY PLACE THE COMPOSE FILE IS CHECKED, so a guard dropped here is a guard gone: the
+ * whole reason these live in a test rather than in a comment is that every failure they catch produces
  * a GREEN run that decided nothing.
  *
- * <p>TWO OF THOSE CHANGED SHAPE WHEN THREE SERVICES BECAME ONE, and neither was dropped. The
- * {@code mvn-cache} route is gone as a NETWORK because the Nexus is no longer addressed as
- * {@code nexus:8081} from inside a private bridge — it is {@code MAVEN_MIRROR_URL}, a runtime setting
- * taking a public hostname, pinned by {@link #theMavenMirrorIsSettableOnTheRunningContainer} and by
- * {@code TheMavenMirrorIsARuntimeSettingTest}. The {@code proxy-net} superset moved to the override
- * example, above.
+ * <p>The Maven mirror is checked as a VALUE and not as a network. It is {@code MAVEN_MIRROR_URL}, a
+ * runtime setting taking a public hostname, pinned by
+ * {@link #theMavenMirrorIsSettableOnTheRunningContainer} and by
+ * {@code TheMavenMirrorIsARuntimeSettingTest}; the model's route is pinned on the override example,
+ * above.
  */
 class DeploymentTest {
 
@@ -100,10 +91,10 @@ class DeploymentTest {
     private static final List<String> OPTIONAL = List.of("engine");
 
     /**
-     * Gone, and named so their return is a failure rather than a surprise. {@code runner} joins the
-     * n8n-era three: its prove now runs inside {@code fsm} (fsm.runner.mode=local), and a SECOND prover
-     * in the stack is the sharpest thing that can go wrong here — {@code /run_test} is serialised inside
-     * ONE process around one workspace per repository, and two processes share no lock at all.
+     * Service names that must never appear in this file, so their arrival is a failure rather than a
+     * surprise. Each of them would prove markers, and a SECOND prover is the sharpest thing that can go
+     * wrong here: {@code /run_test} is serialised inside ONE process around one workspace per
+     * repository, and two processes share no lock at all.
      */
     private static final List<String> DELETED = List.of("n8n", "java-runner", "dashboard", "runner");
 
@@ -116,7 +107,7 @@ class DeploymentTest {
      * These checks read files OUTSIDE this module — deploy/docker-compose.yml above all — so they can only
      * run against a full worktree. The image build copies just orchestrator/, engine/ and pom.xml into
      * /src, on purpose: the running container has no business carrying the deployment stack. Inside that build
-     * the fleet root does not exist, and asserting would fail the image over a file that was correctly
+     * the repository root does not exist, and asserting would fail the image over a file that was correctly
      * left out.
      *
      * So SKIP there, and skip LOUDLY — JUnit reports these as skipped with the reason below, never as
@@ -127,7 +118,7 @@ class DeploymentTest {
     @org.junit.jupiter.api.BeforeEach
     void onlyMeaningfulInAWorktree() {
         org.junit.jupiter.api.Assumptions.assumeTrue(ROOT != null,
-                "no fleet root above " + Path.of("").toAbsolutePath() + " — these checks read "
+                "no repository root above " + Path.of("").toAbsolutePath() + " — these checks read "
                 + "deploy/docker-compose.yml, which the image build deliberately does not copy. Run "
                 + "`mvn test` from the reactor root to exercise them.");
     }
@@ -162,8 +153,8 @@ class DeploymentTest {
      * — each of which is a thing to wait for, a thing to read logs from, and a thing whose health is a
      * separate question.
      *
-     * <p>A resurrected {@code runner}, {@code n8n} or {@code java-runner} is not a harmless leftover:
-     * all three prove markers. {@code /run_test} is serialised inside ONE process around one workspace
+     * <p>A second prover service is not a harmless leftover. {@code /run_test} is serialised inside ONE
+     * process around one workspace
      * per repository and two processes have no lock between them at all, so a second prover
      * {@code reset --hard}s and patches the tree the first one is building in. That surfaces as a Maven
      * build that inexplicably compiled somebody else's patch, which is not a thing anyone debugs
@@ -301,7 +292,7 @@ class DeploymentTest {
             }
         }
 
-        // THE SUPERSET, which is the ported assertion and the reason for the whole test.
+        // THE SUPERSET, which is the reason for the whole test.
         assertThat(override)
                 .as("the engine makes the same model calls as fsm and needs the same routes; dropping it "
                         + "from the example is how it silently loses them")
@@ -322,9 +313,9 @@ class DeploymentTest {
         // and log grep in the README would be wrong.
         assertThat(app.scalar("container_name")).contains("fsm");
         assertThat(read(ROOT.resolve("deploy").resolve("docker-compose.yml")))
-                .as("the project name is what keeps this stack's volumes and network out of the other "
-                        + "pipeline's — it used to share the directory basename `n8n`, and without an "
-                        + "explicit name the project follows whatever this directory is called next")
+                .as("the project name is what keeps this stack's volumes and network out of another "
+                        + "stack's. Without an explicit name the project follows the directory "
+                        + "basename, so two stacks whose deploy directories share one share a bridge")
                 .contains("\nname: fsm\n");
     }
 
@@ -414,20 +405,18 @@ class DeploymentTest {
     }
 
     /**
-     * THE RUNNER'S WORKSPACE — ported from {@code compose.test.js}; see the {@code runner} service in
-     * docker-compose.yml for the full argument.
+     * THE PROVER'S WORKSPACE — see the {@code fsm} service in docker-compose.yml for the full argument.
      *
      * <p>It has to be a NAMED VOLUME. Unmounted, {@code /cache} is the container's writable layer and
      * every {@code docker compose up -d} throws away every checkout and every {@code target/} behind it —
      * minutes per repository, silently, on a run that is 282 markers long. A bind mount would put a
      * couple of dozen cloned third-party repositories inside a git worktree instead.
      *
-     * <p>And it must not be the RETIRED {@code fsm-java-runner-cache}. That volume outlives the deleted
-     * java-runner service until an operator removes it, and every clone the JS made carries
-     * {@code https://<token>@github.com/…} verbatim in its {@code .git/config} as
-     * {@code remote.origin.url}. The Java port never writes that (Workspace's credential helper) but it
+     * <p>And it must not be a cache volume something ELSE wrote. A clone made with a
+     * {@code https://<token>@github.com/…} URL carries that token verbatim in its {@code .git/config} as
+     * {@code remote.origin.url}. This code never writes one (Workspace's credential helper) but it
      * ADOPTS an existing checkout rather than re-cloning it, and adoption never rewrites
-     * {@code remote.origin.url} — so pointing at the old volume would carry the credential forward
+     * {@code remote.origin.url} — so pointing at such a volume carries the credential forward
      * indefinitely, surviving a rotation of {@code GITHUB_TOKEN} in {@code .env}.
      */
     @Test
@@ -461,19 +450,18 @@ class DeploymentTest {
                 .as("a named volume that is not declared makes `docker compose up` refuse to start")
                 .contains(cache);
         assertThat(cache)
-                .as("this is pointed at the retired java-runner cache. Those checkouts carry a "
-                        + "tokenized remote.origin.url that the Java port never writes and never "
-                        + "rewrites, and adopting them carries the credential forward past a rotation "
-                        + "of GITHUB_TOKEN")
+                .as("this is pointed at a cache volume this code did not write. Such checkouts carry a "
+                        + "tokenized remote.origin.url that this code never writes and never rewrites, "
+                        + "and adopting them carries the credential forward past a rotation of "
+                        + "GITHUB_TOKEN")
                 .doesNotContain("java-runner");
     }
 
     /**
-     * NO ORPHANED VOLUMES, IN EITHER DIRECTION — ported from {@code compose.test.js}.
+     * NO ORPHANED VOLUMES, IN EITHER DIRECTION.
      *
-     * <p>{@code fsm-java-runner-cache} was declared here for a service that no longer exists, and a
-     * declaration nothing mounts is not inert: it is the name an operator reaches for when wiring up a
-     * new service, which is exactly how the retired token-bearing cache would come back. The other
+     * <p>A declaration nothing mounts is not inert: it is the name an operator reaches for when wiring
+     * up a new service, which is exactly how a retired token-bearing cache comes back. The other
      * direction is louder but still worth pinning — a service that mounts a named volume no top-level
      * {@code volumes:} entry declares makes {@code docker compose up} refuse to start the whole stack.
      */
@@ -501,12 +489,12 @@ class DeploymentTest {
     /**
      * THE PROVE HAS NO ADDRESS, which is the point of the merge and not a side effect of it.
      *
-     * <p>{@code FSM_RUNNER_URL} was written in THREE places — this file, {@code application.yml} and
+     * <p>{@code FSM_RUNNER_URL} is written in THREE places — this file, {@code application.yml} and
      * {@link HttpRunnerClient#DEFAULT_BASE_URL} — each a fallback for the one above it, and NONE of them
-     * read until a marker is actually proved. That is how {@code fsm-java-runner} survived the container
-     * it named: compose starts such a stack without complaint, /healthz is green, the schedule fires,
-     * and six hours later the first prove spends three connect attempts on a name nothing serves and is
-     * filed as an infrastructure failure — which reads as a runner that is down.
+     * read until a marker is actually proved. So a stale value survives every check there is: compose
+     * starts the stack without complaint, /healthz is green, the schedule fires, and six hours later the
+     * first prove spends three connect attempts on a name nothing serves and is filed as an
+     * infrastructure failure — which reads as a prover that is down.
      *
      * <p>With {@code fsm.runner.mode=local} that chain is not merely correct, it is unread. The compose
      * file must therefore NOT set the variable: a value here would be configuration that looks
@@ -522,8 +510,7 @@ class DeploymentTest {
                 .isEqualTo(FsmProperties.Runner.LOCAL);
 
         // NO ADDRESS IS ASSERTED BY THIS FILE. The default has to resolve to blank, because a literal
-        // here is a knob that changes nothing in the `local` shape and is believed by the next reader —
-        // which is how `fsm-java-runner` outlived the container it named.
+        // here is a knob that changes nothing in the `local` shape and is believed by the next reader.
         String url = app.environmentValue("FSM_RUNNER_URL").orElse("");
         assertThat(composeDefault(url))
                 .as("this file names a runner. In the default (local) shape nothing reads it, so it is a "
@@ -696,9 +683,9 @@ class DeploymentTest {
         String readme = Files.readString(ROOT.resolve("orchestrator").resolve("README.md"),
                 StandardCharsets.UTF_8);
 
-        // The three things a Java developer who has never seen n8n needs, and the reason this file is
-        // asserted on rather than merely written: each of them is a route that exists in the code and
-        // is undiscoverable without being written down.
+        // The three things a developer handed this repository needs, and the reason they are asserted
+        // on rather than merely written: each is a route that exists in the code and is
+        // undiscoverable without being written down.
         assertThat(readme).contains("/api/prove/marker");
         assertThat(readme).contains("fsm.prove.marker");
         assertThat(readme).contains("FSM_DB_PATH");
@@ -810,7 +797,7 @@ class DeploymentTest {
      * here — two spaces for a service, four for its keys, six for a list item — is the shape docker
      * compose documents, and {@link #theComposeFileIsParsedAsTheseChecksExpect} fails if the file stops
      * matching it, so a restructured file cannot turn these assertions into no-ops. Adding a YAML
-     * library to this module to read one file would be a runtime dependency the fleet does not have.
+     * library to this module to read one file would be a runtime dependency this module does not have.
      */
     private static Map<String, Service> services(String yaml) {
         Map<String, Service> services = new LinkedHashMap<>();
@@ -899,8 +886,7 @@ class DeploymentTest {
      * it were a declared volume. That was harmless while the only caller asked
      * {@code contains(theOneIExpect)}; it is not harmless for
      * {@link #everyDeclaredVolumeIsMountedAndEveryNamedMountIsDeclared}, which asks the reverse question
-     * and would fail on a phantom volume that no service can possibly mount. Same shape the deleted
-     * {@code compose.test.js} matched.
+     * and would fail on a phantom volume that no service can possibly mount.
      */
     private static List<String> topLevelVolumes(String yaml) {
         return topLevel("volumes", yaml);

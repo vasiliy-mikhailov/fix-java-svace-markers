@@ -26,8 +26,7 @@ import tech.mikhailov.fsm.nodes.BuildFixInput.Request;
  * <p>The assertions below check the VALUE the node put in the prompt, not merely that a branch ran: a
  * prompt that reached the fixer with the wrong branch, a stale line number or a truncated head instead
  * of a tail is still a prompt, and it still produces a confident, wrong patch.
- *
- * <p>Ported from {@code n8n/agentic/test/build-fix-input.test.js}, assertion for assertion.
+
  */
 class BuildFixInputTest {
 

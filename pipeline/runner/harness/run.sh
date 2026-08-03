@@ -1,22 +1,20 @@
 #!/bin/sh
-# Differential harness for the runner — the MANUAL entry point. The enforcement is `mvn test`.
+# Differential harness for the runner — the MANUAL entry point, for reading the long report.
 #
-# WHAT CHANGED, 2026-07-31. This script used to run the ORIGINAL JavaScript (java-runner/lib/edit.js,
-# lib/build.js, src/server.js) and this port over the same generated cases, then diff them with a Node
-# script. That JavaScript has been deleted. Its ANSWERS are frozen under harness/fixtures, and the
-# comparison is now a JUnit test — src/test/java/tech/mikhailov/fsm/runner/DifferentialHarnessTest.java
-# — so a divergence is a RED TEST on every build rather than a report somebody remembered to run.
+# THE ENFORCEMENT IS `mvn test`: the comparison is a JUnit test,
+# src/test/java/tech/mikhailov/fsm/runner/DifferentialHarnessTest.java, so a divergence is a RED TEST on
+# every build rather than a report somebody remembered to run. This script only adds the readable corpus
+# and the full report on top of it.
 #
 #   sh harness/run.sh            # unpack the frozen corpus, run the comparison, show the report
 #
-# See harness/README.md for what the fixtures cover, when they were generated, and what it would take
-# to regenerate them (it would take rewriting the deleted service — say so out loud before promising
-# anyone a refresh).
+# See harness/README.md for what the fixtures cover, what the recorded answers are answers OF, and why
+# they cannot be regenerated — read that before promising anybody a refresh.
 set -eu
 cd "$(dirname "$0")/.."
 
-echo "== unpacking the frozen JavaScript answers (readable copies, nothing depends on them)"
-node harness/js-side.cjs
+echo "== unpacking the frozen reference answers (readable copies, nothing depends on them)"
+node harness/unpack-fixtures.cjs
 
 echo "== running the comparison"
 mvn -B -q -f ../pom.xml -pl runner -am test \

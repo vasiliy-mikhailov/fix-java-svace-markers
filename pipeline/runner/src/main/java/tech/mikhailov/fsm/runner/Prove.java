@@ -25,8 +25,10 @@ import tech.mikhailov.fsm.lib.Json;
  *       the reason recorded, and a thrown exception would strand that text.</li>
  * </ul>
  *
- * <p>The field names and the field ORDER are the JS object's, because two services read this reply and
- * one of them — n8n's shim — passes it through untouched into a Data Table row a human diffs.
+ * <p>THE FIELD NAMES ARE THE CONTRACT, and the ORDER is fixed so two recorded replies diff cleanly.
+ * The caller reads this reply key by key out of a map, so a renamed key reads as ABSENT: a missing
+ * {@code red_reproduced} is {@code false}, which is a marker recorded as not reproduced rather than an
+ * error anybody sees.
  */
 final class Prove {
 
@@ -157,9 +159,9 @@ final class Prove {
             out.put("green_output", Text.tail(green.out()));
             return out;
         } catch (IOException e) {
-            // Writing the test, or reading a file an edit names. The JS let this abort the whole prove
-            // too, which the engine records as infra and retries; see applyOne for the one case where
-            // that is arguably wrong and is kept anyway.
+            // Writing the test, or reading a file an edit names. This aborts the WHOLE prove, which
+            // the engine records as infra and retries; see applyOne for the one case where that is
+            // arguably wrong and is kept anyway.
             throw new UncheckedIOException(e);
         }
     }
@@ -194,17 +196,18 @@ final class Prove {
      *
      * <p>ONE INHERITED DEFECT, KEPT ON PURPOSE. An edit whose {@code path} resolves to something that is
      * not a readable file — a directory, most easily an edit with no path at all, which resolves to the
-     * workspace root — aborts the ENTIRE prove rather than being recorded in {@code edit_errors}. The JS
-     * did exactly this ({@code readFileSync} on a directory throws EISDIR), and the engine turns the
-     * resulting {@code ok: false} into a retryable infra error. Reporting it per-edit instead would be a
+     * workspace root — aborts the ENTIRE prove rather than being recorded in {@code edit_errors}: a read
+     * of a directory throws EISDIR, and the engine turns the resulting {@code ok: false} into a
+     * retryable infra error. Reporting it per-edit instead would be a
      * better answer and a DIFFERENT one: the marker would settle as "the fix did not work" rather than
      * "we could not apply it", which is a verdict about the code and not about the request.
      */
     private void applyOne(Path ws, String testPath, Object edit, List<String> applied,
                           List<String> editErrors) throws IOException {
         String path = Js.orEmptyString(Json.get(edit, "path"));
-        // The MESSAGE uses interpolation's coercion and the LOOKUP uses `p || ''`; the JS mixed the two
-        // on adjacent lines, so an edit with no path is reported as "undefined" and resolved as "".
+        // The MESSAGE uses interpolation's coercion and the LOOKUP uses `p || ''` — two different
+        // coercions on adjacent lines, deliberately: an edit with no path is REPORTED as "undefined"
+        // and RESOLVED as "", so the error names what was missing instead of a plausible path.
         String reported = Text.field(edit, "path");
 
         Edit.Target target = Edit.fixTarget(ws, path, testPath);
@@ -231,7 +234,7 @@ final class Prove {
         // which is what this service has always done. It lands exactly where the edit aimed, `undefined`
         // is not a Java expression, and the green build therefore fails to compile — a bad patch that
         // announces itself in the diff and in green_passed, which is the opposite of the old_str case.
-        // An explicit `"new_str": null` still splices the word "null", which is the JS's other spelling.
+        // An explicit `"new_str": null` still splices the word "null" — same reasoning, other spelling.
         Edit.Applied result = Edit.applyEdit(Text.read(target.path()),
                 Text.fieldOrAbsent(edit, "old_str"), Text.field(edit, "new_str"));
         if (!result.ok()) {
@@ -245,9 +248,8 @@ final class Prove {
     /**
      * {@code body.fix_edits || []}.
      *
-     * <p>A truthy non-array is REFUSED rather than ignored. The JS did {@code for (const ed of …)} over
-     * it, which iterates a string CHARACTER BY CHARACTER and throws on anything else — either way the
-     * prove ended as {@code ok: false}. Treating it as "no edits" would instead run a GREEN build on
+     * <p>A truthy non-array is REFUSED rather than ignored, and the prove ends as {@code ok: false}.
+     * Treating it as "no edits" would instead run a GREEN build on
      * unpatched code and report {@code green_passed: false}, which is a verdict on the fix rather than a
      * complaint about the request.
      */
@@ -265,17 +267,15 @@ final class Prove {
     /**
      * A string field the prove cannot proceed without.
      *
-     * <p>WHY IT IS REFUSED RATHER THAN COERCED — this is the port's one deliberate change of shape, and
-     * it is here because the natural coercion is DANGEROUS. The JS interpolated whatever it was given, so
-     * an absent {@code test_class} produced {@code -Dtest=undefined}, which matches no test. The
-     * equivalent Java coercion produces an empty {@code -Dtest=} — and that runs the repository's ENTIRE
-     * suite. On a project with failing tests of its own, the red build would then report failures and the
+     * <p>WHY IT IS REFUSED RATHER THAN COERCED, and this is load-bearing rather than strictness: the
+     * natural coercion is DANGEROUS. A missing {@code test_class} coerces to an empty {@code -Dtest=},
+     * and that runs the repository's ENTIRE suite. On a project with failing tests of its own, the red build would then report failures and the
      * marker would come back {@code red_reproduced: true} having never been tested: a FABRICATED
      * reproduction, which is the one answer this service must never give.
      *
-     * <p>Refusing lands the caller in the same place the JS did, because {@code writeFileSync} threw a
-     * TypeError for a missing {@code test_path} too: {@code {"ok": false, "error": …}}, which
-     * {@code RecordOutcome} records as infra and retries.
+     * <p>Refusing answers {@code {"ok": false, "error": …}}, which {@code RecordOutcome} records as
+     * infra and retries — the right outcome for a request that was malformed rather than a marker that
+     * would not reproduce.
      */
     private static String requiredText(Object body, String key) {
         Object value = Json.get(body, key);
@@ -286,9 +286,9 @@ final class Prove {
     }
 
     /**
-     * …and one whose emptiness would change what gets built. An empty {@code test_code} is allowed: the
-     * JS wrote the empty file, the build then found no test, and "the test did not run" is a truthful
-     * answer that the engine already knows how to read.
+     * …and one whose emptiness would change what gets built. An empty {@code test_code} is ALLOWED: the
+     * empty file is written, the build then finds no test, and "the test did not run" is a truthful
+     * answer the engine already knows how to read.
      */
     private static String requiredName(Object body, String key) {
         String value = requiredText(body, key);

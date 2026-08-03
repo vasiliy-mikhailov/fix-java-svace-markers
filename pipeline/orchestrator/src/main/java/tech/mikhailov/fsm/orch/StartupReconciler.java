@@ -17,11 +17,10 @@ import tech.mikhailov.fsm.orch.dao.SuspicionDao;
  * Restart semantics: markers already settled stay settled, and a marker that was mid-prove when the
  * process died goes back on the queue.
  *
- * <p>WHY THIS CLASS EXISTS AT ALL. n8n got this behaviour by accident. Its Data Table row stayed
- * {@code 'new'} for the whole prove — nothing recorded that a marker had been picked up — so a crash
- * left the row exactly as it found it and the next tick simply took it again. Correct, but only
- * because the lock lived in a different process (the java-runner's in-memory lease) from the state it
- * protected, which is not a property worth keeping.
+ * <p>WHY THIS CLASS EXISTS AT ALL. A queue that never records "taken" needs no reconciliation — a
+ * crash leaves the row exactly as it was found and the next tick takes it again — but it also has no
+ * mutual exclusion in the same place as the state it protects, which is what makes two provers
+ * possible. This queue does record it, so it has to undo it after a crash.
  *
  * <p>The orchestrator claims a marker by flipping its own row to
  * {@link SuspicionDao#STATUS_PROVING}, so the lock and the state are one row and cannot disagree. The
@@ -38,8 +37,7 @@ import tech.mikhailov.fsm.orch.dao.SuspicionDao;
  *   <li>{@code prove_attempts} is left alone. The attempt did not complete —
  *       {@link tech.mikhailov.fsm.nodes.RecordOutcome} is what increments it and it never ran — so
  *       counting it would spend a retry the marker never used and could push a perfectly provable
- *       marker to {@code infra_stuck} after three unrelated deploys. This matches the n8n behaviour
- *       exactly.</li>
+ *       marker to {@code infra_stuck} after three unrelated deploys.</li>
  *   <li>The {@code note} is rewritten so the requeue is visible. Without it the row is
  *       indistinguishable from one that was never picked up, and a marker that crashes the process on
  *       every attempt would look like a marker nothing had got to yet. The note it replaces described

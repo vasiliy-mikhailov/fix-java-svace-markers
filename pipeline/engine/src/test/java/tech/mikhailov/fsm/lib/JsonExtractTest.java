@@ -16,8 +16,8 @@ import org.junit.jupiter.params.provider.ValueSource;
  *
  * <p>Every stage that reads a model reply goes through this, so when it fails the pipeline does not
  * crash — it records "reply was not parseable JSON", retries, and eventually gives up on a marker that
- * was perfectly well answered. The parent's naive {@code indexOf('{')..lastIndexOf('}')} did exactly
- * that: a javadoc {@code @code} reference in the prose was enough to make it grab the wrong brace.
+ * was perfectly well answered. The naive {@code indexOf('{')..lastIndexOf('}')} does exactly that: a
+ * javadoc {@code @code} reference in the prose is enough to make it grab the wrong brace.
  *
  * <p>The payloads here are the shapes that actually arrive: a whole Java file inside a JSON string,
  * fenced blocks, prose either side, and replies cut off mid-string by a token limit.
@@ -66,7 +66,7 @@ class JsonExtractTest {
         return m;
     }
 
-    /** Javadoc prose is the natural source of stray braces — it is what broke the parent. */
+    /** Javadoc prose is the natural source of stray braces, and what a naive scan breaks on. */
     private static String codeRefs(int n) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < n; i++) {
@@ -181,8 +181,8 @@ class JsonExtractTest {
 
     @Test
     void aBraceInTheProseDoesNotCaptureTheParse() {
-        // the exact shape that broke the parent: a javadoc {@code ...} reference before the real
-        // object, whose brace lastIndexOf/indexOf would happily pair with the wrong end
+        // the shape a naive scan breaks on: a javadoc {@code ...} reference before the real object,
+        // whose brace lastIndexOf/indexOf would happily pair with the wrong end
         String t = """
                 The method {@code close()} is never called, so:
                 {"can_prove":true,"root_cause":"leak"}""";
@@ -367,8 +367,8 @@ class JsonExtractTest {
     @ParameterizedTest(name = "input {index}")
     @ValueSource(strings = {"123", "```json\n{\n```", "{\"a\":1,,}"})
     void itNeverThrowsWhateverArrives(String nasty) {
-        // The JS also survives `undefined`, `null` and the number 123, because it opens with
-        // `String(text || '')`. Here that coercion has already happened at the request boundary
+        // `undefined`, `null` and the number 123 survive too, via `String(text || '')`. Here that
+        // coercion has already happened at the request boundary
         // (Json.str), so what reaches this method is a String or null — both covered.
         assertDoesNotThrow(() -> extract(nasty));
     }

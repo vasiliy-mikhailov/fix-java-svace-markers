@@ -23,13 +23,13 @@ import tech.mikhailov.fsm.orch.model.Suspicion;
 /**
  * THE CLAIM — a marker is handed to one prover, once, whatever else is reading the queue.
  *
- * <p>WHAT IS AT STAKE. Two provers holding one marker means two builds of the same repository in the
- * java-runner's single cached workspace, each patching the other's tree; the red-to-green flip that is
+ * <p>WHAT IS AT STAKE. Two provers holding one marker means two builds of the same repository in ONE
+ * cached workspace, each patching the other's tree; the red-to-green flip that is
  * the whole proof then describes neither of them. It also means two artifacts and two settles for one
  * row, of which the loser silently wins.
  *
- * <p>n8n prevented this with a named lease held in the java-runner — a lock in a different process from
- * the state it protected, correct only because there was exactly one runner. Here the lock IS the row:
+ * <p>A named lease held somewhere else would be a lock in a different process from the state it
+ * protects, and advisory besides. Here the lock IS the row:
  * {@link SuspicionDao#claimNext()} re-reads the queue and takes one row with an UPDATE carrying
  * {@code AND status = 'new'}, so the database decides who won and the loser sees an update count of
  * zero. These tests exercise that against the real H2 rather than against a mock, because the property

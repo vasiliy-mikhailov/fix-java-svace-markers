@@ -140,8 +140,8 @@ class OutboundTest {
         assertTrue(e.getMessage().startsWith("HTTP 429 from " + base + "/x"), e.getMessage());
         assertTrue(e.getMessage().contains("rate limit exceeded"),
                 "the reason has to survive into the row: 'error' on its own is not a diagnosis");
-        assertEquals(reply, e.description(), "n8n put the upstream text in `description` and so do "
-                + "we, because Llm.failureText falls back to it");
+        assertEquals(reply, e.description(), "the upstream text belongs in `description`, because "
+                + "Llm.failureText falls back to it");
         assertEquals("HTTP 429 from " + base + "/x — " + reply,
                 Llm.failureText(e, 400, "error"),
                 "what the stage would actually write into the row");
@@ -162,7 +162,7 @@ class OutboundTest {
 
     @Test
     void anUnsetEndpointFailsAsACallAndNotAsACrash() {
-        // Llm.chat builds `undefined/chat/completions` when QWEN_BASE_URL is unset — the JS spelling,
+        // Llm.chat builds `undefined/chat/completions` when QWEN_BASE_URL is unset — deliberately,
         // kept because it is greppable. It has to arrive at the stage's catch, not escape the node.
         Llm.ApiException e = assertThrows(Llm.ApiException.class,
                 () -> outbound.request(options("url", "undefined/chat/completions")));
@@ -175,7 +175,7 @@ class OutboundTest {
     @Test
     void theChatOptionsTheStagesBuildAreASendableRequest() throws Exception {
         // The node tests assert this options map field by field. This asserts that a server can
-        // actually answer it — that the port's request object and a real HTTP request agree.
+        // actually answer it — that this request object and a real HTTP request agree.
         reply = "{\"choices\":[{\"message\":{\"content\":\"{\\\"verdict\\\":\\\"sound\\\"}\"}}]}";
         Llm.Endpoint endpoint = new Llm.Endpoint(base, "secret", "qwen3");
 
@@ -197,7 +197,7 @@ class OutboundTest {
 
     @Test
     void aRestrictedHeaderIsDroppedRatherThanTakingTheCallDown() throws Exception {
-        // Every ported node sets `Connection: close`, which java.net.http refuses to send because it
+        // Every stage sets `Connection: close`, which java.net.http refuses to send because it
         // manages the connection itself. Throwing on it would take three stages down for a header the
         // JDK is already handling; the header it can send has to still arrive.
         Map<String, Object> headers = new LinkedHashMap<>();
@@ -243,10 +243,9 @@ class OutboundTest {
         //     HTTP2-Settings: AAEAAEAAAAIAAAAA…
         //
         // uvicorn — which serves vLLM, and which does not speak h2c — reads `Connection: Upgrade` and
-        // hands FastAPI a request with no body rather than declining the offer and reading it. n8n's
-        // helpers.httpRequest never provoked this: it speaks HTTP/1.1 and offers nothing. So this is
-        // the one place where "same options in, same call out" was not enough for the port to be
-        // equivalent — the DEFAULT of the client underneath it differed, and the difference was
+        // hands FastAPI a request with no body rather than declining the offer and reading it. So this
+        // is the one place where "same options in, same call out" is not enough — the DEFAULT of the
+        // client underneath it decides the outcome, and the difference was
         // visible only against the real server.
         //
         // It is pinned as the OFFER, not as `client.version()`: what broke the endpoint is the header

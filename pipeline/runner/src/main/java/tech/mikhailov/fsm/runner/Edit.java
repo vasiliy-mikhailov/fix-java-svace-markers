@@ -25,7 +25,7 @@ final class Edit {
     private Edit() {
     }
 
-    /** {@code {text, note}} or {@code {error}} — the JS returned one shape or the other, never both. */
+    /** {@code {text, note}} or {@code {error}} — one shape or the other, never both. */
     record Applied(String text, String note, String error) {
 
         static Applied replaced(String text, String note) {
@@ -70,11 +70,11 @@ final class Edit {
     /**
      * Collapse every whitespace run to one space, remembering where each character came from.
      *
-     * <p>WHITESPACE MEANS JAVASCRIPT'S {@code \s}, via {@link JsText#isSpace}, and not Java's. The JS
-     * asked {@code /\s/.test(ch)}, which includes U+00A0 and the BOM; Java's {@code \s} is
+     * <p>WHITESPACE MEANS JAVASCRIPT'S {@code \s}, via {@link JsText#isSpace}, and not Java's. That
+     * set includes U+00A0 and the BOM; Java's {@code \s} is
      * {@code [ \t\n\x0B\f\r]} and would leave a no-break space standing as a normal character. A model
-     * that indents with one — or a file saved by an editor that did — would then fail to match here and
-     * match in the JS, which is the one outcome this whole fallback exists to prevent.
+     * that indents with one — or a file saved by an editor that did — would then fail to match at all,
+     * which is the one outcome this whole fallback exists to prevent.
      */
     static Normalized wsNorm(String s) {
         StringBuilder out = new StringBuilder(s.length());
@@ -111,10 +111,10 @@ final class Edit {
      * refusal is the reason it is safe to have at all: guessing which of two near-identical spans the
      * model meant would let a "proven" fix land somewhere nobody reviewed.
      *
-     * <p>ONE DELIBERATE DIVERGENCE. {@code new_str} is inserted VERBATIM. The JS reached
-     * {@code String.prototype.replace} on the exact path, which expands {@code $&}, {@code $$},
-     * {@code $`} and {@code $'} inside the replacement — so a fix containing {@code $&} was silently
-     * corrupted, and only on that path: the whitespace path below concatenates and does not expand. The
+     * <p>ONE CATALOGUED DIVERGENCE. {@code new_str} is inserted VERBATIM. A regex-replace on the exact
+     * path expands {@code $&}, {@code $$}, {@code $`} and {@code $'} inside the replacement — so a fix
+     * containing {@code $&} is silently corrupted, and only on that path: the whitespace path below
+     * concatenates and does not expand. The
      * port keeps the behaviour the two paths agree on, which is also the only one a fixer could have
      * meant. Java source with a {@code $} in it is not exotic (nested class names, shell templates).
      *
@@ -126,10 +126,8 @@ final class Edit {
         // "undefined" is a legitimate needle (Java source says that word in comments, literals and
         // identifiers), so a caller that coerces the absence into it asks this function to go and find
         // one — and where the file contains it exactly once, the edit applies where nobody aimed it and
-        // the run reports an ordinary build result for a patch nobody intended. The JS reached
-        // `cur.split(undefined)`, which is ONE piece and therefore zero occurrences, and then died in
-        // wsNorm on `undefined.length`; refused per-edit here so the request's other edits survive, the
-        // way a path Java cannot spell already does.
+        // the run reports an ordinary build result for a patch nobody intended. Refused PER EDIT, so
+        // the request's other edits survive — the way a path Java cannot spell already does.
         //
         // Refused HERE rather than only at the call site because this is the function that does the
         // searching: a needle the caller never had must not be searchable, whoever calls next.
@@ -162,20 +160,20 @@ final class Edit {
         int end = current.index()[at + needle.length() - 1] + 1;
         // The span starts at the first non-whitespace character — `needle` is trimmed — so the file's
         // own indentation survives and the replacement is trimmed to suit. Trimmed with JavaScript's
-        // whitespace set, because String.strip() would also eat U+001C..U+001F, which the JS keeps.
+        // whitespace set (JsText), because String.strip() would also eat U+001C..U+001F, which are data.
         return Applied.replaced(cur.substring(0, start) + JsText.trim(replacement) + cur.substring(end),
                 "matched ignoring whitespace/line-wrapping");
     }
 
     /**
-     * {@code s.split(sep).length - 1}, which is how the JS counted occurrences.
+     * {@code s.split(sep).length - 1} — how an occurrence is counted here.
      *
      * <p>Spelled out because the empty separator is not the obvious case and it decides which error a
      * caller gets: {@code "abc".split("")} is three pieces (so two "occurrences") while
      * {@code "".split("")} is NO pieces (so minus one). Both land on "old_str is empty" or "not
-     * unique", never on a silent insertion — except for a two-character file, where the JS really did
-     * count one and prepend the replacement. Reproduced rather than tidied, because the tidy version
-     * would be a second behaviour nobody has tested against the live service.
+     * unique", never on a silent insertion — except for a two-character file, where this counts one
+     * and prepends the replacement. Left as it is rather than tidied: the tidy version is a second
+     * behaviour that no recorded case covers.
      */
     static int splitCount(String haystack, String needle) {
         if (needle.isEmpty()) {
@@ -225,14 +223,12 @@ final class Edit {
             // means the repository-relative one, and `path.resolve` would otherwise leave the workspace.
             full = base.resolve(stripLeadingSlashes(p == null ? "" : p)).normalize();
         } catch (InvalidPathException notAFilename) {
-            // A NUL in the middle of a name, which `Path.of` refuses and `path.resolve` does not. The
-            // differential harness found this: the JS handed the caller a path, `existsSync` said no, and
-            // the request came back with that ONE edit in `edit_errors`. Throwing instead ends the whole
-            // prove as `ok: false`, so a model reply garbled in one edit would cost the marker its other,
-            // good edits and be recorded as an infra failure to retry. Reported per-edit, therefore, and
-            // with the JS's wording — no byte sequence containing a NUL can name a file on any
-            // filesystem this service clones onto, so "file not found" is both true and what the caller
-            // already knows how to render.
+            // A NUL in the middle of a name, which `Path.of` refuses. Throwing here would end the whole
+            // prove as `ok: false`, so a model reply garbled in ONE edit would cost the marker its
+            // other, good edits and be recorded as an infra failure to retry. Reported per-edit
+            // therefore, and worded "file not found" — no byte sequence containing a NUL can name a file
+            // on any filesystem this service clones onto, so it is both true and what the caller already
+            // knows how to render.
             return Target.failed("file not found");
         }
         if (!full.startsWith(base)) {

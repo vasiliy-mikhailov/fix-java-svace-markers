@@ -11,11 +11,11 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * The JavaScript primitives the ported nodes are specified in terms of.
+ * The JavaScript primitives this pipeline's wire behaviour is specified in terms of.
  *
- * <p>There is no JS test file to port here: in JS these ARE the language, so nobody ever wrote tests
- * for them. Every case below is a place where the nearest Java built-in was tried first and disagreed
- * with V8 — found by running both implementations over the same input, not by reading the code.
+ * <p>Every case below is a place where the nearest Java built-in was tried first and DISAGREED with
+ * the JavaScript rule this pipeline's wire format is defined by — found by running both over the same
+ * input, not by reading the code. That is why they are asserted one input at a time.
  *
  * <p>What JavaScript calls whitespace is NOT here: {@link JsText} owns that predicate and JsTextTest
  * checks it against Node character by character over the whole BMP. What is here is everything built

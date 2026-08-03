@@ -71,10 +71,10 @@ class HttpTransportTest {
      * AN OPTIONS MAP WITH NO {@code method} IS A GET.
      *
      * <p>{@code GithubRepoLookup} (the default-branch lookup) and {@code Verdict}'s Svace detail call
-     * both omit {@code method} entirely, exactly as the n8n nodes did. The verb is not defaulted
-     * anywhere else on that path, so if it is not defaulted here the request goes out with the
-     * four-character verb {@code null} — {@code String(undefined)}, the same greppable JS artefact
-     * {@link HttpTransport#uriOf} documents — and GitHub answers 501 for every marker in the run.
+     * both omit {@code method} entirely. The verb is not defaulted anywhere else on that path, so if
+     * it is not defaulted here the request goes out with the four-character verb {@code null} — the
+     * same greppable artefact {@link HttpTransport#uriOf} documents — and GitHub answers 501 for every
+     * marker in the run.
      * {@code branch_error} would then read as a repository nobody can resolve rather than as a bug in
      * this line.
      */
@@ -94,9 +94,9 @@ class HttpTransportTest {
     /**
      * …AND AN OPTIONS MAP THAT SAYS {@code POST} IS NOT DOWNGRADED TO ONE.
      *
-     * <p>{@code SourceWindowService} posts {@code /source_window} to the java-runner and every chat
+     * <p>{@code SourceWindowService} posts {@code /source_window} to the prover and every chat
      * completion is a POST. A GET carrying the same {@link HttpRequest.BodyPublisher} reaches a server
-     * that reads no body from a GET: the runner answers about a request with no {@code repo}, and vLLM
+     * that reads no body from a GET: the prover answers about a request with no {@code repo}, and vLLM
      * answers the 400 whose text is about the payload. Both look like the endpoint refusing this
      * marker.
      */
@@ -210,7 +210,7 @@ class HttpTransportTest {
      * header at all satisfied the check, every chat completion in the pipeline would go out untyped:
      * the same silent 400 as above, on the path that matters most.
      *
-     * <p>{@code Connection: close} is in the map because every ported node sets it and
+     * <p>{@code Connection: close} is in the map because every stage sets it and
      * {@code java.net.http} REFUSES it. The refusal must be skipped, not fatal, and skipping it must
      * not lose the header that came after it.
      */
@@ -245,7 +245,7 @@ class HttpTransportTest {
      * the caller's sends the header twice, and two {@code Content-Type} values on one request is a 400
      * from GitHub and from any strict front end — a failure that appears only for the callers that took
      * the trouble to declare their own type. Asserted case-insensitively because header names are, and
-     * because the n8n nodes are not consistent about the capital letters.
+     * because callers are not consistent about the capital letters.
      */
     @Test
     void aContentTypeTheCallerSetIsNeitherReplacedNorDuplicated() throws Exception {
@@ -327,7 +327,7 @@ class HttpTransportTest {
      *
      * <p>{@link HttpRequest.Builder#timeout} throws {@link IllegalArgumentException} for a zero or
      * negative duration, and it throws it while BUILDING the request — before a socket is opened.
-     * {@code 0} is n8n's idiom for "no timeout" and is what a {@code LookupRequest} with an unset
+     * {@code 0} is the idiom for "no timeout" and is what a {@code LookupRequest} with an unset
      * {@code timeoutMs} carries. Without the fallback, such an options map produces a failure with no
      * URL, no status and no reply text in it, which is the least diagnosable row this pipeline can
      * write: {@code PrepProver.describe} reads a message off the rejection and would record
@@ -452,7 +452,7 @@ class HttpTransportTest {
      * AN UNSET {@code QWEN_BASE_URL} FAILS AS A CALL, AND THE MESSAGE NAMES THE VARIABLE.
      *
      * <p>{@code String(undefined) + "/chat/completions"} is the literal {@code
-     * undefined/chat/completions} — kept from the JS because it is greppable, and the single commonest
+     * undefined/chat/completions} — kept because it is greppable, and the single commonest
      * misconfiguration of this deployment. It is a syntactically valid RELATIVE URI, so nothing rejects
      * it until {@code HttpRequest.newBuilder} throws a bare {@link IllegalArgumentException} about an
      * undefined scheme: an unchecked exception out of a method declared to fail with

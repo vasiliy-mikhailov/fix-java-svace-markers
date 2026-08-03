@@ -1,20 +1,19 @@
 # ONE SERVICE. `docker compose up -d` starts one container and that is the whole deployment.
 #
-# It was three — engine, orchestrator, runner — and the split cost more than it bought. The runner was
-# separate because /run_test clones third-party repositories and shells out to Maven over them; what
-# that arrangement actually cost was an ADDRESS, written in three places (an FSM_RUNNER_URL line here,
-# a ${FSM_RUNNER_URL:…} placeholder in application.yml, and a compiled-in constant behind both), none
-# of them read until a marker is proved. A stale value anywhere in that chain surfaced hours into a
-# 6-26 hour run as a connect retried three times and filed as an infrastructure failure — which reads
-# as a runner that is down rather than as a name nothing serves. The prove now runs IN the orchestrator
-# process (fsm.runner.mode=local, the default), and that class of bug cannot be configured.
+# The prove runs IN the pipeline process (fsm.runner.mode=local, the default) rather than behind a
+# socket, and that is deliberate: a separate prover costs an ADDRESS, written in three places (an
+# FSM_RUNNER_URL line here, a ${FSM_RUNNER_URL:…} placeholder in application.yml, and a compiled-in
+# constant behind both), none of them read until a marker is proved. A wrong value anywhere in that
+# chain surfaces hours into a 6-26 hour run as a connect retried three times and filed as an
+# infrastructure failure — which reads as a prover that is down rather than as a name nothing serves.
+# In the default shape that class of bug cannot be configured at all.
 #
-# THE REMOTE SHAPE IS NOT GONE. Set FSM_RUNNER_MODE=http and point FSM_RUNNER_URL at a runner of your
-# own and you have exactly what this file used to describe. That is a real thing to want — a container
-# boundary between the pipeline's credentials and the build scripts under test is stronger than the
-# denylist in tech.mikhailov.fsm.runner.Proc, which is what protects them inside one process.
+# THE SPLIT SHAPE IS STILL AVAILABLE. Set FSM_RUNNER_MODE=http and point FSM_RUNNER_URL at a runner of
+# your own. That is a real thing to want — a container boundary between the pipeline's credentials and
+# the build scripts under test is stronger than the denylist in tech.mikhailov.fsm.runner.Proc, which is
+# what protects them inside one process.
 #
-# WHAT THE MERGE HAD TO KEEP, and each of these is pinned by orchestrator's DeploymentTest:
+# WHAT ONE PROCESS HAS TO KEEP, and each of these is pinned by orchestrator's DeploymentTest:
 #   * /run_test serialised around ONE workspace per repository. Two provers share no lock at all, so a
 #     second one patches the tree the first is building in — a green prove about the wrong code.
 #     tech.mikhailov.fsm.runner.LocalRunner owns the single FIFO build thread; nothing else may.
@@ -22,17 +21,18 @@
 #     checkout and every target/ behind it: minutes per repository, silently, over 282 markers.
 #   * the process unprivileged and owning that cache. It runs arbitrary build scripts.
 #
-# NO EXTERNAL NETWORKS, AND THAT IS THE FIX FOR A HARD BLOCKER. This file used to declare proxy-net and
-# mvn-cache as `external: true` — two networks that exist on exactly one machine. Anywhere else
-# `docker compose up -d` dies on its first line with "network mvn-cache declared as external, but could
-# not be found", before a single container is created. A host that needs them keeps them in
+# NO EXTERNAL NETWORKS, AND KEEP IT THAT WAY. An `external: true` network is a name that exists on one
+# machine; anywhere else `docker compose up -d` dies on its first line with "network mvn-cache declared
+# as external, but could not be found", before a single container is created — a hard blocker for every
+# reader, arriving after a build that succeeded. A host that needs one keeps it in
 # docker-compose.override.yml, which Compose merges automatically and which is gitignored; copy
 # docker-compose.override.yml.example.
 #
-# Compose project name. WITHOUT this, Compose derives the project from the directory basename. That was
-# `n8n` for this stack AND for fix-java-bugs' stack, so both resolved the same `n8n_default` network and
-# the two pipelines silently shared one bridge. The line stays regardless of what this directory is
-# called next, and the volumes below are additionally pinned by physical name — see the bottom.
+# Compose project name, stated rather than derived. WITHOUT this line Compose takes the project from the
+# directory basename, so two stacks whose deploy directories happen to share a basename resolve the same
+# <basename>_default network and silently share one bridge. The line stays regardless of what this
+# directory is called next, and the volumes below are additionally pinned by physical name — see the
+# bottom.
 name: fsm
 
 services:
@@ -77,12 +77,11 @@ services:
       # defaults it to ./data/cache, which is laptop-correct and a container's writable layer. The
       # volume below is mounted here; DeploymentTest pins the two to each other rather than to a literal.
       - CACHE=/cache
-      # WHICH REPOSITORY MAVEN RESOLVES FROM, AT RUN TIME — the defect this replaces made every prove
-      # fail on every machine but one. runner/Dockerfile used to copy a settings.xml with mirrorOf=*
-      # pointed at http://nexus:8081 into the image, unconditionally. mirrorOf=* is not a cache in front
-      # of Central; it is the ONLY repository Maven will talk to. So off that network the container
-      # started, answered /healthz, cloned — and failed every build in hundreds of lines about
-      # unresolvable artifacts, which reads as a broken project.
+      # WHICH REPOSITORY MAVEN RESOLVES FROM, AT RUN TIME, and never a settings.xml baked into the
+      # image. mirrorOf=* is not a cache in front of Central; it is the ONLY repository Maven will talk
+      # to. Baked in, the container starts on any machine, answers /healthz, clones — and then fails
+      # every build in hundreds of lines about unresolvable artifacts wherever that hostname does not
+      # resolve, which reads as a broken project.
       #
       #   unset (the default)  -> Maven Central. Works on a laptop with nothing but Docker.
       #   MAVEN_MIRROR_URL=…   -> that URL, whatever host it names, e.g.
@@ -96,18 +95,16 @@ services:
       # WHERE THE PROVE RUNS. `local` is the default and the whole point of this file; `http` posts it to
       # FSM_RUNNER_URL instead, for a deployment that keeps the build sandbox in its own container.
       - FSM_RUNNER_MODE=${FSM_RUNNER_MODE:-local}
-      # …AND THE ADDRESS HAS TO TRAVEL WITH THE MODE, which it did not for one revision and that was a
-      # trap of exactly the shape this merge existed to remove. Compose passes a variable to the process
-      # ONLY if it is listed here; a name set in the shell or in .env otherwise reaches Compose's own
+      # …AND THE ADDRESS HAS TO TRAVEL WITH THE MODE. Compose passes a variable to the process ONLY if
+      # it is listed here; a name set in the shell or in .env otherwise reaches Compose's own
       # interpolation and stops there. So with the mode listed and the address not,
       #
       #     FSM_RUNNER_MODE=http FSM_RUNNER_URL=http://your-runner:8090 docker compose up -d
       #
-      # — the command README.md and DOCKER.md both printed — switched the mode and SILENTLY DROPPED the
-      # address, leaving HttpRunnerClient.DEFAULT_BASE_URL to answer for it. Every prove then went to
-      # `http://fsm-runner:8090`, a name nothing in this stack serves, and surfaced hours into a 6-26
-      # hour run as a connect retried three times and filed as an infrastructure failure. That is the
-      # original defect verbatim, re-entered through the documentation rather than through a config file.
+      # — the command README.md and DOCKER.md both print — switches the mode and SILENTLY DROPS the
+      # address, leaving HttpRunnerClient.DEFAULT_BASE_URL to answer for it. Every prove then goes to a
+      # name nothing in this stack serves, and surfaces hours into a 6-26 hour run as a connect retried
+      # three times and filed as an infrastructure failure. Both lines stay, or neither does.
       #
       # THE DEFAULT IS EMPTY, not an address, and that is the other half. An address written here would
       # be a knob that changes nothing in the `local` shape and would be believed by the next reader —
@@ -123,9 +120,10 @@ services:
       # a green run in which every marker settles with a downgraded verdict nobody made.
       #
       # GITHUB_TOKEN is the clone credential. It never reaches a command line or a config file:
-      # Workspace hands it to git through a credential helper in the environment, so unlike the JS it is
-      # not written into any checkout's .git/config. Proc strips it — and QWEN_API_KEY, SVACE_TOKEN and
-      # FSM_DB_PASSWORD — out of the environment of every build this process starts.
+      # Workspace hands it to git through a credential helper in the environment, so it is not written
+      # into any checkout's .git/config — which is what stops it outliving a rotation on the cache
+      # volume. Proc strips it — and QWEN_API_KEY, SVACE_TOKEN and FSM_DB_PASSWORD — out of the
+      # environment of every build this process starts.
       - QWEN_BASE_URL=${QWEN_BASE_URL}
       - QWEN_API_KEY=${QWEN_API_KEY}
       - QWEN_MODEL=${QWEN_MODEL}
@@ -171,12 +169,12 @@ services:
       # worktree. Unmounted, /cache is the container's writable layer and every `up -d` re-clones
       # everything and loses every target/ the second build of each repository depends on.
       #
-      # DELIBERATELY NOT the retired JS runner's `fsm_fsm-java-runner-cache`. Every clone that service
-      # made carries `https://<token>@github.com/…` verbatim in its .git/config as remote.origin.url.
-      # This code never writes that — but it ADOPTS an existing checkout rather than re-cloning it, and
-      # adoption never rewrites remote.origin.url, so pointing at the old volume would carry the
-      # credential forward past a rotation of GITHUB_TOKEN. Retire those copies with
-      #   docker volume rm fsm_fsm-java-runner-cache
+      # NEVER POINT THIS AT A CACHE VOLUME SOMETHING ELSE WROTE. This code ADOPTS an existing checkout
+      # rather than re-cloning it, and adoption never rewrites remote.origin.url — so a checkout cloned
+      # from `https://<token>@github.com/…` by anything else carries that token verbatim in its
+      # .git/config and this service keeps using it, past a rotation of GITHUB_TOKEN. Nothing here
+      # writes such a URL: Workspace hands the token to git through a one-shot credential helper that
+      # leaves nothing on disk.
       - fsm-runner-cache:/cache
       # repo root, read-only, so an ingest can read /data/data/svace/*.csv. `csv_path` is resolved in
       # THIS container. It is also where /data/prompts comes from.
@@ -243,11 +241,10 @@ services:
 # tables, so nothing errors and nothing is red. That is how 8 hours of validated run history would
 # disappear with no signal at all.
 #
-# The names below are the ones ALREADY LIVE on the deployment host — which is also why merging the two
-# services did not merge their volumes: /state and /cache keep the exact names they had, so the running
-# stack keeps every settled verdict and every checkout across this change.
+# The names below are the ones LIVE on the deployment host. Treat them as data, not as labels: changing
+# one is the same act as pointing the stack at a different, empty volume.
 volumes:
-  # The clones and the build workspaces. Named for the service that used to own them, deliberately.
+  # The clones and the build workspaces.
   fsm-runner-cache:
     name: fsm_fsm-runner-cache
   # THE one that must not move. 282 markers, every settled verdict, every drafted PR body, for a run

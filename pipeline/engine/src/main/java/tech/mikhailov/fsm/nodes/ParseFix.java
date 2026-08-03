@@ -27,8 +27,9 @@ import tech.mikhailov.fsm.lib.JsonExtract;
  *
  * <p>Path normalisation is part of the guard, not tidying: {@code ./src/main/java/a/B.java} and
  * {@code /src/main/java/a/B.java} are the same file and must be accepted, while {@code ../../etc} is
- * not the file and must not be. The JS strips one leading {@code ./} or {@code /} and compares — it
- * does NOT resolve {@code ..}, which is why an upward escape fails the comparison and is rejected.
+ * not the file and must not be. One leading {@code ./} or {@code /} is stripped and the rest compared
+ * literally — {@code ..} is NOT resolved, which is why an upward escape fails the comparison and is
+ * rejected.
  */
 public final class ParseFix {
 
@@ -61,7 +62,7 @@ public final class ParseFix {
      */
     public record Request(Object prepProver, Object parseTest, Object runTestReproduce, Object fixer) {
 
-        /** Read the request out of a posted body; the keys are the n8n node names, snake-cased. */
+        /** Read the request out of a posted body; the keys are the stage names, snake-cased. */
         public static Request of(Object body) {
             return new Request(Json.get(body, "prep_prover"), Json.get(body, "parse_test"),
                     Json.get(body, "run_test_reproduce"), Json.get(body, "fixer_agent"));
@@ -125,8 +126,8 @@ public final class ParseFix {
 
         // THE GUARD.
         String srcfile = norm(Json.get(j, "file"));
-        // Not an array is not an empty array in the JS either — `Array.isArray` guards the filter, so
-        // a fixer that answered `"fix_edits": "see above"` reports no edits rather than crashing.
+        // Not an array is not an empty array: the type is checked before the filter, so a fixer that
+        // answered `"fix_edits": "see above"` reports no edits rather than crashing.
         List<Object> claimed = new ArrayList<>();
         if (Json.get(r, "fix_edits") instanceof List<?> l) {
             claimed.addAll(l);
@@ -193,13 +194,13 @@ public final class ParseFix {
      * a number too big for a double.
      *
      * <p>THE CRASH THIS PREVENTS. {@code {"old_str": 1e400}} is a perfectly well-formed reply and a
-     * model can produce it; it parses to Infinity, which JSON has no spelling for. The JS writes
-     * {@code "old_str": null} and carries on. {@link Json#stringify} throws — DELIBERATELY, because a
+     * model can produce it; it parses to Infinity, which JSON has no spelling for, so it is
+     * recorded as {@code "old_str": null}. {@link Json#stringify} throws — DELIBERATELY, because a
      * NaN the engine COMPUTED (a value_score) must not be quietly recorded as null in a row a
      * reviewer is triaging. That reasoning does not reach here: this value came from the model, not
      * from the engine, and this node's whole job is to survive a bad reply and flag it rather than
-     * take the stage down. So the JS rendering is used for the values the model supplied, and the
-     * engine's own numbers keep the strict one.
+     * take the stage down. So the lenient rendering is used for the values the model supplied, and
+     * the engine's own numbers keep the strict one.
      *
      * <p>Recursive because {@code old_str} may be an object or a list — the model sent it, so its
      * shape is not ours to assume.

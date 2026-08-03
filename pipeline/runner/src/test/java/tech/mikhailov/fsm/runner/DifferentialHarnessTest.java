@@ -17,13 +17,12 @@ import tech.mikhailov.fsm.lib.Json;
 /**
  * THE DIFFERENTIAL HARNESS, as a test.
  *
- * <p>This port replaced {@code java-runner/lib/edit.js}, {@code lib/build.js} and the non-git parts of
- * {@code src/server.js}. For as long as that JavaScript existed, {@code harness/run.sh} ran both
- * implementations over 23 851 generated cases and printed every difference — and NOTHING RAN IT. It
- * was evidence somebody produced once, by hand, and a regression in this port would have been found
- * by whoever next remembered the script existed.
+ * <p>23 851 cases were generated over this module's edit application, build parsing and path
+ * containment and over the implementation it replaced, and every difference was printed by
+ * {@code harness/run.sh} — which NOTHING RAN. It was evidence somebody produced once, by hand, and a
+ * regression here would have been found by whoever next remembered the script existed.
  *
- * <p>The JavaScript is now gone. Its ANSWERS are not: they are frozen under
+ * <p>The reference implementation is now gone. Its ANSWERS are not: they are frozen under
  * {@code harness/fixtures} and loaded by {@link HarnessFixtures}, so the comparison still happens —
  * on every {@code mvn test}, and a divergence that was not there yesterday is a RED TEST.
  *
@@ -35,7 +34,7 @@ import tech.mikhailov.fsm.lib.Json;
  * "which of 23 851 cases is it?", which is not.
  *
  * <h2>What this can no longer catch</h2>
- * A divergence in a case NOBODY GENERATED. The frozen answers cover the corpus the JS side built and
+ * A divergence in a case NOBODY GENERATED. The frozen answers cover the corpus the reference side built and
  * nothing else, and there is no way to extend it: the program that would answer a new case has been
  * deleted. See {@code harness/README.md}, which says so at length and without hedging.
  */
@@ -64,7 +63,7 @@ class DifferentialHarnessTest {
     }
 
     @Test
-    @DisplayName("every frozen case is answered, and the run is the corpus the JS side generated")
+    @DisplayName("every frozen case is answered, and the run is the whole frozen corpus")
     void theCorpusIsWhole() {
         // 23851 until 2026-08-01, when the `lease` family (450 cases) was removed with Lease.java.
         //
@@ -74,18 +73,17 @@ class DifferentialHarnessTest {
         // still self-certify. Changing it is a claim that the shrink was DELIBERATE, and the reason
         // belongs here next to it.
         //
-        // The lease family went because /lease and /lease/release were deleted: they were n8n's mutual
-        // exclusion between two schedule ticks, n8n is gone, and Spring Batch gives the orchestrator
-        // single-flight structurally. With nothing left to compare against, those 450 cases could not be
-        // answered by a Java side that no longer has the class. They were 450/450 IDENTICAL after the
-        // Lease.number fix, so no divergence was hidden by their removal — divergent is still 745.
+        // The lease family went with the lease routes: mutual exclusion here is structural (Spring
+        // Batch single-flight plus one FIFO build thread) rather than advisory, so there is no class
+        // left to answer those 450 cases. They were 450/450 IDENTICAL, so no divergence was hidden by
+        // their removal — divergent is still 745.
         assertEquals(23401, report.total(), "the frozen corpus has changed size");
         int perFamily = report.byFamily().values().stream().mapToInt(t -> t[0]).sum();
         assertEquals(report.total(), perFamily, "a case was counted in no family");
     }
 
     @Test
-    @DisplayName("the divergences against the retired JavaScript are exactly the catalogued ones")
+    @DisplayName("the divergences from the recorded reference answers are exactly the catalogued ones")
     void theDivergencesAreTheCataloguedOnes() throws IOException {
         Map<String, Object> found = HarnessCompare.catalogue(report);
         if (RECORD) {
@@ -96,8 +94,8 @@ class DifferentialHarnessTest {
                 + " — regenerate with -Dharness.record=true and review the diff");
         String expected = Files.readString(EXPECTED, StandardCharsets.UTF_8).strip();
         assertEquals(expected, pretty(found), """
-                The port's behaviour no longer matches the catalogued difference from the retired \
-                JavaScript.
+                This module's behaviour no longer matches the catalogued difference from the \
+                recorded reference answers.
 
                 Read target/harness/report.txt for the case-by-case detail. If the change is \
                 deliberate, regenerate the catalogue with
@@ -109,7 +107,7 @@ class DifferentialHarnessTest {
     }
 
     @Test
-    @DisplayName("the invariants hold on this port, whatever the retired JavaScript answered")
+    @DisplayName("the invariants hold on this code, whatever the recorded reference answered")
     void theInvariantsHold() {
         // Agreement cannot prove these: two implementations that both picked the wrong span out of
         // two candidates would agree perfectly. Each is checked against an oracle written a different
@@ -125,16 +123,16 @@ class DifferentialHarnessTest {
     }
 
     @Test
-    @DisplayName("the invariants held on the retired JavaScript too, which is why it could be retired")
-    void theyHeldOnTheJavaScriptAsWell() {
-        // The last defect this harness found on the LIVE JavaScript was here: `/fs/read_file`
+    @DisplayName("the invariants held on the recorded reference too, which is why it could be retired")
+    void theyHeldOnTheRecordedReferenceAsWell() {
+        // The last defect this harness found on the LIVE reference was here: `/fs/read_file`
         // compared `full.startsWith(resolve(base))` with no separator, so the sibling directory a
         // half-finished clone leaves behind — <key>.tmp, with a .git/config of its own — passed the
-        // test for <key>. It was fixed in the JavaScript before that service was retired, and these
-        // are the fixed answers. Asserting it keeps the record straight: the port did not inherit a
+        // test for <key>. It was fixed in the reference before that service was retired, and these
+        // are the fixed answers. Asserting it keeps the record straight: the cort did not inherit a
         // hole, it closed one.
         report.invariants().get("js").forEach((rule, r) ->
-                assertEquals(0, r.violations(), () -> "the frozen JS answers violate: " + rule
+                assertEquals(0, r.violations(), () -> "the frozen reference answers violate: " + rule
                         + "\n  " + r.examples()));
     }
 

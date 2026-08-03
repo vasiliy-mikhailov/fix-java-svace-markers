@@ -22,8 +22,8 @@ import tech.mikhailov.fsm.nodes.PrMaker.Request;
  * {@code PR maker} — the deterministic half of the PR curator.
  *
  * <p>The judgement itself (is this lesson code? is this too trivial to propose?) is only observable
- * against a real model, and n8n/agentic/test/model.skeptic-prmaker.test.js checks it there. Everything
- * AROUND that call is ordinary code, and it is where the expensive mistakes live: a prompt that
+ * against a real model. Everything AROUND that call is ordinary code, and it is where the expensive
+ * mistakes live: a prompt that
  * quietly loses the diff, a reply that half-parses, a timeout that reads as approval.
  *
  * <p>Two properties are load-bearing and are asserted from several directions below:
@@ -153,7 +153,7 @@ class PrMakerTest {
     }
 
     @Test
-    void aPayloadThatIsNotAStringThrowsHereJustAsItDoesInTheJavaScript() {
+    void aPayloadThatIsNotAStringThrowsRatherThanBeingCoerced() {
         // `(parseFix.fix_edits_json || '[]').slice(0,5000)` has no String() around it: a number there
         // is a TypeError, the prompt is built OUTSIDE the shell's try so the catch never sees it, and
         // the row comes back with no pr_* fields at all. Coercing instead would turn a loud upstream
@@ -162,7 +162,7 @@ class PrMakerTest {
                 () -> prompt(PREP, TEST, item("fix_edits_json", 7L)));
         assertThrows(PrMaker.NotSliceable.class,
                 () -> prompt(PREP, item("test_code", 42L), FIX));
-        // …and an ARRAY is sliced as an array, because Array.prototype.slice exists: the JS renders the
+        // …and an ARRAY is sliced as an array, then rendered by the concatenation: it renders the
         // result by joining with commas, and the curator sees a diff rather than a crash.
         assertTrue(prompt(PREP, TEST, item("fix_edits_json", List.of("a", "b")))
                 .contains("FIX EDITS:\na,b\n\nTEST:"));
@@ -551,10 +551,10 @@ class PrMakerTest {
 
     @Test
     void missingUpstreamItemsAreReadAsEmptyNotDereferenced() {
-        // n8n hands back `undefined` for a node that produced no item on this branch — after a retry,
-        // or when a branch was skipped. Dereferencing that throws inside the Code node, and under
-        // onError=continueRegularOutput n8n forwards the INPUT unchanged: the row looks successful and
-        // arrives with no pr_* fields at all.
+        // An upstream stage that produced no item on this branch hands back nothing at all — after a
+        // retry, or when a branch was skipped. Dereferencing that throws, and a caller that swallows
+        // the throw and forwards its INPUT produces a row that looks successful and carries no pr_*
+        // fields at all.
         Shell empty = new Shell().parseTest(null).parseFix(null).reproduce(null);
         Map<String, Object> r = empty.run();
         assertEquals("n/a", r.get("pr_decision"), "no reproduction on record means nothing was proven");
@@ -578,7 +578,7 @@ class PrMakerTest {
     }
 
     @Test
-    void theNodeReturnsTheSkepticItemPlusExactlyTheFivePrFields() {
+    void theStageReturnsTheSkepticItemPlusExactlyTheFivePrFields() {
         // Record outcome reads fixrun fields (proven, green_passed) and skeptic fields off this same
         // item. Returning only the pr_* fields drops them and every proven fix is recorded as unproven.
         Map<String, Object> r = new Shell().incoming(item("proven", true, "skeptic_verdict", "sound",
@@ -612,7 +612,7 @@ class PrMakerTest {
     }
 
     @Test
-    void theRequestFactoryReadsTheNodeNamesTheShimPosts() {
+    void theRequestFactoryReadsTheStageNamesTheCallerPosts() {
         Object body = Json.parse("""
                 {"prep_prover":{"repo":"o/r"},"parse_test":{"test_code":"c"},"parse_fix":{"pr_title":"t"},
                  "run_test_reproduce":{"red_reproduced":true},"item":{"proven":true},

@@ -10,7 +10,7 @@ Turns a Svace static-analysis report into one of two things per marker:
 Every marker ends in one or the other. On the reference run — WebGoat, 282 markers from a 356-row Svace
 report — that was 87 drafted PRs and 282 written verdicts, in about 28 hours unattended.
 
-It is **all Java**. **One container**, one command, no Node, no n8n, no Python.
+It is **all Java**. **One container**, one command.
 
 ---
 
@@ -68,10 +68,11 @@ container reads it from `/data/data/svace/`.
 |---|---|---|
 | **`fsm`** | Everything. The Spring Batch job that drives each marker, the dashboard, every REST endpoint, the H2 database, the five model calls — **and the prover**: it clones the target repo, writes the test, applies the patch and runs Maven twice (red, then green). Ships JDK 8/11/17/21/25 + Maven + git. | 8085 |
 
-It was three containers. The judgement `engine` was always embedded as a **library** — there is no HTTP
-hop between the queue and the judgement — and the `runner` is now too. What the split cost was an
-*address*: `http://fsm-runner:8090` written in three places, none of them read until a marker is proved,
-so a stale one surfaced hours into a run as a refused connect filed as an infrastructure failure.
+`engine` and `runner` are **libraries inside that process**, not services: there is no HTTP hop between
+the queue and the judgement, and none between the queue and the prover. That is deliberate. An address
+between them is read only when a marker is proved, so a wrong one does not surface until hours into a run,
+and it surfaces as a refused connect filed as an infrastructure failure — which reads as a prover that is
+down rather than as a name nothing serves.
 
 Two things are still available and neither is on by default:
 
@@ -157,8 +158,10 @@ Playwright image. The build prints a line saying so, and:
 orchestrator/playwright/run.sh          # builds the image, runs the UI suite in it
 ```
 
-There is also a **differential harness**: 23,401 generated cases comparing the Java against the
-JavaScript it replaced, with 745 catalogued divergences, each explained. It runs as a normal JUnit test.
+There is also a **differential harness**: 23,401 frozen cases, each with the answer a recorded reference
+run gave for it, and 745 catalogued divergences from those answers, every one explained. It runs as a
+normal JUnit test. `pipeline/runner/harness/README.md` says what the recording is and how to read a
+change in it.
 
 ---
 
@@ -200,19 +203,21 @@ Any status — 200, 401, 404 — means the route exists. Only "refused" or "coul
 If your model lives in another Compose stack, put this container on that stack's network with
 `docker-compose.override.yml` (copy the committed example).
 
-**The compose file declares no external networks,** deliberately: it used to declare two that exist on
-one machine, and `docker compose up -d` then died on its first line — *"network mvn-cache declared as
-external, but could not be found"* — everywhere else. A host's private wiring belongs in
-`docker-compose.override.yml`, which Compose merges automatically and which is gitignored.
+**The compose file declares no external networks, and must not.** An `external: true` network is a name
+that exists on one machine; anywhere else `docker compose up -d` dies on its first line — *"network
+mvn-cache declared as external, but could not be found"* — after a build that succeeded, with nothing
+started. A host's private wiring belongs in `docker-compose.override.yml`, which Compose merges
+automatically and which is gitignored.
 
-**The Maven mirror is a runtime setting, not a baked-in one.** It used to be a `settings.xml` in the
-image pinning `mirrorOf=*` at `http://nexus:8081`, which is *the only repository Maven will talk to* —
-so off that one Docker network, every prove failed with hundreds of lines about unresolvable artifacts,
-reading as a broken project. Now: unset means Central; `MAVEN_MIRROR_URL` set means that URL. Use a
-public hostname — a compose-internal name only resolves inside one network, which is exactly why it
-cannot be a default. (The same variable is *also* a build argument, selecting the mirror the image's own
-build resolves through. `docker compose build` cannot join a custom network, so a mirror that lives on
-one needs `DOCKER_BUILDKIT=0 docker build --network <net> …`; BuildKit rejects custom network modes.)
+**The Maven mirror is a runtime setting, and must not be baked into the image.** A `settings.xml` in the
+image pinning `mirrorOf=*` is not a cache in front of Central — it is *the only repository Maven will
+talk to*, so off the one network that hostname resolves on, every prove fails with hundreds of lines
+about unresolvable artifacts and reads as a broken project rather than as an image carrying somebody
+else's infrastructure. So: unset means Central; `MAVEN_MIRROR_URL` set means that URL. Use a public
+hostname — a compose-internal name only resolves inside one network, which is exactly why it cannot be a
+default. (The same variable is *also* a build argument, selecting the mirror the image's own build
+resolves through. `docker compose build` cannot join a custom network, so a mirror that lives on one
+needs `DOCKER_BUILDKIT=0 docker build --network <net> …`; BuildKit rejects custom network modes.)
 
 **The feedback directory needs the container's uid.** `FSM_FEEDBACK=true` writes as uid 10002; if the
 host directory is owned by someone else the service says so loudly on startup and records nothing.
@@ -246,18 +251,17 @@ pipeline/
   Dockerfile             THE image — all three modules, plus git, five JDKs and Maven
   engine/                judgement, as pure functions
   orchestrator/          Spring Batch + dashboard + H2 + the entrypoint
-  runner/                clone, patch, build, run tests — a library now, not a service
+  runner/                clone, patch, build, run tests — a library, not a service
   deploy/docker-compose.yml  the deployment: one service, plus `engine` behind a profile
   deploy/docker-compose.override.yml.example  a host's private wiring, uncommitted
 ```
 
-Three Maven modules, one image. `runner` stays a module of its own — its 188 tests are the ported
-specification of the one distinction the whole pipeline rests on (did the test RUN and fail, or did it
-never run?), and it keeps a zero-third-party-dependency policy that a merge into `orchestrator` would
-quietly break.
+Three Maven modules, one image. `runner` stays a module of its own — its 188 tests are the specification
+of the one distinction the whole pipeline rests on (did the test RUN and fail, or did it never run?), and
+it keeps a zero-third-party-dependency policy that a merge into `orchestrator` would quietly break.
 
-This tree was called `n8n-fleet/`, and `deploy/` was called `n8n/`, until the pipeline was ported off
-n8n in July 2026. Nothing here runs n8n now. The rename was safe to do late because every volume in
-`deploy/docker-compose.yml` pins its PHYSICAL name (`name: fsm_fsm-orchestrator-state`), so no
-directory name has ever been what keeps the live data addressable — and that is also why collapsing
-three services into one did not disturb a single byte of a live run.
+Every volume in `deploy/docker-compose.yml` pins its PHYSICAL name (`name: fsm_fsm-orchestrator-state`),
+so no directory name and no Compose project name is what keeps the live data addressable. Keep it that
+way: without the pin, Compose derives `<project>_<key>`, and renaming the project or the directory makes
+it look for a volume that does not exist, **create it empty**, and start a healthy service serving an
+empty backlog — the schema is recreated on the way up, so nothing errors and nothing is red.

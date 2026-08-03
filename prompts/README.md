@@ -30,9 +30,9 @@ exactly as they were. A deployment with no prompts directory at all resolves eve
 built-in text and behaves precisely as it did before this directory existed.
 
 `FSM_PROMPTS_DIR` defaults to `/data/prompts`. `deploy/docker-compose.yml` mounts the repository root at
-`/data` read-only for `fsm-orchestrator`, so that path is this directory seen from inside the
-container. Read-only is fine — nothing writes here — and there is no image to rebuild, because the
-orchestrator Dockerfile deliberately copies only `orchestrator/`, `engine/` and `pom.xml`.
+`/data` read-only for the `fsm` service, so that path is this directory seen from inside the container.
+Read-only is fine — nothing writes here — and there is no image to rebuild, because these files are read
+from that mount on the way up rather than copied into the image.
 
 ## Checking that the file you edited is the file it sent
 
@@ -75,12 +75,10 @@ identical run histories.
   it a pure function you can replay a stage against. Reproducing exactly what a run sent means passing
   the text yourself. The prove chain does not go through this service at all: the orchestrator embeds
   the engine as a library.
-- **Nowhere else.** `n8n/agentic/src/prompts.js` and the `systemMessage` fields inside
-  `workflow_prover.json` used to hold a second copy of the two agent briefs. That whole tree is deleted:
-  n8n is gone from `docker-compose.yml` and from the host, the files generated artifacts nothing
-  imports, and a stale second copy of a prompt is worse than none — it is the one an editor finds and
-  changes when the run keeps sending the other. The briefs now live in this directory and, as a
-  compiled-in last resort, in `tech.mikhailov.fsm.orch.Prompts`.
+- **Nowhere else, and keep it that way.** There is exactly one copy of each brief: the file here, with
+  `tech.mikhailov.fsm.orch.Prompts` as the compiled-in last resort. A second copy anywhere is worse than
+  none — it is the one an editor finds and changes while the run keeps sending the other, and the two
+  produce identical rows, identical verdicts and identical run histories.
 
 The behaviour is pinned in `pipeline/orchestrator/src/test/java/tech/mikhailov/fsm/orch/PromptSourceTest.java`
 and `PromptFilesTest.java`.

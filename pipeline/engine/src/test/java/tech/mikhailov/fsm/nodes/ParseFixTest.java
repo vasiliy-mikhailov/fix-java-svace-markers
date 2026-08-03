@@ -215,7 +215,7 @@ class ParseFixTest {
                 Json.stringify(r.body()));
     }
 
-    // ---- the port's own seams --------------------------------------------------------------------
+    // ---- the wire seams ---------------------------------------------------------------------------
 
     @Test
     void theFixRunFallsBackToTwentyOneOnlyWhenTheReproduceRunReportedNoJdk() {
@@ -248,9 +248,9 @@ class ParseFixTest {
 
     @Test
     void aNullEditIsTreatedAsAnEditOfTheSuspectedFileAndCannotApply() {
-        // DIVERGENCE, DELIBERATE. `"fix_edits": [null]` makes the JS throw (`e.old_str` on null) and
-        // the n8n node go red. There is no JS behaviour to match here, so the guard's own rule is
-        // applied instead: an edit that names no path is an edit of the suspected file. It carries no
+        // A CATALOGUED DIVERGENCE, and deliberate: `"fix_edits": [null]` has no recorded answer to
+        // match, so the guard's own rule is applied instead — an edit that names no path is an edit of
+        // the suspected file. It carries no
         // old_str, so the runner cannot apply it, applied_files comes back empty, and record-outcome
         // routes the marker to needs_review rather than publishing a diff that was never applied.
         Result r = runJson("can_fix", true, "fix_edits", java.util.Collections.singletonList(null));
@@ -260,8 +260,8 @@ class ParseFixTest {
 
     @Test
     void aNumberTooBigForADoubleIsRecordedAsNullRatherThanTakingTheStageDown() {
-        // `1e400` is well-formed JSON and parses to Infinity, which JSON has no spelling for. The JS
-        // writes null and carries on. Json.stringify refuses — on purpose, for numbers the ENGINE
+        // `1e400` is well-formed JSON and parses to Infinity, which JSON has no spelling for, so it is
+        // recorded as null. Json.stringify refuses — on purpose, for numbers the ENGINE
         // computed — and refusing here would throw out of a node whose entire job is to survive a bad
         // reply. One field is lost instead of the marker.
         Result r = run("{\"can_fix\":true,\"fix_edits\":[{\"path\":\"" + SRC
@@ -292,7 +292,7 @@ class ParseFixTest {
     }
 
     @Test
-    void theUpstreamItemIsEchoedBackFieldForFieldWithThisNodesFieldsOverTheTop() {
+    void theUpstreamItemIsEchoedBackFieldForFieldWithThisStagesFieldsOverTheTop() {
         Map<String, Object> m = runJson("can_fix", true, "fix_edits", List.of(edit()),
                 "pr_title", "Guard x", "pr_body", "why").toMap();
         assertEquals("o/r", m.get("repo"));

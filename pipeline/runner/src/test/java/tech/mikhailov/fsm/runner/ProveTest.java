@@ -155,8 +155,8 @@ class ProveTest {
 
     @Test
     void theReplyCarriesEveryFieldTheContractNames() {
-        // The orchestrator's RunnerClient documents these, n8n's shim spreads them into a Data Table row,
-        // and RecordOutcome reads red_summary.test_executed to tell "not a bug" from "could not test".
+        // The orchestrator's RunnerClient documents these and RecordOutcome reads
+        // red_summary.test_executed to tell "not a bug" from "could not test".
         builds.add(FakeExec.failed(RED_LOG));
         Map<String, Object> r = prove.runTest(request());
 
@@ -392,9 +392,9 @@ class ProveTest {
 
         @Test
         void aNewStrThatIsExplicitlyNullSplicesInTheWordNull() throws IOException {
-            // FOUND BY harness/run.sh. The JS handed `ed.new_str` to a coercion that spells an explicit
-            // null "null" and a missing key "undefined"; Json.parse gives this port the same Java null for
-            // both, so it wrote "undefined" into the source where the JavaScript wrote "null". The
+            // FOUND BY the differential harness. The contract spells an explicit null "null" and a
+            // missing key "undefined"; Json.parse gives the same Java null for both,
+            // so without the distinction it writes "undefined" into the source where "null" is meant. The
             // difference lands in the FILE, and from there in the diff a reviewer approves.
             builds.add(FakeExec.failed(RED_LOG));
             Map<String, Object> body = request();
@@ -531,7 +531,7 @@ class ProveTest {
         @Test
         void anEditWithNoPathAtAllAbortsTheProve() {
             // AN INHERITED DEFECT, PINNED. `String(p || '')` resolves a missing path to the workspace
-            // ROOT, which exists and is a directory, so reading it throws — in the JS as EISDIR out of
+            // ROOT, which exists and is a directory, so reading it throws — as EISDIR out of
             // readFileSync, here as an IOException. Either way the whole prove ends instead of the edit
             // being reported in edit_errors, and the engine records infra and retries. The test is here
             // so that changing it is a decision somebody makes on purpose: reporting it per-edit would
@@ -552,7 +552,7 @@ class ProveTest {
 
         @Test
         void anAbsentTestClassIsRefusedRatherThanRunningTheWholeSuite() {
-            // THE DANGEROUS COERCION. `-Dtest=undefined` matched nothing in the JS; the natural Java
+            // THE DANGEROUS COERCION. `-Dtest=undefined` would match nothing; the natural Java
             // coercion is an empty -Dtest=, which runs EVERY test in the repository — and a project with
             // failing tests of its own would then report red_reproduced for a marker nobody tested.
             Map<String, Object> body = request();
@@ -608,6 +608,6 @@ class ProveTest {
                 .filter(c -> "mvn".equals(c.command().getFirst()))
                 .allMatch(c -> workspace().equals(c.cwd())));
         assertEquals(Proc.DEFAULT_TIMEOUT_MS, exec.calls().getLast().timeoutMillis(),
-                "20 minutes per build, matching the n8n node's own budget");
+                "20 minutes per build, which is what the caller's 90-minute budget is built on");
     }
 }

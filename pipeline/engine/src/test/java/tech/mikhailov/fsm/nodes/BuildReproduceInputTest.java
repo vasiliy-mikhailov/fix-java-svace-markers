@@ -31,8 +31,7 @@ import tech.mikhailov.fsm.nodes.BuildReproduceInput.Request;
  * mask that blanks comments and literals in place — exists to keep those two numbers honest, and a
  * parser that names the right method while quoting the wrong lines sends the model to the wrong place
  * just as surely.
- *
- * <p>Ported from {@code n8n/agentic/test/build-reproduce-input.test.js}, assertion for assertion.
+
  */
 class BuildReproduceInputTest {
 
@@ -40,7 +39,7 @@ class BuildReproduceInputTest {
         return Base64.getEncoder().encodeToString(s.getBytes(StandardCharsets.UTF_8));
     }
 
-    /** The marker the JS fixture builds; each test supplies the line. */
+    /** The marker every case here is built on; each test supplies the line. */
     private static Map<String, Object> marker(Object... overrides) {
         Map<String, Object> j = new LinkedHashMap<>();
         j.put("repo", "o/r");
@@ -570,7 +569,7 @@ class BuildReproduceInputTest {
     void aFileOfInvisibleCharactersAlsoCountsAsNotFetched() {
         // String.isBlank is Character.isWhitespace, which does NOT include U+00A0 or U+FEFF. A file
         // GitHub returns as a lone BOM — what an emptied file saved by a Windows editor looks like —
-        // is "empty" to the JS and would be REAL to a port that used isBlank(), which would then
+        // has to count as EMPTY, and would be REAL to code that used String.isBlank(), which would then
         // adjudicate a Svace marker against a file with no code in it.
         for (String invisible : new String[] {"\ufeff", "\u00a0", "\u2007\u202f",
                                               "\u3000"}) {
@@ -702,7 +701,7 @@ class BuildReproduceInputTest {
     }
 
     @Test
-    void theMarkersOwnKeysComeFirstAndTheNodesOwnOverwriteInPlace() {
+    void theMarkersOwnKeysComeFirstAndTheStagesOwnOverwriteInPlace() {
         // `{...j, src, ...}`: a key the marker already carried keeps its POSITION and takes the new
         // value. The Data Table columns downstream line up by position.
         Map<String, Object> j = marker("svace_line", 5L, "src", "PRE-EXISTING");
@@ -770,7 +769,7 @@ class BuildReproduceInputTest {
 
     @Test
     void aMarkerThatIsNotAnObjectContributesNoFieldsRatherThanCrashing() {
-        // `{...null}` is `{}` in JS. Over HTTP the marker is whatever the shim posted, and a request
+        // `{...null}` is `{}` in JS. Over HTTP the marker is whatever the caller posted, and a request
         // assembled by hand can carry anything; the node's own fields must still come out.
         Map<String, Object> file = new LinkedHashMap<>();
         file.put("content", b64(SIMPLE));

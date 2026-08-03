@@ -12,13 +12,12 @@ import java.util.Map;
  *
  * <p>Covers every checker present in the 356-marker WebGoat report.
  *
- * <p>PORTING NOTE. The JS held each entry as a three-element array read positionally by `Parse
- * markers` — {@code m[0]}, {@code m[1]}, {@code m[2]} — which is why checker-map.test.js asserts
- * {@code entry.length === 3}. An entry that had lost a field was still TRUTHY, so it was not counted
- * as unmapped either: it produced a row reading "Claim: undefined. Settle-by: undefined." and the
+ * <p>WHY IT IS A TYPE AND NOT A THREE-ELEMENT ARRAY. Read positionally — {@code m[0]},
+ * {@code m[1]}, {@code m[2]} — an entry that has lost a field is still TRUTHY, so it is not counted
+ * as unmapped either: it produces a row reading "Claim: undefined. Settle-by: undefined." and the
  * prover then spent minutes trying to reproduce a defect whose claim was the word "undefined".
  * Nothing threw, nothing was counted, the run was green. {@link Entry} is a record and {@link SettleBy}
- * is an enum, so both of those are now compile errors rather than a silent bad row — the ported tests
+ * is an enum, so both of those are compile errors rather than a silent bad row — the tests
  * keep the checks that a type cannot make for us.
  */
 public final class CheckerMap {
@@ -44,9 +43,9 @@ public final class CheckerMap {
         }
 
         /**
-         * The lower-case spelling spliced into the evidence line. `Prep prover` greps
-         * {@code /Settle-by:\s*(\w+)/} back out of it and compares the result against 'argue', so in
-         * the JS any third spelling read as 'test' and an unprovable finding was queued for a PR.
+         * The lower-case spelling spliced into the evidence line. {@code PrepProver} greps
+         * {@code /Settle-by:\s*(\w+)/} back out of it and compares the result against 'argue', so any
+         * third spelling reads as 'test' and queues an unprovable finding for a PR.
          */
         public String wire() {
             return wire;
@@ -197,7 +196,7 @@ public final class CheckerMap {
      * The table, in declaration order and unmodifiable.
      *
      * <p>NOT {@code Map.copyOf}, which was what this returned until the parse-markers port compared
-     * the ported table against checker-map.js entry by entry and found the two in different orders —
+     * this table against the frozen corpus entry by entry and found the two in different orders —
      * a DIFFERENT order on every run, because the JDK's immutable maps salt their iteration with a
      * per-JVM value. Nothing reads it in order today, and the 48 entries themselves were correct, so
      * the only casualty was this sentence being false. It stops being false here rather than in the

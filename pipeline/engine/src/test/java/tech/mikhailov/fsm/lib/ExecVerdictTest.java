@@ -41,7 +41,7 @@ class ExecVerdictTest {
      * No composed verdict may carry a value that leaked out of a missing field. {@code on JDK
      * undefined}, a PR title of {@code true}, {@code null/100} — each of those is a fallback that
      * stopped firing, and each one of them reads to a reviewer as a fact the pipeline established.
-     * The JS regex is kept verbatim: Java's own leak is spelled {@code null} too.
+     * {@code null} is in the set as well, because that is how Java spells the same leak.
      */
     private static final Pattern LEAK =
             Pattern.compile("\\b(?:undefined|null|NaN|true|false)\\b");
@@ -52,7 +52,7 @@ class ExecVerdictTest {
                 () -> what + ": `" + m.group() + "` reached the reviewer's text:\n" + text);
     }
 
-    /** An n8n item, written the way the JS tests wrote their object literals. Nulls allowed. */
+    /** An evidence item, built the way the wire builds one. Nulls allowed. */
     private static Map<String, Object> ev(Object... kv) {
         Map<String, Object> m = new LinkedHashMap<>();
         for (int i = 0; i < kv.length; i += 2) {
@@ -254,8 +254,8 @@ class ExecVerdictTest {
         assertTrue(score("test_score", 91).contains("Test realness 91/100."),
                 "and with no prose the sentence closes after the number rather than an em dash");
 
-        // An unset n8n field, a JSON null and an empty cell are the three shapes "not measured" takes
-        // on the way out of a Data Table, and `/100` after nothing invents a measurement.
+        // An unset field, a JSON null and an empty cell are the three shapes "not measured" takes on
+        // the way out of the table, and `/100` after nothing invents a measurement.
         assertFalse(score().toLowerCase(Locale.ROOT).contains("realness"));
         assertFalse(score("test_score", null).toLowerCase(Locale.ROOT).contains("realness"));
         assertFalse(score("test_score", "").toLowerCase(Locale.ROOT).contains("realness"));
@@ -268,10 +268,10 @@ class ExecVerdictTest {
     }
 
     /**
-     * The score reaches the prose as TEXT, so a whole number must print as a whole number. n8n hands
-     * the same field back as a JSON integer, as a double after a round trip through a Data Table, and
-     * as a string out of a CSV cell; "Test realness 88.0/100" in one of those three is a diff in the
-     * verdict for every marker, for no reason a reader could explain.
+     * The score reaches the prose as TEXT, so a whole number must print as a whole number. The same
+     * field arrives as a JSON integer, as a double after a round trip through the table, and as a string
+     * out of a CSV cell; "Test realness 88.0/100" in one of those three is a diff in the verdict for
+     * every marker, for no reason a reader could explain.
      */
     @Test
     void aScoreReadsTheSameWhicheverJsonTypeItArrivedAs() {

@@ -22,7 +22,7 @@ import tech.mikhailov.fsm.lib.Json;
  * quietly forgives a difference is worth less than no harness at all.
  *
  * <p>WHY IT IS JAVA NOW. It was a Node script that nothing ran automatically, diffing two files a
- * shell script had to produce first. The JavaScript it compared against has been deleted; this half
+ * shell script had to produce first. The reference it compared against has been deleted; this half
  * moved into {@code src/test} so the comparison happens on every {@code mvn test} and a regression is
  * a red test rather than a report nobody opened.
  */
@@ -35,9 +35,9 @@ final class TaggedDiff {
      * The ONE normalisation: the NAME of the exception a node body threw.
      *
      * <p>Reading {@code .choices} off a value that is not an object is a TypeError in JS and a
-     * NullPointerException in Java; {@code .slice} on a number is a TypeError in JS and this port's
+     * NullPointerException in Java; {@code .slice} on a number is a TypeError in JS and this module's
      * NotSliceable; a malformed reply is a SyntaxError in JS and a JsonException in Java. Those are
-     * the same EVENT — the node threw where the JS threw — and the harness compares the event. The
+     * the same EVENT — the node threw where the reference threw — and the harness compares the event. The
      * message text is not compared here and shows up separately wherever it reaches a row
      * ({@code verdict_confidence}, {@code skeptic_reason}).
      */
@@ -164,7 +164,7 @@ final class TaggedDiff {
             }
             return;
         }
-        // an object: key ORDER is part of the value, because n8n items become table columns in that
+        // an object: key ORDER is part of the value, because an item becomes table columns in that
         // order
         String ka = String.join(",", keys(x));
         String kb = String.join(",", keys(y));

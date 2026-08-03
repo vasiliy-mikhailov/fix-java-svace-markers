@@ -34,12 +34,12 @@ import tech.mikhailov.fsm.nodes.PrepProver;
  * The node endpoints, exercised over a real socket.
  *
  * <p>WHAT THIS FILE IS FOR, given that every node already has its own test. Those prove the JUDGEMENT.
- * This one proves the SEAM: that the body a shim will send reaches the node's {@code Request.of}
- * unchanged, that the row comes back where the shim looks for it, and — the half that has no
+ * This one proves the SEAM: that the body a caller will send reaches the node's {@code Request.of}
+ * unchanged, that the row comes back where the caller looks for it, and — the half that has no
  * equivalent inside a Code node — that a bad request is answered with something an author can act on
  * rather than with a 500 or, worse, with a 200 carrying a confidently wrong row.
  *
- * <p>THE FAILURE IT EXISTS TO PREVENT. A shim that omits {@code parse_test} does not crash the node;
+ * <p>THE FAILURE IT EXISTS TO PREVENT. A caller that omits {@code parse_test} does not crash the node;
  * {@code $('Parse test').item.json || {}} was always allowed to be empty, so the node DECIDES —
  * {@code can_prove} is false, the marker is {@code not-a-bug}, and a real defect is retired with a
  * clean-looking row. That is invisible in the run history. So the endpoints validate, and every
@@ -47,7 +47,7 @@ import tech.mikhailov.fsm.nodes.PrepProver;
  * is a 400 nobody can fix.
  *
  * <p>The transport is real. The three stages that call a model call this test's stub over a loopback
- * socket through {@link Outbound}, so the request the port asserts field-by-field is also proven to be
+ * socket through {@link Outbound}, so the request asserted field-by-field is also proven to be
  * a request that a server can actually answer.
  */
 class NodeRoutesTest {
@@ -57,7 +57,7 @@ class NodeRoutesTest {
     private HttpClient client;
     private String base;
 
-    /** What the engine logged — the lines the ported nodes RETURN instead of printing. */
+    /** What the engine logged — the lines two stages RETURN instead of printing. */
     private final List<String> logs = Collections.synchronizedList(new ArrayList<>());
 
     /** The stub model endpoint, and the request bodies it was sent. */
@@ -194,7 +194,7 @@ class NodeRoutesTest {
                 "versions", item("pipeline", "S1"));
     }
 
-    // ---- one happy path per ported node ----------------------------------------------------------
+    // ---- one happy path per stage -----------------------------------------------------------------
 
     @Test
     void recordOutcomeDecidesTheState() throws Exception {
@@ -252,7 +252,7 @@ class NodeRoutesTest {
     @Test
     void verdictRetryLeavesItsOnlyTraceInTheLogs() throws Exception {
         // A retry writes NOTHING into the row, so the log line is the entire audit trail — and the
-        // reason the ported node returns it instead of printing it.
+        // reason the stage returns it instead of printing it.
         Map<String, Object> body = recordOutcomeBody();
         body.put("item", item("state", "not_reproduced", "attempts", 1L, "infra_reason", ""));
         body.put("min_attempts", 2L);
@@ -262,10 +262,10 @@ class NodeRoutesTest {
         assertEquals(200, res.statusCode());
         List<?> returned = (List<?>) body(res).get("logs");
 
-        assertEquals(1, returned.size(), "the shim needs the line to echo into the n8n run log");
+        assertEquals(1, returned.size(), "the caller needs the line to echo into its own run log");
         assertTrue(String.valueOf(returned.get(0)).startsWith("[verdict] k attempt 1"),
                 "got: " + returned);
-        assertEquals(returned, logs, "and the engine's own stdout gets it too, in case the shim "
+        assertEquals(returned, logs, "and the engine's own stdout gets it too, in case the caller "
                 + "swallows it");
         assertTrue(prompts.isEmpty(), "a retry must not burn a model call");
     }
@@ -310,7 +310,7 @@ class NodeRoutesTest {
         assertEquals(422, res.statusCode(), "the body is well-formed JSON; the INGEST refused it");
         assertEquals("ingest_failed", body(res).get("code"));
         assertEquals("ingest: `repo` is required (e.g. \"WebGoat/WebGoat\")", body(res).get("error"),
-                "the JS message verbatim — operators already grep for it");
+                "the message verbatim — operators grep for it");
     }
 
     @Test
@@ -463,7 +463,7 @@ class NodeRoutesTest {
         Map<?, ?> row = row("/node/fix-skeptic", item(
                 "prep_prover", prepProver(), "parse_test", parseTest(), "parse_fix", parseFix(),
                 "item", item("proven", true, "green_passed", true),
-                // No env at all: the JS built `undefined/chat/completions` and so does the port.
+                // No env at all: the URL is built as `undefined/chat/completions`, deliberately.
                 "skeptic_stamp", "[stage sk5]"));
 
         assertEquals("unknown", row.get("skeptic_verdict"),
@@ -471,7 +471,7 @@ class NodeRoutesTest {
         assertTrue(String.valueOf(row.get("skeptic_reason")).startsWith("skeptic call failed: "),
                 "got: " + row.get("skeptic_reason"));
         assertTrue(String.valueOf(row.get("skeptic_reason")).contains("undefined"),
-                "an unset QWEN_BASE_URL has to be greppable, which is why the port keeps the word");
+                "an unset QWEN_BASE_URL has to be greppable, which is why the word is kept");
     }
 
     @Test
@@ -495,8 +495,8 @@ class NodeRoutesTest {
 
     @Test
     void prMakerSurfacesAnUpstreamTypeErrorRatherThanCurating() throws Exception {
-        // fix_edits_json arrived as a number. The JS threw a TypeError here, OUTSIDE the shell's try,
-        // and the row came back with no pr_* fields at all — a loud upstream bug. It stays loud.
+        // fix_edits_json arrived as a number. The stage throws here, OUTSIDE the shell's try, so the
+        // row comes back with no pr_* fields at all — a loud upstream bug. It stays loud.
         Map<String, Object> fix = parseFix();
         fix.put("fix_edits_json", 5L);
         HttpResponse<String> res = post("/node/pr-maker", Json.stringify(item(
@@ -521,14 +521,14 @@ class NodeRoutesTest {
     }
 
     @Test
-    void everyPortedNodeHasAnEndpoint() throws Exception {
+    void everyStageHasAnEndpoint() throws Exception {
         List<String> registered = new ArrayList<>();
         for (String path : paths()) {
             if (post(path, "{}").statusCode() != 404) {
                 registered.add(path);
             }
         }
-        assertEquals(paths(), registered, "one endpoint per ported node, POST /node/<kebab-name>");
+        assertEquals(paths(), registered, "one endpoint per stage, POST /node/<kebab-name>");
     }
 
     @ParameterizedTest
@@ -570,7 +570,7 @@ class NodeRoutesTest {
     @MethodSource("paths")
     void aMissingUpstreamItemIsA400AndNotAConfidentRow(String path) throws Exception {
         // THE POINT OF VALIDATING AT ALL. The nodes read `$('X').item.json || {}`, so an omitted item
-        // does not fail — it decides. A shim that forgets one would get a 200 carrying a marker
+        // does not fail — it decides. A caller that forgets one would get a 200 carrying a marker
         // retired as not-a-bug, and nothing anywhere would say so.
         HttpResponse<String> res = post(path, "{}");
 
@@ -583,7 +583,7 @@ class NodeRoutesTest {
 
     @Test
     void everyMissingKeyIsListedAtOnce() throws Exception {
-        // One 400 per missing key would be ten round trips for one shim. All of them, in one message.
+        // One 400 per missing key would be ten round trips for one caller. All of them, in one message.
         HttpResponse<String> res = post("/node/record-outcome",
                 Json.stringify(item("prep_prover", prepProver())));
 
@@ -594,13 +594,13 @@ class NodeRoutesTest {
         }
         assertFalse(message.contains("`prep_prover`"), "the one that WAS sent must not be listed");
         assertTrue(message.contains("send $('Parse test').item.json"),
-                "naming the n8n node is what makes the message actionable: " + message);
+                "naming the stage is what makes the message actionable: " + message);
     }
 
     @Test
     void anItemSentAsSomethingOtherThanAnObjectIsRefused() throws Exception {
         Map<String, Object> body = recordOutcomeBody();
-        body.put("parse_test", "[object Object]");     // a shim that stringified the item
+        body.put("parse_test", "[object Object]");     // a caller that stringified the item
 
         HttpResponse<String> res = post("/node/record-outcome", Json.stringify(body));
 
@@ -646,7 +646,7 @@ class NodeRoutesTest {
 
     @Test
     void aPathBelowAnEndpointIs404AndNotTheEndpoint() throws Exception {
-        // com.sun.net.httpserver matches contexts by PREFIX, so without an exact-path check a shim
+        // com.sun.net.httpserver matches contexts by PREFIX, so without an exact-path check a caller
         // pointed at /node/verdict/v2 would be answered by /node/verdict and look like it worked.
         HttpResponse<String> res = post("/node/verdict/v2", "{}");
 
@@ -659,7 +659,7 @@ class NodeRoutesTest {
     @Test
     void aBugInTheEngineIsDistinguishableFromABadMarker() throws Exception {
         // 1e400 parses to Infinity, which JSON cannot spell — Json.stringify refuses rather than
-        // writing `null` into a row a reviewer is triaging. The shim has to be able to tell THAT
+        // writing `null` into a row a reviewer is triaging. The caller has to be able to tell THAT
         // apart from "this marker is bad": they need different people.
         HttpResponse<String> res = post("/node/prep-prover", "{\"suspicion\":{\"repo\":\"o/r\","
                 + "\"branch\":\"main\",\"file\":\"" + FILE + "\",\"svace_line\":1e400}}");
@@ -677,7 +677,7 @@ class NodeRoutesTest {
     @Test
     void aSuccessfulRowIsNeverMistakenForAnError() throws Exception {
         // THE REASON THE ROWS TRAVEL INSIDE `items`. Fix skeptic spreads the run_test verdict through,
-        // and that verdict carries `error` whenever the build failed. A shim written as
+        // and that verdict carries `error` whenever the build failed. A caller written as
         // `if (res.error) throw` would throw on a good row — and a throw under
         // onError=continueRegularOutput forwards the INPUT, so the marker reads as "no findings".
         HttpResponse<String> res = post("/node/fix-skeptic", Json.stringify(item(

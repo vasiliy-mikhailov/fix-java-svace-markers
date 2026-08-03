@@ -7,8 +7,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Human-equivalent effort vs measured machine time — the Java port of {@code dashboard/lib/work.js},
- * field for field and rounding for rounding.
+ * Human-equivalent effort vs measured machine time.
  *
  * <p>Only machine time is measured. The human figures are ESTIMATES and the dashboard says so, because
  * the FTE multiple is the number people quote in an efficiency argument and it must not look observed.
@@ -19,11 +18,11 @@ import java.util.Set;
  *
  * <p>WHY THIS IS A PORT AND NOT A REDESIGN. Every constant, every set membership and every rounding
  * step below produces the same number the Node dashboard produced from the same rows, so the figure
- * on the page does not move because the server was rewritten. {@code WorkModelTest} is the JUnit
- * translation of {@code dashboard/test/work.test.js} and is what holds that claim up.
+ * on the page does not move for any reason but the work itself. {@code WorkModelTest} is what holds
+ * that claim up.
  *
- * <p>THE ONE DELIBERATE DEVIATION is {@link #UNSETTLED}: n8n had no in-flight status, so work.js only
- * had to skip {@code new}. The orchestrator claims a marker by flipping it to {@code proving}, and a
+ * <p>{@link #UNSETTLED} SKIPS {@code proving} AS WELL AS {@code new}: the orchestrator claims a marker
+ * by flipping it to {@code proving}, and a
  * marker somebody is currently looking at has not been settled by anyone — charging it 45 minutes of
  * human-equivalent work would inflate exactly the figure this file exists to keep honest.
  */
@@ -103,8 +102,7 @@ public final class WorkModel {
     public record Exec(long startedAtMs, long stoppedAtMs, double seconds) {
 
         /**
-         * The {@code secs()} helper from server.js, with the one thing server.js never had to think
-         * about: a run that has not finished.
+         * A run's duration in seconds, INCLUDING a run that has not finished.
          *
          * <p>A NULL END IS "STILL GOING", NOT "NO WINDOW", and that distinction is the whole of the
          * empty-denominator defect. The prove job is ONE execution for the length of a run, so treating

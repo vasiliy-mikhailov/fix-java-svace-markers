@@ -31,17 +31,16 @@ import tech.mikhailov.fsm.nodes.ParseMarkers.Suspicion;
  * would corrupt the whole backlog silently. Run against the real 356-marker WebGoat report, not a toy
  * fixture, because the failures that matter are in that file's actual shape.
  *
- * <p>Ported from n8n/agentic/test/parse-markers.test.js, assertion for assertion. The Java-only tests
- * at the bottom are the ones the PORT adds: three of the four blankness, case and regex primitives this
- * node is written on behave differently in Java than in V8, and each of those differences was found by
- * running both implementations over the same input rather than by reading the code.
+ * <p>The tests at the bottom are about the PRIMITIVES: three of the four blankness, case and regex
+ * rules this stage is written on behave differently in Java than the wire contract requires, and each
+ * of those differences was found by measurement rather than by reading the code.
  */
 class ParseMarkersTest {
 
     /**
-     * A copy of the real report lives beside the test rather than four directories up. The JS carried
-     * it for Stryker, which runs the suite from a sandbox copy of the package; PIT has the same
-     * property, and a classpath resource is the only location the build and the mutation run agree on.
+     * A copy of the real report lives beside the test rather than four directories up: PIT runs the
+     * suite from its own working directory, and a classpath resource is the only location the build
+     * and the mutation run agree on.
      */
     private static final String CSV = fixture();
 
@@ -314,7 +313,7 @@ class ParseMarkersTest {
         assertEquals(new Skipped(0, 0, 0, 0, 0), r.summary().skipped());
         // Five checkers (the three TEST.*, UNREACHABLE_CODE.EXCEPTION,
         // FB.VA_FORMAT_STRING_USES_NEWLINE) only ever mark files under src/test, so this is the ONLY
-        // ingest that reads their map entries. In the JS a hollowed-out entry was still truthy, so
+        // ingest that reads their map entries. A hollowed-out entry that is still truthy means
         // unmapped_kept above stayed 0 while the row it produced said "Claim: undefined. Settle-by:
         // undefined." — a marker the prover cannot act on at all. CheckerMap.Entry is a record and
         // SettleBy is an enum now, so that is a compile error rather than a silent bad row; this check
@@ -533,7 +532,7 @@ class ParseMarkersTest {
 
     // ---- what the PORT adds --------------------------------------------------------------------
     //
-    // Below here the JS suite has nothing to say, because in JS these are the same operation. Each of
+    // Below here are the PRIMITIVES, where Java and the wire contract disagree. Each of
     // these is a divergence between V8 and the nearest Java built-in that was found by running both
     // implementations over the same input.
 
@@ -598,7 +597,7 @@ class ParseMarkersTest {
     @Test
     void aClassNameIsStrippedOfDotJavaOnlyAtTheVeryEnd() {
         // `s.replace(/\.java$/, '')` in JS anchors at the end of the STRING. Java's `$` also matches
-        // before a trailing line terminator, so a regex port strips "A.java\n" to "A" where the JS
+        // before a trailing line terminator, so a regex strips "A.java\n" to "A" where the contract
         // leaves "A.java\n" — and the prover then greps for a class that is not what the file is
         // called. Reached here through a quoted field, which is the one place a newline survives.
         List<Suspicion> r = ingest(body("repo", "x/y", "path_prefix", "", "csv_text",
@@ -644,7 +643,7 @@ class ParseMarkersTest {
                 + "\"Major\",\"HANDLE_LEAK\",\"/b/src/main/java/D.java\",\"009\"\n"
                 + "\"Major\",\"HANDLE_LEAK\",\"/b/src/main/java/E.java\",\"1e3\"\n"));
         assertEquals(List.of(7.0, 8.0, 0.0, 9.0, 1.0), map(r.suspicions(), Suspicion::line),
-                "radix 10 throughout: 0x10 is zero and 1e3 is one, exactly as the JS reads them");
+                "radix 10 throughout: 0x10 is zero and 1e3 is one, as parseInt(s, 10) reads them");
         assertEquals(0, r.summary().skipped().badRow());
     }
 
@@ -708,7 +707,7 @@ class ParseMarkersTest {
     void theSrcFallbackSlicesTheModuleDirectoryOffAndThatIsTheJsBehaviour() {
         // Worth pinning rather than assuming: when no prefix matches, the path is cut at the FIRST
         // /src/ and the module directory goes with it. That is lossy for a multi-module repo, and it
-        // is what the JS does — a port that "fixed" it would produce a file the prover cannot open in
+        // is the contract — "fixing" it would produce a file the prover cannot open in
         // exactly the reports where the prefix was already wrong.
         assertEquals(List.of("src/main/java/A.java"),
                 map(ingest(body("repo", "x/y", "path_prefix", "", "csv_text",
@@ -790,10 +789,10 @@ class ParseMarkersTest {
 
     @Test
     void aLineNumberBeyondALongReachesTheWireAsAnExponentAndThatIsAKNOWNDIVERGENCE() {
-        // KNOWN DIVERGENCE, pinned rather than hidden. The JS writes
-        // "line":100000000000000000000; Json.stringify writes "line":1.0E20. Both are valid JSON and
+        // KNOWN DIVERGENCE, pinned rather than hidden. The recorded reference
+        // writes "line":100000000000000000000; Json.stringify writes "line":1.0E20. Both are valid JSON and
         // the same NUMBER, so nothing downstream misreads it — but the two are not byte-identical, and
-        // an audit that diffs a row ingested before the port against one ingested after would see it.
+        // an audit that diffs two rows ingested at different times would see it.
         // The fix belongs in Json.writeDouble, which should use Js.numberToString rather than
         // Double.toString; that is a change to a class three other ports already depend on, so it gets
         // its own differential run. Reachable only for |line| >= 2^63 — below that the value reaches
@@ -824,9 +823,9 @@ class ParseMarkersTest {
     }
 
     @Test
-    void theRequestIsReadOutOfThePostedBodyByTheKeysTheShimSends() {
-        // The n8n Code node shrinks to an HTTP shim, so these two key names ARE the contract. A body
-        // that is missing or the wrong shape has to read as an empty ingest request, not throw.
+    void theRequestIsReadOutOfThePostedBodyByTheKeysTheCallerSends() {
+        // These two key names ARE the contract. A body that is missing or the wrong shape has to read
+        // as an empty ingest request, not throw.
         Map<String, Object> posted = body("body", body("repo", "x/y",
                 "csv_text", csv("/b/src/main/java/A.java")), "version", "v-2026-07-29");
         Result r = ParseMarkers.parseMarkers(ParseMarkers.Request.of(posted));
@@ -847,8 +846,8 @@ class ParseMarkersTest {
 
     @Test
     void aCheckerNamedAfterAnObjectPrototypeMemberIsUnmappedLikeAnyOtherUnknownOne() {
-        // THE INCIDENT THIS PREVENTS, and it is the one CheckerMap's class comment records. The JS
-        // reads CHECKER_MAP[checker] off an object literal, so "toString" resolves up the PROTOTYPE
+        // THE INCIDENT THIS PREVENTS, and it is the one CheckerMap's class comment records. An unguarded
+        // CHECKER_MAP[checker] off an object literal lets "toString" resolve up the PROTOTYPE
         // CHAIN to a function. That is truthy: the row is not counted as unmapped and does not get the
         // fallback claim, so m[0..2] are all undefined and the evidence line reads
         // "Claim: undefined. Settle-by: undefined.". `Prep prover` greps /Settle-by:\s*(\w+)/ out of
@@ -872,9 +871,10 @@ class ParseMarkersTest {
 
     @Test
     void aSeverityNamedAfterAnObjectPrototypeMemberCannotDerailTheQueueOrder() {
-        // Same cause, worse effect. SEVERITY_RANK["toString"] is a function in the JS, so the sort
+        // Same cause, worse effect. A rank lookup of "toString" finds a FUNCTION on the prototype
+        // unless the map is guarded, so the sort
         // comparator returns NaN — which makes it NON-TRANSITIVE, and V8's TimSort then produces an
-        // arbitrary permutation. Measured against the JS on exactly this input: a Major marker came
+        // arbitrary permutation. Measured on exactly this input: a Major marker came
         // out at position 14 of 17, below Minor and below five garbage rows. Losing the severity
         // ordering is the whole reason the sort is there, so this is pinned rather than trusted.
         List<Suspicion> r = withSeverities(List.of("toString", "Minor", "__proto__", "Critical",
@@ -882,14 +882,15 @@ class ParseMarkersTest {
         assertEquals(List.of("Critical", "Major", "Minor", "toString", "__proto__", "constructor",
                 "valueOf", "hasOwnProperty"), map(r, Suspicion::svaceSeverity),
                 "an unrecognised severity ranks below every known one, whatever it is spelled");
-        // The JS wrote the FUNCTION itself into this cell; the dashboard filters the backlog on it.
+        // Unguarded, the FUNCTION itself lands in this cell — and the dashboard filters the backlog
+        // on it.
         assertTrue(r.stream().allMatch(s -> Set.of("high", "medium", "low").contains(s.severity())));
         assertEquals("low", r.get(3).severity());
     }
 
     @Test
     void aPrototypeNamedSeverityIsStillDroppedByAnyMinSeverityFilter() {
-        // In the JS `(SEVERITY_RANK[sev] ?? -1) < minRank` compares a FUNCTION against a number, which
+        // `(SEVERITY_RANK[sev] ?? -1) < minRank` would compare a FUNCTION against a number, which
         // is NaN, which is false — so these rows survive every filter the operator sets. Unknown is
         // not "at least Minor", and a garbage severity is the least likely thing to be urgent.
         Result r = run(body("repo", "x/y", "min_severity", "Minor", "csv_text",
@@ -903,7 +904,7 @@ class ParseMarkersTest {
 
     @Test
     void aPrototypeNamedSeverityIsTalliedAsANumberAndNotAsConcatenatedProse() {
-        // `bySeverity[sev] = (bySeverity[sev] || 0) + 1` in the JS reads Object.prototype.toString,
+        // `bySeverity[sev] = (bySeverity[sev] || 0) + 1` would read Object.prototype.toString,
         // which is truthy, and adds 1 to a FUNCTION — producing the count
         // "function toString() { [native code] }1". The __proto__ row is worse: assigning a string to
         // __proto__ is a no-op, so that severity vanishes from the tally altogether.

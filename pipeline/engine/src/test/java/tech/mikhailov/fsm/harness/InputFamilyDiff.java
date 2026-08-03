@@ -15,21 +15,21 @@ import tech.mikhailov.fsm.nodes.PrepProver;
  * Differential harness, Java side — the input-building family (prep prover, build reproduce input,
  * build fix input).
  *
- * <p>Runs this port over the 2 199 cases the retired JavaScript generated, through the same scripted
+ * <p>Runs this module over the 2 199 cases the recorded reference generated, through the same scripted
  * GitHub lookup, in the same type-tagged encoding it answered in — so {@link InputFamilyHarnessTest}
  * can diff the two on every {@code mvn test}. It used to be run by hand from
  * {@code harness/input-family-run.sh} and write a file that nothing read.
  *
  * <p>Every value is tagged with its type on the way out, because "" and 0 and null and absent are four
  * different results and a report that could not tell them apart would prove nothing. {@code 'u'} is
- * JS {@code undefined} and {@code 'z'} is {@code null} — the two the JS side also keeps apart.
+ * JS {@code undefined} and {@code 'z'} is {@code null} — the two the reference side also keeps apart.
  */
 final class InputFamilyDiff {
 
     private InputFamilyDiff() {
     }
 
-    /** This port's answer to every case, in the same type-tagged encoding the frozen JS side used. */
+    /** This module's answer to every case, in the same type-tagged encoding the frozen reference answers used. */
     static List<Object> answers(List<Object> cases) {
         List<Object> results = new ArrayList<>();
         for (Object c : cases) {
@@ -37,14 +37,14 @@ final class InputFamilyDiff {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("id", Json.str(c, "id"));
             Object produced = null;
-            // UNDEFINED, not null: "nothing was thrown" has to tag as 'u' to line up with the JS
+            // UNDEFINED, not null: "nothing was thrown" has to tag as 'u' to line up with the reference
             // side, where the variable is simply never assigned.
             Object threw = JsValue.UNDEFINED;
             try {
                 produced = run(Json.str(c, "node"), Json.get(c, "input"), calls);
             } catch (RuntimeException e) {
                 // A throw is a RESULT. The JS throws when an upstream item is null, and the report
-                // has to say whether the port reproduced that or consciously diverged from it.
+                // has to say whether this module reproduced that or consciously diverged from it.
                 threw = e.getClass().getSimpleName();
             }
             row.put("calls", tag(calls));
@@ -65,8 +65,8 @@ final class InputFamilyDiff {
                     if ("body".equals(Json.str(spec, "mode"))) {
                         return Json.get(spec, "body");
                     }
-                    // An Error carries `message`; n8n's own rejection carries `description`, and a
-                    // `throw <value>` carries neither.
+                    // An Error carries `message`; an HTTP-level failure carries `description`; a
+                    // bare thrown value carries neither.
                     throw new PrepProver.LookupFailed("error".equals(Json.str(spec, "kind"))
                             ? new RuntimeException(Json.str(spec, "message"))
                             : JsValue.prop(spec, "value"));
@@ -87,7 +87,7 @@ final class InputFamilyDiff {
         }
     }
 
-    /** The lookup request, shaped like the options object n8n's httpRequest was handed. */
+    /** The lookup request, shaped as the options object the transport is handed. */
     private static Map<String, Object> asItem(PrepProver.LookupRequest request) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("url", request.url());

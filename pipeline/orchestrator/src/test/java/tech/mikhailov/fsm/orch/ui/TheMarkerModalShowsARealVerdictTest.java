@@ -70,7 +70,7 @@ class TheMarkerModalShowsARealVerdictTest extends DashboardUi {
                 .as("this marker WAS argued, so it must not carry the skipped-stage banner")
                 .doesNotContainIgnoringCase(Seeds.SKIPPED_BANNER);
 
-        // The source window is fetched from the java-runner, which is not running here. That is a
+        // The source window is fetched from the prover, which is not running here. That is a
         // documented, rendered state — and it must be the rendered one, not a blank area.
         assertThat(marker).containsIgnoringCase("Source at the marker");
 

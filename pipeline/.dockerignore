@@ -12,7 +12,7 @@
 **/target/
 
 # Differential-harness OUTPUT: the unpacked copies of the frozen corpora, tens of megabytes, rebuilt by
-# `node harness/js-side.cjs`. Nothing reads them but a person.
+# `node harness/unpack-fixtures.cjs`. Nothing reads them but a person.
 #
 # NOT harness/fixtures/ — those are the frozen JavaScript answers themselves, they are committed, and
 # the harness TESTS read them during `mvn package` inside the image build. Excluding them here would

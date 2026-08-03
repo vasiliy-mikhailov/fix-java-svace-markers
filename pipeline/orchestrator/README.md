@@ -1,27 +1,23 @@
 # fsm-orchestrator
 
-What n8n was doing, in one Spring Boot process with the judgement engine it calls.
+The schedule, the single-flight queue, the two tables, the run history and the dashboard, in one Spring
+Boot process.
 
-n8n contributed exactly four things — a schedule, a single-flight queue, two Data Tables and a run
-history — and all four are ordinary server concerns. This module takes them over. It takes over
-**nothing else**: every judgement (the anchoring, the realness score, the verdict routing, the
-infra-versus-verdict state machine) stays in `engine` and is called here **in-process, as a library**,
-through the same pure functions the engine's own tests pin. That is why `engine` is a compile dependency
-and not a base URL, and why there is no `fsm-engine` container in this service's dependency list.
+It owns those and **nothing else**: every judgement (the anchoring, the realness score, the verdict
+routing, the infra-versus-verdict state machine) lives in `engine` and is called here **in-process, as a
+library**, through the same pure functions the engine's own tests pin. That is why `engine` is a compile
+dependency and not a base URL, and why the `fsm-engine` container is not in this service's dependency
+list — nothing in a run calls it.
 
-**If you have never seen n8n, you do not need to.** Everything below is `mvn`, `curl` and `docker
-compose`.
-
-> **THE PROVER IS IN THIS PROCESS TOO, since the three services became one.** `fsm.runner.mode` is
-> `local` by default: `RunnerClient` is `LocalRunnerClient`, which calls
-> `tech.mikhailov.fsm.runner.LocalRunner` directly — the same clone, the same RED and GREEN builds, the
-> same single-flight queue, no HTTP. Where `fsm-runner` appears below, read "the prover"; there is no
-> such container. `FSM_RUNNER_MODE=http` restores the split shape and `FSM_RUNNER_URL` with it, and the
-> retry and timeout knobs documented here apply to that mode only.
+> **THE PROVER IS IN THIS PROCESS TOO.** `fsm.runner.mode` is `local` by default: `RunnerClient` is
+> `LocalRunnerClient`, which calls `tech.mikhailov.fsm.runner.LocalRunner` directly — the same clone, the
+> same RED and GREEN builds, the same single-flight queue, no HTTP. Where an `fsm-runner` address appears
+> below, read "the prover": in the default shape there is no such container. `FSM_RUNNER_MODE=http`
+> selects the split shape and `FSM_RUNNER_URL` with it, and the retry and timeout knobs documented here
+> apply to that mode only.
 >
 > Two consequences worth knowing here: `CACHE` must point at a mounted volume for the same reason
-> `FSM_DB_PATH` must, and the container now runs as uid **10002** with both `/state` and `/cache` under
-> it.
+> `FSM_DB_PATH` must, and the container runs as uid **10002** with both `/state` and `/cache` under it.
 
 ```
 POST /api/ingest        ──►  ingest job   ──►  suspicions (the backlog)
@@ -79,24 +75,20 @@ That argument governs the **image's own** build. Which repository the *analysed*
 is the `MAVEN_MIRROR_URL` environment variable on the running container — no rebuild, and it works on an
 image you did not build.
 
-Published on `127.0.0.1:8085` only. Public access is Caddy over `proxy-net` with basic-auth in front,
-which routes `/dashboard/` here — this process serves the dashboard that used to be its own Node
-service.
+Published on `127.0.0.1:8085` only. The dashboard has no authentication of its own; public access is a
+reverse proxy with auth in front, routing `/dashboard/` here.
 
-### The cutover from n8n is done
+### Exactly one prover, and that is a property to protect
 
-n8n is gone from the deployment. `deploy/docker-compose.yml` declares ONE running service, `fsm` (plus
-`engine` behind a profile, which nothing in a run calls), and this process is the only prover in the
-stack, so its single-flight guarantee is once again the whole of the mutual exclusion rather than half
-of it.
+`deploy/docker-compose.yml` declares ONE running service, `fsm` (plus `engine` behind a profile, which
+nothing in a run calls), so this process is the only prover in the stack and its single-flight guarantee
+is the whole of the mutual exclusion.
 
-**That is the property to protect if anything is ever added back.** The prover serialises `/run_test`
-around ONE cached workspace *per process*, so a second prover patches the first one's tree with no lock
-between them and nothing anywhere goes red. `DeploymentTest` pins the service list for exactly this
-reason — it is the only place the compose file is checked now that the Node half of the fleet is gone.
-
-Nothing was migrated out of n8n: the tables are this service's own (H2), and `POST /api/ingest` re-reads
-the Svace report into its backlog.
+**Do not add a second one.** The prover serialises `/run_test` around ONE cached workspace *per
+process*, so a second prover `reset --hard`s and patches the tree the first is building in, with no lock
+between them, and nothing anywhere goes red — the result is a green prove about the wrong code.
+`DeploymentTest` pins the service list for exactly this reason; it is the only place the compose file is
+checked at all.
 
 ---
 
@@ -178,22 +170,21 @@ running one prove cannot act on that. The key is in the cause of the step's
 | `WS` | `/ws` (STOMP, SockJS too) | `/topic/state`, `/topic/counts`, `/topic/markers`, `/topic/progress` — pushed while a browser is attached. |
 
 An ingest is refused while a prove is running: it clears the table the prove is working in, and the
-prove would then settle a row that no longer exists — 45 minutes of runner time for an artifact nothing
-explains. n8n had that hazard and no guard for it.
+prove would then settle a row that no longer exists — 45 minutes of prover time for an artifact nothing
+explains.
 
 ---
 
 ## Configuration
 
 Everything under `fsm` binds to **one** class, `config/FsmProperties.java`, and every key names the code
-that reads it. (Two classes used to claim the prefix with different shapes for `fsm.runner`; Boot binds
-each separately and ignores what it does not recognise, so five of these knobs reached nothing at all,
-silently. `FsmPropertiesTest` now fails the build if a second claimant appears, and asserts each key
-arrives at its consumer.)
+that reads it. **One claimant is the rule, not a coincidence.** If a second `@ConfigurationProperties`
+class claims the prefix with a different shape, Boot binds each separately and ignores what it does not
+recognise, so knobs bound only to the loser reach nothing at all, silently — a configured value that
+never took effect and never said so. `FsmPropertiesTest` fails the build if a second claimant appears,
+and asserts each key arrives at its consumer.
 
-Set them as environment variables in compose, or as `--fsm.…=` arguments locally. The defaults reproduce
-the n8n workflow exactly, so an orchestrator started with no configuration behaves as the workflow it
-replaces.
+Set them as environment variables in compose, or as `--fsm.…=` arguments locally.
 
 ### Credentials — process environment only, never a yaml file
 
@@ -357,8 +348,8 @@ jq -r 'select(.feedback) | .feedback[] | "\(.stage)\t\(.kind)"' feedback/gepa-fe
 
 ### Reading it: the dashboard's "Team guidance" panel
 
-The `jq` above is what this used to require. `CritiqueIndex` is the read path — the panel at the top of
-the dashboard, and `/api/feedback` behind it.
+The `jq` above is the answer without a browser. `CritiqueIndex` is the read path — the panel at the top
+of the dashboard, and `/api/feedback` behind it.
 
 - **It reads the JSONL, not a copy in H2.** The file accumulates **across runs** and outlives the
   database: H2 lives under `FSM_DB_PATH` and is wiped by a fresh deploy or a move to another host, so a
@@ -502,10 +493,11 @@ docker compose down && docker volume rm fsm_fsm-orchestrator-state
 
 ### Looking inside the database
 
-The database is **not** reachable over the network by default, and that is deliberate. `AUTO_SERVER=TRUE`
-used to be on the URL; H2 implements it by starting a TCP server with `-tcpAllowOthers` bound to the
-**wildcard** address, reachable as `sa` with an empty password, read and write, in front of every marker
-and every drafted PR body.
+The database is **not** reachable over the network by default, and that is deliberate. Do not put
+`AUTO_SERVER=TRUE` back on the JDBC URL: H2 implements it by starting a TCP server with
+`-tcpAllowOthers` bound to the **wildcard** address, reachable as `sa` with an empty password, read and
+write, in front of every marker and every drafted PR body. `H2ExposureTest` pins that the shipped
+profile opens no port.
 
 Read-only, any time, no configuration:
 
@@ -580,8 +572,8 @@ green while the page was broken:
 
 1. a duplicate `const settled` made the whole script a `SyntaxError`, so the browser discarded it and
    rendered a **blank page**. Every endpoint answered 200 throughout. Nobody noticed for hours.
-2. `/api/bug` went missing after a port. The marker modal said "not proven yet" for 50 markers that
-   *were* proven, because the page's `jget()` swallows a 404 and renders the empty state.
+2. `/api/bug` went missing. The marker modal said "not proven yet" for 50 markers that *were* proven,
+   because the page's `jget()` swallows a 404 and renders the empty state.
 3. `/ws` 404s through Caddy's `handle_path` while working on the container's own port, so live push
    silently degrades to the polling fallback. The page still "works", it just never updates by itself.
 4. a prove that settled **nothing** was painted green in the activity panel (`COMPLETED` → `success`),

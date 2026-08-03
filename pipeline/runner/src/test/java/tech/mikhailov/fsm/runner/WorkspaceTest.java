@@ -21,7 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
  * The two clones, and the read-only route the dashboard reads source through.
  *
  * <p>The cache keys are asserted against LITERAL hashes. That is deliberate: {@code /cache} is a persistent
- * volume that the JS filled, and this service is meant to adopt those directories rather than start a
+ * volume that another process filled, and this service ADOPTS those directories rather than starting a
  * second copy of every repository beside them. A change to how the key is spelled is a re-clone of
  * everything, so it has to fail here rather than be discovered as an unexplained hour of git traffic.
  */
@@ -166,7 +166,7 @@ class WorkspaceTest {
      * the previous marker's patched source: the test does not fail, {@code red_reproduced} comes back
      * false for a defect that is really there, {@code RecordOutcome} routes it to NOT_REPRODUCED, and
      * {@code Verdict} writes a false_positive rebuttal about code that is not what is in the repository.
-     * A wrong answer wearing the shape of a right one, and it is the one answer this fleet must not give.
+     * A wrong answer wearing the shape of a right one, and it is the one answer this service must not give.
      *
      * <p>It is not hypothetical. {@code RunnerServer.close()} calls {@code builds.shutdownNow()} on every
      * deploy — the handoff's "the restart kills any in-flight run" — which interrupts the build thread
@@ -342,8 +342,8 @@ class WorkspaceTest {
         @Test
         void aCheckoutGitCanResolveHeadInIsAdoptedRatherThanRecloned(@TempDir Path cache)
                 throws IOException {
-            // This is what lets the Java service inherit the directories the JS left in the volume: they
-            // have a .git and no marker file, because the marker is this port's own bookkeeping.
+            // This is what lets this service inherit a directory it did not create: it has a .git and
+            // no marker file, because the marker is this code's own bookkeeping.
             Path base = cache.resolve("fs").resolve(Workspace.keyFor("o/r", "main"));
             Files.createDirectories(base.resolve(".git"));
             Files.writeString(base.resolve("A.java"), "class A {}\n");
@@ -570,7 +570,7 @@ class WorkspaceTest {
 
         @Test
         void theGitDirectoryIsNeverServed(@TempDir Path cache) {
-            // THE LEAK. A clone made by the JS put the token in remote.origin.url, and this route served
+            // THE LEAK. A clone made with a tokenized URL puts the token in remote.origin.url, and this route served
             // .git/config out of the read-only tree — no escape, no traversal, just the file's own name.
             Map<String, Object> r = withGitDir(cache)
                     .readFile(body("repo", "o/r", "path", ".git/config"));
@@ -606,7 +606,7 @@ class WorkspaceTest {
         @Test
         void aSymlinkOntoTheGitDirectoryIsRefused(@TempDir Path cache) {
             // The rule must not depend on the CALLER asking nicely, and a lexical rule does: any
-            // repository this fleet clones may ship a symlink whose own name says nothing.
+            // repository this pipeline clones may ship a symlink whose own name says nothing.
             Workspace workspace = new Workspace(cache, "ghp_secret", new FakeExec(c -> {
                 Path target = FakeExec.clonedInto(c);
                 Files.writeString(target.resolve(".git").resolve("config"),
@@ -635,7 +635,7 @@ class WorkspaceTest {
         @Test
         void aPathJavaCannotEvenSpellIsAnAnswerToo(@TempDir Path cache) {
             // FOUND BY harness/run.sh. `Path.of` refuses a NUL inside a name and `path.resolve` did not,
-            // so where the JS answered {"error": "file not found: …"} this threw an InvalidPathException
+            // so where the contract answers {"error": "file not found: …"} this threw an InvalidPathException
             // out of the route — and the dashboard's "source unavailable" line got a Java stack trace
             // instead of the reason. No NUL can name a file, so the answer is the same one.
             // Spelled with (char) 0, not as a literal: a raw NUL in this file would be invisible.

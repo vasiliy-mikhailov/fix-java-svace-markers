@@ -151,8 +151,8 @@ class EditTest {
     void javascriptWhitespaceNotJavas() {
         // A NO-BREAK SPACE in the file, an ordinary space in the fixer's quote. Java's \s and
         // String.strip() do not call U+00A0 whitespace and JavaScript's \s does, so a port using
-        // Java's predicate would refuse a fix the JS applied — the exact failure this fallback exists to
-        // prevent, reintroduced by the port itself. It is not exotic: a pretty-printer or a copy-paste
+        // Java's predicate would refuse a fix that has to apply — the exact failure this fallback
+        // exists to prevent. It is not exotic: a pretty-printer or a copy-paste
         // out of a rendered page leaves them behind. Written as an escape because a raw one is
         // invisible, and an invisible test fixture is one a reformat silently deletes.
         Edit.Applied r = Edit.applyEdit("int\u00A0x = 1;\n", "int x = 1;", "int x = 2;");
@@ -163,9 +163,9 @@ class EditTest {
 
     @Test
     void theReplacementIsInsertedVerbatim() {
-        // The JS reached String.prototype.replace on the exact path, which expands $&, $$, $` and $' in
-        // the replacement — so a fix containing one was corrupted, and ONLY on that path (the
-        // whitespace path concatenated). This port inserts verbatim on both.
+        // A regex-replace on the exact path expands $&, $$, $` and $' in the replacement, so a fix
+        // containing one is corrupted — and ONLY on that path, since the whitespace path concatenates.
+        // This inserts VERBATIM on both.
         assertEquals("a $& b\n", Edit.applyEdit("a X b\n", "X", "$&").text(),
                 "$& must stay $&, not become the text it replaced");
         assertEquals("id$$1\n", Edit.applyEdit("idX\n", "X", "$$1").text());
@@ -192,9 +192,9 @@ class EditTest {
 
         @Test
         void aTrulyEmptyOldStringIsRefusedAsNotUnique() {
-            // Not "is empty", which is the answer a reader expects: `''.split('')` makes the JS count one
+            // Not "is empty", which is the answer a reader expects: `''.split('')` counts one
             // occurrence per character, so the guard that catches this is the uniqueness one. The message
-            // is worth pinning because it is what a fixer author sees, and because the port had to
+            // is worth pinning because it is what a fixer author sees, and because this code had to
             // reproduce split()'s empty-separator arithmetic to produce it at all.
             assertEquals("old_str matches 5x (not unique)",
                     Edit.applyEdit("a\nb\nc\n", "", "x").error());
@@ -250,14 +250,14 @@ class EditTest {
     @Test
     void aPathJavaCannotSpellCostsOneEditAndNotTheProve() {
         // FOUND BY harness/run.sh. `Path.of` refuses a NUL inside a name; `path.resolve` accepted it and
-        // `existsSync` then said no, so the JS lost THAT ONE EDIT and applied the rest. Throwing an
+        // an existence check then says no, so THAT ONE EDIT is lost and the rest applied. Throwing an
         // InvalidPathException here instead ended the whole prove as {"ok": false} — a model reply garbled
         // in one edit would cost the marker its other, good edits and be recorded as infra to retry.
         // Spelled with (char) 0 rather than as a literal, so the byte is visible to a reader.
         Edit.Target t = Edit.fixTarget(WS, "src/main/java/a/B" + (char) 0 + ".java", "");
         assertFalse(t.ok());
         assertEquals("file not found", t.error(),
-                "the wording is the JS's, so edit_errors reads the same either way");
+                "the wording is the contract's, so edit_errors reads the same either way");
     }
 
     @Test

@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * The JS value semantics the PROMPT-BUILDING nodes are specified in terms of.
+ * The JavaScript value semantics the PROMPT-BUILDING stages are specified in terms of.
  *
  * <p>{@link JsText} owns whitespace and {@link Js} owns {@code String(x)}, {@code parseInt} and JS key
  * order. What is left, and what the input-building family needs, is the part of the language that
@@ -50,7 +50,7 @@ public final class JsValue {
     }
 
     /**
-     * A character class equivalent to JavaScript's {@code \s}, re-exported for ported regexes.
+     * A character class equivalent to JavaScript's {@code \s}, re-exported for regexes that need it.
      *
      * <p>build-reproduce-input's method-signature regex uses {@code \s} in four places. Left as Java's
      * {@code \s} it stops at a no-break space between the return type and the method name, the

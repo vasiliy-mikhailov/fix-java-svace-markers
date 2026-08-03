@@ -49,7 +49,7 @@ public final class Runner {
                 + ", " + PathEncoding.describe() + ")");
         if (!PathEncoding.spellsNonAscii()) {
             // Not fatal: the runner still proves every marker whose paths are ASCII, which is nearly all
-            // of them, and a fleet that refuses to start is worse than one that answers this honestly
+            // of them, and a service that refuses to start is worse than one that answers this honestly
             // per request. Loud, though — the alternative is finding out from a marker that came back
             // "file not found" for a file a reviewer can see in the repository.
             System.err.println("fsm-runner: WARNING — " + PathEncoding.describe()
@@ -63,11 +63,10 @@ public final class Runner {
     /**
      * BIND defaults to 0.0.0.0, and that is deliberate rather than careless.
      *
-     * <p>The runner is a compose service that publishes no ports: its only reachable address is the one
-     * n8n, the engine's orchestrator and the dashboard resolve on the compose network, and binding
-     * loopback would make it unreachable from every other container while looking perfectly healthy from
-     * inside its own. The dashboard learned this the expensive way. The JS had no knob at all — it called
-     * {@code server.listen(PORT)}, which is 0.0.0.0 — so the default is the old behaviour and the knob
+     * <p>In the split shape this runs as a container of its own: its only reachable address is the one
+     * its caller resolves on the Docker network, and binding loopback would make it unreachable from
+     * every other container while looking perfectly healthy from inside its own — which is the
+     * expensive half of the mistake. So 0.0.0.0 is the default and the knob
      * exists for running it outside a container.
      */
     private static String env(String name, String fallback) {

@@ -42,7 +42,7 @@ import tech.mikhailov.fsm.orch.model.Suspicion;
  * Same input, same engine, different verdict distribution, decided by an alphabetical accident.
  *
  * <p>The defence written on {@code claimNext} — that the key begins with the repository, so consecutive
- * claims stay in one repo and the java-runner keeps its checkout warm — is vacuous here:
+ * claims stay in one repo and the prover keeps its checkout warm — is vacuous here:
  * {@code ParseMarkers} takes ONE {@code repo} per ingest and {@link IngestTasklet} clears the whole
  * backlog before inserting, so every {@code dedup_key} in the table carries the same repo prefix under
  * any ordering. The tie-break keeps it anyway.

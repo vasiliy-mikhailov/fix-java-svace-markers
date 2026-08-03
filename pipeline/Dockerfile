@@ -1,23 +1,19 @@
 # fsm — THE WHOLE PIPELINE, IN ONE IMAGE.
 #
-# It was two: orchestrator/Dockerfile (a JDK and a Spring Boot jar) and runner/Dockerfile (five JDKs,
-# Maven and git, because /run_test shells out over somebody else's repository). Those two files are
-# merged here, and the merge is only correct if the runtime stage keeps EVERYTHING the runner's had:
-# this process does not merely run its own code, it clones repositories and spawns `git`, `mvn` and
-# `./gradlew` as child processes (Proc.execFile). An image that shipped the jar without the toolchain
-# would start, serve the dashboard, answer /healthz — and report every marker in the backlog as an
-# infrastructure failure.
+# THE RUNTIME STAGE CARRIES A WHOLE TOOLCHAIN, AND THAT IS NOT OPTIONAL. This process does not merely
+# run its own code: it clones repositories and spawns `git`, `mvn` and `./gradlew` as child processes
+# (Proc.execFile). An image that shipped the jar without the toolchain would start, serve the dashboard,
+# answer /healthz — and report every marker in the backlog as an infrastructure failure.
 #
-# WHAT THE MERGE DELETED, which is the reason for it: the runner's ADDRESS. `http://fsm-runner:8090`
-# was written in the compose environment, in application.yml and compiled into
-# HttpRunnerClient.DEFAULT_BASE_URL, each a fallback for the one above it, none read until a marker is
-# proved. A stale value anywhere in that chain surfaced hours into a 6-26 hour run as a refused connect
-# filed as an infrastructure failure. tech.mikhailov.fsm.runner.LocalRunner is the same Prove, Workspace
-# and Build behind the same single-flight queue, called in-process. `FSM_RUNNER_MODE=http` still selects
-# the split shape, for a deployment that wants the build sandbox behind a container boundary.
+# ONE IMAGE IS ALSO ONE FEWER ADDRESS. The prove runs in this process (LocalRunner: the same Prove,
+# Workspace and Build behind the same single-flight queue). A separate prover has to be addressed, and
+# that address lives in three places — the compose environment, application.yml and
+# HttpRunnerClient.DEFAULT_BASE_URL, each a fallback for the one above it — none of them read until a
+# marker is proved, so a wrong one surfaces hours into a 6-26 hour run as a refused connect filed as an
+# infrastructure failure. `FSM_RUNNER_MODE=http` still selects the split shape, for a deployment that
+# wants the build sandbox behind a container boundary.
 #
-# CARRIED OVER VERBATIM IN INTENT FROM runner/Dockerfile, because that provisioning is the expensive,
-# fragile, already-correct part:
+# THE PROVISIONING BELOW IS THE EXPENSIVE, FRAGILE PART. Each line of it is load-bearing:
 #
 #   * FROM debian:bookworm-slim AND FETCH FROM PUBLIC SOURCES. Not from a base image built elsewhere on
 #     the host, and no jar staged into the build context by hand. Both made the image unbuildable on a
@@ -28,13 +24,13 @@
 #     may switch to has to be present or the retry silently declines and the marker is filed as
 #     unreproducible on a JDK it was never going to compile under. WebGoat needs 25. GET /health-style
 #     reporting lists what is actually on disk, so a failed download shows up as a missing JDK.
-#   * TARGETARCH-aware. The original hardcoded `linux/x64`, which is correct on one host and silently
-#     wrong everywhere else: the image builds and every `java` then dies at RUN time with "exec format
-#     error". This is how the image is verifiable on an arm64 laptop.
+#   * TARGETARCH-aware. A hardcoded `linux/x64` is correct on one host and silently wrong everywhere
+#     else: the image builds and every `java` then dies at RUN time with "exec format error". This is
+#     how the image is verifiable on an arm64 laptop.
 #   * GRADLE IS DELIBERATELY ABSENT. Build.buildCmd emits `./gradlew`, never `gradle`, so every Gradle
 #     project is built by the wrapper it pins. A Gradle distribution here would be one nothing executes.
 #
-# AND ONE THING THAT IS NOT CARRIED OVER — the committed settings.xml. See the runtime stage.
+# AND ONE THING THAT IS DELIBERATELY ABSENT — a committed settings.xml. See the runtime stage.
 #
 # THE BUILD CONTEXT IS THE REACTOR ROOT (pipeline/), which is where this file lives. `orchestrator`
 # depends on `engine` AND on `runner` and resolves both FROM THE REACTOR, because nothing publishes
@@ -143,18 +139,19 @@ COPY engine/src engine/src
 COPY runner/src runner/src
 COPY orchestrator/src orchestrator/src
 # THE FROZEN DIFFERENTIAL FIXTURES OF BOTH MODULES, which are a TEST INPUT and not documentation. The
-# runner's DifferentialHarnessTest replays the 23 401 cases the retired java-runner answered — cases,
-# answers and the filesystem tree four families read — and the engine's three do the same for its node
-# bodies. src/ alone does not build. `harness/out/` stays out (generated, and in .dockerignore).
+# runner's DifferentialHarnessTest replays 23 401 cases and the recorded reference answer to each —
+# cases, answers and the filesystem tree four families read — and the engine's three tests do the same
+# for its decision classes. src/ alone does not build. `harness/out/` stays out (generated, and in
+# .dockerignore).
 COPY engine/harness/fixtures engine/harness/fixtures
 COPY runner/harness/fixtures runner/harness/fixtures
 
 # `-pl orchestrator -am` builds engine, then runner, then the orchestrator against both, from the
-# reactor. This is the line the build context exists for, and `-am` now pulls in one module more than it
-# used to — `runner` became a compile dependency of `orchestrator` when the prove moved in-process.
+# reactor. This is the line the build context exists for: `runner` is a compile dependency of
+# `orchestrator`, because the prove runs in-process.
 #
-# TESTS RUN IN THE IMAGE BUILD, all three modules'. Between them they are the ported specification of
-# the one distinction the whole pipeline rests on — did the test RUN and fail, or did it never run —
+# TESTS RUN IN THE IMAGE BUILD, all three modules'. Between them they are the specification of the one
+# distinction the whole pipeline rests on — did the test RUN and fail, or did it never run —
 # and of which markers are retried and which are retired for good. An image that shipped without running
 # them is an image nobody checked. Use `--build-arg SKIP_TESTS=-DskipTests` only to reproduce a build
 # whose failure you are already looking at.
@@ -162,8 +159,7 @@ ARG SKIP_TESTS=
 RUN mvn -B -q -pl orchestrator -am package ${SKIP_TESTS}
 
 # ---- runtime -------------------------------------------------------------------------------------
-# THE WHOLE TOOLCHAIN LIVES HERE. This is the half that came from runner/Dockerfile, and none of it is
-# optional: /run_test spawns `git`, `mvn` and `./gradlew` as child processes over the repositories under
+# THE WHOLE TOOLCHAIN LIVES HERE, and none of it is optional: /run_test spawns `git`, `mvn` and `./gradlew` as child processes over the repositories under
 # analysis, so stripping any of it out produces an image that starts, answers /healthz, and then reports
 # every marker in the backlog as an infrastructure failure.
 FROM debian:bookworm-slim
@@ -198,15 +194,14 @@ RUN set -eux; \
     done
 
 # --- Maven ------------------------------------------------------------------------------------------
-# NO settings.xml IS COPIED, AND THAT ABSENCE IS THE FIX FOR THE DEFECT THAT BROKE EVERY CLEAN MACHINE.
+# NO settings.xml IS COPIED, AND THAT ABSENCE IS LOAD-BEARING — it is what makes this image usable on a
+# machine that is not the one it was built on.
 #
-# runner/Dockerfile copied a committed runner/settings.xml into BOTH conf/settings.xml and
-# ~/.m2/settings.xml, unconditionally, and that file pinned `mirrorOf=*` to
-# http://nexus:8081/repository/maven-public/. A mirror of `*` is not a cache in front of Central — it is
-# the ONLY repository Maven will talk to. So on any machine without that Nexus on that Docker network,
-# the container started, answered /health with all five JDKs, cloned the repository under test, and then
-# failed EVERY build in hundreds of lines about unresolvable artifacts. That reads as a broken project,
-# not as an image carrying somebody else's infrastructure.
+# A copied settings.xml pinning `mirrorOf=*` at some internal host is not a cache in front of Central —
+# it is the ONLY repository Maven will talk to. On any machine where that hostname does not resolve, the
+# container starts, answers /health with all five JDKs, clones the repository under test, and then fails
+# EVERY build in hundreds of lines about unresolvable artifacts. That reads as a broken project, not as
+# an image carrying somebody else's infrastructure.
 #
 # WHERE IT WENT: MavenSettings, read at RUN TIME from the MAVEN_MIRROR_URL environment variable.
 #   unset  -> no settings file, no -s, Maven resolves from Central. The default, and it must work on a
@@ -229,15 +224,14 @@ ENV JAVA_HOME=/opt/jdk/${JDK_VERSION}
 ENV PATH=/opt/jdk/${JDK_VERSION}/bin:/opt/apache-maven-${MAVEN_VERSION}/bin:/usr/local/bin:$PATH
 
 # UNPRIVILEGED, AND IT OWNS BOTH ITS DIRECTORIES. This process writes an H2 database AND runs arbitrary
-# build scripts out of arbitrary repositories; the JS runner it replaces ran them as root.
+# build scripts out of arbitrary repositories. It must not run either as root.
 #
-# UID 10002 IS THE ORCHESTRATOR'S, NOT THE RUNNER'S, and that choice is data-retention config rather
-# than taste: /state holds the live H2 store on a named volume created under 10002, and feedback/ on the
-# deployment host was chowned to 10002 by hand (orchestrator/README.md says so, and so does the compose
-# file). Taking the runner's 10003 instead would leave the running deployment unable to open its own
-# database. /cache was 10003's; Docker seeds an EMPTY named volume from the image's directory, ownership
-# included, so a fresh volume is created correctly — and the existing one is chowned by the line below,
-# which runs while this stage is still root.
+# THE UID IS DATA-RETENTION CONFIG, NOT TASTE. /state holds the live H2 store on a named volume created
+# under 10002, and feedback/ on the deployment host is chowned to 10002 by hand (orchestrator/README.md
+# says so, and so does the compose file). Change this number and the running deployment can no longer
+# open its own database or write its feedback file. A FRESH volume is fine either way — Docker seeds an
+# empty named volume from the image's directory, ownership included — which is exactly why the breakage
+# would only show up where the data already is.
 #
 # HOME is set explicitly rather than left to a passwd lookup, because `mvn` reads $HOME to find ~/.m2
 # and `./gradlew` reads it to find ~/.gradle; unset, both land in / and fail as root-only.
@@ -247,14 +241,14 @@ RUN useradd --system --create-home --uid 10002 fsm \
 USER fsm
 ENV HOME=/home/fsm
 
-# The Spring Boot fat jar: the orchestrator, the engine and the runner in one archive. Unlike the
-# runner's thin jar there is no /app/libs to keep in step with it — `spring-boot-maven-plugin` repackages
-# every runtime dependency, so a dependency added to a pom is carried by the image rather than
-# discovered as a NoClassDefFoundError on the first container start.
+# The Spring Boot fat jar: the orchestrator, the engine and the runner in one archive. There is no
+# /app/libs to keep in step with it — `spring-boot-maven-plugin` repackages every runtime dependency, so
+# a dependency added to a pom is carried by the image rather than discovered as a NoClassDefFoundError
+# on the first container start.
 COPY --from=build /src/orchestrator/target/fsm-orchestrator.jar /app/fsm.jar
 
-# 8085 — the REST triggers, the websocket push and the dashboard. (8090 was the runner's and is gone
-# with it; 8092 is the optional engine's.)
+# 8085 — the REST triggers, the websocket push and the dashboard. (8092 is the optional engine's; 8090
+# is the prover's, and is published only in the split shape, by a container you start yourself.)
 ENV FSM_PORT=8085
 EXPOSE 8085
 
@@ -265,8 +259,7 @@ EXPOSE 8085
 # prepared, and compose mounts a named volume there.
 ENV FSM_DB_PATH=/state/fsm
 
-# …AND THE SAME ARGUMENT FOR THE CHECKOUTS, which is new to this image and was the runner's CACHE.
-# Unmounted, /cache is the container's writable layer, so every `docker compose up -d` throws away every
+# …AND THE SAME ARGUMENT FOR THE CHECKOUTS. Unmounted, /cache is the container's writable layer, so every `docker compose up -d` throws away every
 # checkout and every target/ behind it — minutes per repository, silently, on a run that is 282 markers
 # long. application.yml defaults fsm.runner.cache to ./data/cache, which is laptop-correct and wrong
 # here; DeploymentTest pins this variable to the volume mounted on it.
@@ -278,9 +271,8 @@ ENV CACHE=/cache
 #
 # It is refused because a locale set HERE is inherited by every build of every repository under test,
 # and for a JDK 8 or 11 build it changes `file.encoding` from ASCII to UTF-8 — which changes what those
-# tests DO. This service exists to answer whether a defect reproduces, and its answers have to be the
-# ones the retired java-runner gave (it ran with no locale, and the differential harness compared
-# against that). A deployment detail must not quietly become a variable in the verdict.
+# tests DO. This service exists to answer whether a defect reproduces, so a deployment detail must not
+# quietly become a variable in the verdict.
 #
 # BUT THE WRITING SIDE NEEDS A LOCALE. `java.nio.file.Path` is not characters — it is the bytes the
 # kernel takes — and the JDK produces them with `sun.jnu.encoding`, derived from THIS PROCESS'S LOCALE.
@@ -290,10 +282,10 @@ ENV CACHE=/cache
 # in the checkout. `-Dsun.jnu.encoding=UTF-8` does NOT set it either.
 #
 # SO THE LOCALE IS SET ON THE EXEC LINE BELOW, for one process — and Proc.isLocale then removes LANG,
-# LANGUAGE and every LC_* from every child it starts, so a build under test sees exactly the empty
-# locale it saw before. What used to be guaranteed by an absent line is now guaranteed by code a test
-# pins (ProcTest.theRunnersOwnLocaleIsStrippedFromEveryChild), which survives somebody adding an
-# `environment:` entry in compose.
+# LANGUAGE and every LC_* from every child it starts, so a build under test sees an empty locale however
+# this process was started. That is guaranteed by code a test pins
+# (ProcTest.theRunnersOwnLocaleIsStrippedFromEveryChild) rather than by the absence of a line here,
+# which is what makes it survive somebody adding an `environment:` entry in compose.
 
 # /healthz runs a real query against the marker table, so this fails when the database is gone rather
 # than only when the port is closed. GET, because that is what a HEALTHCHECK can issue without a body.
@@ -318,16 +310,15 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
 #     that owns the shared workspace. A shell wrapper would swallow the signal and compose would SIGKILL
 #     the JVM ten seconds later.
 #
-# THE JVM FLAGS ARE ON THE COMMAND LINE, NOT IN JAVA_TOOL_OPTIONS, and that is what changes now that the
-# two images are one. The orchestrator's image used JAVA_TOOL_OPTIONS; in this image that would be
-# inherited by every child JVM — every Maven, plus each surefire JVM it forks, running somebody else's
-# tests. They would all pick up this process's heap ceiling and print "Picked up JAVA_TOOL_OPTIONS:"
-# into the very log Build.summarize parses. Flags after `java` reach this JVM and stop there.
+# THE JVM FLAGS ARE ON THE COMMAND LINE, NOT IN JAVA_TOOL_OPTIONS. JAVA_TOOL_OPTIONS would be inherited
+# by every child JVM — every Maven, plus each surefire JVM it forks, running somebody else's tests. They
+# would all pick up this process's heap ceiling and print "Picked up JAVA_TOOL_OPTIONS:" into the very
+# log Build.summarize parses. Flags after `java` reach this JVM and stop there.
 #
-# 25%, where the orchestrator alone took 75%. This JVM now shares its container with the builds it
-# exists to run: a 90-minute prove is a Maven and its forked test JVMs, which need most of the memory.
-# A heap allowed to grow to three quarters of the container would win that race and get the build
-# OOM-killed — reported as an infrastructure failure against a marker that was fine.
+# 25%, and not more, because this JVM shares its container with the builds it exists to run: a 90-minute
+# prove is a Maven and its forked test JVMs, which need most of the memory. A heap allowed to grow to
+# three quarters of the container would win that race and get the build OOM-killed — reported as an
+# infrastructure failure against a marker that was fine.
 #
 # stdout/stderr.encoding because the container has no console encoding to inherit, and these lines —
 # the realness log, the verdict log, every infra_reason — are read by grepping them.

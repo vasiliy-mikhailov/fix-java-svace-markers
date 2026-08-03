@@ -30,16 +30,17 @@ final class Build {
     /**
      * The JDKs the image ships, in the order {@code /health} reports them.
      *
-     * <p>ONE list, where the JS had two — {@code JDKS} in server.js and an inline copy inside
-     * {@code requiredJdk}. They agreed, and nothing made them: adding a JDK to the image and to one of
-     * the two would have produced a service that accepts a JDK it will never retry onto.
+     * <p>ONE list, and it must stay one. The route that ACCEPTS a {@code jdk} and the retry that
+     * SWITCHES to one read the same constant; two copies would agree until somebody added a JDK to the
+     * image and to only one of them, and the result is a service that accepts a JDK it will never
+     * retry onto.
      */
     static final List<String> JDKS = List.of("8", "11", "17", "21", "25");
 
     /** Where the Dockerfile installs them, side by side. */
     static final String JDK_ROOT = "/opt/jdk";
 
-    /** What a build said about itself. Field order is the JS object's, so the replies diff cleanly. */
+    /** What a build said about itself. The field ORDER is fixed, so two recorded replies diff cleanly. */
     record Summary(String tests, long ran, long failures, long errors, boolean testExecuted,
                    String build, boolean compileError, String source) {
 
@@ -299,7 +300,7 @@ final class Build {
         return new Command(List.copyOf(cmd), env);
     }
 
-    /** {@code s.replace(/^\/+|\/+$/g, '')} — an inner {@code //} is left alone, as the JS left it. */
+    /** {@code s.replace(/^\/+|\/+$/g, '')} — leading and trailing only; an inner {@code //} is data. */
     private static String trimSlashes(String s) {
         int from = 0;
         int to = s.length();

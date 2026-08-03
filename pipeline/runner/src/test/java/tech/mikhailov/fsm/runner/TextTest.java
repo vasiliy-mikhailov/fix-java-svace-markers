@@ -65,7 +65,7 @@ class TextTest {
     void aFieldThatIsNullIsNotAFieldThatIsMissing() {
         // FOUND BY harness/run.sh, and it is not only a message: Workspace hashes `${repo}@${branch}` into
         // the cache DIRECTORY NAME, so reading an explicit `"repo": null` as "undefined" would have this
-        // service clone into a different directory than the JavaScript did for the very same request.
+        // service clone into a DIFFERENT directory for what is the very same request.
         // Json.parse keeps an explicit null as a present key, exactly as JSON.parse does, so the two are
         // still tellable apart on this side — but only through the container, never through the value.
         Map<String, Object> body = new LinkedHashMap<>();

@@ -14,7 +14,7 @@ import tech.mikhailov.fsm.orch.dao.SuspicionDao;
 import tech.mikhailov.fsm.orch.model.Suspicion;
 
 /**
- * The n8n {@code Release lease (err)} path: an infra failure puts the marker back and records why.
+ * The infra path: a failure that is not a judgement puts the marker back and records why.
  *
  * <p>THE THREE PROPERTIES THIS HAS TO HAVE, all of them from {@link InfraFailure}'s contract:
  * <ol>

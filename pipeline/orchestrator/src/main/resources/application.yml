@@ -15,19 +15,19 @@ spring:
     # with the container — correct for a developer running `mvn spring-boot:run`, and a data-loss bug
     # if it is left unset in compose. Set it to something under the volume, e.g. /data/fsm.
     #
-    # NO SERVER SETTING ON THIS LINE, AND THAT IS THE FIX FOR A MEASURED EXPOSURE.
+    # NO SERVER SETTING ON THIS LINE, AND IT MUST STAY THAT WAY — this is a MEASURED exposure.
     #
-    # It used to end `;AUTO_SERVER=TRUE`. What that buys is genuine: a second process may open the same
-    # file while the orchestrator holds it, so a developer can point a SQL client at a RUNNING
-    # orchestrator and ask why marker X is still 'new' without stopping the run to find out. Without it
-    # H2 takes an exclusive lock and the only way to read the table is to kill the thing you are
-    # debugging.
+    # `;AUTO_SERVER=TRUE` here buys something genuine: a second process may open the same file while
+    # this one holds it, so a developer can point a SQL client at a RUNNING orchestrator and ask why
+    # marker X is still 'new' without stopping the run to find out. Without it H2 takes an exclusive
+    # lock and the only way to read the table is to kill the thing you are debugging.
     #
     # What it ALSO does is start a TCP server with -tcpAllowOthers (H2's own Database.startServer), on
-    # the WILDCARD address. On 2026-07-29 lsof showed this process listening on *:50159 — IPv6 wildcard,
-    # not loopback-bound — and data/fsm.lock.db advertised the port to anything that could read the
+    # the WILDCARD address. Measured: this process listening on *:50159 — IPv6 wildcard, not
+    # loopback-bound — with data/fsm.lock.db advertising the port to anything that could read the
     # directory. Reachable as 'sa' with an EMPTY password, read AND WRITE, in front of 282 markers,
-    # their evidence and their drafted PR bodies. No debugging convenience is worth that.
+    # their evidence and their drafted PR bodies. No debugging convenience is worth that. The guarded,
+    # loopback-pinned opt-in below is the supported way in.
     #
     # SO: OFF BY DEFAULT, with the route kept as an opt-in that carries two conditions. Set
     #     FSM_DB_AUTO_SERVER=true   AND   FSM_DB_PASSWORD=<something>
@@ -49,7 +49,7 @@ spring:
     # keeps those two facts tied to each other.
     password: "${FSM_DB_PASSWORD:}"
     hikari:
-      # The prover is single-flight by design (one workspace in the java-runner), but the web layer,
+      # The prover is single-flight by design (one cached workspace per repository), but the web layer,
       # the websocket push and the reconciliation all read concurrently. Small and bounded.
       maximum-pool-size: 8
       pool-name: fsm-pool
@@ -91,11 +91,10 @@ server:
 
 # THE HEALTH ENDPOINTS, and the reason there are two.
 #
-# /healthz answers a machine — a container restart policy, a Caddy `health_uri` — in plain text, because
-# that is what dashboard/src/server.js answered and whatever polls it has no JSON parser. It used to
-# return a hardcoded 200 'ok': it answered 'ok' on every request through a run in which every prove was
-# failing on a refused connection, so nothing wired to it could ever have fired. It now runs a real
-# query; see DashboardController#healthz and DatabaseHealth.
+# /healthz answers a machine — a container restart policy, a reverse proxy's `health_uri` — in plain
+# text, because whatever polls it has no JSON parser. IT MUST RUN A REAL QUERY: a hardcoded 200 'ok'
+# answers 'ok' through a whole run in which every prove is failing on a refused connection, so nothing
+# wired to it can ever fire. See DashboardController#healthz and DatabaseHealth.
 #
 # /actuator/health answers the operator who wants to know WHICH component is down, and aggregates the
 # same probe alongside Boot's own. Details are OFF by default: there is no authentication in front of
@@ -116,10 +115,10 @@ management:
 #
 # EXACTLY ONE @ConfigurationProperties CLASS BINDS THE `fsm` PREFIX —
 # tech.mikhailov.fsm.orch.config.FsmProperties — and each key it binds names its reader in that class's
-# javadoc. Two classes used to claim the prefix with different shapes for `fsm.runner`, so each binder
-# silently dropped the other's keys and five of the settings below reached nothing at all.
-# FsmPropertiesTest fails the build if a second claimant ever appears, and sets every bound key to a
-# non-default value to prove it arrives at the object that acts on it.
+# javadoc. If a second class claims the prefix with a different shape, each binder silently drops the
+# other's keys and the settings bound only to the loser reach nothing at all — configured, and with no
+# effect and no complaint. FsmPropertiesTest fails the build if a second claimant ever appears, and sets
+# every bound key to a non-default value to prove it arrives at the object that acts on it.
 #
 # The keys that are NOT bound by it are the ones no record can serve: `fsm.db.auto-server` (read before
 # the context exists), `fsm.prove.schedule-*` and `fsm.live.*` (consumed by @ConditionalOnProperty,
@@ -173,17 +172,16 @@ fsm:
     cache: ${CACHE:./data/cache}
     # WHERE THE PROVE IS POSTED under `mode: http`, and read by nothing under `local`.
     #
-    # THIS DEFAULT SAID `fsm-java-runner` FOR A WHILE AFTER THAT CONTAINER WAS DELETED, which is worth
-    # a line because it is the failure `mode: local` deletes outright: the address was written here, in
-    # deploy/docker-compose.yml as an FSM_RUNNER_URL passthrough, and in
-    # HttpRunnerClient.DEFAULT_BASE_URL as the last fallback — and none of them is read until a marker
-    # is actually proved. The stack starts, /healthz is green, the schedule fires, and six hours in the
-    # first prove spends three connect attempts on a name nothing serves and is filed as an
-    # infrastructure failure. DeploymentTest still pins the two remaining copies to each other.
+    # THIS ADDRESS IS THE FAILURE `mode: local` DELETES OUTRIGHT, and the reason it is stated in as few
+    # places as possible: it is written here, in deploy/docker-compose.yml as an FSM_RUNNER_URL
+    # passthrough, and in HttpRunnerClient.DEFAULT_BASE_URL as the last fallback — and none of them is
+    # read until a marker is actually proved. Get it wrong and the stack starts, /healthz is green, the
+    # schedule fires, and six hours in the first prove spends three connect attempts on a name nothing
+    # serves and is filed as an infrastructure failure. DeploymentTest pins the copies to each other.
     base-url: ${FSM_RUNNER_URL:http://fsm-runner:8090}
     # ISO-8601, and the ONLY knob for this number — the prove chain passes it to every /run_test call
-    # and the client uses it as its own default. 90 minutes = clone + two Maven builds at the runner's
-    # own 20-minute ceiling each, the same number the n8n node used (5400000 ms). Lowering it does not
+    # and the client uses it as its own default. 90 minutes = clone + two Maven builds at the prover's
+    # own 20-minute ceiling each. Lowering it does not
     # fail safely: the request is abandoned while a build that was going to succeed is still running,
     # and the marker is requeued having burnt the shared workspace for nothing.
     timeout: ${FSM_RUNNER_TIMEOUT:PT90M}
@@ -197,9 +195,9 @@ fsm:
     # Only an enterprise install or a test moves this. It reaches BOTH callers of the contents API —
     # the source fetch and Prep prover's default-branch lookup.
     api-base-url: ${FSM_GITHUB_API:https://api.github.com}
-    # The three settings the n8n `Fetch source` node carried: options.timeout, retryOnFail/maxTries and
-    # waitBetweenTries. A rate limit or a single 502 must not cost a marker its place in the queue; a
-    # 401/403/404 is never retried, because none of those changes in three seconds.
+    # Timeout, tries and the wait between them, for the source fetch. A rate limit or a single 502 must
+    # not cost a marker its place in the queue; a 401/403/404 is never retried, because none of those
+    # changes in three seconds.
     timeout-ms: ${FSM_GITHUB_TIMEOUT_MS:60000}
     attempts: ${FSM_GITHUB_ATTEMPTS:3}
     retry-delay-ms: ${FSM_GITHUB_RETRY_MS:3000}
@@ -235,7 +233,7 @@ fsm:
     attempts: ${FSM_LLM_ATTEMPTS:2}
     retry-delay-ms: ${FSM_LLM_RETRY_MS:3000}
   prove:
-    # THE SCHEDULE, replacing the n8n Schedule Trigger's 60-second interval. It is not a throughput
+    # THE SCHEDULE, one tick a minute. It is not a throughput
     # knob — a prove takes minutes and the job drains the queue itself — it only decides how long an
     # idle orchestrator waits before noticing a fresh backlog, and how long a marker that came back
     # through the infra path waits before its next attempt. Fixed DELAY, measured from the end of the
@@ -250,8 +248,8 @@ fsm:
     # FSM_PROVE_SCHEDULE=false, or the tick 30 seconds later starts a drain behind the marker being
     # examined. See orchestrator/README.md, "Prove one marker".
     marker: ${FSM_PROVE_MARKER:}
-    # VERDICT_MIN_ATTEMPTS from gen-prover.js. How many reproducer samples a non-reproduction is worth
-    # before it is written up as a verdict; one sample is a weak basis for "this marker is wrong", and
+    # How many reproducer samples a non-reproduction is worth before it is written up as a verdict.
+    # One sample is a weak basis for "this marker is wrong", and
     # the engine refuses to guess the number.
     min-attempts: ${FSM_PROVE_MIN_ATTEMPTS:2}
     # WHETHER A MARKER THAT WILL NOT REPRODUCE IS ARGUED. ON everywhere, and OFF is for iterating on the
@@ -272,8 +270,8 @@ fsm:
     # stage does not route". To argue them afterwards, put the markers back on the queue:
     #     UPDATE suspicions SET status = 'new' WHERE note LIKE '[skipped]%';
     verdict-enabled: ${FSM_PROVE_VERDICT:true}
-    # 0 drains the whole queue in one execution. 1 is exactly what the n8n schedule did — one marker
-    # per tick — which over a 282-marker report wastes a minute of wall clock per marker.
+    # 0 drains the whole queue in one execution. 1 is one marker per tick, which over a 282-marker
+    # report wastes a minute of wall clock per marker.
     max-markers-per-run: ${FSM_PROVE_MAX_MARKERS:0}
     # The wall clock for one /run_test lives at `fsm.runner.timeout` above and NOWHERE ELSE. It used to
     # be restated here as `run-test-timeout` and wired to the same environment variable, which is fine

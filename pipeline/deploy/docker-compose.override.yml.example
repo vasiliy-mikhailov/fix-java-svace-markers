@@ -5,8 +5,8 @@
 # Compose merges `docker-compose.override.yml` into `docker-compose.yml` automatically — no -f flags,
 # no changed command. Everything in this file is therefore additive to the committed stack.
 #
-# WHY THIS FILE EXISTS AT ALL. docker-compose.yml used to declare `proxy-net` and `mvn-cache` as
-# `external: true`. Those are one machine's networks. On every other machine
+# WHY THIS FILE EXISTS AT ALL. An `external: true` network is one machine's private wiring. Declared in
+# the committed docker-compose.yml, on every other machine
 #
 #     docker compose up -d
 #     network mvn-cache declared as external, but could not be found
@@ -15,14 +15,12 @@
 # build that succeeded. A host's private wiring belongs here, where it costs nobody else anything, and
 # the committed file stays runnable on a laptop with nothing but Docker.
 #
-# `mvn-cache` HAS NO ENTRY HERE, deliberately. It existed only so the runner could reach a Nexus at
-# `nexus:8081`, which was baked into the image as `mirrorOf=*`. That is now MAVEN_MIRROR_URL, a runtime
-# setting that takes a PUBLIC hostname — so the mirror needs no shared bridge at all:
+# A MAVEN MIRROR NEEDS NO ENTRY HERE. It is reached by address, not over a shared bridge:
 #
 #     MAVEN_MIRROR_URL=https://nexus.example.com/repository/maven-public/
 #
-# in .env, and that is the whole of it. Keep a compose-internal name only if the Nexus genuinely has no
-# reachable address, and then add the network below the same way proxy-net is added.
+# in .env, and that is the whole of it. Add a network for it only if the mirror genuinely has no
+# reachable address, and then add it below the same way proxy-net is added.
 
 services:
   fsm:

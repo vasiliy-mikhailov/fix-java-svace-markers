@@ -36,7 +36,7 @@ import tech.mikhailov.fsm.orch.LogLines;
  * executed at all.
  *
  * <p>WHY EACH OF THESE IS EXPENSIVE TO GET WRONG. One {@code POST /run_test} is a clone plus two Maven
- * builds, up to 90 minutes of the single serialised workspace the whole fleet shares. Retrying one that
+ * builds, up to 90 minutes of the single serialised workspace every prove shares. Retrying one that
  * was delivered runs it twice; failing to retry one that was NOT delivered costs the first marker of
  * every run its turn, because compose starts the orchestrator and the runner together. And when the
  * exchange fails for good, the only thing a human ever sees is the {@code infra_reason} column and the
@@ -49,7 +49,7 @@ import tech.mikhailov.fsm.orch.LogLines;
  */
 class RunnerExchangeContractTest {
 
-    /** Not the fleet default, so a test that accidentally fell back to it would be visible. */
+    /** Not the shipped default, so a test that accidentally fell back to it would be visible. */
     private static final String RUNNER = "http://fsm-runner.test:8090";
 
     private static final String ENDPOINT = RUNNER + "/run_test";
@@ -345,7 +345,7 @@ class RunnerExchangeContractTest {
      * <p>{@code BatchConfig} passes {@code fsm.runner.timeout} into every prove; the client's own
      * configured timeout is the fallback for a caller that has none. If the argument were ignored, the
      * documented single knob would be a knob that changes nothing — shortening it in yaml would still let
-     * one prove hold the fleet's single serialised workspace for the full 90 minutes, and lengthening it
+     * one prove hold this deployment's single serialised workspace for the full 90 minutes, and lengthening it
      * would still abandon a build at the client default while it was going to succeed.
      *
      * <p>Zero and negative are the same question from the other side. They arrive from configuration
@@ -381,14 +381,14 @@ class RunnerExchangeContractTest {
     // ---- configuration that is present but useless -----------------------------------------------
 
     /**
-     * A BASE URL THAT IS SET BUT EMPTY IS THE FLEET DEFAULT, NOT A CONTAINER THAT WILL NOT START.
+     * A BASE URL THAT IS SET BUT EMPTY IS THE SHIPPED DEFAULT, NOT A CONTAINER THAT WILL NOT START.
      *
      * <p>{@code FSM_RUNNER_BASE_URL=} in a compose file is SET, and Boot binds it to {@code ""} — the
      * {@code @DefaultValue} on {@link tech.mikhailov.fsm.orch.config.FsmProperties.Runner} does not apply
      * to a key that is present. Without the blank check the endpoint becomes the bare path
      * {@code /run_test}, {@link HttpTransport#uriOf} refuses it as not an http(s) URL, and the exception
      * is thrown while the {@code runnerClient} bean is being built: the orchestrator does not start at
-     * all, so the schedule never ticks, the dashboard is down with it and nothing in the fleet says why.
+     * all, so the schedule never ticks, the dashboard is down with it and nothing in this deployment says why.
      * A blank value means the same as no value, and this is where that is decided.
      */
     @Test
@@ -522,7 +522,7 @@ class RunnerExchangeContractTest {
             firstCall.countDown();
             if (n > CAP) {
                 throw new AssertionError("the client posted /run_test " + n + " times; one of those is "
-                        + "a clone plus two Maven builds on the fleet's single workspace, so anything "
+                        + "a clone plus two Maven builds on this deployment's single workspace, so anything "
                         + "past the connect budget is a defect and not a slow test");
             }
             Object step;

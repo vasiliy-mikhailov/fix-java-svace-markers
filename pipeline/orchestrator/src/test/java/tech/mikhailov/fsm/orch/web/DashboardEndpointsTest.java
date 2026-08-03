@@ -40,9 +40,9 @@ import tech.mikhailov.fsm.orch.model.Suspicion;
  * nothing, and the only symptom was a tab quietly missing. That is the same shape as the two blank-page
  * bugs this dashboard has shipped: a UI that degrades silently when its data does not arrive.
  *
- * <p>So the first test here is the Java translation of {@code dashboard/test/endpoints.test.js}: it
- * reads the paths out of the shipped {@code static/app.js} and asks the running application for each
- * one. A path the page fetches and the server does not serve fails the build rather than a run.
+ * <p>So the first test here reads the paths out of the shipped {@code static/app.js} and asks the
+ * running application for each one. A path the page fetches and the server does not serve fails the
+ * build rather than a run.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -242,12 +242,10 @@ class DashboardEndpointsTest {
     }
 
     /**
-     * The third assertion in {@code dashboard/test/endpoints.test.js}: the marker columns are joined in
-     * ONE place, not duplicated.
+     * The marker columns are joined in ONE place, not duplicated.
      *
-     * <p>The Node test could only check that the literal column list appears once in {@code server.js},
-     * because that is all a regex over a source file can see. Here the same claim is checked where it
-     * actually bites — both endpoints are asked for the same artifact and must answer with the same
+     * <p>Checked where it bites rather than by grepping a source file for a literal list: both
+     * endpoints are asked for the same artifact and must answer with the same
      * marker columns carrying the same values. Two lists drift one column at a time: the Verdicts table
      * gains a column, the investigation modal does not, and nobody notices until a reviewer asks why the
      * severity is blank in one place and populated in the other.
@@ -257,7 +255,7 @@ class DashboardEndpointsTest {
         // Written out rather than read from MarkerColumns.ALL: asserting a list against itself would
         // pass for any list, including one a column had been dropped from.
         assertThat(MarkerColumns.ALL)
-                .as("MARKER_COLS from dashboard/src/server.js, in the order it lists them")
+                .as("the marker columns, in the order the payload lists them")
                 .containsExactly("svace_severity", "svace_checker", "svace_line", "marker_id",
                         "category", "severity", "line", "class_name", "method", "anchor",
                         "anchor_status", "description", "evidence", "status", "prove_attempts",
@@ -292,15 +290,11 @@ class DashboardEndpointsTest {
     }
 
     /**
-     * {@code scan.repo} is {@code suspicions[0].repo}, exactly as {@code dashboard/src/server.js}
-     * line 116 computes it.
+     * {@code scan.repo} is {@code suspicions[0].repo}.
      *
-     * <p>This is a PARITY assertion rather than a rendered pixel: neither page reads {@code scan.repo}
-     * today, and the honest description of it is that the orchestrator is a drop-in replacement for
-     * server.js and an operator can be pointed at either. The class comment states that the payload
-     * shape is a contract shared with the sibling dashboard; a field that silently answers null where
-     * the other server answers the repository is the two of them disagreeing about the one document
-     * they are both judged by, and nothing would ever surface it.
+     * <p>This pins a field of the payload that NOTHING RENDERS today, and that is the point: the
+     * payload shape is a contract, and a field that silently answers null is exactly the kind of change
+     * no rendered assertion would ever surface.
      */
     @Test
     void stateNamesTheRepositoryTheBacklogCameFrom() throws Exception {
@@ -405,7 +399,7 @@ class DashboardEndpointsTest {
         assertThat(DashboardController.lineNumber(null)).isZero();
         assertThat(DashboardController.lineNumber("")).isZero();
         assertThat(DashboardController.lineNumber("nonsense")).isZero();
-        // n8n Data Table `number` columns come back as REAL, so the page really does send "26.0".
+        // A numeric column comes back as REAL, so the page really does send "26.0".
         assertThat(DashboardController.lineNumber("26.0")).isEqualTo(26);
         assertThat(DashboardController.lineNumber(" 26 ")).isEqualTo(26);
     }

@@ -24,7 +24,7 @@
 # number in two files and that is the one duplication here worth having: the alternative is a version
 # skew nothing announces.
 #
-# Every tool in this fleet that is not Java already lives in a container. This is that rule, applied to
+# Every tool in this repository that is not Java already lives in a container. This is that rule, applied to
 # a browser.
 ARG PLAYWRIGHT_VERSION=1.49.0
 
@@ -37,7 +37,7 @@ ARG PLAYWRIGHT_VERSION
 # ---------------------------------------------------------------------------------------------------
 # THE ONE THING THE BASE IMAGE DOES NOT ALREADY HAVE: THIS PROJECT'S JDK
 # ---------------------------------------------------------------------------------------------------
-# The Playwright Java image ships a JDK, and it is not 25. Every module in this fleet targets 25
+# The Playwright Java image ships a JDK, and it is not 25. Every module in this reactor targets 25
 # (maven.compiler.release in the reactor pom, java.version here), so the module would not compile on
 # the image's own — and "compile it against 17 for the tests" is not a smaller version of the same
 # check: it is a different program under test.

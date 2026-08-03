@@ -1,15 +1,15 @@
--- The two n8n Data Tables, as SQL.
+-- The two tables the pipeline owns: the backlog, and the artifact each settled marker leaves.
 --
 -- EVERY STATEMENT IS `IF NOT EXISTS`, and that is the whole point of this file. A run takes 6-26 hours
 -- across 282 markers; the orchestrator will be restarted mid-run, for a deploy or after a crash, and
 -- `spring.sql.init.mode=always` replays this script on every one of those starts. A plain CREATE TABLE
 -- would fail the start (and a DROP-then-CREATE would silently discard the backlog, which is worse).
 --
--- The column lists are NOT a redesign. They are exactly SUS_COLS from n8n/agentic/src/gen-ingest.js
--- and BUG_COLS from the `Upsert bug` node in gen-prover.js, in the same order, so a row exported from
--- the old Data Tables loads here without a mapping step. In particular `bugs` has NO `attempts`
--- column — Record outcome emits one and the Data Table never had anywhere to put it; the count lives
--- on `suspicions.prove_attempts`, which is the row the retry logic actually reads.
+-- THE COLUMN LISTS AND THEIR ORDER ARE PART OF THE CONTRACT. `Suspicion` and `Bug` name the same
+-- columns in the same order, and MarkerProgressDao exists as a separate table rather than a 24th column
+-- for exactly that reason. In particular `bugs` has NO `attempts` column — Record outcome emits one and
+-- there is deliberately nowhere here to put it; the count lives on `suspicions.prove_attempts`, which
+-- is the row the retry logic actually reads.
 
 CREATE TABLE IF NOT EXISTS suspicions (
   -- repo/file/class/line, deduplicated by the ingester. The prover leases rows by this key and every
@@ -53,7 +53,7 @@ CREATE INDEX IF NOT EXISTS ix_suspicions_status ON suspicions (status);
 
 CREATE TABLE IF NOT EXISTS bugs (
   -- suspicions.dedup_key. Not declared as a foreign key: the artifact is evidence and must survive a
-  -- re-ingest that rewrites the backlog, exactly as the two independent Data Tables did.
+  -- re-ingest that rewrites the backlog. The two tables are independent on purpose.
   suspicion_key  VARCHAR(512)  NOT NULL,
   repo           VARCHAR(512),
   file           VARCHAR(1024),
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS bugs (
   -- WHAT HAPPENED TO THE ARGUMENT, and the only column here that was never a BUG_COL. `skipped` when
   -- fsm.prove.verdict-enabled was off and this marker was one of the three routes that would otherwise
   -- have been argued; empty on every other row. It is APPENDED, after the twenty-one, so the header's
-  -- claim above still holds: an exported Data Table row loads with this column null.
+  -- claim above still holds and an older row loads with this column null.
   --
   -- It exists because THREE outcomes are otherwise the same row — an empty verdict_text with the state
   -- unreplaced — and they send a reader to three different places: the prompt (asked, said nothing),
@@ -101,11 +101,11 @@ ALTER TABLE bugs ADD COLUMN IF NOT EXISTS verdict_status VARCHAR(64);
 
 CREATE INDEX IF NOT EXISTS ix_bugs_state ON bugs (state);
 
--- The n8n Data Table gave every row an `updatedAt` for free, and the effort model on the dashboard is
--- the only thing that ever read it: machine time is attributed to a marker by finding the prover run
--- whose window CONTAINS the moment that marker changed state (dashboard/lib/work.js). Neither table
--- above carries a timestamp, and adding one to `suspicions` would break the property its own header
--- states — that its columns are exactly SUS_COLS, in order, so an exported row loads without mapping.
+-- WHEN A MARKER LAST CHANGED STATE, which the effort model is the only thing that reads: machine time
+-- is attributed to a marker by finding the prover run whose window CONTAINS the moment that marker
+-- changed state. Neither table above carries a timestamp, and adding one to `suspicions` would break
+-- the property its own header states — that its columns are exactly the ones `Suspicion` names, in
+-- order.
 --
 -- So the observation lives beside them instead. It is written by the live watcher when it sees a
 -- status change and by nothing else, which makes it an OBSERVED time rather than a claimed one: a

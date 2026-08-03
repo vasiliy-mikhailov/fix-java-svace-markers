@@ -18,9 +18,9 @@ import org.springframework.batch.core.explore.JobExplorer;
 import org.springframework.batch.core.launch.JobLauncher;
 
 /**
- * Single flight — the guarantee that replaces the java-runner's named lease.
+ * Single flight — one prove, and one ingest, in the stack at a time.
  *
- * <p>Two of these are the lease's own job. The third is the one the lease never did: an ingest CLEARS
+ * <p>The third of these is the one an advisory lease would not give: an ingest CLEARS
  * both tables, so starting one while a prove is running deletes the marker the prove is working on,
  * and the prove then settles a row that no longer exists — 45 minutes of runner time spent on an
  * artifact nothing explains.

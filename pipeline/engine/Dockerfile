@@ -1,15 +1,16 @@
-# fsm-engine — the judgement service n8n's Code nodes call.
+# fsm-engine — the judgement, published one stage per request. PROFILE-GATED: nothing in a run calls it
+# (the pipeline embeds this module as a library), and it exists so a single stage can be replayed
+# against a request written by hand. See deploy/docker-compose.yml.
 #
-# Same shape as ../java-runner/Dockerfile, for the same reason it gives: start from `debian:bookworm-slim`
-# and fetch the toolchain from public sources, so a FRESH CLONE BUILDS. That file records what broke
-# when it did otherwise — `docker compose build` failing with "pull access denied" for a base image that
-# only existed on one host, and with a missing path for a jar somebody was expected to stage into the
-# build context by hand. Neither is repeatable, and both fail at the worst moment: on a new machine.
+# START FROM `debian:bookworm-slim` AND FETCH THE TOOLCHAIN FROM PUBLIC SOURCES, so a FRESH CLONE
+# BUILDS. A base image that exists only on one host fails with "pull access denied", and a jar somebody
+# is expected to stage into the build context by hand fails on a missing path. Neither is repeatable,
+# and both fail at the worst moment: on a new machine.
 #
-# ONE JDK, NOT NINE. java-runner carries 8/11/17/21/25 side by side because it BUILDS OTHER PEOPLE'S
-# REPOSITORIES and re-runs with a different major when javac reports a release-version mismatch. This
-# service only ever runs its own code, which targets 25, so the other majors would be ~1.5 GB of image
-# nothing can reach.
+# ONE JDK, NOT FIVE. The pipeline image carries 8/11/17/21/25 side by side because it BUILDS OTHER
+# PEOPLE'S REPOSITORIES and re-runs with a different major when javac reports a release-version
+# mismatch. This service only ever runs its own code, which targets 25, so the other majors would be
+# ~1.5 GB of image nothing can reach.
 ARG JDK_VERSION=25
 ARG MAVEN_VERSION=3.9.9
 
@@ -17,17 +18,17 @@ ARG MAVEN_VERSION=3.9.9
 FROM debian:bookworm-slim AS build
 ARG JDK_VERSION
 ARG MAVEN_VERSION
-# Set by buildkit. java-runner hardcodes `linux/x64`, which is correct on the deployment host and
-# silently wrong anywhere else: the image builds, and every `java` call then dies with "exec format
-# error" at RUN time. Following TARGETARCH is what lets this be verified on a developer's machine.
+# Set by buildkit. A hardcoded `linux/x64` is correct on one host and silently wrong anywhere else: the
+# image builds, and every `java` call then dies with "exec format error" at RUN time. Following
+# TARGETARCH is what lets this be verified on a developer's machine.
 ARG TARGETARCH
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl ca-certificates tar gzip \
     && rm -rf /var/lib/apt/lists/*
 
-# Adoptium, same source and same /opt/jdk/<major> layout as the runner, so "where is the JDK" has one
-# answer across the fleet.
+# Adoptium, same source and same /opt/jdk/<major> layout as the pipeline image, so "where is the JDK"
+# has one answer in both.
 RUN set -eux; \
     case "${TARGETARCH:-amd64}" in \
       amd64) arch=x64 ;; \
@@ -51,15 +52,11 @@ RUN set -eux; \
 ENV JAVA_HOME=/opt/jdk/${JDK_VERSION}
 ENV PATH=/opt/jdk/${JDK_VERSION}/bin:/usr/local/bin:$PATH
 
-# Maven mirror, OPT-IN — the one place this file deliberately differs from java-runner's.
+# Maven mirror, OPT-IN. This stage resolves at BUILD time and `docker build` does not join a compose
+# network, so a baked-in internal mirror makes the image unbuildable everywhere — including on the host
+# that runs the mirror. Default to Central; pass the mirror where it is reachable:
 #
-# The runner copies a settings.xml with `mirrorOf=*` unconditionally, and that is right for it: it
-# resolves at RUN time, against the Nexus on the mvn-cache network, when it builds a target repository.
-# This service resolves at BUILD time, and `docker build` does not join a compose network, so a baked-in
-# `http://nexus:8081` mirror makes the image unbuildable everywhere — including on the host that has
-# Nexus. Default to Central; pass the mirror where it is reachable:
-#
-#   docker build --network mvn-cache \
+#   docker build --network <net> \
 #     --build-arg MAVEN_MIRROR_URL=http://nexus:8081/repository/maven-public/ -t fsm-engine .
 ARG MAVEN_MIRROR_URL=
 RUN if [ -n "$MAVEN_MIRROR_URL" ]; then \
@@ -82,12 +79,12 @@ RUN mvn -B -q dependency:go-offline || true
 
 COPY src ./src
 # THE FROZEN DIFFERENTIAL FIXTURES, which are a TEST INPUT and not documentation. Three of this
-# module's tests replay 6 910 cases that the retired JavaScript node bodies answered, and the answers
-# live here as gzipped data — src/test alone does not build. `harness/out/` stays out (it is generated
-# and is in .dockerignore); `harness/fixtures/` is 236 KB and has to be in the context.
+# module's tests replay 6 910 cases and the recorded reference answer to each, and those answers live
+# here as gzipped data — src/test alone does not build. `harness/out/` stays out (it is generated and is
+# in .dockerignore); `harness/fixtures/` is 236 KB and has to be in the context.
 COPY harness/fixtures ./harness/fixtures
-# Tests run IN THE IMAGE BUILD. This service decides whether a marker is retried or retired for good,
-# and the suite is the ported specification of those rules — an image that ships without having run it
+# Tests run IN THE IMAGE BUILD. This module decides whether a marker is retried or retired for good,
+# and the suite is the specification of those rules — an image that ships without having run it
 # is an image nobody checked. Use `--build-arg SKIP_TESTS=-DskipTests` only to reproduce a build whose
 # failure you are already looking at.
 ARG SKIP_TESTS=
@@ -129,8 +126,7 @@ USER engine
 
 COPY --from=build /src/target/fsm-engine.jar /app/fsm-engine.jar
 
-# 8090 is java-runner, 8091 the dashboard. Nothing here publishes it: n8n reaches the engine by name on
-# the compose network.
+# Published on 127.0.0.1:8092 by the compose profile, because reaching it by hand IS what it is for.
 ENV PORT=8092
 EXPOSE 8092
 
@@ -140,13 +136,12 @@ EXPOSE 8092
 #
 # stdout/stderr.encoding, because this image has no locale (LANG is unset in debian-slim) and Java
 # picks the platform encoding for the CONSOLE even though the file.encoding default has been UTF-8
-# since 18. The lines that come out of here are not decoration: NodeRoutes returns each node's log
-# line so the shim can echo it into the n8n execution log, and `[realness] … no stubbing at all —
-# drives the real objects end to end` was arriving as `at all ? drives`. An operator greps these.
+# since 18. The lines that come out of here are not decoration: NodeRoutes returns each stage's log line
+# in its reply, and without this `[realness] … no stubbing at all — drives the real objects end to end`
+# arrives as `at all ? drives`. An operator greps these.
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8"
 
-# GET, because that is what a HEALTHCHECK can issue without a body. The endpoint accepts POST too, which
-# is the shape the n8n shims use.
+# GET, because that is what a HEALTHCHECK can issue without a body. The endpoint accepts POST too.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null || exit 1
 

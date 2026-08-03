@@ -24,7 +24,7 @@ import tech.mikhailov.fsm.lib.Json;
  * WHICH ENCODING A FILENAME IS SPELLED IN, which is not the one everybody names.
  *
  * <p>THE FAILURE THIS FILE EXISTS FOR. In the runner image — {@code debian:bookworm-slim}, JDK 25, no
- * locale — the differential harness died on a workspace the JS side answered for:
+ * locale — the differential harness dies on a workspace the frozen corpus has an answer for:
  *
  * <pre>
  *   java.nio.file.InvalidPathException: Malformed input or input contains unmappable characters:
@@ -225,7 +225,7 @@ class PathEncodingTest {
         assertThrows(InvalidPathException.class, () -> Path.of("a\uD800b"),
                 "…and that is exactly what Path.of refuses");
         // A NUL is NOT an encoding problem: it encodes fine and Path.of refuses it for its own reason,
-        // which the callers already answer with the JS's "file not found". Claiming the encoding here
+        // which the callers already answer with "file not found". Claiming the encoding here
         // would put a wrong cause in front of an operator.
         assertTrue(PathEncoding.spells("a\0b"), "a NUL is representable; Path.of refuses it later");
         assertThrows(InvalidPathException.class, () -> Path.of("a\0b"));
@@ -236,7 +236,7 @@ class PathEncodingTest {
      *
      * <p>Neither can be true of a real JVM — it sets the property before {@code main} and only sets one
      * it can resolve — so this is about which way to be wrong. UTF-8, because the alternative is a runner
-     * that refuses every request in the fleet over a locale NAME, and because it is what a JDK 18+
+     * that refuses every request in this deployment over a locale NAME, and because it is what a JDK 18+
      * default is anyway. {@link PathEncoding#describe()} still reports the raw value, so the log says
      * what was actually seen rather than what was assumed.
      */

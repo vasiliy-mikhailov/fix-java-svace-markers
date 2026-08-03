@@ -4,14 +4,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The Svace report row plus what the pipeline made of it, joined onto every artifact — the Java form
- * of {@code MARKER_COLS} and the join loop in {@code dashboard/src/server.js}.
+ * The Svace report row plus what the pipeline made of it, joined onto every artifact.
  *
- * <p>ONE DEFINITION, ON PURPOSE. Both {@code /api/state} and {@code /api/bug} enrich a {@code bugs}
- * row with the marker it answers, and the Node dashboard has a test asserting that the column list
- * appears exactly once ({@code dashboard/test/endpoints.test.js}) precisely because two literal lists
- * drift: the bug tab gains a column, the modal does not, and nobody notices until a reviewer asks why
- * the severity is blank in one place and not the other.
+ * <p>ONE DEFINITION, ON PURPOSE. Both {@code /api/state} and {@code /api/bug} enrich a {@code bugs} row
+ * with the marker it answers, and two literal lists drift: the bug tab gains a column, the modal does
+ * not, and nobody notices until a reviewer asks why the severity is blank in one place and not the
+ * other. {@code DashboardEndpointsTest} asks both endpoints for one artifact and compares.
  *
  * <p>WHY JOIN AT ALL. A verdict is only reviewable next to the marker it answers — Severity, Checker,
  * File and Line are the four columns of the Svace report. {@code bugs} stores only
@@ -24,7 +22,7 @@ final class MarkerColumns {
     }
 
     /**
-     * The columns carried from the marker onto its artifact, in the order server.js lists them.
+     * The columns carried from the marker onto its artifact, in the order the payload lists them.
      *
      * <p>These are wire names, not Java names: the page reads {@code v.svace_line} and
      * {@code v.anchor_status} directly off the JSON, so this list is part of the contract with
@@ -37,8 +35,8 @@ final class MarkerColumns {
     /**
      * Copy the marker's columns onto the artifact, and record whether the marker still exists.
      *
-     * <p>THE ARTIFACT ALWAYS WINS. {@code if (!String(b[c] ?? '').trim())} in server.js — a value the
-     * artifact owns is never clobbered by the join. That matters for exactly one column today,
+     * <p>THE ARTIFACT ALWAYS WINS: a value the artifact owns is never clobbered by the join, so only
+     * a blank is filled in. That matters for exactly one column today,
      * {@code bugs.svace_checker}, which the Verdict stage writes onto the artifact itself; if the join
      * overwrote it, a re-ingest that changed the checker name would rewrite history on a verdict that
      * had already been argued.

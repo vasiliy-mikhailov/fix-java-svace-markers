@@ -4,9 +4,9 @@ import java.time.Duration;
 import java.util.Map;
 
 /**
- * Drive the java-runner — the n8n {@code run_test reproduce} and {@code run_test fix} nodes.
+ * Drive the prover: the RED build and the GREEN build.
  *
- * <p>{@code POST {RUNNER}/run_test} with the body the engine built. The runner clones the repo, writes
+ * <p>{@code POST {RUNNER}/run_test} with the body the engine built. The prover clones the repo, writes
  * the test, builds RED, applies the fix edits, builds GREEN, and answers with what happened.
  *
  * <p>THE BODY IS NOT ASSEMBLED HERE. It arrives ready-made as
@@ -23,9 +23,9 @@ import java.util.Map;
 public interface RunnerClient {
 
     /**
-     * 90 minutes — clone plus a RED build plus a GREEN build, each up to 20 minutes, matching the n8n
-     * node. Shorter does not fail safely: the timeout aborts a build that was going to succeed and the
-     * marker is requeued having burnt an hour of runner time.
+     * 90 minutes — a clone plus a RED build plus a GREEN build, each of the two allowed up to 20
+     * minutes by the prover itself. Shorter does not fail safely: the timeout aborts a build that was
+     * going to succeed and the marker is requeued having burnt an hour of prover time.
      */
     Duration DEFAULT_TIMEOUT = Duration.ofMinutes(90);
 

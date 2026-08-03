@@ -32,10 +32,10 @@ import tech.mikhailov.fsm.lib.Json;
 /**
  * The five routes, exercised over a real socket rather than by calling the handler.
  *
- * <p>What only exists at the socket: that the executor is wired (a handler-level test passes either way),
- * that a body is drained so the connection can be reused, that the status codes are the ones n8n and the
- * orchestrator branch on, and that a prove is SERIALISED. Every test binds port 0, so a parallel run or a
- * developer with the fleet already up cannot collide with it.
+ * <p>What only exists at the socket: that the executor is wired (a handler-level test passes either
+ * way), that a body is drained so the connection can be reused, that the status codes are the ones the
+ * caller branches on, and that a prove is SERIALISED. Every test binds port 0, so a parallel run or a
+ * developer with the stack already up cannot collide with it.
  */
 class RunnerServerTest {
 
@@ -69,7 +69,7 @@ class RunnerServerTest {
                 Path target = FakeExec.clonedInto(call);
                 Files.writeString(target.resolve("A.java"), "class A { int x = 1; }\n");
                 // What a clone really leaves behind. Written with a token-shaped URL because that is
-                // what the JS's clones on the live volume contain.
+                // what a clone made by anything else on that volume contains.
                 Files.writeString(target.resolve(".git").resolve("config"),
                         "[remote \"origin\"]\n\turl = https://ghp_secret@github.com/o/r.git\n");
                 return FakeExec.ok("");
@@ -160,15 +160,15 @@ class RunnerServerTest {
             assertEquals(200, res.statusCode());
             assertTrue(res.headers().firstValue("Content-Type").orElse("")
                             .startsWith("application/json"),
-                    "n8n's HTTP Request node only parses the body into an item when the content type "
-                    + "says JSON; without it every field read is undefined");
+                    "a client only parses the body into an item when the content type says JSON; "
+                    + "without it every field read is undefined");
             assertEquals(Boolean.TRUE, json(res).get("ok"));
             assertEquals(List.of("17", "25"), json(res).get("jdks"));
         }
 
         @Test
         void getIsWhatTheHealthcheckUsesAndPostIsNotAnEndpointAtAll() throws Exception {
-            // Faithful to the JS, where the GET branch returned before any routing: POST /health is a 404
+            // The GET branch returns before any routing, so POST /health is a 404
             // and always was. Docker's HEALTHCHECK, curl and every proxy issue GET.
             HttpResponse<String> res = send("POST", "/health", "{}");
             assertEquals(404, res.statusCode());
@@ -255,8 +255,8 @@ class RunnerServerTest {
         @Test
         void aCrashInsideTheProveIsReportedAsOkFalseAndNotAsADroppedConnection() throws Exception {
             // An edit with no path resolves to the workspace root and throws on read — see ProveTest. What
-            // matters here is that the caller gets an ANSWER: a dropped connection would be reported by
-            // n8n as a network error and blame the wrong component.
+            // matters here is that the caller gets an ANSWER: a dropped connection is reported as a
+            // network error and blames the wrong component.
             HttpResponse<String> res = send("POST", "/run_test",
                     runTestBody("[{\"old_str\":\"x\",\"new_str\":\"y\"}]"));
             assertEquals(200, res.statusCode());
@@ -271,7 +271,7 @@ class RunnerServerTest {
 
         @Test
         void andTheNextProveStillRuns() throws Exception {
-            // The queue must survive a failed prove: `BUILDING = mine.catch(() => {})` in the JS. If the
+            // The queue must survive a FAILED prove. If the
             // failure poisoned the chain, one bad marker would stop every prove after it.
             send("POST", "/run_test", runTestBody("[{\"old_str\":\"x\",\"new_str\":\"y\"}]"));
             assertEquals(Boolean.TRUE, json(send("POST", "/run_test", runTestBody("[]"))).get("ok"));
@@ -321,13 +321,11 @@ class RunnerServerTest {
 
         @Test
         void aJsonLiteralNullDoesNotKillTheProcess() throws Exception {
-            // THE JS CRASHED HERE. `body.__bad` on a parsed `null` throws a TypeError outside the handler's
-            // try, which in Node 24 is an unhandled rejection and takes the process down — every queued
-            // prove with it. A non-object body is treated as no fields instead, which is already what the
-            // JS did for `5`, `"x"` and `[]`.
-            // Driven through /fs/read_file since /lease was deleted with n8n. The guard is about the
-            // ROUTER's handling of a non-object body, which is route-independent — the JS read
-            // `body.__bad` before dispatching anywhere.
+            // A ROUTER CAN CRASH HERE. `body.__bad` on a parsed `null` throws outside the handler's
+            // try, and a router that throws before it dispatches takes every queued prove down with
+            // it. A non-object body is treated as NO FIELDS instead, which is the same answer `5`,
+            // `"x"` and `[]` get. Driven through /fs/read_file because the guard is about the ROUTER's
+            // handling of a non-object body, which is route-independent.
             assertEquals(200, send("POST", "/fs/read_file", "null").statusCode());
             assertEquals(200, send("POST", "/fs/read_file", "5").statusCode());
             assertEquals(200, send("GET", "/health", null).statusCode(), "and the server is still up");
@@ -354,9 +352,9 @@ class RunnerServerTest {
 
         @Test
         void aBodyPastTheCapIsRefusedRatherThanBuffered() {
-            // The JS had no cap and buffered whatever arrived. 16 MiB is far above the largest legitimate
-            // run_test body — a test file plus a handful of edits — and far below what would exhaust the
-            // heap of the one process every prove in the fleet is serialised through.
+            // Without a cap the body is buffered until the client stops sending. 16 MiB is far above
+            // the largest legitimate run_test body — a test file plus a handful of edits — and far
+            // below what would exhaust the heap of the one process every prove is serialised through.
             //
             // Tested against the STREAM rather than over a socket, for the reason EngineServerTest gives
             // for the same test: refusing a body mid-upload is a race between our response and the

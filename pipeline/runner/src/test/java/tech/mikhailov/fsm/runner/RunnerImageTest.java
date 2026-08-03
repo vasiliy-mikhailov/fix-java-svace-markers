@@ -35,10 +35,9 @@ class RunnerImageTest {
      * ONE Dockerfile FOR THE WHOLE PIPELINE, at the reactor root — which is one directory up from this
      * module, because that root is the image's build context.
      *
-     * <p>It used to be {@code runner/Dockerfile}, beside this test. The runner and the orchestrator ship
-     * as one container now, so there is one image and one file; these assertions did NOT move with it,
-     * because everything they are about is still true and still the runner's. The process that spawns
-     * `mvn` over somebody else's repository is this one, whatever else shares its JVM.
+     * <p>There is ONE image for the whole pipeline, and these assertions live here rather than beside
+     * it because everything they are about is this module's: the process that spawns `mvn` over
+     * somebody else's repository is this one, whatever else shares its JVM.
      */
     private static final Path DOCKERFILE = Path.of("..", "Dockerfile");
 
@@ -97,8 +96,7 @@ class RunnerImageTest {
      * <p>An {@code ENV LANG} here would reach every {@code mvn} and every surefire JVM this service
      * spawns for somebody else's repository. For a JDK 8 or 11 build that changes {@code file.encoding}
      * from ASCII to UTF-8 — which changes what those tests DO, and this service exists to answer whether
-     * a defect reproduces. The differential harness compared this port against a JavaScript runner that
-     * ran with no locale at all.
+     * a defect reproduces, so a deployment detail must never become a variable in the verdict.
      */
     @Test
     void theImageItselfDeclaresNoLocaleForTheBuildsUnderTest() throws IOException {

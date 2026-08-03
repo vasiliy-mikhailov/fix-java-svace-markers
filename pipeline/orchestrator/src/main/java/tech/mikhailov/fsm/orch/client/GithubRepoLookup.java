@@ -72,10 +72,10 @@ public class GithubRepoLookup implements PrepProver.RepoLookup {
             Thread.currentThread().interrupt();
             throw new PrepProver.LookupFailed(e);
         } catch (Exception e) {
-            // The throwable ITSELF is the rejected value, which is what PrepProver.describe wants: it
-            // reads `message` off a Throwable and `description` off n8n's object shape, and
-            // HttpTransport throws Llm.ApiException carrying both. Collapsing it to a string here
-            // would throw away the half the other branch reads.
+            // The throwable ITSELF is the failure value, which is what PrepProver.describe wants: it
+            // reads `message` off a Throwable and `description` off an HTTP-level failure, and
+            // HttpTransport throws Llm.ApiException carrying both. Collapsing it to a string here would
+            // throw away the half the other branch reads.
             throw new PrepProver.LookupFailed(e);
         }
     }

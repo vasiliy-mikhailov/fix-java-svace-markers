@@ -25,7 +25,8 @@ import org.junit.jupiter.api.Test;
 /**
  * The checker map — the table every suspicion's CLAIM is read out of.
  *
- * <p>It is pure data, so the only way it breaks is by drifting, and drift here is silent. In the JS,
+ * <p>It is pure data, so the only way it breaks is by drifting, and drift here is silent. Spelled as
+ * bare strings,
  * `Parse markers` read {@code m[0]}, {@code m[1]} and {@code m[2]} off the entry and never looked at
  * its shape: an entry that had lost its fields was still TRUTHY, so it was not counted as unmapped
  * either. It produced a row with {@code category: undefined}, {@code description: undefined} and an
@@ -33,7 +34,7 @@ import org.junit.jupiter.api.Test;
  * trying to reproduce a defect whose claim was the word "undefined". Nothing threw, nothing was
  * counted, the run was green.
  *
- * <p>Two of the JS assertions have no Java equivalent because the type now carries them: an entry
+ * <p>Two assertions have no equivalent here because the TYPE carries them: an entry
  * cannot have the wrong arity, and settle-by cannot have a third spelling. What remains is everything
  * a record and an enum still cannot check — that the table covers the real report, and that each
  * claim says what the checker MEANS rather than repeating its name.
@@ -49,9 +50,8 @@ class CheckerMapTest {
 
     /**
      * The report the map claims to cover, read from the classpath rather than from a path relative to
-     * the module. The JS carried the same fixture beside its test because Stryker runs the suite from
-     * a sandbox copy of the package where a path four directories up does not exist; PIT likewise
-     * runs from its own working directory, and a resource is the only location both agree on.
+     * the module: PIT runs from its own working directory, where a path four directories up does not
+     * exist, and a classpath resource is the only location the build and the mutation run agree on.
      */
     private static final String CSV = "/fixtures/webgoat-markers-356.csv";
 
@@ -122,14 +122,14 @@ class CheckerMapTest {
 
             assertNotNull(entry.settleBy(), () -> checker + ": `Prep prover` greps "
                     + "/Settle-by:\\s*(\\w+)/ out of the evidence line and compares it against "
-                    + "'argue'; in the JS any third spelling read as 'test' and an unprovable finding "
+                    + "'argue'; any third spelling reads as 'test' and queues an unprovable finding "
                     + "was queued for a PR");
         }
     }
 
     @Test
     void entriesComeBackInDeclarationOrderAndNotInAFreshShufflePerJvm() {
-        // Found by the parse-markers port, which compared the ported table against checker-map.js
+        // Found by comparing this table against the frozen corpus
         // entry by entry: all 48 entries were right and the ORDER was different — differently
         // different on every run, because entries() returned Map.copyOf and the JDK's immutable maps
         // salt their iteration order per JVM. Nothing read it in order, so nothing broke; the method's
@@ -152,7 +152,7 @@ class CheckerMapTest {
 
     @Test
     void rankOrdersWhatGradeGrades() {
-        // Ported from the JS test that checked SEVERITY_MAP and SEVERITY_RANK agreed on their keys.
+        // The severity map and the severity ranking have to agree on their keys.
         // One enum makes that unrepresentable; what is left is the part a type cannot state.
         int[] ranks = Arrays.stream(Severity.values()).mapToInt(Severity::rank).toArray();
         assertEquals(ranks.length, Arrays.stream(ranks).distinct().count(),

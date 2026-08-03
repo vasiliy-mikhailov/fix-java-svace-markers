@@ -242,9 +242,9 @@ class ProveJobTest {
     void anUnexpectedFailureFailsTheRunAndLeavesTheMarkerOnTheQueue() throws Exception {
         suspicions.upsert(marker(SuspicionDao.STATUS_NEW, 0L));
         source.answering(200, contents());
-        // Not an InfraFailure: this is the shape of a bug in this process, and the generator's own
-        // note records why it must not be swallowed — a broken stage forwarding its input reached
-        // Record outcome looking like a stage that found nothing.
+        // Not an InfraFailure: this is the shape of a bug in this process, and it must not be
+        // swallowed — a broken stage that forwards its input reaches Record outcome looking like a
+        // stage that found nothing.
         model.completionFailing(new IllegalStateException("the reproducer stage is broken"));
 
         JobExecution execution = launch();

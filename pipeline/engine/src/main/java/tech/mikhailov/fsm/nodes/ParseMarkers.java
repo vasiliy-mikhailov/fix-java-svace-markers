@@ -23,7 +23,7 @@ import tech.mikhailov.fsm.lib.Severity;
 /**
  * {@code Parse markers} — turns a Svace CSV report into one suspicion row per marker.
  *
- * <p>This replaces the parent pipeline's file-walking orchestrator and LLM suspector entirely. Svace
+ * <p>This replaces a file-walking orchestrator and LLM suspector entirely. Svace
  * has already decided what is suspicious, so ingest is a pure deterministic transform: one CSV row in,
  * one suspicion out. There is no dedup stage either — Svace de-duplicates its own markers, and the only
  * genuine repeats (same checker, same file, same line) are two distinct obligations rather than a
@@ -46,26 +46,23 @@ import tech.mikhailov.fsm.lib.Severity;
  *       {@link #parseMarkers}.</li>
  * </ol>
  *
- * <p>PORTING NOTE — WHY THE BODY IS {@code Object}. The JS reads {@code $('Ingest webhook').first()
- * .json.body || {}}, a webhook payload written by hand into a curl call or an n8n form. Every field in
- * it can be absent, null or the wrong type, and the JS has a defined answer for each ({@code ||},
- * {@code === true}, {@code Array.isArray}, {@code === undefined}). Typing it as a record would replace
- * those answers with Jackson-style binding errors, so the body arrives as it is and each read goes
+ * <p>WHY THE BODY IS {@code Object}. It is an ingest payload, written by hand into a curl call, so
+ * every field in it can be absent, null or the wrong type and there is a defined answer for each.
+ * Typing it as a record would replace those answers with binding errors on a request a human is still
+ * composing, so the body arrives as it is and each read goes
  * through {@link Js} / {@link Json}, which spell the coercions out.
  *
- * <p>PORTING NOTE — WHY THIS NODE DOES NOT LOG. The JS ends with
- * {@code console.log('[ingest] ' + JSON.stringify(summary))} so the summary is in the n8n execution log
- * even when the next line throws. Here the summary is RETURNED (and, on the "everything filtered out"
- * path, embedded in the exception message), so the HTTP layer can log it once at the edge. A println
- * inside a pure function is a side effect no test can assert on and no caller can turn off.
+ * <p>WHY THIS STAGE DOES NOT LOG. The summary is RETURNED — and, on the "everything filtered out"
+ * path, embedded in the exception message — so the edge logs it once. A println inside a pure function
+ * is a side effect no test can assert on and no caller can turn off.
  *
- * <p>THE THREE PLACES THIS DELIBERATELY DIVERGES FROM THE JS. A differential harness ran 5,562
- * generated requests through both implementations; 5,419 were byte-identical and every one of the 143
- * that were not belongs to one of these. All three are JS DEFECTS that the port does not reproduce:
+ * <p>THE THREE PLACES THIS DELIBERATELY DIVERGES FROM THE RECORDED REFERENCE. A differential harness
+ * ran 5,562 generated requests through both; 5,419 were byte-identical and every one of the 143
+ * that were not belongs to one of these. All three are DEFECTS this code does not reproduce:
  *
  * <ol>
- *   <li>A CHECKER NAMED AFTER AN {@code Object.prototype} MEMBER. The JS reads
- *       {@code CHECKER_MAP[checker]} off an object literal, so {@code checker="toString"} resolves up
+ *   <li>A CHECKER NAMED AFTER AN {@code Object.prototype} MEMBER. An unguarded
+ *       {@code CHECKER_MAP[checker]} off an object literal lets {@code checker="toString"} resolve up
  *       the prototype chain to a FUNCTION. That is truthy, so the row is NOT counted as unmapped and
  *       NOT given the fallback claim: {@code m[0]}, {@code m[1]} and {@code m[2]} are all undefined and
  *       the row reads "Claim: undefined. Settle-by: undefined.". `Prep prover` then greps
@@ -77,8 +74,8 @@ import tech.mikhailov.fsm.lib.Severity;
  *       {@code SEVERITY_RANK["toString"]} is a function, so the sort comparator returns NaN — which
  *       makes it NON-TRANSITIVE, and V8's TimSort then produces an arbitrary permutation. Observed:
  *       a Major marker queued at position 14 of 17, below Minor and below five garbage rows. That is
- *       precisely the failure the severity sort exists to prevent. The JS also writes the FUNCTION
- *       into the {@code severity} cell the dashboard filters on, and counts it in {@code by_severity}
+ *       precisely the failure the severity sort exists to prevent. Unguarded it also writes the
+ *       FUNCTION into the {@code severity} cell the dashboard filters on, and counts it in {@code by_severity}
  *       by string concatenation ({@code "function toString() { [native code] }1"}).
  *       {@link Severity#rankOf} answers {@code UNKNOWN_RANK} for all of them, so they sort below Minor
  *       in report order and grade 'low'.</li>
@@ -110,7 +107,8 @@ public final class ParseMarkers {
      */
     private static final Pattern TEST_TREE = Pattern.compile("(^|/)src/(test|it)/");
 
-    /** Raised for a request that cannot produce a backlog at all. Carries the JS's exact message. */
+    /** Raised for a request that cannot produce a backlog at all. Its message is part of the wire
+     * contract: the ingest endpoint returns it verbatim. */
     public static final class IngestFailed extends RuntimeException {
         private static final long serialVersionUID = 1L;
 
@@ -127,8 +125,8 @@ public final class ParseMarkers {
      * The ingest request.
      *
      * @param body    the webhook body, untyped — see the porting note on the class
-     * @param version stamped onto every row as {@code version}; the JS took it as the generator's
-     *                {@code VERSION} const, so a row can be pinned to the ingest that produced it
+     * @param version stamped onto every row as {@code version}, so a row can be pinned to the ingest
+     *                that produced it
      */
     public record Request(Object body, String version) {
 
@@ -142,8 +140,8 @@ public final class ParseMarkers {
      * One suspicion — the row the prover leases and the reviewer eventually reads.
      *
      * @param line       provisional; re-anchoring against the real checkout may move it. A double
-     *                   rather than a long because the JS holds it as a Number and the difference is
-     *                   observable at the extremes; see {@link Js#parseInt10}
+     *                   rather than a long because it travels the wire as a JavaScript Number, and the
+     *                   difference is observable at the extremes; see {@link Js#parseInt10}
      * @param svaceLine  what Svace actually reported — never overwritten, so a re-anchor that goes
      *                   wrong can still be traced back to the marker
      * @param method     unknown until the prover re-anchors against the real checkout
@@ -157,7 +155,8 @@ public final class ParseMarkers {
                             String description, String evidence, String status, String note,
                             long proveAttempts, String version, String methodKey) {
 
-        /** The row, in the key order the JS emitted so the Data Table columns line up. */
+        /** The row, in a FIXED key order, so a consumer that takes its columns from the first row
+         * it sees gets the same columns every time. */
         public Map<String, Object> toMap() {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("dedup_key", dedupKey);
@@ -246,10 +245,11 @@ public final class ParseMarkers {
     public record Result(List<Suspicion> suspicions, Summary summary) {
 
         /**
-         * The n8n item list: one map per suspicion, with {@code __summary} appended to the FIRST one.
+         * The item list: one map per suspicion, with {@code __summary} appended to the FIRST one.
          *
-         * <p>Appended, not prepended, because the JS assigns it to an already-built object and a new
-         * key goes last — and the Data Table's column order is taken from the first item it sees.
+         * <p>Appended, not prepended: it is added to an already-built object, and a consumer that takes
+         * its column order from the first item it sees must not find {@code __summary} standing in
+         * front of the marker's own fields.
          */
         public List<Map<String, Object>> items() {
             List<Map<String, Object>> out = new ArrayList<>(suspicions.size());
@@ -295,9 +295,9 @@ public final class ParseMarkers {
                 onlyCheckers.add(JsText.trim(Js.string(o)));
             }
         }
-        // NOT trimmed, deliberately: this mirrors the JS, where min_severity is looked up verbatim.
-        // A padded value therefore ranks -1 and filters nothing, which is the safe direction — the
-        // opposite mistake drops markers the operator asked to keep.
+        // NOT trimmed, deliberately: min_severity is looked up verbatim, so a padded value ranks -1
+        // and filters nothing. That is the safe direction — the opposite mistake drops markers the
+        // operator asked to keep.
         int minRank = Severity.rankOf(Js.orEmptyString(Json.get(b, "min_severity")));
 
         // source: an inline body, or a file off the mounted repo
@@ -471,9 +471,8 @@ public final class ParseMarkers {
 
     /**
      * {@code s.replace(/\.java$/, '')}. Written with {@code endsWith} rather than a regex on purpose:
-     * Java's {@code $} also matches BEFORE a trailing line terminator, so a regex port would strip
-     * ".java" out of "A.java\n" where the JS leaves it — a class name the prover then greps for and
-     * never finds.
+     * Java's {@code $} also matches BEFORE a trailing line terminator, so a regex would strip ".java"
+     * out of "A.java\n" and leave a class name the prover then greps for and never finds.
      */
     private static String stripJavaSuffix(String s) {
         return s.endsWith(".java") ? s.substring(0, s.length() - ".java".length()) : s;
@@ -540,9 +539,8 @@ public final class ParseMarkers {
             return new String(Files.readAllBytes(p), StandardCharsets.UTF_8);
         } catch (IOException e) {
             // The commonest cause by far is a volume mounted at the DIRECTORY the report lives in
-            // rather than at the file. The JS surfaces Node's raw "EISDIR: illegal operation on a
-            // directory, read", which names neither the path nor the mount — see the divergence note
-            // in the class comment. Naming the path keeps this a request the operator can fix.
+            // rather than at the file. The underlying error names neither the path nor the mount, so
+            // naming the path here is what keeps this a request the operator can fix.
             throw new IngestFailed("ingest: cannot read " + path + ": " + e.getMessage(), e);
         }
     }

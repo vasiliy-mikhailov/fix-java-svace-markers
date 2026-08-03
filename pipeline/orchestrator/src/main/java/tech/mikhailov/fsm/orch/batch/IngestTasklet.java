@@ -13,18 +13,16 @@ import tech.mikhailov.fsm.orch.dao.SuspicionDao;
 import tech.mikhailov.fsm.orch.model.Suspicion;
 
 /**
- * The ingest job, in one step — {@code workflow_ingest.json} with the five n8n nodes collapsed into
- * the three things they actually did.
+ * The ingest job, in one step: clear {@code suspicions}, clear {@code bugs}, {@code Parse markers},
+ * insert, summarise.
  *
- * <p>The workflow was: clear {@code suspicions}, clear {@code bugs}, {@code Parse markers}, insert,
- * summarise. Only the middle one was ever judgement, and it is called here as the library function it
- * already is. {@code Ingest summary} counted the items n8n's own insert node emitted, which only n8n
- * knew; here the insert is a loop with a counter, so the count is simply the count.
+ * <p>Only {@code Parse markers} is judgement, and it is called as the library function it is. The
+ * insert is a loop with a counter, so the summary count is simply the count.
  *
- * <p>ONE TRANSACTION, AND THAT IS THE ONE REAL CHANGE. In n8n the two clear nodes ran, and only then
- * did {@code Parse markers} get a chance to refuse the request — a missing CSV, a header without a
- * {@code line} column, every row filtered out. The backlog was gone by then, and the operator was left
- * with two empty tables and a red execution. A tasklet step runs inside a transaction, so a refusal
+ * <p>ONE TRANSACTION, AND IT IS LOAD-BEARING. {@code Parse markers} can refuse the request — a missing
+ * CSV, a header without a {@code line} column, every row filtered out — and it can only do so AFTER the
+ * two clears. Outside a transaction the backlog is gone by then and the operator is left with two empty
+ * tables and a red execution. A tasklet step runs inside a transaction, so a refusal
  * here rolls the clears back and the existing backlog is exactly as it was. The order the workflow
  * specifies is kept — clear, parse, insert — because the clear MUST precede the insert (a re-ingest
  * that only upserted would leave behind markers the new report no longer raises); what changes is that
@@ -64,9 +62,9 @@ public class IngestTasklet implements Tasklet {
             written += suspicions.upsert(Suspicion.of(row));
         }
 
-        // Byte for byte the line the JS printed, so an operator's existing grep still finds it. It is
-        // the only record of what the filters dropped — a marker that is silently absent looks exactly
-        // like a marker the scanner never raised.
+        // The `[ingest]` prefix is what operators grep for, so it is fixed. This line is the only
+        // record of what the filters dropped — a marker that is silently absent looks exactly like a
+        // marker the scanner never raised.
         log.info("[ingest] {}", parsed.summary().json());
         log.info("[ingest] cleared {} suspicion(s) and {} bug(s); wrote {} suspicion(s)",
                 clearedSuspicions, clearedBugs, written);

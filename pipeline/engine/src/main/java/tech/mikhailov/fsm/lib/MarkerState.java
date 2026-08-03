@@ -3,12 +3,12 @@ package tech.mikhailov.fsm.lib;
 /**
  * What a marker became — the single field every downstream decision keys off.
  *
- * <p>In the JS these are bare string literals, written out again in every file that branches on them:
- * record-outcome.js produces them, verdict.js routes on them, exec-verdict.js words them, the
- * dashboard groups by them. Nothing checks that the four spellings agree, and they very nearly do not:
- * {@code not-a-bug} is the ONLY one written with hyphens while every other state uses underscores. A
- * comparison against {@code 'not_a_bug'} anywhere in that chain is not a crash — it is a marker that
- * quietly takes a different route, which is the failure mode this whole pipeline is built to avoid.
+ * <p>WHY IT IS AN ENUM AND NOT A STRING LITERAL. Four places branch on these: {@code RecordOutcome}
+ * produces them, {@code Verdict} routes on them, {@link ExecVerdict} words them, the dashboard groups
+ * by them. As bare literals nothing would check that the four spellings agree — and they very nearly
+ * do not: {@code not-a-bug} is the ONLY one written with hyphens while every other state uses
+ * underscores. A comparison against {@code "not_a_bug"} anywhere in that chain is not a crash, it is a
+ * marker quietly taking a different route, which is the failure mode this pipeline is built to avoid.
  *
  * <p>So the wire spelling lives in exactly one place. {@link #of(String)} is the only way a string
  * becomes a state, and it returns null rather than guessing, because a state this enum does not know

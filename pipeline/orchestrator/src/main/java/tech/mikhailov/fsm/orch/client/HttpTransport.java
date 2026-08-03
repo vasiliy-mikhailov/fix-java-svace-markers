@@ -82,9 +82,9 @@ public class HttpTransport implements Llm.Http, AutoCloseable {
                 // https negotiates HTTP/2 by ALPN, not by this setting.
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(CONNECT_TIMEOUT)
-                // n8n's httpRequest follows redirects. GitHub 301s a renamed repository to its new
-                // location, and a vLLM front end behind a proxy can answer 308; without this both are
-                // reported to the caller as an empty reply.
+                // Follow redirects. GitHub 301s a renamed repository to its new location, and a model
+                // front end behind a proxy can answer 308; without this both are reported to the caller
+                // as an empty reply.
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .executor(executor)
                 .build();
@@ -124,8 +124,8 @@ public class HttpTransport implements Llm.Http, AutoCloseable {
     }
 
     /**
-     * {@code helpers.httpRequest} as the ported engine nodes see it: the options map they already
-     * build, in; the parsed body, out.
+     * The model call as the engine's stages see it: the options map they already build, in; the parsed
+     * body, out.
      *
      * @return the parsed body when the options say {@code json: true}, the raw text otherwise, and
      *         {@code null} for an empty body with {@code json: true} — which is what
@@ -182,10 +182,10 @@ public class HttpTransport implements Llm.Http, AutoCloseable {
      *
      * <p>RESTRICTED HEADERS ARE SKIPPED, NOT FATAL. {@code java.net.http} refuses to send
      * {@code Connection}, {@code Host}, {@code Content-Length} and friends because it manages them
-     * itself — and every ported node sets {@code Connection: close}, which was there to stop n8n
-     * exhausting vLLM's sockets by holding dozens open. One pooled client does not create that
-     * problem, so the header has nothing left to fix; throwing on it would take down three stages for
-     * a header the JDK is already handling.
+     * itself — and every stage sets {@code Connection: close}, which exists to stop a client
+     * exhausting the model front end's sockets by holding dozens open. One pooled client does not
+     * create that problem, so the header has nothing left to fix here; throwing on it would take down
+     * three stages for a header the JDK is already handling.
      */
     private static boolean copyHeaders(HttpRequest.Builder builder, Object headers) {
         boolean contentType = false;
@@ -224,8 +224,8 @@ public class HttpTransport implements Llm.Http, AutoCloseable {
     /**
      * The URL, refused early when it is not one.
      *
-     * <p>An unset {@code QWEN_BASE_URL} produces the literal {@code undefined/chat/completions} — the
-     * JS behaviour, kept because it is greppable. It has to fail as a CALL THAT FAILED, with the
+     * <p>An unset {@code QWEN_BASE_URL} produces the literal {@code undefined/chat/completions}, kept
+     * because it is greppable. It has to fail as a CALL THAT FAILED, with the
      * useless URL quoted, rather than as an {@code IllegalArgumentException} escaping the stage past
      * the catch that was supposed to make it fail closed.
      */
@@ -272,7 +272,7 @@ public class HttpTransport implements Llm.Http, AutoCloseable {
      * transport rather than in the two clients that consult it: whether a TCP connection was ever
      * established is a fact about {@code java.net.http}, not about markers. It decides whether
      * repeating a call can repeat its side effects — for {@link RunnerClient} the side effect is a
-     * clone plus two Maven builds in the one workspace the fleet shares, so it retries this and
+     * clone plus two Maven builds in the one workspace every prove shares, so it retries this and
      * nothing else.
      *
      * <p>{@link java.net.ConnectException} is what the JDK throws when opening a NEW connection is

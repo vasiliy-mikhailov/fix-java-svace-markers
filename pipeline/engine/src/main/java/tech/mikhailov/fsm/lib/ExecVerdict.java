@@ -8,7 +8,7 @@ package tech.mikhailov.fsm.lib;
  * argue a case already established by running it could only add prose weaker than, or contradicting,
  * the proof it describes. The model argues only where there is no ground truth.
  *
- * <p>WHAT THE COMPOSITION HAS TO GET RIGHT, and what the ported tests defend:
+ * <p>WHAT THE COMPOSITION HAS TO GET RIGHT, and what the tests defend:
  * <ul>
  *   <li>a clause the evidence does not support is ABSENT, not empty. A realness score nobody measured,
  *       a "Root cause:" heading with no cause under it, a PR title of {@code undefined} — composed
@@ -27,7 +27,7 @@ public final class ExecVerdict {
     /**
      * How the marker is filed. Deliberately coarser than {@link MarkerState}: a drafted PR and a
      * rejected one are both {@code true-positive}, because both confirm the defect. That is exactly
-     * why the ported tests assert the HEADLINE of the text as well as the kind — a branch that fell
+     * why the tests assert the HEADLINE of the text as well as the kind — a branch that fell
      * through to its neighbour is invisible to anything checking only the kind.
      */
     public enum Kind {
@@ -42,7 +42,8 @@ public final class ExecVerdict {
             this.wire = wire;
         }
 
-        /** The spelling written into the verdicts table, as the JS wrote it. */
+        /** The spelling written into the verdicts table. It is the stored value; changing it
+         * re-labels every existing row. */
         public String wire() {
             return wire;
         }
@@ -53,12 +54,12 @@ public final class ExecVerdict {
     }
 
     /**
-     * Everything the wording may draw on, gathered by the caller from several nodes.
+     * Everything the wording may draw on, gathered by the caller from several stages.
      *
-     * <p>ALL STRING FIELDS ARE NORMALISED TO "" — null never survives the constructor. In the JS every
-     * one of these reads is written {@code (ev.x || '')} or is gated on truthiness, and the reason is
-     * in the tests: a single missing fallback puts the literal word {@code undefined} into prose a
-     * human will act on. Doing it once in the constructor means a new clause cannot forget it.
+     * <p>ALL STRING FIELDS ARE NORMALISED TO "" — null never survives the constructor. Every one of
+     * these reads would otherwise need its own {@code (ev.x || '')}, and a single missing fallback puts
+     * the literal word {@code undefined} into prose a human will act on. Doing it once in the
+     * constructor means a new clause cannot forget it.
      *
      * @param testScore  the realness score AS TEXT, empty when none was measured. Text, not a number,
      *                   because it is copied verbatim into prose and "" has to stay distinguishable
@@ -83,7 +84,7 @@ public final class ExecVerdict {
             infraReason = nz(infraReason);
         }
 
-        /** Read the evidence out of an n8n item, applying the JS coercions {@link Json} spells out. */
+        /** Read the evidence out of an item, applying the coercions {@link Json} spells out. */
         public static Evidence of(Object item) {
             return new Evidence(
                     Json.str(item, "test_path"), Json.str(item, "jdk"),

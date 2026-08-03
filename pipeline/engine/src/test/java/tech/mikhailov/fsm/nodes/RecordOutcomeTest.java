@@ -37,7 +37,7 @@ class RecordOutcomeTest {
 
     private static final String VERSIONS = "{\"pipeline\":\"test\"}";
 
-    /** An n8n item, written the way the JS fixtures wrote their object literals. Nulls allowed. */
+    /** An upstream item, built the way the wire builds one. Nulls allowed. */
     private static Map<String, Object> item(Object... kv) {
         Map<String, Object> m = new LinkedHashMap<>();
         for (int i = 0; i < kv.length; i += 2) {
@@ -210,7 +210,7 @@ class RecordOutcomeTest {
                         m -> m.prMaker("error", "boom"),
                         "run_test(fix): boom"),
                 // The blankness divergence, one case per character JS calls whitespace and
-                // Character.isWhitespace does not. Ported as String.isBlank() every one of these
+                // Character.isWhitespace does not. Written as String.isBlank() every one of these
                 // reads as a source file WITH CONTENT, and the marker is adjudicated against a file
                 // that has no code in it — a verdict, written down, about nothing. See JsText.
                 infra("a source file that is only a byte-order mark",
@@ -231,10 +231,10 @@ class RecordOutcomeTest {
     }
 
     /**
-     * The other direction of the same divergence, and the reason the helper is JS's set and not
+     * The other direction of the same divergence, and the reason the helper is JavaScript's set and not
      * Java's: {@code Character.isWhitespace} calls U+001C..U+001F whitespace and JavaScript does not.
      * A file holding one of them is CONTENT to the pipeline that is running in production today, so
-     * the marker is judged rather than retried — and the port must not change which of those happens.
+     * the marker is judged rather than retried, and which of those happens must not move.
      */
     @ParameterizedTest(name = "U+{0}")
     @ValueSource(strings = {"001C", "001D", "001E", "001F"})
@@ -363,7 +363,7 @@ class RecordOutcomeTest {
      * THE GREEN COUNTERPART of the guard above, and it exists for exactly the same reason.
      *
      * <p>ORIGIN (2026-07-30): the red side has had "a test that never executed is infra, not a verdict"
-     * since the port; the green side had nothing. A fix run whose GREEN build is killed at the runner's
+     * on the red side only; the green side had nothing. A fix run whose GREEN build is killed at the prover's
      * 20-minute timeout answers {@code green_passed: false} on a build that ran ZERO tests, and
      * {@code reproduced && !green} routed that straight to {@code fix_failed} — which the verdict
      * writer publishes as "CONFIRMED as a real defect, but UNFIXED … No source-only fix could be
@@ -539,8 +539,8 @@ class RecordOutcomeTest {
 
     @Test
     void anEditErrorReportedAsNullDoesNotBecomeAFileCalledNull() {
-        // The JS builds the banner with Array.join, which renders a null element as "", and the audit
-        // line with string concatenation, which renders it as the word "null". The asymmetry is kept:
+        // The banner is built with a join, which renders a null element as "", and the audit line
+        // with concatenation, which renders it as the word "null". The asymmetry is deliberate:
         // the banner is prose a human reads and must not invent an edit, while infra_reason is the
         // grep-able record of what the PR maker actually sent — including that it sent a null.
         Outcome r = marker().prMaker("edit_errors", Arrays.asList("old_str not found", null)).run();
@@ -788,16 +788,16 @@ class RecordOutcomeTest {
         assertSame(VERSIONS, r.versions());
     }
 
-    // ---- the port's own machinery: the wire contract the n8n shim speaks --------------------------
+    // ---- the wire contract a caller speaks ------------------------------------------------------
 
     /**
-     * The JS read its five upstream items straight out of n8n's item graph; over HTTP the shim has to
-     * name them. A key that does not match reads as an ABSENT node, and an absent {@code Parse test}
+     * A caller has to NAME the five upstream items it sends. A key that does not match reads as an
+     * ABSENT stage, and an absent {@code Parse test}
      * means {@code can_prove} is false — the marker is retired as not-a-bug without anything having
      * gone wrong. So the spelling of these keys is load-bearing, and it is pinned here.
      */
     @Test
-    void theRequestIsReadOutOfTheBodyUnderTheNodeNamesTheShimSends() {
+    void theRequestIsReadOutOfTheBodyUnderTheStageNamesTheCallerSends() {
         Map<String, Object> body = item(
                 "prep_prover", item("title", "t"), "parse_test", item("can_prove", true),
                 "parse_fix", item("pr_title", "from the fixer"),
@@ -814,11 +814,11 @@ class RecordOutcomeTest {
 
     /**
      * A body that is missing a node entirely, or carries something that is not an object under its
-     * key, must read as ALL FIELDS ABSENT rather than throwing — that is what {@code || {}} did in the
-     * JS, and a 500 from this endpoint costs the whole marker run rather than one field.
+     * key, must read as ALL FIELDS ABSENT rather than throwing — that is what {@code || {}} means, and
+     * a 500 from this endpoint costs the whole marker run rather than one field.
      */
     @Test
-    void aMissingOrNonObjectNodeReadsAsAbsentRatherThanThrowing() {
+    void aMissingOrNonObjectStageReadsAsAbsentRatherThanThrowing() {
         Outcome r = RecordOutcome.recordOutcome(Request.of(item(
                 "build_reproduce_input", item("src", "class B {}"), "parse_test", "not an object")));
         assertEquals(MarkerState.NOT_A_BUG, r.state(),
@@ -833,18 +833,17 @@ class RecordOutcomeTest {
     }
 
     /**
-     * The row, byte for byte as the JS node emitted it — keys, order, spellings and NUMBER FORMATTING.
+     * The row, byte for byte — keys, order, spellings and NUMBER FORMATTING.
      *
-     * <p>Both literals below were produced by running the JS node on the same fixture. Nothing
-     * downstream re-derives these: n8n writes them straight into Data Table cells and the dashboard
-     * renders the cells. So {@code "value_score":100} must not become {@code 100.0} and
+     * <p>Nothing downstream re-derives these: they are written straight into table cells and the
+     * dashboard renders the cells. So {@code "value_score":100} must not become {@code 100.0} and
      * {@code "attempts":1} must not become {@code 1.0} — Java has two number types where JS has one,
      * and every row in the table would differ for a reason nobody could explain. {@code not-a-bug} is
      * the one state written with hyphens while every other uses underscores; a state whose spelling
      * moved does not crash, it takes a different route through the rest of the pipeline.
      */
     @Test
-    void theRowSerialisesExactlyAsTheJsNodeWroteIt() {
+    void theRowSerialisesInTheFixedColumnOrder() {
         assertEquals("{\"suspicion_key\":\"k\",\"repo\":\"o/r\",\"file\":\"src/main/java/a/B.java\","
                 + "\"title\":\"t\",\"jdk\":\"25\",\"test_path\":\"src/test/java/a/BTest.java\","
                 + "\"test_code\":\"x\",\"fix_diff\":\"[]\",\"red_verified\":true,"

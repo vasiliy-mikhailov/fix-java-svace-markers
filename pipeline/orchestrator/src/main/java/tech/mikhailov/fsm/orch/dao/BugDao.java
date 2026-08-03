@@ -10,7 +10,7 @@ import org.springframework.stereotype.Repository;
 import tech.mikhailov.fsm.orch.model.Bug;
 
 /**
- * The {@code bugs} Data Table, as a DAO — the artifact each settled marker leaves behind.
+ * The {@code bugs} table, as a DAO — the artifact each settled marker leaves behind.
  *
  * <p>UPSERT AND NEVER INSERT. A marker can be proved more than once: an infra failure returns it to
  * the queue, and the second attempt writes the same {@code suspicion_key} again. Insert-only would
@@ -132,7 +132,7 @@ public class BugDao {
         return n == null ? 0L : n;
     }
 
-    /** The n8n {@code Clear bugs} node: a re-ingest starts with no artifacts. */
+    /** A re-ingest starts with no artifacts. */
     public int deleteAll() {
         return jdbc.update("DELETE FROM bugs");
     }

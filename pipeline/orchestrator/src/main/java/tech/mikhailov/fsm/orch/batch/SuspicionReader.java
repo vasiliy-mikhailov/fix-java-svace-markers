@@ -17,7 +17,7 @@ import tech.mikhailov.fsm.orch.dao.SuspicionDao;
 import tech.mikhailov.fsm.orch.model.Suspicion;
 
 /**
- * The queue, as an {@link ItemReader} — {@code Get one suspicion} plus the claim n8n never had.
+ * The queue, as an {@link ItemReader}: take one suspicion, and CLAIM it in the same statement.
  *
  * <p>NOT A {@code JdbcCursorItemReader}. A cursor holds a result set open across the whole step and
  * hands out rows it read at the start; a prove takes minutes and the row it is about to work on may
@@ -51,25 +51,25 @@ import tech.mikhailov.fsm.orch.model.Suspicion;
  * orchestrator after 53 proves: 23 artifacts written {@code not-a-bug} with an empty verdict and all 23
  * markers back in {@code new}, nine more {@code infra_error} likewise, and not one
  * {@code false_positive}, {@code by_design}, {@code unprovable} or {@code infra_stuck} in the backlog —
- * against an n8n baseline whose LARGEST bucket was {@code false_positive}. Nothing was wrong with the
- * verdict stage's routing; the sample it routes on never arrived.
+ * where {@code false_positive} should be the LARGEST bucket. Nothing was wrong with the verdict stage's
+ * routing; the sample it routes on never arrived.
  *
  * <p>So an owed sample is claimed through {@link SuspicionDao#claimAnotherSample}, whose
  * {@code AND prove_attempts > ?} guard is what keeps the anti-spin property intact: a marker released
  * without an answer can never satisfy it, and one that answered satisfies it exactly ONCE per completed
  * attempt. Owed samples are taken BEFORE new markers, which finishes a marker rather than leaving it
- * half-proved, and keeps the java-runner on the checkout it already has warm.
+ * half-proved, and keeps the prover on the checkout it already has warm.
  *
  * <p>WHEN THE RUN ENDS OWING ONE ANYWAY, {@link #afterStep} labels the row {@code [stranded]}. That is
  * the counterpart to the {@code [gap]} label {@code Verdict} writes: this defect class has now been
  * introduced twice, and both times it was invisible because a requeued marker looks exactly like one
  * nothing has got to yet.
  *
- * <p>IT ADVANCES; IT DOES NOT STOP. That distinction is the whole of a defect this class shipped. The
- * guard used to end the WHOLE DRAIN at the first repeat sighting, on the reasoning that a dead runner
- * should cost one attempt per tick rather than spin. But {@code claimNext()} always offers the FIRST
- * queued marker, so an execution that met an unprovable marker first stopped there and every later tick
- * stopped in the same place: with a stub GitHub answering 403 for the lower-keyed of two markers, the
+ * <p>IT ADVANCES; IT DOES NOT STOP, and that distinction is load-bearing. Ending the WHOLE DRAIN at
+ * the first repeat sighting looks like the anti-spin rule — a dead prover should cost one attempt per
+ * tick — and it is not: {@code claimNext()} always offers the FIRST queued marker, so an execution that
+ * meets an unprovable marker first stops there and every later tick stops in the same place. With a
+ * stub GitHub answering 403 for the lower-keyed of two markers, the
  * higher-keyed one was never reached in a 40-second run, and a real backlog would have been invisible
  * behind one bad row for the length of the deployment. Stepping over costs one claim — which is what
  * the original guard was actually protecting against — and reaches everything behind it.
@@ -177,9 +177,8 @@ public class SuspicionReader implements ItemReader<Suspicion>, ItemStream, StepE
 
     /**
      * @param maxMarkersPerRun how many markers one execution may settle before it stops and lets the
-     *                         next tick continue; 0 drains the queue. 1 is exactly what the n8n
-     *                         schedule did. It has no bearing on the single-marker route, which settles
-     *                         one marker by definition.
+     *                         next tick continue; 0 drains the queue. It has no bearing on the
+     *                         single-marker route, which settles one marker by definition.
      */
     public SuspicionReader(SuspicionDao suspicions, int maxMarkersPerRun) {
         this.suspicions = suspicions;
@@ -237,7 +236,7 @@ public class SuspicionReader implements ItemReader<Suspicion>, ItemStream, StepE
         }
         // OWED SAMPLES FIRST. The engine settled this marker to `new` and advanced its attempt count,
         // which is a REQUEST — "ask me again" — not a marker nothing has got to. Serving it before the
-        // next new marker finishes what this run started, on the checkout the java-runner still has warm.
+        // next new marker finishes what this run started, on the checkout the prover still has warm.
         Suspicion owed = anotherSample();
         if (owed != null) {
             return owed;
@@ -367,7 +366,7 @@ public class SuspicionReader implements ItemReader<Suspicion>, ItemStream, StepE
         Optional<Suspicion> claimed = suspicions.claimKey(named);
         if (claimed.isEmpty()) {
             throw new MarkerNotClaimed(suspicions.find(named).isPresent()
-                    ? "`" + named + "` is already being proved; the java-runner has one workspace, so "
+                    ? "`" + named + "` is already being proved; there is one workspace per repository, so "
                             + "wait for the run that holds it to finish or stop it"
                     : "there is no marker `" + named + "` in the backlog — check the key against "
                             + "`dedup_key` on the dashboard, or re-ingest the report that raised it");

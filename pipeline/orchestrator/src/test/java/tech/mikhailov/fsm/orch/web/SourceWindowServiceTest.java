@@ -309,7 +309,7 @@ class SourceWindowServiceTest {
      * <p>WHY A HUMAN CARES: an incomplete marker row is a fact about the ingest, not about the runner.
      * Posting a blank repo or a blank path makes the runner attempt a clone and answer with its own
      * error, so the tab blames a healthy container for a row that never had a file name in it — and
-     * each of those pointless calls occupies the one workspace the whole fleet shares.
+     * each of those pointless calls occupies the one workspace every prove shares.
      */
     @Test
     void aMarkerWithNoRepoOrNoFileIsRefusedWithoutCallingTheRunner() {
@@ -475,7 +475,7 @@ class SourceWindowServiceTest {
     }
 
     /**
-     * The java-runner, scripted: one reply or one failure, and a record of what it was asked.
+     * The prover, scripted: one reply or one failure, and a record of what it was asked.
      *
      * <p>Recording the options map is half the point. Which URL, which method and which branch this
      * service asks for are decisions with no visible symptom when they are wrong — the runner answers

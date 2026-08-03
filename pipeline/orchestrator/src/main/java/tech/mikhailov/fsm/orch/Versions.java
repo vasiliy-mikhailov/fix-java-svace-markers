@@ -4,14 +4,13 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * The pipeline and per-stage version stamps — {@code n8n/agentic/src/versions.js}, moved.
+ * The pipeline and per-stage version stamps.
  *
  * <p>WHY THESE LIVE HERE AND NOT IN THE ENGINE. Every stage that reaches the model is handed its stamp
  * as an INPUT ({@code FixSkeptic.Request#skepticStamp}, {@code PrMaker.Request#prStamp},
  * {@code Verdict.Request#verdictStamp}, {@code RecordOutcome.Request#versions}) — the engine reads them
- * and never authors one. In n8n the generator supplied them; the generator is what this module
- * replaces, so they land here. The engine stays a pure function of its request, which is the property
- * its tests are written against.
+ * and never authors one, which is what keeps it a pure function of its request. So the stamps are
+ * authored here, by the module that composes the request.
  *
  * <p>Bump a stage version whenever that stage's prompt, tools or parsing change; bump
  * {@link #PIPELINE} whenever the shape of the lifecycle changes. The strings are transcribed from
@@ -73,7 +72,7 @@ public final class Versions {
      * untouched and {@link tech.mikhailov.fsm.orch.model.Bug#fromVerdict} writes it with
      * {@link tech.mikhailov.fsm.lib.Json#stringify}: handing over a String there would serialise a
      * string INTO a string, and the column would hold {@code "{\"pipeline\":…}"} — escaped, quoted, and
-     * no longer readable back as JSON. Handing over the map reproduces the n8n cell exactly.
+     * no longer readable back as JSON. Handing over the map is what puts real JSON in the column.
      */
     public static Map<String, Object> versions() {
         Map<String, Object> m = new LinkedHashMap<>();

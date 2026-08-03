@@ -1,21 +1,16 @@
 'use strict';
 /**
- * Differential harness, JS side — A LOADER, not a runner.
+ * Differential harness — A READABILITY AID. It unpacks fixtures; it runs nothing and enforces nothing.
  *
- * IT USED TO RUN THE JAVASCRIPT. Until 2026-07-31 this file was 1 100 lines that generated 23 851
- * cases, required `java-runner/lib/edit.js`, `lib/build.js` and `src/server.js`, ran them, and wrote
- * both files for the Java driver and compare.cjs to read. That service has been ported and deleted;
- * there is no JavaScript left to run.
- *
- * WHAT SURVIVED IS ITS OUTPUT. The cases, the answers and the filesystem tree four families read are
- * frozen under harness/fixtures as gzipped data. This file unpacks them into harness/out, which is
- * the ONLY thing it does — so that a person can read, grep and jq the corpus that the Java test in
+ * The cases, the recorded reference answers and the filesystem tree four families read are frozen
+ * under harness/fixtures as gzipped data. This file writes readable copies into harness/out so a
+ * person can read, grep and jq the corpus that
  * src/test/java/.../DifferentialHarnessTest.java asserts against.
  *
- * IT IS NOT WHAT ENFORCES ANYTHING. The comparison is `mvn test`. This is a convenience for reading
- * a fixture that is otherwise a 227 KB gzip, and nothing depends on it.
+ * THE COMPARISON IS `mvn test`. This is a convenience for reading a fixture that is otherwise a
+ * 227 KB gzip, and nothing depends on its output.
  *
- *   node harness/js-side.cjs      # -> harness/out/{cases.json,js-results.json,fixtures/}
+ *   node harness/unpack-fixtures.cjs   # -> harness/out/{cases.json,js-results.json,fixtures/}
  */
 const fs = require('fs');
 const path = require('path');
@@ -58,4 +53,4 @@ const cases = load('cases.json.gz');
 const results = load('js-results.json.gz');
 fs.writeFileSync(path.join(OUT, 'cases.json'), cases);
 fs.writeFileSync(path.join(OUT, 'js-results.json'), results);
-console.error(`js-side: unpacked ${JSON.parse(cases).length} frozen cases and their answers`);
+console.error(`unpacked ${JSON.parse(cases).length} frozen cases and their answers`);

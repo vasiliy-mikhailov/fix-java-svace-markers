@@ -9,10 +9,8 @@ import tech.mikhailov.fsm.orch.model.Bug;
  * settled with.
  *
  * <p>It exists so the processor stays a pure translation of the engine's answer and the writer stays
- * two DAO calls. Both halves come off the SAME {@code Verdict} item — the n8n graph fed
- * {@code Upsert bug} from {@code $json} and {@code Update suspicion} from
- * {@code $('Verdict').item.json}, which is the same row — so splitting them anywhere but here would
- * put two readings of one item in play.
+ * two DAO calls. Both halves come off the SAME {@code Verdict} item, so splitting them anywhere but
+ * here would put two readings of one item in play.
  *
  * @param dedupKey the key of the row this run CLAIMED, not the {@code suspicion_key} the engine echoed
  *                 back. They agree — {@code Prep prover} copies one into the other — and if they ever

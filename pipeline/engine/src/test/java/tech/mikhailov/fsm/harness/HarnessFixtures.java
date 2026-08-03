@@ -12,12 +12,11 @@ import java.util.zip.GZIPInputStream;
 import tech.mikhailov.fsm.lib.Json;
 
 /**
- * The FROZEN JavaScript side of the engine's differential harnesses.
+ * The FROZEN REFERENCE ANSWERS the engine's differential harnesses compare against.
  *
- * <p>Three families of n8n Code nodes were ported into this module, and each was proven against the
- * JavaScript it replaced by generating cases, running both, and diffing the answers. The JavaScript
- * is gone. Its ANSWERS are here — committed under {@code harness/fixtures} as gzipped data, one pair
- * of files per family:
+ * <p>Three families of decision classes were proven by generating cases, running them against the
+ * implementation this one replaced, and diffing the answers. That implementation is gone; its ANSWERS
+ * are here — committed under {@code harness/fixtures} as gzipped data, one pair of files per family:
  *
  * <table><caption>the three families</caption>
  * <tr><th>prefix</th><th>family</th><th>cases</th></tr>
@@ -41,12 +40,12 @@ final class HarnessFixtures {
     private HarnessFixtures() {
     }
 
-    /** The cases the retired JavaScript generated for one family. */
+    /** The cases the recorded reference generated for one family. */
     static List<Object> cases(String prefix) {
         return read(prefix + "cases.json.gz");
     }
 
-    /** The answers the retired JavaScript gave, one per case, in the same order. */
+    /** The answers the recorded reference gave, one per case, in the same order. */
     static List<Object> jsResults(String prefix) {
         return read(prefix + "js-results.json.gz");
     }
@@ -56,7 +55,7 @@ final class HarnessFixtures {
         Path file = DIR.resolve(name);
         if (!Files.isReadable(file)) {
             throw new UncheckedIOException(new IOException(
-                    "the frozen JS side is missing: " + file.toAbsolutePath()));
+                    "the frozen reference answers is missing: " + file.toAbsolutePath()));
         }
         ByteArrayOutputStream raw = new ByteArrayOutputStream();
         try (InputStream in = new GZIPInputStream(Files.newInputStream(file))) {

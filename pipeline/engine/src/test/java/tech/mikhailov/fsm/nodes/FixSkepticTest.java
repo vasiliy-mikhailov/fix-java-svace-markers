@@ -24,16 +24,15 @@ import tech.mikhailov.fsm.nodes.FixSkeptic.Request;
  * {@code Fix skeptic} — the deterministic two thirds.
  *
  * <p>The judgement (does this model actually catch an over-fit fix?) is only observable against a live
- * endpoint, and n8n/agentic/test/model.skeptic-prmaker.test.js covers it there at ~15s a call.
- * Everything AROUND the call is ordinary code: prompt assembly, the truncation rule, reply parsing and
- * the fail-closed defaults. This file pins that half offline.
+ * endpoint, at ~15s a call. Everything AROUND the call is ordinary code: prompt assembly, the
+ * truncation rule, reply parsing and the fail-closed defaults. This file pins that half offline.
  *
  * <p>Two rules run through the whole file:
  * <ul>
  *   <li>The prompt is asserted BYTE FOR BYTE against a second, independently spelled-out copy. It is
  *       the stage's instruction to the model, not prose; a reword changes what the pipeline does, and a
  *       test that rebuilt the expectation from the code under test would wave that through. The copy
- *       below is deliberately built by joining lines, so that the Java text block and the JS
+ *       below is deliberately built by joining lines, so that the text block and this copy
  *       concatenation are checked against a third spelling rather than against each other.</li>
  *   <li>Nothing may come out {@code sound} unless the model said so. A skipped block, a dead endpoint,
  *       a truncated diff and an unrecognised word are all failures to certify, and {@code sound} is the
@@ -115,7 +114,7 @@ class FixSkepticTest {
 
     @Test
     void theStampIsConcatenatedRawSoAMissingOneIsVisibleRatherThanSilentlyBlank() {
-        // The generator always passes one; there is no `|| ''` on purpose. A prompt that opens with the
+        // A caller always passes one; there is no `|| ''` on purpose. A prompt that opens with the
         // literal 'undefined' is a bug someone reads in the transcript, a blank first line is not.
         assertTrue(FixSkeptic.skepticPrompt(new PromptInput(null, TITLE, DESCRIPTION, TEST_CODE,
                 FIX_EDITS)).startsWith("undefined\n"));
@@ -420,7 +419,7 @@ class FixSkepticTest {
     }
 
     @Test
-    void aMissingParseTestOutputEmptiesTheTestBlockInsteadOfCrashingTheNode() {
+    void aMissingParseTestOutputEmptiesTheTestBlockInsteadOfCrashingTheStage() {
         // The node runs under onError=continueRegularOutput: a throw here does not fail loudly, it
         // forwards the INPUT item unchanged, and the row then carries no skeptic fields at all.
         Shell shell = new Shell().parseTest(null);
@@ -462,7 +461,7 @@ class FixSkepticTest {
                 "skeptic_reason", "skeptic call failed: ECONNREFUSED 10.0.0.4:8000",
                 "skeptic_answered", false), anError);
 
-        // n8n's own request errors put the text in `description`, not in `message`.
+        // An HTTP-level failure puts its text in `description`, not in `message`.
         assertEquals("skeptic call failed: The service refused the connection",
                 new Shell().throwing(new Llm.ApiException(null, "The service refused the connection"))
                         .run().get("skeptic_reason"));
@@ -558,7 +557,7 @@ class FixSkepticTest {
     }
 
     @Test
-    void theRequestFactoryReadsTheNodeNamesTheShimPosts() {
+    void theRequestFactoryReadsTheStageNamesTheCallerPosts() {
         // The wire contract: if a key is renamed on one side only, every marker arrives with empty
         // upstream items and the skeptic silently stops running at all.
         Object body = Json.parse("""

@@ -13,7 +13,7 @@ import tech.mikhailov.fsm.nodes.ParseTest;
 /**
  * Differential harness, Java side — the JSON/reply-parsing family.
  *
- * <p>Runs this port over the 1 354 cases the retired JavaScript generated, in the same type-tagged
+ * <p>Runs this module over the 1 354 cases the recorded reference generated, in the same type-tagged
  * encoding it answered in — so {@link JsonFamilyHarnessTest} can diff the two on every
  * {@code mvn test}. It used to be run by hand from {@code harness/run-json-family.sh} and write a
  * file that nothing read.
@@ -23,7 +23,7 @@ final class DiffJsonFamily {
     private DiffJsonFamily() {
     }
 
-    /** This port's answer to every case, in the same encoding the frozen JS side answered in. */
+    /** This module's answer to every case, in the same encoding the frozen reference answers answered in. */
     static List<Object> answers(List<Object> cases) {
         List<Object> out = new ArrayList<>();
         for (Object c : cases) {

@@ -3,14 +3,12 @@
 **Start at the [repository README](../README.md).** It has the quickstart, the configuration table and
 the operational notes. This file is the map of what is in this directory.
 
-This pipeline ran on n8n until July 2026; nothing here runs n8n now, and no Node, Python or n8n service
-is left. This directory was `n8n-fleet/` and `deploy/` was `n8n/` until that name was retired too.
-
-Moving the compose file is safe in the one way that matters — every volume in
-`deploy/docker-compose.yml` pins its PHYSICAL name, so the live data is not addressed through the
-directory or the project name — but it does invalidate runbooks, and the deployed checkout has to be
-moved rather than re-cloned. `migrate-to-spring.sh` does that properly, with backups and a post-flight
-that verifies the marker count survived.
+Moving this directory, or renaming the Compose project, is safe in the one way that matters: every
+volume in `deploy/docker-compose.yml` pins its PHYSICAL name, so the live data is not addressed through
+the directory or the project name. Keep those pins — without them Compose derives `<project>_<key>`,
+looks for a volume that does not exist, creates it empty, and serves an empty backlog with nothing red.
+A move still invalidates runbooks, and a deployed checkout has to be moved rather than re-cloned;
+`migrate-to-spring.sh` does that with backups and a post-flight that verifies the marker count survived.
 
 ## The reactor
 
@@ -20,15 +18,15 @@ that verifies the marker count survived.
 |---|---|---|
 | **engine** | The judgement, as pure functions over maps. Ten node classes, no I/O, ~900 tests. Also runs standalone over HTTP so one stage can be replayed by hand. | nothing |
 | **orchestrator** | Spring Batch drives each marker through the chain. Owns H2, the dashboard, the REST API and the WebSocket. **Embeds `engine` as a library** — no HTTP hop between the queue and the judgement. | engine |
-| **runner** | Clones the target repo, writes the test, applies the patch, runs Maven twice. Ported from a Node service, with a 23,401-case differential harness proving the two agree. **A library now, not a service** — `LocalRunner` is what `orchestrator` calls; `RunnerServer` still wraps it for a deployment that wants the sandbox split off. | engine |
+| **runner** | Clones the target repo, writes the test, applies the patch, runs Maven twice. Its parsing and edit rules are pinned by a 23,401-case frozen differential harness (`runner/harness/README.md`). **A library, not a service** — `LocalRunner` is what `orchestrator` calls; `RunnerServer` wraps the same code over HTTP for a deployment that wants the build sandbox split off. | engine |
 
 Each module has its own README with the detail — endpoints, configuration, and why particular decisions
 were made the way they were.
 
 `runner` stays a module rather than being folded into `orchestrator`, and that is deliberate: its 188
-tests are the ported specification of the one distinction the whole pipeline rests on — did the test RUN
-and fail, or did it never run — and it holds a zero-third-party-dependency policy that a merge into a
-Spring Boot module would quietly break.
+tests are the specification of the one distinction the whole pipeline rests on — did the test RUN and
+fail, or did it never run — and it holds a zero-third-party-dependency policy that a merge into a Spring
+Boot module would quietly break.
 
 ## Deployment
 
@@ -38,8 +36,8 @@ rather than a discovery. `deploy/.env.example` documents every variable it reads
 
 `Dockerfile` is at the **reactor root**, which is also its build context, because `orchestrator` resolves
 `tech.mikhailov.fsm:engine` and `tech.mikhailov.fsm:runner` from the reactor and nothing publishes those
-jars. Its runtime stage is the runner's old one — git, JDK 8/11/17/21/25 and Maven — because the process
-it starts spawns all three over the repositories under analysis.
+jars. Its runtime stage carries git, JDK 8/11/17/21/25 and Maven, because the process it starts spawns
+all three over the repositories under analysis.
 
 ```bash
 docker compose up -d --build                            # one image, resolving from Central

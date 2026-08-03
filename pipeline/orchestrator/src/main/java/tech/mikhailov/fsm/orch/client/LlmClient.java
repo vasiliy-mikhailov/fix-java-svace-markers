@@ -48,9 +48,9 @@ public interface LlmClient {
     /**
      * Call the model, treating a failure to reach it as INFRA.
      *
-     * <p>THIS IS FOR THE REPRODUCER AND THE FIXER — the two stages that were n8n Agent nodes. Those
-     * had no fallback: if the model was unreachable the node hard-failed, the prove aborted, the lease
-     * was released and the marker stayed queued. Same here. A dead endpoint must not produce a
+     * <p>THIS IS FOR THE REPRODUCER AND THE FIXER — the two stages with no fallback. If the model is
+     * unreachable the stage hard-fails, the prove aborts, the claim is released and the marker stays
+     * queued. A dead endpoint must not produce a
      * reproducer that "declined to write a test", because that is recorded as {@code not-a-bug} and
      * retires a marker nobody ever looked at.
      *
@@ -88,9 +88,9 @@ public interface LlmClient {
      *
      * <p>{@link Llm.Http#request(java.util.Map)} takes the options map from
      * {@link Llm#chat(Llm.Endpoint, String, double)} — method, url, headers, body, {@code json: true},
-     * timeout — and returns the PARSED body. Failures carrying n8n-style wording should be thrown as
-     * {@link Llm.ApiException} so {@link Llm#failureText} can read the {@code description}; a bare
-     * transport error is fine as-is.
+     * timeout — and returns the PARSED body. A failure carrying the endpoint's own wording should be
+     * thrown as {@link Llm.ApiException} so {@link Llm#failureText} can read the {@code description};
+     * a bare transport error is fine as-is.
      *
      * <p>IT IS THE RAW VIEW: unlabelled and unlogged. The prove chain must take {@link #judging} instead,
      * which is this view with the marker key and the stage name attached — see there for why a failure

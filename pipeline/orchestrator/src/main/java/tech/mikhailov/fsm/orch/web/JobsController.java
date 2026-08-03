@@ -17,11 +17,10 @@ import tech.mikhailov.fsm.orch.batch.JobLaunches;
 /**
  * {@code POST /webhook/prove} and {@code POST /webhook/ingest}, as REST.
  *
- * <p>The n8n webhooks answered with {@code responseMode: 'lastNode'} — the caller's HTTP request was
- * held open for the whole run, which for a prove is up to 26 hours and for an ingest is however long
- * a 282-row CSV takes. That was never a design; it is what n8n does by default. These endpoints START
- * the job and answer {@code 202} with the execution id, which is the honest shape for work that
- * outlives any connection, and the run history is where the outcome is read.
+ * <p>THESE START THE JOB AND ANSWER {@code 202} with the execution id, rather than holding the
+ * caller's request open until it finishes. A prove is up to 26 hours and an ingest is however long a
+ * 282-row CSV takes; 202 is the honest shape for work that outlives any connection, and the run history
+ * is where the outcome is read.
  *
  * <p>THREE ENDPOINTS, AND THE THIRD IS THE DEBUGGING ONE. {@code POST /api/prove} drains the backlog;
  * {@code POST /api/prove/marker} proves ONE named marker and stops, which is the only route to a marker
@@ -53,9 +52,9 @@ public class JobsController {
     /**
      * The ingest body, accepting BOTH spellings.
      *
-     * <p>The n8n webhook took snake_case and the operators' scripts are written against it, so those
-     * names keep working; the camelCase forms are the job parameters this maps onto, and reading a
-     * body in the same vocabulary as the run history is worth the alias.
+     * <p>snake_case is what the operators' scripts send, so those names keep working; the camelCase
+     * forms are the job parameters this maps onto, and reading a body in the same vocabulary as the run
+     * history is worth the alias.
      *
      * <p>{@code pathPrefix} is a String and not an Optional for a reason that matters: absent means
      * "strip the default CI root" and an explicit {@code ""} means "do not strip at all". Jackson

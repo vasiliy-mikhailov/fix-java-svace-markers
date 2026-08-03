@@ -94,8 +94,8 @@ import org.springframework.stereotype.Component;
  * (see the long comment on {@code spring.datasource.url}). That switch is documented as a SQL-client
  * debugging route, guarded by {@link tech.mikhailov.fsm.orch.H2Exposure} and pinned to loopback; a
  * second ORCHESTRATOR against one database is not a supported topology and would be broken with or
- * without this class, because the java-runner serialises every build around one cached workspace and
- * two drains would patch each other's tree. If that ever changes, this pass needs an owner token on
+ * without this class, because the prover serialises every build around one cached workspace and two
+ * drains would patch each other's tree. If that ever changes, this pass needs an owner token on
  * the execution row (a JVM id written at launch, checked here) and not a longer comment.
  */
 @Component

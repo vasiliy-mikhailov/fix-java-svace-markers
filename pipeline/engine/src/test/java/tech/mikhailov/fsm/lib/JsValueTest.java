@@ -16,7 +16,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * The JS value semantics the input-building nodes are specified in terms of.
+ * The JavaScript value semantics the input-building stages are specified in terms of.
  *
  * <p>Every expectation here was read off Node 22 rather than reasoned about, because the whole point
  * of the class is that Java's nearest equivalent gives a DIFFERENT answer — and a plausible-looking
@@ -68,7 +68,7 @@ class JsValueTest {
     void stringRendersAnObjectTheWayConcatenationDoes() {
         // Not as JSON: the prompt builders splice marker fields in with `+`, and a field that arrived
         // as an object reaches the model as "[object Object]" — which is garbage, but it is the
-        // garbage the JS sent, and a JSON rendering would be a different prompt.
+        // garbage this pipeline has always sent, and a JSON rendering would be a different prompt.
         assertEquals("[object Object]", JsValue.string(item("a", 1L)));
         assertEquals("1,2", JsValue.string(List.of(1L, 2L)));
         assertEquals("", JsValue.string(List.of()));

@@ -9,10 +9,9 @@ import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.orch.client.SourceReader;
 
 /**
- * A window of source around a marker's line, from the java-runner's cached read-only checkout —
- * {@code sourceWindow()} in {@code dashboard/src/server.js}.
+ * A window of source around a marker's line, from the prover's cached read-only checkout.
  *
- * <p>WHY THE RUNNER AND NOT GITHUB. It is the exact tree the prover anchored and tested against, so
+ * <p>WHY THE PROVER AND NOT GITHUB. It is the exact tree the prover anchored and tested against, so
  * the window shown is the code that was actually judged — and it costs no API rate limit. The
  * {@link tech.mikhailov.fsm.orch.client.SourceClient} deliberately does NOT serve this: that client
  * fetches the GitHub contents reply verbatim for {@code BuildReproduceInput}, base64 and all, and is
@@ -33,9 +32,9 @@ public class SourceWindowService {
     /**
      * WHERE THE READ GOES IS NOT DECIDED HERE ANY MORE, and that is the fix rather than a tidy-up.
      *
-     * <p>This class used to hold an {@link tech.mikhailov.fsm.orch.client.HttpTransport} and re-derive
-     * the runner's base URL from {@code fsm.runner.base-url} itself — a SECOND copy of an address whose
-     * first copy already had a history of going stale. Worse, it is the copy whose failure is silent: a
+     * <p>Holding an {@link tech.mikhailov.fsm.orch.client.HttpTransport} here and re-deriving the
+     * prover's base URL from {@code fsm.runner.base-url} would be a SECOND copy of that address — and
+     * the copy whose failure is SILENT: a
      * source window pointed at a container that is not in the stack renders "source unavailable" on
      * every marker while every verdict stays correct and nothing goes red. With the prover in this
      * process by default, that is exactly the shape the mistake would have taken.

@@ -16,10 +16,9 @@ import java.util.Map;
  * these classes are testable at all, and the reason this interface exists rather than a
  * {@code HttpClient} field.
  *
- * <p>WHY IT IS NOT ASYNC. The JS shells are {@code async} because n8n's {@code helpers.httpRequest}
- * returns a promise; nothing in them is concurrent. The engine serves each request on a virtual
+ * <p>WHY IT IS NOT ASYNC. Nothing in a stage is concurrent, and each request is served on a virtual
  * thread (see {@code EngineServer}), so a blocking call here parks a heap object rather than an OS
- * thread and the shell reads as the straight line it always was.
+ * thread — and the shell reads as the straight line it is.
  */
 public final class Llm {
 
@@ -30,31 +29,31 @@ public final class Llm {
     private static final long MAX_TOKENS = 32_000;
 
     /**
-     * An hour, matching the JS. A verdict against a loaded local endpoint can take minutes, and a
-     * shorter timeout does not fail safely — the shell's catch turns it into "the model had nothing to
-     * say", which is recorded as a judgement rather than as a retry.
+     * An hour. A verdict against a loaded local endpoint can take minutes, and a shorter timeout does
+     * not fail safely — the shell's catch turns it into "the model had nothing to say", which is
+     * recorded as a judgement rather than as a retry.
      */
     private static final long TIMEOUT_MS = 3_600_000;
 
     /**
-     * {@code helpers.httpRequest} as the ported nodes see it: options in, parsed body out.
+     * The model call as the stages see it: options in, parsed body out.
      *
-     * <p>{@code Exception}, not {@code IOException}: the JS catch is a bare {@code catch (e)} and the
-     * shells are specified by what they do with a failure of ANY kind — a dead socket, a 500, a body
-     * that is not JSON. Narrowing it here would let one of those escape the shell and strand the
-     * marker's lease, which is the failure the {@code try} was put around the parse to prevent.
+     * <p>{@code Exception}, not {@code IOException}: the shells are specified by what they do with a
+     * failure of ANY kind — a dead socket, a 500, a body that is not JSON. Narrowing it here would let
+     * one of those escape the shell and strand the marker mid-prove, which is the failure the
+     * {@code try} around the parse exists to prevent.
      */
     public interface Http {
         Object request(Map<String, Object> options) throws Exception;
     }
 
     /**
-     * A failure carrying n8n's own wording.
+     * A failure carrying the caller's own wording.
      *
-     * <p>{@code helpers.httpRequest} rejects with a {@code NodeApiError} whose text is in
-     * {@code description}, not in {@code message}. Reading only the message reported every upstream 500
+     * <p>An HTTP-level failure carries its text in {@code description}, not in {@code message}.
+     * Reading only the message reported every upstream 500
      * as the bare word "error", which is why {@link #failureText} looks at both — and why the transport
-     * shim needs a way to carry the second one.
+     * needs a way to carry the second one.
      */
     public static class ApiException extends RuntimeException {
         private static final long serialVersionUID = 1L;
@@ -71,7 +70,7 @@ public final class Llm {
         }
     }
 
-    /** Where the model lives. Read from the environment exactly as {@code $env} is in the JS. */
+    /** Where the model lives. Read straight from the process environment. */
     public record Endpoint(String baseUrl, String apiKey, String model) {
 
         /** {@code $env.QWEN_*}, absent keys included — see {@link #concat} for why they are not "". */
@@ -101,10 +100,10 @@ public final class Llm {
      * <p>Java has one absent value where JS has two, and it shows up only here: {@code '' + undefined}
      * is {@code "undefined"} and {@code '' + null} is {@code "null"}. Every raw concatenation in these
      * three stages — the version stamp, the repo, the file, the state in the routing-gap note — is raw
-     * ON PURPOSE, so that a field the generator failed to pass is loud in the transcript instead of
+     * ON PURPOSE, so that a field the caller failed to pass is loud in the transcript instead of
      * silently blank. That field arrives as {@code undefined}; nothing upstream writes an explicit null
      * into those positions. So an absent value prints {@code undefined} here, and the differential
-     * harness counts the one input shape where that differs from the JS (a literal JSON null).
+     * harness catalogues the one input shape where that is visible (a literal JSON null).
      */
     public static String concat(Object v) {
         return v == null ? "undefined" : Js.string(v);
@@ -114,8 +113,8 @@ public final class Llm {
      * The same concatenation, done AT THE READ, where the two absences can still be told apart.
      *
      * <p>A key that is not in the item is {@code undefined}; a key that is there holding a JSON null is
-     * {@code null}. Both happen: n8n omits a field a node never wrote, and a Data Table cell with no
-     * value round-trips as an explicit null. The two print differently in the JS and therefore here —
+     * {@code null}. Both happen: an item omits a field no stage ever wrote, and a stored cell with no
+     * value round-trips as an explicit null. The two print differently —
      * {@code [gap] retired as `null`} and {@code [gap] retired as `undefined`} are different diagnoses
      * of a routing gap, and the row is the only thing the next reader gets.
      */
@@ -142,7 +141,7 @@ public final class Llm {
         Map<String, Object> headers = new LinkedHashMap<>();
         headers.put("Authorization", "Bearer " + concat(llm.apiKey()));
         headers.put("Content-Type", "application/json");
-        // n8n holds sockets open otherwise, and the vLLM front end runs out of them mid-run.
+        // Without it a client holds sockets open and the model's front end runs out of them mid-run.
         headers.put("Connection", "close");
 
         Map<String, Object> message = new LinkedHashMap<>();
@@ -193,7 +192,7 @@ public final class Llm {
     /**
      * What a failed call is allowed to say in the row: {@code (e.message || e.description)}, cut.
      *
-     * <p>Both halves are load-bearing. n8n's own rejections put the text in {@code description}, so
+     * <p>Both halves are load-bearing. An HTTP-level failure puts its text in {@code description}, so
      * reading only the message reports every upstream 500 as the word "error". And an aborted request
      * rejects with no Error at all — {@code throw null} and {@code throw ''} both happen — so a value
      * with nothing quotable must still fall back to a fixed phrase rather than write "null" into a

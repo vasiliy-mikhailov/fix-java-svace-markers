@@ -15,8 +15,8 @@ import java.util.concurrent.TimeUnit;
  * {@code run(cmd, args, {cwd, env, timeout})} — the {@code child_process.execFile} wrapper every git,
  * Maven and Gradle invocation goes through.
  *
- * <p>It NEVER throws and never rejects. The JS resolved {@code {code, out}} for a failed spawn, a
- * non-zero exit and a timeout alike, and everything above it is written that way: a build that failed
+ * <p>It NEVER throws. A failed spawn, a non-zero exit and a timeout all come back as
+ * {@code {code, out}}, and everything above it is written that way: a build that failed
  * is a result to be summarised, not an exception to be handled. A throw here would turn "the test did
  * not compile" — which the engine treats as "we could not test it, retry" — into a 500.
  */
@@ -95,9 +95,9 @@ final class Proc {
         try {
             process = builder.start();
         } catch (IOException cannotSpawn) {
-            // The JS lost this: execFile reports ENOENT through `err.code` (a string), so `code` was
-            // truthy-but-not-0 and `out` was EMPTY — a clone failure whose reply said nothing at all.
-            // The message is kept here because "cannot run git" and "the branch does not exist" send
+            // A spawn that cannot start reports ENOENT out of band, and the easy mistake is to leave
+            // `out` EMPTY — a clone failure whose reply says nothing at all. The message is kept here
+            // because "cannot run git" and "the branch does not exist" send
             // an operator to different places.
             return new Result(1, "cannot run " + command.getFirst() + ": " + cannotSpawn);
         }
@@ -160,10 +160,10 @@ final class Proc {
      * <p>WHY IT MUST NOT REACH A CHILD. Every child here is a {@code git}, a {@code mvn} or a
      * {@code ./gradlew} for SOMEBODY ELSE'S repository, plus each surefire JVM Maven forks. For a JDK 8
      * or 11 build a locale changes {@code file.encoding} from ASCII to UTF-8, which changes what those
-     * tests do. This service exists to answer whether a defect reproduces, and its answers have to be
-     * the ones the retired java-runner gave — which ran with no locale at all. A deployment detail must
-     * not quietly become a variable in the verdict; the Dockerfile refuses an image-level {@code ENV
-     * LANG} for exactly that reason, and this is the same refusal enforced where it cannot be bypassed.
+     * tests do. This service exists to answer whether a defect reproduces, so a deployment detail must
+     * not quietly become a variable in the verdict. The Dockerfile refuses an image-level {@code ENV
+     * LANG} for exactly that reason, and this is the same refusal enforced where it cannot be bypassed
+     * by somebody adding an {@code environment:} entry in compose.
      *
      * <p>Here rather than in {@link Build#buildCmd}, because {@code buildCmd} is not the only way a child
      * is started: an inherited environment ({@code env == null}) is how every local git command runs. One

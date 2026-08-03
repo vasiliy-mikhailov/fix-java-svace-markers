@@ -22,7 +22,7 @@ import tech.mikhailov.fsm.lib.Js;
 import tech.mikhailov.fsm.lib.Json;
 
 /**
- * The two clones — {@code prepareWs}, {@code prepareFs} and {@code fs/read_file} in server.js.
+ * The two clones: {@code prepareWs}, {@code prepareFs} and the read behind {@code /fs/read_file}.
  *
  * <p>TWO CLONES, NEVER ONE. {@code /cache/fs/<key>} is read-only and never mutated; {@code /cache/<key>}
  * is the build workspace that gets patched. They are separate because the dashboard reads source through
@@ -32,8 +32,9 @@ import tech.mikhailov.fsm.lib.Json;
  * <p>NEITHER IS CLONED TWICE. Both directories live in a persistent volume, so the {@link #keyFor} hash
  * is part of the contract with the disk and not an implementation detail: change how it is spelled and
  * every repository re-clones from scratch on the next run — minutes per repo, and the Nexus mirror wears
- * it. It is therefore the same SHA-1 of {@code "<repo>@<branch>"}, truncated the same way, and this port
- * adopts the directories the JS left behind rather than starting a second cache beside them.
+ * it. It is the SHA-1 of {@code "<repo>@<branch>"}, truncated, and an existing checkout under that name
+ * is ADOPTED rather than re-cloned — which is also why the cache volume must never be one some other
+ * program wrote; see the note on {@link #prepareFs}.
  */
 final class Workspace {
 
@@ -106,8 +107,7 @@ final class Workspace {
 
     /**
      * base -> when its clone last failed. ConcurrentHashMap because {@code /fs/read_file} is NOT
-     * serialised — the JS did not serialise it either, and two reviewers opening two markers really do
-     * arrive at once.
+     * serialised: it only reads, and two reviewers opening two markers really do arrive at once.
      */
     private final Map<Path, Long> fsFailed = new ConcurrentHashMap<>();
 
@@ -192,8 +192,8 @@ final class Workspace {
      * drops the previous fix and {@code clean -fd} drops the previous test file, which together are
      * exactly the state a prove must not inherit — a leftover green test would pass before the fix.
      *
-     * <p>AND THE CLEANUP HAS TO BE CHECKED, which the JS did not do and this port did not either. The two
-     * exit statuses were dropped on the floor, so a workspace that could NOT be cleaned came back as
+     * <p>AND THE CLEANUP HAS TO BE CHECKED. Drop the two exit statuses on the floor and a workspace
+     * that could NOT be cleaned comes back as
      * pristine and the next marker's RED build ran against the previous marker's patched source: the test
      * does not fail, {@code red_reproduced} is false for a defect that is really there, and the pipeline
      * writes a false_positive rebuttal about code that is not what is in the repository. That is the one
@@ -262,11 +262,10 @@ final class Workspace {
      * <p>Cloned into a temp directory and RENAMED into place, with {@link #FS_DONE} written only after
      * the rename, so a reader never observes a partial tree.
      *
-     * <p>KNOWN RACE, inherited deliberately. Two simultaneous first-time reads of the same repo both
-     * clone into the same {@code <key>.tmp}. Node had the identical window — its awaits are not a lock —
-     * and the failure mode is a failed clone that the negative cache then absorbs, so the port keeps the
-     * shape rather than adding a lock that the JS's behaviour was never tested with. If it ever needs
-     * fixing, the fix is a per-key mutex here and nothing else changes.
+     * <p>KNOWN RACE, left in deliberately. Two simultaneous first-time reads of the same repo both
+     * clone into the same {@code <key>.tmp}. The failure mode is a failed clone that the negative cache
+     * then absorbs, so it costs a retry and never a wrong answer. If it ever needs fixing, the fix is a
+     * per-key mutex here and nothing else changes.
      */
     Path prepareFs(String repo, String branch) {
         Path base = fsCache.resolve(keyFor(repo, branch));
@@ -276,7 +275,8 @@ final class Workspace {
         try {
             Files.createDirectories(fsCache);
             // A checkout git can resolve HEAD in is complete by definition — adopt it rather than
-            // re-clone. This is what lets the Java service inherit the directories the JS left.
+            // re-clone. This is also why the cache volume must not be one another program wrote:
+            // adoption never rewrites remote.origin.url, so a token baked into it would be reused.
             if (Files.exists(base.resolve(".git"))
                     && exec.run(List.of("git", "-C", base.toString(), "rev-parse", "HEAD"),
                             null, null, REV_PARSE_TIMEOUT_MS).code() == 0) {
@@ -307,8 +307,8 @@ final class Workspace {
             Text.write(base.resolve(FS_DONE), branch);
             return base;
         } catch (IOException e) {
-            // The JS let these propagate too, and the route answers {"ok": false, "error": …} — which
-            // the dashboard renders as "source unavailable" and the orchestrator records as infra.
+            // Let it propagate: the route answers {"ok": false, "error": …}, which the dashboard
+            // renders as "source unavailable" and the orchestrator records as infra.
             throw new UncheckedIOException(e);
         }
     }
@@ -353,9 +353,9 @@ final class Workspace {
             // "source unavailable" line.
             return error("file not found: " + Text.field(body, "path"));
         }
-        // Component-wise, where the JS compared strings. The string test admitted a SIBLING directory
-        // whose name merely starts with the key — and `<key>.tmp`, the half-finished clone, is exactly
-        // such a sibling. Nothing sends a path like that; refusing it costs nothing and closes it.
+        // Component-wise, and NOT a string prefix test. A string test admits a SIBLING directory whose
+        // name merely starts with the key — and `<key>.tmp`, the half-finished clone, is exactly such a
+        // sibling, with a .git/config of its own. Nothing sends a path like that; closing it is free.
         if (!full.startsWith(root)) {
             return error("path escapes repo");
         }
@@ -367,7 +367,7 @@ final class Workspace {
             return error("file not found: " + Text.field(body, "path"));
         }
         // AND AGAIN WITH THE LINKS RESOLVED. The two tests above are lexical, and a lexical rule trusts
-        // the tree: any repository this fleet clones may ship `Innocent.java -> .git/config`, and then
+        // the tree: any repository this pipeline clones may ship `Innocent.java -> .git/config`, and then
         // nothing the CALLER typed was suspicious at all. `toRealPath` is what turns both rules into
         // statements about the file finally opened. The root is resolved too — /var is a symlink to
         // /private/var on the machines this is developed on, and comparing a real path against a

@@ -86,7 +86,7 @@ class ClientContractTest {
     }
 
     @Test
-    void theContentsRequestIsTheOneTheN8nNodeMade() throws Exception {
+    void theContentsRequestIsExactlyTheDocumentedOne() throws Exception {
         try (Stub github = new Stub(new Stub.Canned(200, "{\"content\":\"YQ==\",\"encoding\":\"base64\"}"))) {
             SourceClient client = new GithubSourceClient(transport, github.url());
 
@@ -171,7 +171,7 @@ class ClientContractTest {
     }
 
     @Test
-    void theRetryBudgetIsTheOneTheNodeUsed() {
+    void theRetryBudgetIsThreeAttemptsThreeSecondsApart() {
         assertThat(GithubSourceClient.ATTEMPTS).isEqualTo(3);
         assertThat(GithubSourceClient.BACKOFF).isEqualTo(Duration.ofSeconds(3));
         assertThat(GithubSourceClient.TIMEOUT).isEqualTo(Duration.ofSeconds(60));
@@ -424,7 +424,7 @@ class ClientContractTest {
             // pr_curated false, no verdict text. Converting the failure would either not compile
             // there or be swallowed by a catch that reads it as an answer.
             assertThat(thrown).isInstanceOf(Llm.ApiException.class).isNotInstanceOf(InfraFailure.class);
-            // …and it carries n8n-style wording in both halves, which is what failureText reads.
+            // …and it carries the endpoint's wording in both halves, which is what failureText reads.
             assertThat(Llm.failureText(thrown, 200, "nothing")).contains("HTTP 500");
             assertThat(((Llm.ApiException) thrown).description()).contains("engine died");
         }
@@ -709,7 +709,7 @@ class ClientContractTest {
      * <p>A REAL {@link HttpTransport} SUBCLASS and not a mock, because the thing under test is WHICH
      * {@link IOException} the client repeats. A refused connect and a mid-body reset arrive at exactly
      * the same catch and mean opposite things — nothing was delivered, versus a Maven build may be
-     * twenty minutes into a workspace the whole fleet shares — and a stub server cannot produce the
+     * twenty minutes into a workspace every prove shares — and a stub server cannot produce the
      * first of those on demand while counting the tries.
      */
     private static final class Failing extends HttpTransport {

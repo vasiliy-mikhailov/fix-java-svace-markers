@@ -33,7 +33,7 @@ import tech.mikhailov.fsm.lib.Json;
  * difference is worth less than no harness at all.
  *
  * <p>WHY IT IS JAVA NOW. It was a Node script that nothing ran automatically, diffing two files that
- * a shell script had to produce first. The JavaScript half of the harness has been retired with the
+ * a shell script had to produce first. The reference half of the harness has been retired with the
  * service it measured, and this half moved into {@code src/test} so that the comparison happens on
  * every {@code mvn test} and a regression is a red test rather than a report nobody opened.
  *
@@ -361,7 +361,7 @@ final class HarnessCompare {
             case "fixTarget" -> {
                 String p = untag(member(out, "path"));
                 // I6 — an accepted path is INSIDE the workspace, compared component-wise. Not a
-                // string prefix: that is the bug this port found in the JS's other resolver.
+                // string prefix: that is the bug this module found in the reference's other resolver.
                 if (p != null) {
                     seen(side, INSIDE_WS);
                     List<String> base = segments(Path.of(Json.str(c, "ws")).toAbsolutePath()
@@ -443,7 +443,7 @@ final class HarnessCompare {
      * <p>This is the one that used to fail. The JS compared {@code full.startsWith(resolve(base))}
      * with no separator, so {@code <key>.tmp} — the directory a half-finished clone leaves behind —
      * passed the test for {@code <key>}, and a file was served out of a tree that is not this
-     * repository's checkout. It was fixed on the JavaScript side before that service was retired, and
+     * repository's checkout. It was fixed on the reference side before that service was retired, and
      * the frozen answers are the fixed ones: the rule holds on both sides.
      */
     private static void readFileRule(Map<String, Rule> side, Object c, Object out, String id) {
@@ -520,7 +520,7 @@ final class HarnessCompare {
         return out.toString();
     }
 
-    /** {@code h.split(n).length - 1}, non-overlapping — and JS's answer for the empty needle. */
+    /** {@code h.split(n).length - 1}, non-overlapping — and the reference's answer for the empty needle. */
     private static int occurrences(String haystack, String needle) {
         if (needle.isEmpty()) {
             return haystack.isEmpty() ? -1 : haystack.length() - 1;

@@ -48,7 +48,7 @@ import tech.mikhailov.fsm.orch.PromptSource.Stage;
  */
 class PromptSourceTest {
 
-    /** No {@code DEFAULT_*} set: the environment a developer's machine and the fleet both have. */
+    /** No {@code DEFAULT_*} set: the environment a developer's machine and the deployment both have. */
     private static final UnaryOperator<String> NO_ENV = name -> null;
 
     // ---- a file wins ------------------------------------------------------------------------------

@@ -7,8 +7,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * The n8n Schedule Trigger — {@code {interval: [{field: 'seconds', secondsInterval: 60}]}} — as a
- * method that can be called from a test.
+ * The prove tick, as a method a test can call.
  *
  * <p>FIXED DELAY, NOT FIXED RATE. The launch is asynchronous, so the delay is measured from the end of
  * this method rather than from the end of the run; what stops the ticks piling up is

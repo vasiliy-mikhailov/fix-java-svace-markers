@@ -28,10 +28,10 @@ final class Http {
     /**
      * Cap on a request body.
      *
-     * <p>The JS had none: it accumulated {@code req.on('data')} into a string until the client stopped
-     * sending. 16 MiB is far above the largest legitimate {@code /run_test} body — a test file plus a
+     * <p>Without a cap the body accumulates until the client stops sending. 16 MiB is far above the
+     * largest legitimate {@code /run_test} body — a test file plus a
      * handful of search/replace edits — and far below what would let one malformed request exhaust the
-     * heap of the process every prove in the fleet is serialised through.
+     * heap of the process every prove in this deployment is serialised through.
      */
     static final int MAX_BODY_BYTES = 16 * 1024 * 1024;
 
@@ -48,7 +48,8 @@ final class Http {
      * Read the body, refusing anything past the cap.
      *
      * <p>The body is read even when the route does not want it: com.sun.net.httpserver only reuses a
-     * keep-alive connection once the request body has been consumed, and n8n posts one item at a time.
+     * keep-alive connection once the request body has been consumed, and callers post one item at a
+     * time.
      */
     static String readBody(HttpExchange exchange) throws IOException {
         try (InputStream in = exchange.getRequestBody()) {
@@ -73,10 +74,9 @@ final class Http {
     /**
      * {@code JSON.parse(d || '{}')} — the exact expression readBody() ended with.
      *
-     * <p>An EMPTY body is an empty object, which is not sloppiness: n8n's "Release lease" node has
-     * been posting {@code {"name":"prover"}} for a year, but a curl probe with no body at all must
-     * still release the default lease rather than fail. A body of whitespace is NOT empty and does
-     * throw, exactly as {@code JSON.parse(' ')} does.
+     * <p>An EMPTY body is an empty object, which is not sloppiness: a curl probe with no body at all
+     * has to reach the route's own defaults rather than fail at the parse. A body of WHITESPACE is not
+     * empty and does throw.
      *
      * @throws Json.JsonException the body was not JSON; the caller answers 400 {@code bad json: …}
      */
@@ -88,13 +88,12 @@ final class Http {
     /**
      * Write a JSON reply.
      *
-     * <p>The charset is stated, which the JS did not do. It sent {@code application/json} and relied on
-     * JSON's default encoding being UTF-8 — true, and true for every client in the fleet — but the
-     * bodies here carry Maven output from repositories in any language, and being explicit costs
-     * nothing and cannot change how a JSON client parses it.
+     * <p>The charset is STATED rather than left to JSON's UTF-8 default. The bodies here carry Maven
+     * output from repositories in any language; being explicit costs nothing and cannot change how a
+     * JSON client parses it.
      *
      * <p>HEAD gets the headers and no body. Node suppressed the body itself for a HEAD request; the JDK
-     * does not, and writing one would be a protocol violation on a request nothing in the fleet makes.
+     * does not, and writing one would be a protocol violation on a request nothing in this deployment makes.
      */
     static void sendJson(HttpExchange exchange, int status, Map<String, Object> body)
             throws IOException {

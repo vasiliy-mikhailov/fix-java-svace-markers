@@ -13,7 +13,7 @@ import tech.mikhailov.fsm.orch.batch.IngestRequest;
 import tech.mikhailov.fsm.orch.batch.JobLaunches;
 
 /**
- * The trigger surface that replaces the two n8n webhooks.
+ * The two trigger endpoints.
  *
  * <p>The status codes ARE the contract, and the one worth pinning is 409: a caller polling every
  * minute has to be able to tell "something else is running" from "your request was wrong", and both

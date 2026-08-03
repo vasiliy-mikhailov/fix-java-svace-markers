@@ -7,7 +7,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * The effort model, translated test for test from {@code dashboard/test/work.test.js}.
+ * The effort model.
  *
  * <p>Only machine time is measured here; the human figures are estimates, so what these defend is that
  * the ARITHMETIC and the honesty rules hold — above all that the FTE multiple is computed against all

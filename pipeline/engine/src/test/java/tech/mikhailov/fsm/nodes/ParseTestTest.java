@@ -74,8 +74,8 @@ class ParseTestTest {
             }""";
 
     /**
-     * Drive the node with a raw reply. {@code null} models an agent that CRASHED: n8n's
-     * {@code onError=continueRegularOutput} passes the item on with no {@code output} key at all.
+     * Drive the stage with a raw reply. {@code null} models an agent that CRASHED and left no
+     * {@code output} key at all.
      */
     private static Result run(String output) {
         Map<String, Object> reproducer = item();
@@ -212,10 +212,10 @@ class ParseTestTest {
         assertEquals(REAL_TEST, r.testCode());
     }
 
-    // ---- the port's own seams --------------------------------------------------------------------
+    // ---- the wire seams ---------------------------------------------------------------------------
 
     @Test
-    void theUpstreamItemIsEchoedBackFieldForFieldWithThisNodesFieldsOverTheTop() {
+    void theUpstreamItemIsEchoedBackFieldForFieldWithThisStagesFieldsOverTheTop() {
         // `{...j, can_prove}`: downstream nodes read marker_id, suspicion_key and twenty other
         // fields straight off this row, and record-outcome reads test_score off it by name
         Map<String, Object> m = runJson("can_prove", true, "test_code", REAL_TEST).toMap();
@@ -229,9 +229,9 @@ class ParseTestTest {
 
     @Test
     void anAbsentUpstreamFieldStaysAbsentInTheRunnerBody() {
-        // the JS writes `{ module: j.module }` and JSON.stringify then DROPS an undefined member, so
+        // an unset member is DROPPED from the body altogether, so
         // the runner is told nothing about the module rather than being told it is null — two
-        // different requests, and only one of them is what the JS sent
+        // different requests, and only one of them is what the prover is meant to receive
         Map<String, Object> prepWithoutModule = prep();
         prepWithoutModule.remove("module");
         Result r = ParseTest.parseTest(new Request(prepWithoutModule,

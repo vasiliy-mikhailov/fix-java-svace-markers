@@ -20,27 +20,26 @@ import tech.mikhailov.fsm.nodes.PrepProver.Request;
  * {@code Prep prover} — resolves a marker into the paths and branch the rest of the prove depends on.
  *
  * <p>REGRESSION ORIGIN (found by e2e, not by a unit test): it split the file path on
- * {@code "/src/main/java/"} WITH a leading slash. That matches the parent pipeline's module-prefixed
- * paths but not the Svace ingester's repo-relative ones, so on a single-module repo like WebGoat the
+ * {@code "/src/main/java/"} WITH a leading slash. That matches a module-prefixed path and NOT the
+ * ingester's repo-relative one, so on a single-module repo like WebGoat the
  * separator never matched — module, package and package directory all came out empty and every
  * generated test landed in the default package. Nothing failed loudly; the test still compiled.
- *
- * <p>Ported from {@code n8n/agentic/test/prep-prover.test.js}, assertion for assertion.
+
  */
 class PrepProverTest {
 
-    /** The suspicion row the JS fixture builds, minus the file each test supplies. */
+    /** The suspicion row every case here is built on, minus the file each test supplies. */
     private static final Map<String, Object> BASE = item(
             "dedup_key", "k", "repo", "WebGoat/WebGoat", "branch", "main", "class_name", "",
             "method", "", "category", "taint", "severity", "high", "title", "t", "description", "d",
             "evidence", "Settle-by: test.", "svace_line", 44L);
 
-    /** The JS fixture's default: every lookup rejects, so no test accidentally depends on a network. */
+    /** The default: every lookup fails, so no test accidentally depends on a network. */
     private static final Supplier<Object> NO_NETWORK = () -> {
         throw new LookupFailed(new IllegalStateException("no network"));
     };
 
-    /** An n8n item, written the way the JS fixtures wrote their object literals. Nulls allowed. */
+    /** An upstream item, built the way the wire builds one. Nulls allowed. */
     private static Map<String, Object> item(Object... kv) {
         Map<String, Object> m = new LinkedHashMap<>();
         for (int i = 0; i < kv.length; i += 2) {
@@ -49,7 +48,7 @@ class PrepProverTest {
         return m;
     }
 
-    /** The node's answer plus the lookups it actually made — the JS test's {@code __calls}. */
+    /** The stage's answer plus the lookups it actually made. */
     private record Run(Outcome out, List<LookupRequest> calls) {
     }
 
@@ -78,7 +77,7 @@ class PrepProverTest {
         return () -> body;
     }
 
-    /** A lookup that rejects with the value n8n's httpRequest would reject with. */
+    /** A lookup that fails with a VALUE rather than a message — see PrepProver.LookupFailed. */
     private static Supplier<Object> rejectsWith(Object rejection) {
         return () -> {
             throw new LookupFailed(rejection);
@@ -291,8 +290,8 @@ class PrepProverTest {
             // GitHub answers a User-Agent-less request with 403, and an unauthenticated one with 60
             // req/hour and no private repos at all. Either way default_branch comes back undefined
             // for every row.
-            // The name is addressed to a repository owner reading their access log; it was "n8n-fsm"
-            // until 2026-08-02. See harness/README.md, "Re-baselines".
+            // The name is addressed to a repository owner reading their access log, and it is pinned
+            // by a frozen catalogue: see engine/harness/README.md, "Re-baselines".
             assertEquals("svace-marker-fixer", req.headers().get("User-Agent"));
             assertEquals("Bearer tok", req.headers().get("Authorization"),
                     "the token is threaded through, not dropped");
@@ -327,7 +326,7 @@ class PrepProverTest {
 
         @Test
         void anErrorThatCarriesOnlyADescriptionStillNamesTheCause() {
-            // n8n's httpRequest rejects HTTP-level failures with {description}, not {message}
+            // An HTTP-level failure carries {description}, not {message}
             Run r = run(item("file", "src/main/java/a/B.java", "branch", ""),
                     rejectsWith(item("description", "404 - Not Found")));
             assertEquals("404 - Not Found", r.out().branchError());
@@ -368,7 +367,7 @@ class PrepProverTest {
 
         @Test
         void aTokenTheEnvironmentNeverSetIsVisibleInTheHeader() {
-            // 'Bearer undefined' is what the JS sent, and GitHub answers it with 401 — which is
+            // 'Bearer undefined' is deliberate: GitHub answers it with 401, which is
             // findable. 'Bearer ' with nothing after it looks like a request nobody meant to
             // authenticate, and the 60-per-hour anonymous quota then fails only intermittently.
             List<LookupRequest> calls = new ArrayList<>();
@@ -410,7 +409,7 @@ class PrepProverTest {
     @Test
     void aFieldTheIngesterNeverSetIsOmittedRatherThanEmittedAsNull() {
         // JSON.stringify DROPS a key whose value is undefined. Emitting "method": null instead would
-        // be a claim the JS never made, and the prompt builders splice these fields in with `+`,
+        // be a claim nobody made, and the prompt builders splice these fields in with `+`,
         // where null renders as the word "null" and an absent key renders as "undefined".
         Map<String, Object> row = new LinkedHashMap<>(BASE);
         row.remove("method");
@@ -423,8 +422,8 @@ class PrepProverTest {
     @Test
     void aSeparatorFollowedByASlashDoesNotSwallowThePackagesFirstSegment() {
         // rest is "/a/B.java" here, so indexOf('/') is 0 — and `> 0` instead of `>= 0` would call
-        // that "no package directory" and drop the package entirely. The JS keeps it, leading dot and
-        // all: the path is malformed either way, but silently losing the package is the failure this
+        // that "no package directory" and drop the package entirely. It is kept, leading dot and all:
+        // the path is malformed either way, but silently losing the package is the failure this
         // node exists to prevent.
         Outcome r = prep("file", "src/main/java//a/B.java").out();
         assertEquals(".a", r.pkg());

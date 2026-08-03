@@ -19,10 +19,10 @@ import tech.mikhailov.fsm.nodes.PrepProver;
 /**
  * {@code this.helpers.httpRequest}, in Java.
  *
- * <p>Four of the ported nodes call OUT: {@code Prep prover} resolves a repo's default branch,
+ * <p>Four stages call OUT: {@code Prep prover} resolves a repo's default branch,
  * {@code Verdict}, {@code Fix skeptic} and {@code PR maker} call the model (and {@code Verdict} may
- * call Svace). In n8n that client was the workflow's; here it has to be the engine's. Both seams the
- * port defined — {@link Llm.Http} and {@link PrepProver.RepoLookup} — land on this one class, because
+ * call Svace). Both seams those stages are written against — {@link Llm.Http} and
+ * {@link PrepProver.RepoLookup} — land on this ONE class, because
  * they are the same client with different call shapes and a second implementation would be a second
  * set of timeout, redirect and error-mapping decisions to keep in step.
  *
@@ -80,14 +80,14 @@ final class Outbound implements Llm.Http, PrepProver.RepoLookup, AutoCloseable {
                 // judging stages fail closed on a failed call, so the whole effect was a marker
                 // settling as needs_review with skeptic_verdict='unknown' — no error, nothing red.
                 //
-                // n8n's helpers.httpRequest speaks 1.1 and offers nothing, so this is what the ported
-                // nodes were proven against; matching the options was not enough, the client's
-                // default had to match too. There is nothing to lose: h2c upgrades are refused by
-                // every endpoint this calls, and https negotiates HTTP/2 by ALPN, not by this.
+                // HTTP/1.1 EXPLICITLY. This is what the stages were proven against, and matching the
+                // request options is not enough — the client's own default has to match too. There is
+                // nothing to lose: h2c upgrades are refused by every endpoint this calls, and https
+                // negotiates HTTP/2 by ALPN rather than by this setting.
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(CONNECT_TIMEOUT)
-                // n8n's httpRequest follows redirects; a vLLM front end behind a proxy that answers
-                // 308 is otherwise reported to the stage as an empty reply.
+                // Follow redirects: a model front end behind a proxy that answers 308 is otherwise
+                // reported to the stage as an empty reply.
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .executor(executor)
                 .build();
@@ -185,10 +185,10 @@ final class Outbound implements Llm.Http, PrepProver.RepoLookup, AutoCloseable {
      *
      * <p>RESTRICTED HEADERS ARE SKIPPED, NOT FATAL. {@code java.net.http} refuses to send
      * {@code Connection}, {@code Host}, {@code Content-Length} and friends — it manages them itself —
-     * and every ported node sets {@code Connection: close}, which was there to stop n8n exhausting
-     * vLLM's sockets by holding dozens open. One pooled client does not create that problem, so the
-     * header has nothing left to fix; throwing on it would take down three stages for a header the
-     * JDK is already handling.
+     * and every stage sets {@code Connection: close}, which exists to stop a client exhausting the
+     * model front end's sockets by holding dozens open. One pooled client does not create that
+     * problem, so the header has nothing left to fix here; throwing on it would take down three stages
+     * for a header the JDK is already handling.
      */
     private static boolean headers(HttpRequest.Builder builder, Object headers) {
         boolean contentType = false;
@@ -228,8 +228,8 @@ final class Outbound implements Llm.Http, PrepProver.RepoLookup, AutoCloseable {
     /**
      * The URL, refused early when it is not one.
      *
-     * <p>An unset {@code QWEN_BASE_URL} produces the literal {@code undefined/chat/completions} — the
-     * JS behaviour, kept because it is greppable. It has to fail as a CALL that failed, with the
+     * <p>An unset {@code QWEN_BASE_URL} produces the literal {@code undefined/chat/completions}, kept
+     * because it is greppable. It has to fail as a CALL that failed, with the
      * useless URL quoted, rather than as an {@code IllegalArgumentException} escaping the stage.
      */
     private static URI uriOf(String url) {
@@ -266,7 +266,7 @@ final class Outbound implements Llm.Http, PrepProver.RepoLookup, AutoCloseable {
      *
      * <p>{@code close()} would block until every in-flight exchange finished, and an in-flight
      * exchange here is a model call with an hour's timeout — so a {@code docker compose restart}
-     * would hang for the length of one. The run is idempotent: n8n requeues the marker.
+     * would hang for the length of one. The run is idempotent: the caller requeues the marker.
      */
     @Override
     public void close() {

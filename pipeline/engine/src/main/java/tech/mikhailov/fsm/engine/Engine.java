@@ -27,10 +27,9 @@ public final class Engine {
     /**
      * BIND defaults to 0.0.0.0, and that is deliberate rather than careless.
      *
-     * <p>The engine runs as a compose service that publishes no ports: its only reachable address is
-     * the one n8n resolves on the compose network, and binding loopback would make it unreachable
-     * from every other container while looking perfectly healthy from inside its own. The dashboard
-     * learned this the expensive way — it was dead for anyone not running Caddy in front of it.
+     * <p>This runs as a container, so binding loopback would make it unreachable from everywhere
+     * except inside its own namespace — while looking perfectly healthy from in there, which is the
+     * expensive half of the mistake.
      *
      * <p>The network boundary is the compose file, which is where it can actually be read and
      * reviewed. If this is ever run outside a container, set BIND=127.0.0.1.
@@ -49,8 +48,8 @@ public final class Engine {
             return Integer.parseInt(v.trim());
         } catch (NumberFormatException e) {
             // Refuse to start rather than silently listening somewhere nobody is calling. A typo in
-            // PORT that fell back to the default would leave n8n's requests failing against a
-            // service whose logs say it started fine.
+            // PORT that fell back to the default would leave every request failing against a service
+            // whose logs say it started fine.
             throw new IllegalArgumentException(name + " is not a port number: " + v, e);
         }
     }

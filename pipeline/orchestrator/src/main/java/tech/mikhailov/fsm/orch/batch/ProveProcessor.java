@@ -35,21 +35,20 @@ import tech.mikhailov.fsm.orch.feedback.FeedbackStore;
 import tech.mikhailov.fsm.orch.model.Suspicion;
 
 /**
- * One marker, proved — the whole {@code workflow_prover.json} chain, in a straight line.
+ * One marker, proved — the whole chain, in a straight line.
  *
- * <p>THE GRAPH IS LINEAR AND SO IS THIS METHOD. Fourteen n8n nodes, in the order the connections put
- * them, with the four HTTP hops replaced by the three client contracts and the ten Code nodes replaced
- * by direct calls into {@code tech.mikhailov.fsm.nodes}. Not one decision is taken here: every
- * {@code if} that mattered in the workflow lives inside {@link RecordOutcome} (which state the marker
+ * <p>THE CHAIN IS LINEAR AND SO IS THIS METHOD. Fourteen stages in order: three client contracts for
+ * the calls that leave the process, and direct calls into {@code tech.mikhailov.fsm.nodes} for the
+ * rest. Not one decision is taken here: every {@code if} that matters lives inside
+ * {@link RecordOutcome} (which state the marker
  * became) and {@link Verdict} (what the suspicion's next status is), and both were read before this
- * class was written to confirm it. The branch nodes in the graph were leasing, an empty-queue test and
- * a loop — queue mechanics, which Spring Batch supplies.
+ * class was written to confirm it. The remaining branches are queue mechanics, which Spring Batch
+ * supplies.
  *
- * <p>WHERE THE ITEMS GO. n8n resolved {@code $('Prep prover').item} against the current item's
- * lineage; here the same rows are local variables, which removes the whole class of bug that
- * addressing by node name invited — a shim could post one marker's upstream row with another marker's
- * {@code $json}, and nothing would notice. Each {@code Request} record names exactly the upstream items
- * its node reads, and the compiler checks that they are supplied.
+ * <p>WHERE THE ITEMS GO. The upstream rows are LOCAL VARIABLES, which removes a whole class of bug that
+ * addressing them by name invites — one marker's upstream row travelling with another marker's item,
+ * with nothing to notice. Each {@code Request} record names exactly the upstream items its stage reads,
+ * and the compiler checks that they are supplied.
  *
  * <p>INFRA VERSUS JUDGEMENT, WHICH IS THE ONLY THING THIS CLASS IS ENTITLED TO GET WRONG:
  * <ul>
@@ -62,10 +61,9 @@ import tech.mikhailov.fsm.orch.model.Suspicion;
  *       runner, a model reply that parses to nothing — is an ordinary return value and flows on to
  *       {@code Record outcome}, which is the only thing allowed to call it {@code infra_error} or
  *       {@code not_reproduced}.</li>
- *   <li>Anything else thrown — {@link PrMaker.NotSliceable}, or a genuine engine bug — fails the step.
- *       That is the n8n reversal the generator documents: those three stages deliberately lost their
- *       {@code onError=continueRegularOutput} because a broken engine forwarding its INPUT reached
- *       {@code Record outcome} looking like a stage that found nothing, and the marker was written off
+ *   <li>Anything else thrown — {@link PrMaker.NotSliceable}, or a genuine engine bug — fails the step,
+ *       deliberately. A stage that swallows its own failure and forwards its INPUT reaches
+ *       {@code Record outcome} looking like a stage that found nothing, and the marker is written off
  *       as not-a-bug. A red execution is the correct report for "the engine is broken", and the chunk
  *       rollback puts the claim back for free.</li>
  * </ul>
@@ -91,7 +89,7 @@ public class ProveProcessor implements ItemProcessor<Suspicion, ProvenMarker> {
 
     private static final Logger log = LoggerFactory.getLogger(ProveProcessor.class);
 
-    /** The key an n8n Agent node put its answer under, and the key {@code Parse test} reads. */
+    /** The key an agent stage's answer is put under, and the key {@code Parse test} reads. */
     private static final String AGENT_OUTPUT = "output";
 
     /**
@@ -123,7 +121,7 @@ public class ProveProcessor implements ItemProcessor<Suspicion, ProvenMarker> {
      *                       each stage sends is a DEPLOYMENT fact now — a file at the repo root, a
      *                       {@code DEFAULT_} variable, or the text the class ships with — and a
      *                       deployment fact reached through a static is one no test can vary.
-     * @param minAttempts    {@code VERDICT_MIN_ATTEMPTS} from the generator. Passed in because
+     * @param minAttempts    {@code fsm.prove.min-attempts}. Passed in because
      *                       {@link Verdict} refuses to guess it: without a number a marker would be
      *                       argued away after ONE non-reproduction.
      * @param runTestTimeout the wall clock for one {@code /run_test} — clone plus a RED build plus a
@@ -318,8 +316,8 @@ public class ProveProcessor implements ItemProcessor<Suspicion, ProvenMarker> {
     }
 
     /**
-     * One agent stage: the system brief, a blank line, the per-marker input, and the answer under the
-     * key n8n put it under.
+     * One agent stage: the system brief, a blank line, the per-marker input, and the answer under
+     * {@link #AGENT_OUTPUT}.
      *
      * <p>{@link LlmClient#complete} and not {@link LlmClient#judging}: these two stages have no
      * fallback, so an unreachable endpoint must abort the prove rather than arrive downstream as a

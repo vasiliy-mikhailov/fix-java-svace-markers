@@ -9,8 +9,8 @@ import tech.mikhailov.fsm.nodes.ParseMarkers;
 /**
  * One row of the {@code suspicions} table — the backlog item the prover leases.
  *
- * <p>The 23 components are SUS_COLS from {@code n8n/agentic/src/gen-ingest.js}, in that order, with
- * the same types the engine already gives them in {@link ParseMarkers.Suspicion}. That is not a
+ * <p>The 23 components are the {@code suspicions} columns, in table order, with the same types the
+ * engine already gives them in {@link ParseMarkers.Suspicion}. That is not a
  * coincidence and it is not duplication for its own sake: the ingester produces
  * {@code ParseMarkers.Suspicion}, this record persists it, and {@link #of(ParseMarkers.Suspicion)} is
  * the one place the two are lined up. A component that drifts from the engine's fails to compile here
@@ -20,8 +20,7 @@ import tech.mikhailov.fsm.nodes.ParseMarkers;
  * and the difference is observable at the extremes ({@code Js.parseInt10}). Narrowing them to
  * {@code int} here would make the round-trip through the database lossy in exactly the cases the
  * re-anchoring is least sure about. {@link tech.mikhailov.fsm.lib.Js#string} renders an integral
- * double as {@code 7} and not {@code 7.0}, so nothing downstream sees a decimal point it did not see
- * in n8n.
+ * double as {@code 7} and not {@code 7.0}, so nothing downstream ever sees a decimal point.
  *
  * <p>WHY {@code status} IS A STRING AND NOT AN ENUM. It has three separate vocabularies layered on
  * one column and only the caller knows which is in play:
@@ -99,9 +98,9 @@ public record Suspicion(String dedupKey, String markerId, String repo, String br
     /**
      * The inverse of {@link #toMap()} — an engine-shaped item back into a row.
      *
-     * <p>Read through {@link Json}, not by casting: the values arriving from an engine node are
-     * whatever the ported JS produced, and a {@code Long} where a {@code Double} was expected is a
-     * ClassCastException in the middle of a prove rather than a number.
+     * <p>Read through {@link Json}, not by casting: the values arriving from a stage are whatever that
+     * stage produced, and a {@code Long} where a {@code Double} was expected is a ClassCastException in
+     * the middle of a prove rather than a number.
      */
     public static Suspicion fromMap(Object item) {
         return new Suspicion(

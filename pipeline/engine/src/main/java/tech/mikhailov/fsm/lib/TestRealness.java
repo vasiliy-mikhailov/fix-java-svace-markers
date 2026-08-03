@@ -28,7 +28,7 @@ public final class TestRealness {
     /**
      * @param sound        the test drives the real class, so a red-&gt;green flip is evidence about it
      * @param score        0..100 ordering over sound proofs; 0 whenever {@code sound} is false
-     * @param reasons      what the reader is told, in the order the JS collected it
+     * @param reasons      what the reader is told, in the order the checks run
      * @param mocksSubject the cardinal sin: the class under test is itself a mock or a spy
      * @param touchesReal  the class is constructed, or a static of it is called, and not mocked
      */

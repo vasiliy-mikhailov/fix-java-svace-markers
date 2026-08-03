@@ -128,8 +128,7 @@ public record IngestRequest(String csvPath, String repo, String branch, String p
     }
 
     /**
-     * The body {@link ParseMarkers.Request} was written against — the n8n {@code Ingest webhook} body,
-     * key for key.
+     * The body {@link ParseMarkers.Request} was written against, key for key.
      */
     public Map<String, Object> body() {
         Map<String, Object> body = new LinkedHashMap<>();

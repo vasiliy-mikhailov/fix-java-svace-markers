@@ -19,10 +19,10 @@ import tech.mikhailov.fsm.orch.feedback.FeedbackStore;
  * bound property is a property that ends up committed in a yaml file.
  *
  * <p>ONE CLASS OWNS THE {@code fsm} PREFIX, and that is a rule rather than tidiness. A second
- * {@code @ConfigurationProperties("fsm")} record used to live beside this one with a DIFFERENT shape for
- * the same sub-keys — {@code fsm.runner} was {@code {base-url, timeout}} to one of them and
- * {@code {base-url, connect-attempts, connect-retry-delay-ms}} to the other. Boot binds each claimant
- * separately and {@code ignoreUnknownFields} defaults to true, so each silently discarded the keys it
+ * {@code @ConfigurationProperties("fsm")} record beside this one with a DIFFERENT shape for the same
+ * sub-keys — {@code fsm.runner} as {@code {base-url, timeout}} to one and
+ * {@code {base-url, connect-attempts, connect-retry-delay-ms}} to the other — is bound separately by
+ * Boot, and {@code ignoreUnknownFields} defaults to true, so each silently discards the keys it
  * did not recognise: nothing failed, nothing warned, and half of what the yaml set reached nothing at
  * all. {@code FsmPropertiesTest} scans the classpath and fails the build if a second claimant appears.
  *
@@ -32,8 +32,6 @@ import tech.mikhailov.fsm.orch.feedback.FeedbackStore;
  * it. {@code FsmPropertiesTest} sets each of these to a non-default value and asserts it arrives at the
  * object that acts on it.
  *
- * <p>The defaults reproduce the n8n workflow exactly, so an orchestrator started with no configuration
- * at all behaves as the workflow it replaces.
  */
 @ConfigurationProperties(prefix = "fsm")
 public record FsmProperties(@DefaultValue Prove prove, @DefaultValue Github github,
@@ -141,17 +139,16 @@ public record FsmProperties(@DefaultValue Prove prove, @DefaultValue Github gith
      * it is read: {@code ProveScheduler}, {@code BatchConfig}, {@code LiveWatcher},
      * {@code H2Exposure}.
      *
-     * @param minAttempts       {@code VERDICT_MIN_ATTEMPTS} from gen-prover.js. How many reproducer
-     *                          samples a non-reproduction is worth before it is written up as a
+     * @param minAttempts       how many reproducer samples a non-reproduction is worth before it is
+     *                          written up as a
      *                          verdict — one sample is a weak basis for "this marker is wrong", and
      *                          {@code Verdict} refuses to guess the number, so it is passed in. Read by
      *                          {@code ProveProcessor}.
      * @param maxMarkersPerRun  how many markers one job execution may settle before it stops and lets
-     *                          the next scheduled tick continue. 0 = drain the whole queue. 1 is
-     *                          exactly what the n8n schedule did (one marker per tick under the
-     *                          runner lease); the default here drains, because a prove already takes
-     *                          minutes and waiting a further tick between markers wastes hours over a
-     *                          282-marker report. Read by {@code SuspicionReader}.
+     *                          the next scheduled tick continue. 0 = drain the whole queue, which is
+     *                          the default: a prove already takes minutes, and waiting a further tick
+     *                          between markers wastes hours over a 282-marker report. Read by
+     *                          {@code SuspicionReader}.
      * @param maxInfraStrikes   how many proves IN A ROW may fail before the question was ever asked —
      *                          {@link tech.mikhailov.fsm.orch.client.InfraFailure} — before the marker
      *                          is parked as {@code infra_stuck}. NOT the same budget as
@@ -189,7 +186,7 @@ public record FsmProperties(@DefaultValue Prove prove, @DefaultValue Github gith
     }
 
     /**
-     * The GitHub contents API — the n8n {@code Fetch source} node's own settings, all four of them.
+     * The GitHub contents API: timeout, tries, backoff and base URL.
      *
      * <p>Read by {@code ClientConfig}, which hands them to {@link GithubSourceClient}; the base URL also
      * reaches {@code GithubRepoLookup} (the branch lookup {@code Prep prover} needs) and
@@ -226,20 +223,19 @@ public record FsmProperties(@DefaultValue Prove prove, @DefaultValue Github gith
      *                         to {@code http} only; {@code cache} applies to {@code local} only.
      * @param cache            where the checkouts and build workspaces live when the prove is local —
      *                         the directory a volume must be mounted on. See {@link #DEFAULT_CACHE}.
-     * @param baseUrl          the runner's root — {@code http://fsm-runner:8090} on the fleet
+     * @param baseUrl          the runner's root — {@code http://fsm-runner:8090} in the split shape
      *                         network. It clones, builds RED, applies the fix and builds GREEN, one
      *                         marker at a time around a single cached workspace.
      * @param timeout          the wall clock for ONE {@code /run_test}: a clone plus a RED build plus a
-     *                         GREEN build. ISO-8601. The n8n node this replaces waited 5,400,000 ms and
-     *                         {@link RunnerClient#DEFAULT_TIMEOUT} keeps that number, because each build
-     *                         is allowed twenty minutes by the runner itself. Cutting it does NOT fail
+     *                         GREEN build. ISO-8601, and 90 minutes because each build is allowed
+     *                         twenty minutes by the prover itself;
+     *                         {@link RunnerClient#DEFAULT_TIMEOUT} is the same number. Cutting it does NOT fail
      *                         safely: the request is abandoned while a build that was going to succeed
      *                         is still running, the marker is requeued having burnt an hour of the one
      *                         shared workspace, and the next attempt starts the same build again. There
-     *                         is exactly ONE of these knobs on purpose — it used to be two, a client
-     *                         default and a per-call value, both wired to the same environment variable
-     *                         in yaml, so setting either alone left two documented settings disagreeing
-     *                         about one number.
+     *                         is exactly ONE of these knobs on purpose: a client default and a per-call
+     *                         value wired to the same environment variable are two documented settings
+     *                         that disagree about one number as soon as anybody sets either alone.
      * @param connectAttempts  a connection that was never ESTABLISHED is the only runner failure worth
      *                         retrying automatically. Anything after that may have started a 20-minute
      *                         Maven build, and re-posting the same body would run it twice on one

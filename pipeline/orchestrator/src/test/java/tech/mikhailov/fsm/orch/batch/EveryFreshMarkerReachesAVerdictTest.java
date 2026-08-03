@@ -38,10 +38,10 @@ import tech.mikhailov.fsm.orch.model.Suspicion;
  * <p>THE DEFECT IT PINS, measured on the deployed orchestrator after 53 proves: 23 artifacts written as
  * {@code not-a-bug} with an EMPTY verdict and all 23 markers sitting back in {@code new}; nine more as
  * {@code infra_error}, likewise queued; and NOT ONE {@code false_positive}, {@code by_design},
- * {@code unprovable} or {@code infra_stuck} anywhere in the backlog. The validated n8n baseline over the
+ * {@code unprovable} or {@code infra_stuck} anywhere in the backlog. The validated baseline over the
  * same report settled 21 {@code false_positive}, 5 {@code by_design}, 3 {@code unprovable} and 2
  * {@code infra_stuck} out of 56 markers — {@code false_positive} was its LARGEST bucket. The verdict
- * stage routes all of those correctly and always did; what changed in the port is that the second sample
+ * stage routes all of those correctly; what had broken is that the second sample
  * a non-reproduction is worth NEVER ARRIVES, because {@link SuspicionReader}'s anti-spin cursor steps
  * over every marker the run has already handed out — including the ones it requeued specifically to ask
  * again. The engine writes {@code retry}, the queue never honours it, and the marker's verdict is stranded

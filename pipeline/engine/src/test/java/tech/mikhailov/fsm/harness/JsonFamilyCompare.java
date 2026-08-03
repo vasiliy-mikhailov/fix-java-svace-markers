@@ -25,7 +25,7 @@ final class JsonFamilyCompare {
     private JsonFamilyCompare() {
     }
 
-    /** One divergent case: what the JS said, what this port says. */
+    /** One divergent case: what the reference said, what this module says. */
     record Row(Object caseJson, Object js, Object java) {
 
         String suite() {

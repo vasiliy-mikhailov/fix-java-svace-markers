@@ -23,10 +23,10 @@ import tech.mikhailov.fsm.lib.Llm;
  *   <li>{@link #parseSkepticReply} — a reply to {@code {verdict, reason}} (pure)</li>
  *   <li>{@link #fixSkeptic} — the gate, the call, the catch, the merge (the shell)</li>
  * </ul>
- * The judgement itself is only observable against a live endpoint, and
- * n8n/agentic/test/model.skeptic-prmaker.test.js covers it there at ~15s a call. Everything around the
- * call — prompt assembly, the truncation rule, reply parsing, the fail-closed defaults — is ordinary
- * deterministic code, and splitting it out is what lets a unit test reach it without a round trip.
+ * The judgement itself is only observable against a live endpoint, at ~15s a call. Everything around
+ * the call — prompt assembly, the truncation rule, reply parsing, the fail-closed defaults — is
+ * ordinary deterministic code, and splitting it out is what lets a unit test reach it without a round
+ * trip.
  *
  * <p>EVERY DEFAULT HERE IS FAIL-CLOSED. A block that never ran, a dead endpoint and a word nobody
  * recognises must all come out as something OTHER than {@code sound}, because {@code sound} is the
@@ -62,11 +62,10 @@ public final class FixSkeptic {
      * so {@link #parseSkepticReply} has a closed set to whitelist against. Rewording it changes what
      * the stage does.
      *
-     * <p>The text block is a genuine improvement on the JS's string concatenation — the paragraph
-     * breaks and the fenced block are visible here instead of being spelled {@code \n\n} — but it is
-     * only allowed to be an improvement if the BYTES are identical. They are asserted against a second,
-     * independently written copy in {@code FixSkepticTest}, and compared against the JS output over
-     * every fixture by the differential harness. The {@code \s\} at a line end is a space that survives
+     * <p>A text block, so the paragraph breaks and the fenced block are visible rather than spelled
+     * {@code \n\n} — but the BYTES are the contract, not the layout. They are asserted against a
+     * second, independently written copy in {@code FixSkepticTest}, and pinned over every fixture by
+     * the differential harness. The {@code \s\} at a line end is a space that survives
      * incidental-whitespace stripping; the trailing {@code \} joins the line to the next without a
      * newline.
      *
@@ -100,10 +99,10 @@ public final class FixSkeptic {
 
     /**
      * What the prompt is built from. Loosely typed for the same reason {@link RecordOutcome.Request}
-     * is: these values come off n8n items produced by nodes that are not ported yet, and the JS reads
-     * every one of them through a coercion rather than a type.
+     * is: these values come off untyped upstream items, and every one of them is read through a
+     * coercion rather than a type.
      *
-     * @param stamp the pipeline+stage version. Concatenated RAW, with no {@code || ''} — the generator
+     * @param stamp the pipeline+stage version. Concatenated RAW, with no {@code || ''} — a caller
      *              always passes one, and a missing stamp showing up as the literal {@code undefined}
      *              in the transcript is a louder bug than a silently blank first line.
      */
@@ -116,7 +115,7 @@ public final class FixSkeptic {
     }
 
     /**
-     * The upstream items the shell reads, plus everything the JS took off {@code $env}.
+     * The upstream items the shell reads, plus everything it takes off the environment.
      *
      * @param item the {@code run_test fix} verdict the node runs on; the whole of it flows through
      */
@@ -129,7 +128,7 @@ public final class FixSkeptic {
          * <p>A DELEGATING CONSTRUCTOR RATHER THAN A SEVENTH ARGUMENT EVERYWHERE. The template is a
          * DEPLOYMENT choice — the file the orchestrator resolved — and the HTTP route has no opinion
          * about it at all. Making every call site pass one would have put that choice into the engine's
-         * own tests, where it is noise, and into {@link #of}, which reads an n8n body that carries no
+         * own tests, where it is noise, and into {@link #of}, which reads a request body carrying no
          * such key. Callers that do not care keep the text this class ships with; the one caller that
          * does passes the resolved file.
          */
@@ -138,7 +137,7 @@ public final class FixSkeptic {
             this(prepProver, parseTest, parseFix, item, llm, skepticStamp, DEFAULT_PROMPT);
         }
 
-        /** Read the request out of a posted body. The keys are the n8n node names, snake-cased. */
+        /** Read the request out of a posted body. The keys are the stage names, snake-cased. */
         public static Request of(Object body) {
             return new Request(Json.get(body, "prep_prover"), Json.get(body, "parse_test"),
                     Json.get(body, "parse_fix"), Json.get(body, "item"),
@@ -283,19 +282,17 @@ public final class FixSkeptic {
     /**
      * {@code x || fallback} as a VALUE.
      *
-     * <p>Kept as {@code Object} rather than coerced: the caller may still need the type, and the JS
-     * writes this inline at a dozen sites. It sits here rather than in {@code lib/Js} only because that
-     * class is being written concurrently by the ingest port — the three JS-semantics helpers
-     * ({@code Js}, {@code JsText} and the pair on {@code Llm}) want consolidating once both slices land.
+     * <p>Kept as {@code Object} rather than coerced: the caller may still need the type. It is written
+     * inline at a dozen sites, which is why it is a helper at all.
      */
     private static Object or(Object v, Object fallback) {
         return Json.truthy(v) ? v : fallback;
     }
 
     /**
-     * {@code {...item}} — a copy that keeps n8n's key order, because the outcome table's columns are
-     * built from it. An item that is missing, null or not an object spreads to nothing, which is what
-     * the JS does for all three.
+     * A copy of the item that keeps its key ORDER, because the outcome table's columns are built from
+     * it. An item that is missing, null or not an object copies to nothing — all three, deliberately:
+     * the caller has to get a row either way.
      */
     private static Map<String, Object> spread(Object item) {
         Map<String, Object> out = new LinkedHashMap<>();

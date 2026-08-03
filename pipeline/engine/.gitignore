@@ -4,7 +4,7 @@
 target/
 
 # The differential harnesses' unpacked OUTPUT: readable copies of the three frozen corpora, tens of
-# megabytes, rebuilt by `node harness/js-side.cjs` in seconds.
+# megabytes, rebuilt by `node harness/unpack-fixtures.cjs` in seconds.
 #
 # harness/fixtures/ is NOT here and must not be. It is the frozen JavaScript answers themselves — the
 # only surviving record of eleven node bodies that were deleted — plus the catalogues the three tests

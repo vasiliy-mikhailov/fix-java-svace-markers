@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import tech.mikhailov.fsm.orch.feedback.CritiqueIndex;
 
 /**
- * Every endpoint {@code dashboard/src/server.js} exposed, over H2 instead of over n8n's sqlite file.
+ * Every endpoint the dashboard page calls, over H2 through the DAOs.
  *
  * <p>ALL OF THEM, INCLUDING THE ONES THAT ANSWER NOTHING. That is the point of this class and the
  * reason it is written as one flat list rather than as several tidy controllers. The last port of this
@@ -27,8 +27,8 @@ import tech.mikhailov.fsm.orch.feedback.CritiqueIndex;
  * has no artifact yet". The server logged nothing and the page rendered.
  *
  * <p>So {@code /api/live}, {@code /api/dialogs}, {@code /api/dialog}, {@code /api/methods} and
- * {@code /api/errors} are implemented here as the empty documents server.js returns, rather than left
- * to 404. They belonged to the LLM suspector the Svace ingester replaced — nothing streams ReAct
+ * {@code /api/errors} answer EMPTY DOCUMENTS rather than 404. They belonged to an LLM suspector this
+ * pipeline does not have — nothing streams ReAct
  * transcripts or per-method runs any more — but an endpoint that answers "there is none" and an
  * endpoint that is missing are the same thing to the caller, and only one of them is true.
  *
@@ -86,8 +86,8 @@ public class DashboardController {
     /**
      * The code the marker points at, from the runner's checkout.
      *
-     * <p>200 EVEN WHEN IT FAILS, with {@code error} in the body — server.js's own {@code .catch}. The
-     * marker tab renders "source unavailable — &lt;reason&gt;" in place of the code and keeps the rest
+     * <p>200 EVEN WHEN IT FAILS, with {@code error} in the body. The marker tab renders "source
+     * unavailable — &lt;reason&gt;" in place of the code and keeps the rest
      * of the tab; a 500 would blank a modal whose other four tabs are perfectly readable.
      */
     @GetMapping(value = "/api/source", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -137,8 +137,8 @@ public class DashboardController {
      * Retired with the LLM suspector, answered as empty rather than left to 404.
      *
      * <p>Three paths, one body: {@code /api/live} was polled by the live panel, {@code /api/dialogs}
-     * listed transcripts and {@code /api/dialog} returned one. server.js answers all three with the
-     * same {@code {"dialogs":[],"dialog":""}}, and the page's {@code renderLive()} bails on a missing
+     * listed transcripts and {@code /api/dialog} returned one. All three answer the same
+     * {@code {"dialogs":[],"dialog":""}}, and the page's {@code renderLive()} bails on a missing
      * element before it ever reads the result.
      */
     @GetMapping(value = {"/api/live", "/api/dialogs", "/api/dialog"},
@@ -157,9 +157,9 @@ public class DashboardController {
     }
 
     /**
-     * n8n's failed-execution feed.
+     * The failed-execution feed the page polls.
      *
-     * <p>Empty rather than reconstructed from the batch history: a FAILED job execution is already in
+     * <p>Permanently EMPTY rather than reconstructed from the batch history: a FAILED job execution is already in
      * the activity panel with its status, and inventing an errors table out of it would report one row
      * per run rather than one row per thing that went wrong. What actually failed for a MARKER is on
      * the marker — {@code note} and {@code infra_reason} — which is where the pipeline writes it.
@@ -177,8 +177,8 @@ public class DashboardController {
      * policy or a Caddy check wired to it could never have fired — and its existence was the reason
      * nobody added a real one. A probe that cannot fail is a constant with a URL.
      *
-     * <p>Plain text {@code ok} on the healthy path, as server.js answered it, because whatever polls
-     * this was written against that and a JSON body would need a parser on the other end. 503 and not
+     * <p>Plain text {@code ok} on the healthy path, because whatever polls this is written against
+     * that and a JSON body would need a parser on the other end. 503 and not
      * 500 on the unhealthy one: 503 is the status a reverse proxy takes a backend out of rotation for
      * and a container restart policy acts on, and it is what {@code /actuator/health} answers for the
      * same finding. The reason travels in the body so an operator reading a curl does not have to go
@@ -203,8 +203,8 @@ public class DashboardController {
     /**
      * A read that blew up becomes an error PAYLOAD, never a dead dashboard.
      *
-     * <p>server.js wrapped its whole handler in a try/catch for this reason: the dashboard is the only
-     * view onto a run that lasts days, and a query that failed once — a locked file, a table a
+     * <p>The dashboard is the only view onto a run that lasts days, and a query that failed once — a
+     * locked file, a table a
      * half-applied migration has not created yet — must not take the page down with it. The status is
      * 500 so the failure is visible in a proxy log; the body is the shape the page can render.
      */
@@ -234,8 +234,8 @@ public class DashboardController {
             return 0;
         }
         try {
-            // Double first: n8n Data Table `number` columns come back as REAL, so the page can send
-            // `26.0` for line 26 — parseInt on that string would be a NumberFormatException.
+            // Double first: a line number reaches the page as a REAL, so it can send `26.0` for line
+            // 26 — parseInt on that string would be a NumberFormatException.
             double value = Double.parseDouble(raw.trim());
             return Double.isFinite(value) ? (int) value : 0;
         } catch (NumberFormatException e) {

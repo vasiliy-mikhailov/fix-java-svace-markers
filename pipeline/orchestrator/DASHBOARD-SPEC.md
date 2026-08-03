@@ -347,7 +347,7 @@ cannot disagree.
 
 ## 11. Errors (`#errors`, `#errcount`)
 
-Permanently empty by construction — the failed-execution feed belonged to n8n. `#errcount` reads
+Permanently empty by construction — there is no failed-execution feed. `#errcount` reads
 `none` and the panel reads `no recent errors`. What actually failed for a marker is on the marker
 (`note`, `infra_reason`), because a FAILED job execution is already one row in the activity panel and
 reconstructing an errors table from it would report one row per run rather than one row per thing that
@@ -402,7 +402,7 @@ Three blocks, plus two conditionals.
 
 ### 12.2 Source at the marker
 
-`GET api/source?repo=&branch=&file=&line=` against the **java-runner's cached read-only checkout** —
+`GET api/source?repo=&branch=&file=&line=` against the **prover's cached read-only checkout** —
 the same tree the prover tested, not a second GitHub fetch, and it costs no API rate limit.
 
 - 29 lines: 14 either side of the marker. `lines` arrives as `[absoluteLineNumber, text]` pairs so real
@@ -414,7 +414,7 @@ the same tree the prover tested, not a second GitHub fetch, and it costs no API 
   scanned commit is unknown, so drift is exactly what a reviewer needs to see.
 - **Any failure is a 200 with `error`**, rendered as `source unavailable — <reason>` in place of the
   code, keeping the rest of the tab. A missing `repo` or `file` answers `repo and file are required`;
-  a dead runner answers `the java-runner at <url>/fs/read_file could not be read: <Type: message>` —
+  a dead prover answers `the runner at <url>/fs/read_file could not be read: <Type: message>` —
   the exception type is always included, because a bare `ConnectException` carries no message and
   "source unavailable — " followed by nothing is what a reader would otherwise see.
 - `line` is parsed leniently server-side: missing, blank or non-numeric is **0, not a 400**, and `26.0`

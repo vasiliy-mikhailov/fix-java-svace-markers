@@ -16,8 +16,8 @@ import tech.mikhailov.fsm.lib.TestRealness;
  *
  * <p>FIRST, an unusable reply must come out flagged {@code parse_failed} and never as a considered
  * {@code can_prove: false}. Downstream a clean "I cannot prove it" is EVIDENCE that the marker is
- * wrong and retires it — so an agent that crashed (n8n's {@code onError=continueRegularOutput} leaves
- * no {@code output} field at all) or one that answered in prose would silently close a real finding.
+ * wrong and retires it — so an agent that crashed and left no {@code output} field at all, or one
+ * that answered in prose, would silently close a real finding.
  *
  * <p>SECOND, the body it builds carries NO {@code fix_edits}. The reproducer's test has to fail on the
  * UNPATCHED code; a single edit smuggled into the red run would patch the bug before the "does it
@@ -54,7 +54,7 @@ public final class ParseTest {
      */
     public record Request(Object prepProver, Object reproducer) {
 
-        /** Read the request out of a posted body; the keys are the n8n node names, snake-cased. */
+        /** Read the request out of a posted body; the keys are the stage names, snake-cased. */
         public static Request of(Object body) {
             return new Request(Json.get(body, "prep_prover"), Json.get(body, "reproducer_agent"));
         }
@@ -63,19 +63,18 @@ public final class ParseTest {
     /**
      * The reproducer's answer, plus the run_test body built from it.
      *
-     * @param prepProver   the upstream item, echoed back field for field — the JS returns
-     *                     {@code {...j, ...}} and downstream nodes read {@code marker_id},
-     *                     {@code suspicion_key} and twenty other fields straight off this row
+     * @param prepProver   the upstream item, echoed back field for field, because downstream stages
+     *                     read {@code marker_id}, {@code suspicion_key} and twenty other fields
+     *                     straight off this row
      * @param canProve     a claim of success WITH a test to run; a claim with no test proves nothing
      * @param parseFailed  the reply was unusable — NOT a verdict about the marker
      * @param testScore    0..100 realness ordering, carried so record-outcome can write it as
      *                     {@code value_score}
      * @param realnessLog  the {@code [realness] ...} line, empty when there is no test to judge.
      *                     RETURNED rather than printed: this class stays a pure function of its
-     *                     request like {@link RecordOutcome}, the HTTP shim writes the line to the
-     *                     container log, and — the reason the JS test monkey-patches
-     *                     {@code console.log} — a line that is data can be asserted on like any other
-     *                     output instead of being trusted.
+     *                     request like {@link RecordOutcome}, the caller writes the line to its own
+     *                     log, and a line that is DATA can be asserted on like any other output
+     *                     instead of being trusted.
      */
     public record Result(Object prepProver, boolean canProve, boolean parseFailed, String testCode,
                          boolean testSound, int testScore, String testRealness,
@@ -107,8 +106,8 @@ public final class ParseTest {
     /** Parse the reproducer's reply. */
     public static Result parseTest(Request req) {
         Object j = req.prepProver();
-        // Js.orEmptyString, not Json.str: the JS is `($json.output || '').toString()`, and the two
-        // disagree for a value that is not a string. `String(["{...}"])` is the element joined with
+        // Js.orEmptyString, not Json.str: the contract is `($json.output || '').toString()`, and the
+        // two disagree for a value that is not a string. `String(["{...}"])` is the element joined with
         // commas — which PARSES — while a JSON serialiser would produce `["{...}"]`, which does not.
         // The difference lands on parse_failed, so it decides whether the marker is retried.
         String text = Js.orEmptyString(Json.get(req.reproducer(), "output"));
@@ -150,10 +149,10 @@ public final class ParseTest {
     /**
      * Copy a field into the run_test body, ONLY when the upstream item has it.
      *
-     * <p>The JS writes {@code { repo: j.repo, ... }} unconditionally and lets
-     * {@code JSON.stringify} drop the member when it is undefined. So an absent {@code module}
-     * reaches the runner as no key at all, while an explicit null reaches it as {@code "module":
-     * null}. Writing null for both would send the runner a body the JS never sent.
+     * <p>ABSENT AND NULL ARE DIFFERENT ON THIS WIRE. A member that was never set is dropped from the
+     * body altogether, so an absent {@code module} reaches the prover as no key at all, while an
+     * explicit null reaches it as {@code "module": null}. Writing null for both would send the prover
+     * a body claiming a module that nobody asked for.
      */
     private static void copy(Map<String, Object> body, String key, Object item, String field) {
         if (item instanceof Map<?, ?> m && m.containsKey(field)) {

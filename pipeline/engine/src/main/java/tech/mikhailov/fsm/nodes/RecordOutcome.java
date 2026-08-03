@@ -22,12 +22,11 @@ import tech.mikhailov.fsm.lib.MarkerState;
  * fetch that returned nothing, an unparseable reply are failures OF THE PIPELINE. They must be
  * retried, never recorded as a judgement about the code.
  *
- * <p>PORTING NOTE — WHY THE UPSTREAM ITEMS ARE {@code Object}. The JS reads five upstream nodes
- * through n8n's item graph ({@code $('Prep prover').item.json} and friends), each of which carries
- * twenty-odd fields produced by nodes that are not ported yet. Typing those items would mean
- * inventing five DTOs now and changing them under every later port, so {@link Request} holds them as
- * they arrive and every read goes through {@link Json}, which spells out the {@code ||} and
- * {@code !!} coercions the routing depends on. It also preserves a property the JS relies on: an item
+ * <p>WHY THE UPSTREAM ITEMS ARE {@code Object}. This stage reads five upstream stages, each of which
+ * carries twenty-odd fields. Typing them would mean five DTOs that every one of those stages then has
+ * to keep in step, so {@link Request} holds them as they arrive and every read goes through
+ * {@link Json}, which spells out the {@code ||} and {@code !!} coercions the routing depends on. It
+ * also preserves the property the routing relies on: an item
  * that is missing, null, or not an object at all reads as ALL FIELDS ABSENT, which is exactly what
  * {@code $('Parse fix').item.json || {}} did.
  */
@@ -59,8 +58,8 @@ public final class RecordOutcome {
     private static final int ERROR_CHARS = 120;
 
     /**
-     * What the runner appends to a log when it KILLED the build at its 20-minute timeout — the runner's
-     * {@code Proc.TIMEOUT_MARKER}, and {@code java-runner/src/server.js}'s.
+     * What the prover appends to a log when it KILLED the build at its 20-minute timeout — the
+     * runner module's {@code Proc.TIMEOUT_MARKER}. The two spellings must stay identical.
      *
      * <p>Nothing anywhere used to read it. A killed build and a build that failed on its own are the
      * same row otherwise, and {@code green_output} is not persisted at all — the bugs table has no
@@ -70,10 +69,10 @@ public final class RecordOutcome {
     private static final String TIMEOUT_MARKER = "[TIMEOUT]";
 
     /**
-     * The upstream items this node reads, one per n8n node, plus the PR maker item the node runs on.
+     * The upstream items this stage reads, one per stage, plus the PR maker item it runs on.
      *
-     * <p>This is the request contract the n8n Code node shims send: it is the widest reader in the
-     * pipeline, which is why it was ported first.
+     * <p>This is THE request contract for the whole package: it is the widest reader in the pipeline,
+     * so every other stage's key naming follows from it.
      *
      * @param prepProver          {@code Prep prover} — the marker, its branch and its attempt counter
      * @param parseTest           {@code Parse test} — the reproducer's reply and its realness scoring
@@ -86,7 +85,7 @@ public final class RecordOutcome {
     public record Request(Object prepProver, Object parseTest, Object parseFix, Object reproduce,
                           Object buildReproduceInput, Object prMaker, Object versions) {
 
-        /** Read the request out of a posted body. The keys are the n8n node names, snake-cased. */
+        /** Read the request out of a posted body. The keys are the stage names, snake-cased. */
         public static Request of(Object body) {
             return new Request(Json.get(body, "prep_prover"), Json.get(body, "parse_test"),
                     Json.get(body, "parse_fix"), Json.get(body, "run_test_reproduce"),
@@ -101,7 +100,7 @@ public final class RecordOutcome {
      * @param valueScore  HOW REAL the proof is (0-100), not a bare 1/0. Two proven fixes are not
      *                    equally trustworthy: one that drives real objects and asserts on returned
      *                    values outranks one that only checks interactions on stubs, and a reviewer
-     *                    with limited time should see that. A double because the JS is
+     *                    with limited time should see that. A double, because the read is
      *                    {@code Number(x) || 0} with no rounding anywhere.
      * @param attempts    incremented here so a permanently-broken row stops being requeued
      * @param infraReason the ONLY record of which step broke; a right state with the wrong reason
@@ -114,7 +113,8 @@ public final class RecordOutcome {
                           MarkerState state, String infraReason, long attempts, String branch,
                           Object versions) {
 
-        /** The response body, in the key order the JS returned so the Data Table columns line up. */
+        /** The response body, in a FIXED key order, so a consumer that takes its columns from the
+         * first row it sees gets the same columns every time. */
         public Map<String, Object> toMap() {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("suspicion_key", suspicionKey);
@@ -182,7 +182,7 @@ public final class RecordOutcome {
             infra.add("branch unresolved: " + or(Json.str(j, "branch_error"), "?"));
         }
         // JsText.isBlank, NOT String.isBlank: they disagree about four characters in each direction,
-        // and a source file that is nothing but a byte-order mark is one of them. To the JS that file
+        // and a source file that is nothing but a byte-order mark is one of them. To JsText that file
         // is empty — infra_error, retried. To String.isBlank it has content, and the marker would be
         // adjudicated against a file with no code in it. See JsText for the whole list.
         if (JsText.isBlank(Json.str(bri, "src"))) {
@@ -367,9 +367,9 @@ public final class RecordOutcome {
             default -> { }
         }
 
-        // Note the asymmetry with the banner above, and that it is the JS's: string concatenation
-        // renders a null element as the word "null" where Array.join renders it as "". Both are kept
-        // because infra_reason is machine-greppable audit and the banner is prose for a human.
+        // Note the asymmetry with the banner above, and that it is deliberate: concatenation renders a
+        // null element as the word "null" where a join renders it as "". Both are kept, because
+        // infra_reason is machine-greppable audit and the banner is prose for a human.
         List<String> reasons = new ArrayList<>(infra);
         for (Object e : editErrors) {
             reasons.add("edit not applied: " + e);
@@ -444,9 +444,9 @@ public final class RecordOutcome {
     }
 
     /**
-     * Missing is not empty. Reading {@code .length} off an absent array crashes the JS node, and
-     * trusting a non-array payload would let a malformed PR-maker reply pass as a clean apply — so
-     * anything that is not a list counts as "reported nothing", which routes to needs_review.
+     * Missing is not empty. Trusting a non-array payload would let a malformed PR-maker reply pass as
+     * a clean apply, so anything that is not a list counts as "reported nothing", which routes to
+     * needs_review.
      */
     private static List<Object> listOf(Object v) {
         return v instanceof List<?> l ? new ArrayList<>(l) : List.of();

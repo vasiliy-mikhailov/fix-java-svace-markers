@@ -24,7 +24,7 @@ class JsTextTest {
      *
      * <p>THE ONE THAT MATTERS IS U+FEFF. record-outcome asks whether the fetched source file is
      * empty; a file that is nothing but a byte-order mark — what an emptied file saved by a Windows
-     * editor looks like — is empty to the JS, so the marker becomes {@code infra_error} and is
+     * editor looks like — has to count as EMPTY, so the marker becomes {@code infra_error} and is
      * retried. To {@code isBlank()} that file has content, so the pipeline would go on to adjudicate
      * a static-analysis marker against a file with no code in it and write the answer down as a
      * verdict about the code.
@@ -41,8 +41,8 @@ class JsTextTest {
     /**
      * Java says blank, JS says NOT blank: the four ASCII information separators. Harmless in
      * comparison — a source file of nothing but these is not a shape anyone has seen — but the
-     * disagreement is real and the helper has to pick a side. It picks JavaScript's, because the JS
-     * is what is running in production today and the port must not change what a marker becomes.
+     * disagreement is real and the helper has to pick a side. It picks JavaScript's, because that is
+     * what the wire contract and the frozen corpus are defined in terms of.
      */
     @ParameterizedTest(name = "U+{0}")
     @ValueSource(strings = {"001C", "001D", "001E", "001F"})
@@ -93,7 +93,7 @@ class JsTextTest {
     }
 
     @Test
-    void theSetIsExactlyTheTwentyFiveCharactersNodeAgreesTo() {
+    void theSetIsExactlyTheTwentyFiveCharactersEcmaScriptDefines() {
         // Measured, not assumed: `for (c) if (String.fromCharCode(c).trim() === '')` under Node 22.
         // A JDK Unicode upgrade that changed Character.isSpaceChar could not move this list, which is
         // the whole reason it is written out rather than derived.

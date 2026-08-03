@@ -1,21 +1,19 @@
 #!/bin/sh
-# Differential harnesses for the engine — the MANUAL entry point. The enforcement is `mvn test`.
+# Differential harnesses for the engine — the MANUAL entry point, for reading the long reports.
 #
-# WHAT CHANGED, 2026-07-31. Three shell scripts used to run the ORIGINAL JavaScript node bodies from
-# n8n/agentic/src/{lib,nodes} and this port over the same generated cases, then diff them with two Node
-# scripts. That JavaScript has been deleted. Its ANSWERS are frozen under harness/fixtures, and the
-# three comparisons are now JUnit tests in src/test/java/tech/mikhailov/fsm/harness — so a divergence
-# is a RED TEST on every build rather than a report somebody remembered to run.
+# THE ENFORCEMENT IS `mvn test`: the three comparisons are JUnit tests in
+# src/test/java/tech/mikhailov/fsm/harness, so a divergence is a RED TEST on every build rather than a
+# report somebody remembered to run. This script only adds the readable corpora and the full reports.
 #
 #   sh harness/run.sh            # unpack the frozen corpora, run all three comparisons, show them
 #
-# See harness/README.md for what each family's fixtures cover, when they were generated, and — read
-# this one before promising anybody a refresh — what it would take to regenerate them.
+# See harness/README.md for what each family's fixtures cover, what the recorded answers are answers OF,
+# and — read this before promising anybody a refresh — why they cannot be regenerated.
 set -eu
 cd "$(dirname "$0")/.."
 
-echo "== unpacking the frozen JavaScript answers (readable copies, nothing depends on them)"
-node harness/js-side.cjs
+echo "== unpacking the frozen reference answers (readable copies, nothing depends on them)"
+node harness/unpack-fixtures.cjs
 
 echo "== running the three comparisons"
 mvn -B -q -f ../pom.xml -pl engine test \

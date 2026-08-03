@@ -43,10 +43,9 @@ import tech.mikhailov.fsm.lib.Json;
  *       type.</li>
  * </ul>
  *
- * <p>PORTING NOTE. The brace matching is kept exactly as the JS wrote it rather than replaced with
- * JavaParser or JDT, because equivalence with the JS is the thing being proven in this slice and a
- * real parser would produce different — mostly better — answers on the shapes below. See the port
- * report for what the switch would buy and what it would cost.
+ * <p>THE BRACE MATCHING IS DELIBERATELY NOT A PARSER. JavaParser or JDT would give different — mostly
+ * better — answers on the shapes below, and every one of those differences moves which method a marker
+ * is anchored to. That is a behaviour change to be made on purpose and re-baselined, not a cleanup.
  */
 public final class BuildReproduceInput {
 
@@ -124,7 +123,7 @@ public final class BuildReproduceInput {
      */
     public record Request(Object prepProver, Object githubFile) {
 
-        /** Read the request out of a posted body. The keys are the n8n node names, snake-cased. */
+        /** Read the request out of a posted body. The keys are the stage names, snake-cased. */
         public static Request of(Object body) {
             return new Request(Json.get(body, "prep_prover"), Json.get(body, "github_file"));
         }
@@ -274,8 +273,8 @@ public final class BuildReproduceInput {
      * <p>The whitespace strip is not cosmetic: the contents API wraps its base64 at 60 columns, and
      * the newlines have to come out before the decode or what reaches the model is whatever the
      * decoder made of the padding. A non-string {@code content} — the whole contents object, which is
-     * what arrives when the path resolved to a directory — throws in the JS, and the throw is caught
-     * and reported as a file that could not be fetched rather than taking the run down.
+     * what arrives when the path resolved to a directory — throws, and the throw is caught and
+     * reported as a file that could not be fetched rather than taking the run down.
      */
     private static String decode(Object content) {
         Object v = JsValue.or(content, "");
@@ -290,8 +289,8 @@ public final class BuildReproduceInput {
      * {@code undefined}, not an exception.
      *
      * <p>{@code svace_line} reaches this node as {@code Number(x) || 0} and nothing rounds it, so a
-     * marker whose line arrived as "2.5" really does read a property that is not there. The JS then
-     * omits the quoted-line block from the prompt entirely, which is the honest outcome; an
+     * marker whose line arrived as "2.5" really does read a property that is not there, and the
+     * quoted-line block is then omitted from the prompt entirely — the honest outcome. An
      * {@code (int)} cast here would quote line 2 and claim it was line 2.5.
      */
     private static Object element(String[] lines, double index) {

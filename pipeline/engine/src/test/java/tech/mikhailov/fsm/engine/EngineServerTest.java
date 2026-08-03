@@ -46,15 +46,15 @@ import tech.mikhailov.fsm.nodes.PrepProver;
  *
  * <p>Everything this class is here to check only exists at the socket: that the executor is wired
  * (a handler-level test passes whether or not it is), that a body is drained so the connection can be
- * reused, and that the response is JSON n8n can parse. Each test binds port 0 so a parallel run or a
- * developer with the fleet already up cannot collide with it.
+ * reused, and that the response is JSON the caller can parse. Each test binds port 0 so a parallel run
+ * or a developer with the stack already up cannot collide with it.
  *
  * <p>THE TWO EXCEPTIONS, at the bottom of the file, are driven through {@link FakeExchange} instead.
  * They are the arms that refuse a request or answer a bug in the engine — the arms whose whole job is
  * to ANSWER rather than drop the connection — and neither can be produced deterministically over a
  * socket: refusing an over-cap body races the client's remaining bytes, and a failure inside the
- * handler is not something a request can ask for. A dropped connection is reported by n8n as a network
- * error, so those arms rotting would move the blame from this service to the network.
+ * handler is not something a request can ask for. A dropped connection is reported by the caller as a
+ * NETWORK error, so those arms rotting would move the blame from this service to the network.
  */
 class EngineServerTest {
 
@@ -103,9 +103,8 @@ class EngineServerTest {
         HttpResponse<String> res = send("POST", "/health", "{}");
         assertEquals(200, res.statusCode());
         assertTrue(res.headers().firstValue("Content-Type").orElse("").startsWith("application/json"),
-                "n8n's HTTP Request node only parses the body into an item when the content type "
-                        + "says JSON; without it the shim gets a string and every field read is "
-                        + "undefined");
+                "a client only parses the body into an item when the content type says JSON; "
+                        + "without it the caller gets a string and every field read is undefined");
         Map<?, ?> body = (Map<?, ?>) Json.parse(res.body());
         assertEquals(Boolean.TRUE, body.get("ok"));
         assertEquals("fsm-engine", body.get("service"));
@@ -134,7 +133,7 @@ class EngineServerTest {
     @Test
     void anUnknownPathIs404() throws Exception {
         // com.sun.net.httpserver answers 404 for an unmapped context by itself. Pinned because the
-        // node ports will add contexts, and a typo'd path must fail loudly at the shim rather than
+        // node ports will add contexts, and a typo'd path must fail loudly at the caller rather than
         // silently reaching the wrong handler.
         assertEquals(404, send("POST", "/verdict", "{}").statusCode());
     }
@@ -182,9 +181,9 @@ class EngineServerTest {
 
     @Test
     void aBodyLargerThanTheCapIsRefusedRatherThanBuffered() throws Exception {
-        // record-outcome.js already calls a source file over 300 000 chars an infra failure. The cap
-        // is far above any legitimate item and far below what would let one request exhaust the heap;
-        // without it the engine would buffer whatever n8n sent.
+        // RecordOutcome already calls a source file over 300 000 chars an infra failure. The cap is
+        // far above any legitimate item and far below what would let one request exhaust the heap;
+        // without it the engine would buffer whatever a caller sent.
         //
         // Tested against the stream rather than over a socket ON PURPOSE: refusing a body mid-upload
         // is a race between our response and the client's remaining bytes, so a socket-level version
@@ -354,8 +353,8 @@ class EngineServerTest {
         // because com.sun.net.httpserver's dispatcher thread happens not to be one, which is an
         // implementation detail of the JDK and not part of its contract. If this method ever returned
         // on its own, the container would exit seconds after logging "listening on 0.0.0.0:8092" —
-        // compose would report a clean start, and every n8n call would fail against a service whose
-        // last log line says it came up fine.
+        // compose would report a clean start, and every call would fail against a service whose last
+        // log line says it came up fine.
         CountDownLatch returned = new CountDownLatch(1);
         AtomicReference<Throwable> thrown = new AtomicReference<>();
         AtomicBoolean stillFlagged = new AtomicBoolean(false);
@@ -390,9 +389,9 @@ class EngineServerTest {
 
     @Test
     void aBodyPastTheCapIsAnswered413RatherThanDropped() throws IOException {
-        // n8n cannot act on a dropped connection: its HTTP Request node records a network error, which
-        // sends whoever reads the run history to the network rather than to the shim that built a
-        // 20 MiB body. 413 with `code: body_too_large` is a fixable answer.
+        // A caller cannot act on a dropped connection: it records a network error, which sends whoever
+        // reads the run history to the network rather than to the code that built a 20 MiB body. 413
+        // with `code: body_too_large` is a fixable answer.
         FakeExchange exchange = FakeExchange.of("POST", endlessBody());
 
         server.handleHealth(exchange);
@@ -400,7 +399,7 @@ class EngineServerTest {
         assertEquals(List.of(413), exchange.statusLines, "one answer, and it is a refusal");
         Map<?, ?> body = (Map<?, ?>) Json.parse(exchange.responseText());
         assertEquals("body_too_large", body.get("code"),
-                "the code is what a shim branches on; the sentence will be reworded, it will not");
+                "the code is what a caller branches on; the sentence will be reworded, it will not");
         assertTrue(String.valueOf(body.get("error")).contains(String.valueOf(Http.MAX_BODY_BYTES)),
                 "the message has to name the cap it exceeded: " + body.get("error"));
     }
@@ -408,7 +407,7 @@ class EngineServerTest {
     @Test
     void aFailureInsideTheHandlerIsAnswered500RatherThanDropped() throws IOException {
         // The same failure mode from the other side: a bug in this process must be reported AS this
-        // process failing. Dropping the connection makes n8n's run history blame the network, and the
+        // process failing. Dropping the connection makes the run history blame the network, and the
         // engine — which is still up and still answering /health for everyone else — is the last place
         // anybody would look.
         FakeExchange exchange = FakeExchange.of("POST", InputStream.nullInputStream());
@@ -419,7 +418,7 @@ class EngineServerTest {
         assertEquals(List.of(500), exchange.statusLines);
         Map<?, ?> body = (Map<?, ?>) Json.parse(exchange.responseText());
         assertEquals("engine_error", body.get("code"),
-                "a shim has to tell 'the engine is broken' from 'this marker is bad': different people"
+                "a caller has to tell 'the engine is broken' from 'this marker is bad': different people"
                         + " fix them");
         assertEquals("clock went backwards", body.get("error"),
                 "the cause has to survive into the caller's run history");
@@ -445,7 +444,7 @@ class EngineServerTest {
         // An HttpExchange is the connection: close() closes the response stream and DRAINS the request
         // stream the handler did not read. The arms that refuse early — 405, 413 — never read the body
         // at all, so an exchange left open there is a connection com.sun.net.httpserver cannot reuse,
-        // and n8n reconnects for every one of a 356-marker run. It is also the only thing that frees
+        // and the caller reconnects for every one of a 356-marker run. It is also the only thing that frees
         // the exchange's streams on the arm where the handler itself blew up.
         List<FakeExchange> arms = List.of(
                 FakeExchange.of("GET", InputStream.nullInputStream()),        // 200

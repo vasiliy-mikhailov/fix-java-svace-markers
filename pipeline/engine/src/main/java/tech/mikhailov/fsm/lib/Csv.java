@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The RFC4180-ish CSV reader parse-markers.js hand-rolls, ported character for character.
+ * The RFC4180-ish CSV reader the Svace report is read with.
  *
  * <p>WHY THIS IS HAND-ROLLED RATHER THAN A LIBRARY, twice over. The pom takes no runtime dependencies
  * (see its header), and more to the point this parser is not RFC4180: it is bug-compatible with the
@@ -24,7 +24,7 @@ import java.util.List;
  *   <li>Outside quotes, CR is dropped WHEREVER it appears — not only before LF. That is what makes a
  *       CRLF file end each row exactly once instead of emitting a blank row between every pair.</li>
  *   <li>A quote may open MID-FIELD: {@code a"b"c} reads as {@code abc}. The RFC calls that malformed;
- *       this is what the JS does, and rejecting it would turn rows the pipeline has ingested for
+ *       accepting it is deliberate, and rejecting it would turn rows this pipeline has ingested for
  *       months into errors.</li>
  *   <li>A file that does not end in a newline still yields its last row, and a row that ends in a
  *       trailing comma still yields the empty field after it.</li>
@@ -41,7 +41,8 @@ public final class Csv {
     /**
      * Split a whole CSV document into rows of raw (untrimmed, unquoted) fields.
      *
-     * <p>Iteration is over UTF-16 code units, matching the JS's {@code t[i]}. A surrogate pair is
+     * <p>Iteration is over UTF-16 code units, matching the indexing this format is defined in terms
+     * of. A surrogate pair is
      * never equal to a delimiter, so splitting one across the loop is harmless and rejoining it in the
      * field is exact.
      */
@@ -56,8 +57,8 @@ public final class Csv {
             if (inQuotes) {
                 if (c == '"') {
                     // A quote at the very end of the input has no successor to double up with, so it
-                    // closes the field. Reading past the end here is the JS's `t[i + 1] === '"'`
-                    // comparing against undefined, which is never true.
+                    // closes the field: the lookahead for a doubled quote has nothing to compare
+                    // against, which is never a match.
                     if (i + 1 < text.length() && text.charAt(i + 1) == '"') {
                         field.append('"');
                         i++;
