@@ -196,7 +196,7 @@ public class ProveProcessor implements ItemProcessor<Suspicion, ProvenMarker> {
         // it, re-anchors the marker against the real source and labels how far the location can be
         // trusted. Decoding here would be the first line of judgement creeping back out. ---
         SourceClient.Source fetched = source.fetch(Json.str(prep, "repo"), Json.str(prep, "file"),
-                Json.str(prep, "branch"), secrets.githubToken());
+                Json.str(prep, "branch"), secrets.gitToken());
 
         BuildReproduceInput.Outcome reproduceInput = BuildReproduceInput.buildReproduceInput(
                 new BuildReproduceInput.Request(prep, fetched.body()));

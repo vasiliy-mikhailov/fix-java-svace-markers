@@ -304,6 +304,46 @@ final class ProveScript {
         fixRunDoesNothing(runner);
     }
 
+    /**
+     * THE CLONE COULD NOT REACH THE HOST — the failure a Guild with an internal GitLab will hit first,
+     * on a VPN that is down or a name that only resolves inside their network.
+     *
+     * <p>{@code ok:false} with git's own text, which is what {@code Prove.runTest} answers when
+     * {@code prepareWs} comes back with an error. A successful CALL carrying bad news, so nothing
+     * throws — and it is bad news about the PIPELINE, not about the code.
+     */
+    static void theCloneHostDoesNotResolve(ScriptedClients.Fetcher source,
+                                           ScriptedClients.Runner runner,
+                                           ScriptedClients.Model model) {
+        source.answering(200, contents(SOURCE));
+        reproducerWritesATest(model);
+        runner.answering(Map.of("ok", false, "error", "clone failed:\n"
+                + "fatal: unable to access 'https://gitlab.company.internal/grp/proj.git/': "
+                + "Could not resolve host: gitlab.company.internal"));
+        fixerDeclines(model);
+        fixRunDoesNothing(runner);
+    }
+
+    /**
+     * THE ROW'S {@code repo} IS NOT A REPOSITORY, refused by {@link tech.mikhailov.fsm.runner.CloneUrl}
+     * before any process was started.
+     *
+     * <p>Same shape as the unreachable host and deliberately so: neither told us anything about the
+     * marker's code, so neither may become a judgement about it. The difference is only in the words,
+     * and the words are what send a reader to the ingest body rather than to the network.
+     */
+    static void theRepoIsNotARepository(ScriptedClients.Fetcher source,
+                                        ScriptedClients.Runner runner,
+                                        ScriptedClients.Model model) {
+        source.answering(200, contents(SOURCE));
+        reproducerWritesATest(model);
+        runner.answering(Map.of("ok", false, "error",
+                "`repo` starts with '-', which git clone reads as an OPTION and not as a repository: "
+                + "`--upload-pack=/bin/sh`"));
+        fixerDeclines(model);
+        fixRunDoesNothing(runner);
+    }
+
     // ---- the verdict stage --------------------------------------------------------------------
 
     /** The rebuttal the verdict writer produces when it is asked to argue a marker. */

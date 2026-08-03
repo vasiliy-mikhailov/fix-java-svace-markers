@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.JsValue;
+import tech.mikhailov.fsm.runner.CloneUrl;
 
 /**
  * {@link SourceClient} against the GitHub contents API.
@@ -71,6 +72,14 @@ public class GithubSourceClient implements SourceClient {
     /** What an {@code infra_reason} written by this client leads with, so the column greps cleanly. */
     static final String REASON = "source fetch: ";
 
+    /**
+     * The value of {@code fsm.source.mode} that selects this client.
+     *
+     * <p>Named here, beside the code that acts on it, so the refusal below can print the knob a reader
+     * has to change — and so the property's two spellings cannot drift apart.
+     */
+    public static final String MODE = "github";
+
     private final HttpTransport transport;
     private final URI apiBaseUrl;
     private final Duration timeout;
@@ -121,6 +130,21 @@ public class GithubSourceClient implements SourceClient {
 
     @Override
     public Source fetch(String repo, String path, String ref, String token) throws InfraFailure {
+        // THE SHAPE, BEFORE THE CALL, and this guard is the difference between a knob set wrongly and a
+        // backlog settled wrongly. /repos/{repo}/contents/{path} is built around owner/name and can
+        // address nothing else: hand it a GitLab clone URL or a nested group path and the answer is a
+        // 404 — which this client RETURNS as a fact about the marker. The reproducer is then told the
+        // file is gone, the marker retires as stale, and every file in the repository is exactly where
+        // it was. Nothing is red, nothing is retried, and the run is wrong from end to end.
+        //
+        // Refused as INFRA rather than as a finding: nothing was asked, so nothing was learned. The
+        // marker is requeued untouched and `max-infra-strikes` parks it with this reason on the row.
+        if (!CloneUrl.isOwnerName(repo)) {
+            throw new InfraFailure(REASON + "the GitHub contents API is addressed as owner/name and "
+                    + "cannot serve `" + repo + "`. This deployment is on fsm.source.mode="
+                    + MODE + "; set fsm.source.mode=checkout (the default) to read source out of the "
+                    + "checkout the prove already makes, which works for any host git clone can reach.");
+        }
         URI uri = contentsUri(repo, path, ref);
         HttpRequest request = HttpRequest.newBuilder(uri)
                 .timeout(timeout)

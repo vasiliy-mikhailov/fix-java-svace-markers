@@ -62,6 +62,7 @@ public final class LocalRunner implements AutoCloseable {
     private final Path jdkRoot;
     private final Path cache;
     private final Path mavenSettings;
+    private final String gitHost;
 
     /**
      * The production wiring: real processes, the image's JDKs, and this deployment's mirror.
@@ -71,6 +72,15 @@ public final class LocalRunner implements AutoCloseable {
      * @param mirrorUrl {@link MavenSettings#MIRROR_ENV}, or null/blank for Central
      */
     public static LocalRunner open(Path cache, String token, String mirrorUrl) {
+        return open(cache, token, mirrorUrl, CloneUrl.DEFAULT_HOST);
+    }
+
+    /**
+     * @param gitHost where a bare {@code owner/name} lives — {@link CloneUrl#DEFAULT_HOST} unless this
+     *                deployment analyses its own server. A full clone URL in the row overrides it per
+     *                repository; this is only what a SLUG means.
+     */
+    public static LocalRunner open(Path cache, String token, String mirrorUrl, String gitHost) {
         ensureCache(cache);
         Path settings;
         try {
@@ -82,15 +92,21 @@ public final class LocalRunner implements AutoCloseable {
             throw new UncheckedIOException("cannot write the Maven settings for " + mirrorUrl
                     + " under " + cache, e);
         }
-        return new LocalRunner(cache, token, Proc.EXEC, Path.of(Build.JDK_ROOT), settings);
+        return new LocalRunner(cache, token, Proc.EXEC, Path.of(Build.JDK_ROOT), settings, gitHost);
     }
 
     /** The seams, injectable — so the suite can prove all of this without git, Maven or a network. */
     LocalRunner(Path cache, String token, Proc.Exec exec, Path jdkRoot, Path mavenSettings) {
+        this(cache, token, exec, jdkRoot, mavenSettings, CloneUrl.DEFAULT_HOST);
+    }
+
+    LocalRunner(Path cache, String token, Proc.Exec exec, Path jdkRoot, Path mavenSettings,
+                String gitHost) {
         this.cache = cache;
         this.jdkRoot = jdkRoot;
         this.mavenSettings = mavenSettings;
-        this.workspace = new Workspace(cache, token, exec);
+        this.gitHost = gitHost == null || gitHost.isBlank() ? CloneUrl.DEFAULT_HOST : gitHost.trim();
+        this.workspace = new Workspace(cache, token, exec, this.gitHost);
         this.prove = new Prove(workspace, exec, mavenSettings);
         this.builds = Executors.newSingleThreadExecutor(
                 r -> Thread.ofPlatform().name("fsm-runner-build").unstarted(r));
@@ -104,6 +120,18 @@ public final class LocalRunner implements AutoCloseable {
     /** The mirror in force, if any — the other half of the same start-up line. */
     public Optional<Path> mavenSettings() {
         return Optional.ofNullable(mavenSettings);
+    }
+
+    /**
+     * Where a bare {@code owner/name} is cloned from. Exposed for the start-up line and so a test can
+     * prove the knob reached the object that acts on it.
+     *
+     * <p>It belongs in the banner for the same reason the cache and the mirror do: it changes which
+     * repository every slug in the backlog names, and getting it wrong produces a clone that fails
+     * against a host that exists — which reads as a broken repository rather than as a misconfiguration.
+     */
+    public String gitHost() {
+        return gitHost;
     }
 
     /**

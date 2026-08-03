@@ -90,15 +90,22 @@ failure.
 ## Reproducing it
 
 ```bash
-cd pipeline/deploy && cp .env.example .env    # QWEN_* and GITHUB_TOKEN
+cd pipeline/deploy && cp .env.example .env    # QWEN_* and GIT_TOKEN
 docker compose up -d
 
-curl -s -X POST localhost:8085/api/ingest -H 'Content-Type: application/json' -d '{
-  "csvPath": "/data/data/svace/webgoat-markers-356.csv",
-  "repo": "WebGoat/WebGoat", "branch": "main", "pathPrefix": "src/main/java/"}'
+# send the report in the request — this is the shape to copy for your own reports,
+# and it needs no access to any volume the container reads
+curl -s -X POST localhost:8085/api/ingest \
+  -F 'csv=@input-markers.csv' \
+  -F 'repo=WebGoat/WebGoat' -F 'branch=main' -F 'path_prefix=src/main/java/'
 
 curl -s -X POST localhost:8085/api/prove
 ```
+
+This example's report also ships in the repository, so it can equally be named by the path it already
+has inside the container — `-d '{"csvPath": "/data/data/svace/webgoat-markers-356.csv", …}'`. That only
+works because the file is on the `/data` mount; your own report will not be, which is why the upload
+above is the form worth learning.
 
 Roughly a day at ~10 markers/hour, most of it Maven. Watch it at `http://localhost:8085/`.
 

@@ -93,6 +93,9 @@ import tech.mikhailov.fsm.orch.model.Suspicion;
 @EnableConfigurationProperties(FsmProperties.class)
 public class BatchConfig {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(BatchConfig.class);
+
     /** The job name the launcher, the REST layer and the run history all use. */
     public static final String PROVE_JOB = "prove";
 
@@ -254,6 +257,25 @@ public class BatchConfig {
     @Bean
     public PrepProver.RepoLookup repoLookup(HttpTransport transport, FsmProperties properties) {
         return new GithubRepoLookup(transport, properties.github().apiBaseUrl());
+    }
+
+    /**
+     * WHERE A REPORT THE CLIENT SENT LANDS, so the ingest job can be given a path to it.
+     *
+     * <p>Declared here rather than beside the controller for the reason every other bean in this class
+     * is: it takes configuration, and a constructor call is the only spelling that shows exactly what it
+     * was given. Both {@code POST /api/ingest} routes and the request-size filter read the same bound
+     * out of it, so "how large may a report be" has one answer.
+     */
+    @Bean
+    public CsvSpool csvSpool(FsmProperties properties) {
+        FsmProperties.Ingest configured = properties.ingest();
+        CsvSpool spool = new CsvSpool(configured.maxCsvBytes(), configured.spoolDir());
+        // On the way up, because an operator debugging a refused upload wants both numbers and neither
+        // is discoverable from the endpoint.
+        log.info("[ingest] a report may be sent in the request: up to {} byte(s), spooled to {}",
+                spool.maxBytes(), spool.dir());
+        return spool;
     }
 
     /** The ingest job: one transactional tasklet — clear, parse, insert, or none of it. */

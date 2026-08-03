@@ -135,6 +135,33 @@ class IngestJobTest {
         assertThat(suspicions.find("stale")).isPresent();
     }
 
+    /**
+     * A REPORT THE CLIENT SENT, all the way to the backlog.
+     *
+     * <p>The two halves are proved separately — {@code CsvSpoolTest} that the bytes land in a file this
+     * process owns, {@code TheReportCanTravelInTheRequestTest} that the endpoint hands the job its path
+     * — and this is the join: the spooled file really is a {@code csvPath} the real ingest job parses
+     * into real rows. It matters because the transport was chosen on a claim about the JOB (a report
+     * does not fit in a job parameter, so it travels as a path), and a claim about the job is worth an
+     * assertion against the job.
+     */
+    @Test
+    void aReportSentInTheRequestBecomesTheBacklogLikeAnyOther(@TempDir Path dir) throws Exception {
+        String spooled = new CsvSpool(1 << 20, dir.toString()).spool(CSV).toString();
+
+        JobExecution execution = launch(spooled, "https://gitlab.company.internal/grp/proj.git",
+                "main");
+
+        assertThat(execution.getStatus()).isEqualTo(BatchStatus.COMPLETED);
+        List<Suspicion> queued = suspicions.findByStatus(SuspicionDao.STATUS_NEW);
+        assertThat(queued).hasSize(2);
+        // A FULL CLONE URL travels into the row untouched, which is what makes the backlog analysable
+        // by a runner pointed at any host. Nothing between here and `git clone` reinterprets it.
+        assertThat(queued).allSatisfy(s ->
+                assertThat(s.repo()).isEqualTo("https://gitlab.company.internal/grp/proj.git"));
+        assertThat(queued).extracting(Suspicion::svaceSeverity).containsExactly("Critical", "Minor");
+    }
+
     // ---- fixtures --------------------------------------------------------------------------------
 
     private JobExecution launch(String csvPath, String repo, String branch) throws Exception {

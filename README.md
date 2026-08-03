@@ -19,8 +19,8 @@ It is **all Java**. **One container**, one command.
 - **Docker** — that is the whole runtime requirement. You do not need Java or Maven to *run* it.
 - **JDK 25 + Maven** only if you want to build or test outside a container.
 - An **OpenAI-compatible model endpoint** (this deployment uses vLLM serving Qwen).
-- A **GitHub token** with read access to the repositories being analysed. It is only ever used to clone
-  and read; nothing is pushed.
+- A **git token** (`GIT_TOKEN`) with read access to the repositories being analysed — GitHub, GitLab,
+  Gitea, or a plain git server. It is only ever used to clone and read; nothing is pushed.
 
 ---
 
@@ -30,24 +30,35 @@ It is **all Java**. **One container**, one command.
 git clone git@github.com:vasiliy-mikhailov/fix-java-svace-markers.git
 cd fix-java-svace-markers/pipeline/deploy
 
-cp .env.example .env         # then fill in QWEN_* and GITHUB_TOKEN — see "Configuration" below
+cp .env.example .env         # then fill in QWEN_* and GIT_TOKEN — see "Configuration" below
 docker compose up -d --build # one image, one container
 
 curl -s localhost:8085/healthz          # -> ok
 ```
 
-Ingest a Svace report and start proving:
+Ingest a Svace report and start proving. **Send the report in the request** — you do not need access to
+any filesystem the container can see:
 
 ```bash
-curl -s -X POST localhost:8085/api/ingest -H 'Content-Type: application/json' -d '{
-  "csvPath": "/data/data/svace/webgoat-markers-356.csv",
-  "repo": "WebGoat/WebGoat",
-  "branch": "main",
-  "pathPrefix": "src/main/java/"
-}'
+curl -sS -X POST localhost:8085/api/ingest \
+  -F 'csv=@my-svace-report.csv' \
+  -F 'repo=WebGoat/WebGoat' \
+  -F 'branch=main' \
+  -F 'path_prefix=src/main/java/'
 
 curl -s -X POST localhost:8085/api/prove
 ```
+
+Three ways to hand over the report, all the same endpoint:
+
+| | when |
+|---|---|
+| `-F 'csv=@report.csv'` | **the default.** Streamed; never escaped into JSON; bounded at 32 MiB (`FSM_INGEST_MAX_CSV_BYTES`) |
+| `"csv_text": "Severity,Checker,…"` in the JSON body | a small report, or one you are pasting into a script |
+| `"csvPath": "/data/data/svace/x.csv"` | the report is already on the container's `/data` mount — what the bundled example uses |
+
+An oversized report is **refused with 413**, never truncated: half a report is a backlog silently
+missing markers.
 
 Then open **http://localhost:8085/** — the dashboard shows every marker, its verdict, the test that was
 written, the fix diff and the drafted PR body.
@@ -57,8 +68,50 @@ written, the fix diff and the drafted PR body.
 > (`docker save` / `docker load`, ~1.8 GB, no build and no source), and a registry. It also has the
 > model-endpoint and volume traps in one place.
 
-The report is a four-column CSV: `Severity,Checker,File,Line`. Put yours under `data/svace/`; the
-container reads it from `/data/data/svace/`.
+The report is a four-column CSV: `Severity,Checker,File,Line`.
+
+---
+
+## GitLab, Gitea, or a plain git server
+
+Anything `git clone` can reach. Put the **clone URL** in `repo` and name the branch:
+
+```bash
+curl -sS -X POST localhost:8085/api/ingest \
+  -F 'csv=@svace-report.csv' \
+  -F 'repo=https://gitlab.company.internal/platform/payments-api.git' \
+  -F 'branch=main' \
+  -F 'path_prefix=/builds/gitlab/platform/payments-api/'
+
+curl -s -X POST localhost:8085/api/prove
+```
+
+`GIT_TOKEN` is the credential for that host. It is handed to git through a one-shot credential helper
+in the environment — never in the URL, never written into a checkout's `.git/config`, never on a
+command line. A `repo` that arrives *with* a credential in it is refused for exactly that reason.
+
+`repo` accepts:
+
+| | means |
+|---|---|
+| `owner/name` | that repository on `FSM_GIT_HOST` (default `github.com`) |
+| `group/sub/project` | a GitLab subgroup path on `FSM_GIT_HOST` |
+| `https://gitlab.company/grp/proj.git` | that URL, verbatim |
+| `ssh://git@gitlab.company/grp/proj.git`, `git@gitlab.company:grp/proj.git` | that URL, verbatim |
+| `gitlab.company/grp/proj` | the same, over https |
+
+If your Guild's server is the normal case, set `FSM_GIT_HOST=gitlab.company.internal` once and keep
+typing `group/project`.
+
+**`branch` is required whenever `repo` is not `owner/name`,** and the request is refused without one.
+A blank branch means "resolve the repository's default branch per marker", and that lookup is the
+GitHub API — for any other host it can only fail, one marker at a time, hours into a run.
+
+**Source is read out of the checkout the prove already makes** (`FSM_SOURCE_MODE=checkout`, the
+default), so no host-specific API is involved at all and no API rate limit is spent. `FSM_SOURCE_MODE=github`
+keeps the GitHub contents API for a deployment that wants it; it needs an `owner/name` repo and refuses
+anything else loudly rather than answering 404s that would be recorded as *"the marker's file was
+deleted from the repository"*.
 
 ---
 
@@ -148,7 +201,7 @@ Set `FSM_PROVE_SCHEDULE=true` to have it drain on a timer instead of on demand.
 
 ```bash
 cd pipeline
-mvn -B test            # 1658 tests across engine (901), orchestrator (569), runner (188)
+mvn -B test            # 1751 tests across engine (901), orchestrator (634), runner (216)
 ```
 
 The **browser tests are deliberately not in that run** — they need the browsers that ship in the
@@ -172,7 +225,10 @@ Everything is environment variables; nothing sensitive is in a yaml file. Copy `
 | variable | what it is |
 |---|---|
 | `QWEN_BASE_URL` `QWEN_API_KEY` `QWEN_MODEL` | the OpenAI-compatible model endpoint |
-| `GITHUB_TOKEN` | clone/read access to the analysed repositories |
+| `GIT_TOKEN` | clone/read access to the analysed repositories, on any git host. `GITHUB_TOKEN` is still read when it is unset |
+| `FSM_GIT_HOST` | where a bare `owner/name` lives. Default `github.com`; a full clone URL in `repo` overrides it per repository |
+| `FSM_SOURCE_MODE` | `checkout` (default) reads a marker's source from the clone the prove makes — any host; `github` uses the GitHub contents API |
+| `FSM_INGEST_MAX_CSV_BYTES` | the bound on a report sent in the request. 32 MiB. Refused, never truncated |
 | `FSM_DB_PATH` | H2 location. **Must be on a mounted volume** — see below |
 | `CACHE` | where the checkouts and build workspaces go. **Must be on a mounted volume**, same argument |
 | `FSM_PROVE_SCHEDULE` | `true` to drain on a timer, `false` for REST-only |
@@ -255,7 +311,7 @@ pipeline/
   deploy/docker-compose.override.yml.example  a host's private wiring, uncommitted
 ```
 
-Three Maven modules, one image. `runner` stays a module of its own — its 188 tests are the specification
+Three Maven modules, one image. `runner` stays a module of its own — its 216 tests are the specification
 of the one distinction the whole pipeline rests on (did the test RUN and fail, or did it never run?), and
 it keeps a zero-third-party-dependency policy that a merge into `orchestrator` would quietly break.
 

@@ -44,7 +44,7 @@ mvn -pl orchestrator spring-boot:run
 # http://localhost:8085  — the dashboard, /api/state, /healthz
 ```
 
-With no `QWEN_*` and no `GITHUB_TOKEN` it starts, warns which variables are missing **by name**, and
+With no `QWEN_*` and no `GIT_TOKEN` it starts, warns which variables are missing **by name**, and
 fails closed on anything that needs them. The database is `orchestrator/data/fsm.mv.db`
 (gitignored) — see [the H2 path](#the-h2-path-warning) before you deploy that default anywhere.
 
@@ -52,7 +52,7 @@ fails closed on anything that needs them. The database is `orchestrator/data/fsm
 
 ```bash
 cd pipeline/deploy
-cp .env.example .env                 # then fill in QWEN_* and GITHUB_TOKEN
+cp .env.example .env                 # then fill in QWEN_* and GIT_TOKEN
 docker compose up -d --build         # ONE service, `fsm` — this module, with engine and runner inside it
 docker compose logs -f fsm
 ```
@@ -191,7 +191,7 @@ Set them as environment variables in compose, or as `--fsm.…=` arguments local
 | Variable | Required | Unset means |
 |---|---|---|
 | `QWEN_BASE_URL`, `QWEN_API_KEY`, `QWEN_MODEL` | yes | every model call fails as `undefined/chat/completions`; named in a WARN on start-up |
-| `GITHUB_TOKEN` | yes | 60 requests/hour, no private repos — which fails as markers recorded against files nobody could read |
+| `GIT_TOKEN` (`GITHUB_TOKEN` is read when it is unset) | yes | clones and reads run anonymously: no private repositories at all, which fails as markers recorded against files nobody could read |
 | `SVACE_BASE_URL`, `SVACE_TOKEN` | no | `Verdict` argues from the code instead of failing |
 
 `Secrets` is the only reader of the process environment, and it deliberately does not go through

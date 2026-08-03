@@ -37,7 +37,98 @@ import tech.mikhailov.fsm.orch.feedback.FeedbackStore;
 public record FsmProperties(@DefaultValue Prove prove, @DefaultValue Github github,
                             @DefaultValue Runner runner, @DefaultValue Llm llm,
                             @DefaultValue Prompts prompts, @DefaultValue Feedback feedback,
-                            @DefaultValue Comments comments) {
+                            @DefaultValue Comments comments, @DefaultValue Source source,
+                            @DefaultValue Git git, @DefaultValue Ingest ingest) {
+
+    /**
+     * WHERE THE PROVE READS THE MARKER'S SOURCE FROM. Read by {@code ClientConfig}, which builds the
+     * {@link tech.mikhailov.fsm.orch.client.SourceClient} from it.
+     *
+     * <p>THE DEFAULT MOVED, AND THAT IS THE POINT OF THE KNOB. It was the GitHub contents API, always,
+     * with no alternative — and that one call was the whole of this pipeline's dependence on GitHub:
+     * {@code fsm.github.api-base-url} moves the base URL, but a GitLab does not serve
+     * {@code /repos/{repo}/contents/{file}} at any URL, so the knob cannot reach one. Reading from the
+     * checkout the prove ALREADY makes costs nothing (the clone happens either way), spends no API rate
+     * limit, and shows the reproducer the same bytes the dashboard shows a reviewer.
+     *
+     * @param mode {@code checkout} — one file out of the prover's read-only clone, through the same
+     *             {@link tech.mikhailov.fsm.orch.client.SourceReader} the dashboard's source window uses.
+     *             The default, and the only mode that works for a host that is not GitHub.
+     *             <p>{@code github} — {@code GET {api}/repos/{repo}/contents/{file}?ref={branch}}, which
+     *             is what every deployment ran before this setting existed. Kept because it answers for
+     *             a repository this process never has to clone — under {@code fsm.runner.mode=http} the
+     *             checkout is in another container, so a source read costs a hop and, on a repository's
+     *             first marker, a cold clone before the reply. It REFUSES loudly for a repo that is not
+     *             {@code owner/name}: see
+     *             {@link tech.mikhailov.fsm.orch.client.GithubSourceClient#fetch}, where the alternative
+     *             is a 404 recorded as "the marker's file was deleted".
+     */
+    public record Source(@DefaultValue(Source.CHECKOUT) String mode) {
+
+        /** Out of the clone the prove already makes. Works for any host, and is the default. */
+        public static final String CHECKOUT = "checkout";
+
+        /** The GitHub contents API. @see tech.mikhailov.fsm.orch.client.GithubSourceClient#MODE */
+        public static final String GITHUB = tech.mikhailov.fsm.orch.client.GithubSourceClient.MODE;
+
+        /**
+         * Refused at BINDING time, exactly as {@link Runner#mode} is: a typo is a process that will not
+         * start with the value printed, rather than a context silently missing its {@code SourceClient}.
+         */
+        public Source {
+            if (!CHECKOUT.equals(mode) && !GITHUB.equals(mode)) {
+                throw new IllegalArgumentException("fsm.source.mode must be '" + CHECKOUT + "' (source "
+                        + "is read out of the checkout the prove makes, works for any git host, and is "
+                        + "the default) or '" + GITHUB + "' (the GitHub contents API, which needs an "
+                        + "owner/name repo), not '" + mode + "'");
+            }
+        }
+
+        /** @see #CHECKOUT */
+        public boolean isCheckout() {
+            return CHECKOUT.equals(mode);
+        }
+    }
+
+    /**
+     * THE GIT HOST a bare {@code owner/name} lives on. Read by {@code ClientConfig}, which hands it to
+     * the in-process {@link tech.mikhailov.fsm.runner.LocalRunner}; under {@code fsm.runner.mode=http}
+     * the runner container reads {@link tech.mikhailov.fsm.runner.CloneUrl#HOST_ENV} from its own
+     * environment instead, because the clone happens there.
+     *
+     * <p>It is only what a SLUG means. A marker whose {@code repo} is a full clone URL —
+     * {@code https://gitlab.company/grp/proj.git}, {@code ssh://git@host/grp/proj.git} — names its own
+     * host and ignores this entirely, which is what lets one backlog span two servers.
+     *
+     * @param host stays {@code github.com}, and that is compatibility rather than preference: the
+     *             bundled example, the deployed runbooks and every curl in the README send a slug.
+     */
+    public record Git(@DefaultValue(tech.mikhailov.fsm.runner.CloneUrl.DEFAULT_HOST) String host) {
+    }
+
+    /**
+     * THE SVACE REPORT ON ITS WAY IN. Read by {@code CsvSpool}, which is what
+     * {@code POST /api/ingest} hands an uploaded report to.
+     *
+     * <p>A REPORT IS UNTRUSTED INPUT and arrives over a port with no authentication in front of it, so
+     * the size is bounded before any of it is kept. The bound is enforced in two places for two
+     * different attacks — {@code IngestSizeLimit} caps the REQUEST so a body is never buffered whole,
+     * and {@code CsvSpool} caps what is WRITTEN so a chunked upload cannot fill the disk.
+     *
+     * @param maxCsvBytes 32 MiB. A 356-row WebGoat report is 30 kB; a six-figure-marker report from a
+     *                    real monorepo is a few tens of MB, which is the number this is picked for. It
+     *                    is a REFUSAL and not a truncation: half a report ingests as a backlog that
+     *                    silently omits markers, which is the one outcome an operator cannot see.
+     * @param spoolDir    where an uploaded report is written while the job reads it. Empty means
+     *                    {@code java.io.tmpdir} + {@code /fsm-ingest}, which is deliberately NOT a mount:
+     *                    the whole point of the upload is that a client no longer needs write access to
+     *                    a volume this container shares, so requiring a new one would put the gap back.
+     *                    A container's temp directory is writable by definition, the file lives for the
+     *                    seconds an ingest takes, and stale ones are swept by age on the next upload.
+     */
+    public record Ingest(@DefaultValue("33554432") long maxCsvBytes,
+                         @DefaultValue("") String spoolDir) {
+    }
 
     /**
      * THE DURABLE COPY OF WHAT PEOPLE TYPED. Read by

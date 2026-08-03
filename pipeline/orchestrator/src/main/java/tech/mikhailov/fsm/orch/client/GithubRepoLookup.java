@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import tech.mikhailov.fsm.lib.Llm;
 import tech.mikhailov.fsm.nodes.PrepProver;
+import tech.mikhailov.fsm.runner.CloneUrl;
 
 /**
  * The default-branch lookup {@code Prep prover} asks its caller to make.
@@ -54,6 +55,23 @@ public class GithubRepoLookup implements PrepProver.RepoLookup {
 
     @Override
     public Object fetch(PrepProver.LookupRequest request) {
+        // WHAT THIS LOOKUP CANNOT ANSWER, said before it is asked. `Prep prover` builds
+        // https://api.github.com/repos/<repo> as a literal, so a repo that is not owner/name — a GitLab
+        // clone URL, a nested group path — produces a URL no server serves. Left to fail on its own it
+        // arrives on the row as "no default_branch returned", which reads as a repository with no
+        // default branch: the reader goes and looks at a repository that is fine.
+        //
+        // The FIX is in the ingest body, so that is what the message names. It is a LookupFailed and not
+        // an InfraFailure for the reason this class's comment gives: `Prep prover` records the cause in
+        // `branch_error`, RecordOutcome turns that into infra_error with the reason attached, and the
+        // marker is retried with a row a human can read. Throwing would discard exactly that text.
+        String repo = repoOf(request.url());
+        if (!CloneUrl.isOwnerName(repo)) {
+            throw new PrepProver.LookupFailed(new IllegalStateException(
+                    "the default-branch lookup is the GitHub API and is addressed as owner/name, so it "
+                    + "cannot answer for `" + repo + "`. Send `branch` in the ingest body for this "
+                    + "repository — /api/ingest requires one for any repo that is not owner/name."));
+        }
         Map<String, Object> options = new LinkedHashMap<>();
         options.put("url", url(request.url()));
         // The node's own headers, unchanged: the User-Agent GitHub's abuse heuristics know, the
@@ -78,6 +96,20 @@ public class GithubRepoLookup implements PrepProver.RepoLookup {
             // throw away the half the other branch reads.
             throw new PrepProver.LookupFailed(e);
         }
+    }
+
+    /**
+     * The {@code repo} the node put into its URL, read back out.
+     *
+     * <p>Off the URL rather than off the suspicion row, because the row is not passed to this seam at
+     * all — {@link PrepProver.RepoLookup} is handed a fully-built request, which is what keeps the node
+     * a pure function. The prefix is {@link #ENGINE_API_BASE}, matched exactly, for the same reason
+     * {@link #url} matches it exactly: a pattern would silently reinterpret a URL nobody recognised.
+     */
+    private static String repoOf(String engineUrl) {
+        String prefix = ENGINE_API_BASE + "/repos/";
+        return engineUrl != null && engineUrl.startsWith(prefix)
+                ? engineUrl.substring(prefix.length()) : "";
     }
 
     /** The node's URL, re-pointed at the configured API root when there is one. */

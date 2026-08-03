@@ -119,15 +119,44 @@ services:
       # and that line is worth reading: this pipeline fails CLOSED, so a missing model endpoint produces
       # a green run in which every marker settles with a downgraded verdict nobody made.
       #
-      # GITHUB_TOKEN is the clone credential. It never reaches a command line or a config file:
+      # GIT_TOKEN is the clone credential. It never reaches a command line or a config file:
       # Workspace hands it to git through a credential helper in the environment, so it is not written
       # into any checkout's .git/config — which is what stops it outliving a rotation on the cache
-      # volume. Proc strips it — and QWEN_API_KEY, SVACE_TOKEN and FSM_DB_PASSWORD — out of the
-      # environment of every build this process starts.
+      # volume. Proc strips it — and GITHUB_TOKEN, QWEN_API_KEY, SVACE_TOKEN and FSM_DB_PASSWORD — out
+      # of the environment of every build this process starts.
+      #
+      # BOTH NAMES TRAVEL. GITHUB_TOKEN became a misleading name the moment this pipeline started
+      # cloning gitlab.company.internal, and it is the credential for whichever host the marker's row
+      # names. It is still read as a fallback because every deployed .env has one; set either.
       - QWEN_BASE_URL=${QWEN_BASE_URL}
       - QWEN_API_KEY=${QWEN_API_KEY}
       - QWEN_MODEL=${QWEN_MODEL}
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GIT_TOKEN=${GIT_TOKEN:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      # WHERE A BARE owner/name IS CLONED FROM, and the one line a Java Guild with their own GitLab
+      # sets. Empty means github.com, which is what the bundled example and every runbook send.
+      #
+      #   FSM_GIT_HOST=gitlab.company.internal docker compose up -d
+      #
+      # A marker whose `repo` is a full clone URL names its own host and ignores this, so one backlog
+      # can span two servers. It is listed here for the reason FSM_RUNNER_URL is: a variable Compose is
+      # not told to pass reaches Compose's own interpolation and stops there, and the failure would be
+      # a stack that starts, clones github.com/<their-group>/<their-project> — a WELL-FORMED URL and a
+      # 404 — and files every marker as an infrastructure failure hours into the run.
+      - FSM_GIT_HOST=${FSM_GIT_HOST:-}
+      # WHERE THE PROVE READS SOURCE FROM. `checkout` (the default) reads it out of the clone the
+      # prove already makes and works for any host git can reach; `github` is the contents API, which
+      # needs an owner/name repo and refuses anything else loudly rather than answering 404s that
+      # would be recorded as "the marker's file was deleted".
+      - FSM_SOURCE_MODE=${FSM_SOURCE_MODE:-}
+      # THE REPORT CAN NOW TRAVEL IN THE REQUEST — `csv_text` in the JSON body, or -F 'csv=@report.csv'
+      # — so a client no longer needs write access to the /data mount below to ingest anything. It is
+      # untrusted input, bounded at 32 MiB unless this says otherwise, and REFUSED rather than
+      # truncated. The spool directory is the container's own temp unless FSM_INGEST_SPOOL_DIR names
+      # one: deliberately not a mount, because demanding a new volume to hold the upload would put back
+      # exactly the requirement the upload removes.
+      - FSM_INGEST_MAX_CSV_BYTES=${FSM_INGEST_MAX_CSV_BYTES:-}
+      - FSM_INGEST_SPOOL_DIR=${FSM_INGEST_SPOOL_DIR:-}
       # Optional: with no Svace endpoint, Verdict argues from the code instead of failing.
       - SVACE_BASE_URL=${SVACE_BASE_URL:-}
       - SVACE_TOKEN=${SVACE_TOKEN:-}

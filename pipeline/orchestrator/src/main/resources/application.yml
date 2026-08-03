@@ -78,6 +78,18 @@ spring:
       # Both jobs are started deliberately: by the schedule below or by POST /api/prove, /api/ingest.
       enabled: false
 
+  servlet:
+    multipart:
+      # THE MULTIPART HALF OF THE INGEST BOUND, wired to the SAME variable fsm.ingest.max-csv-bytes
+      # reads — one number, three enforcement points (the container, the request filter and the spool),
+      # because a report is untrusted input arriving on a port with no authentication in front of it.
+      #
+      # Bare numbers are BYTES. Exceeding this is refused by the container before any controller method
+      # runs; JobsController turns that into the same 413 the other two produce, rather than the 500 and
+      # stack trace it would otherwise be.
+      max-file-size: ${FSM_INGEST_MAX_CSV_BYTES:33554432}
+      max-request-size: ${FSM_INGEST_MAX_CSV_BYTES:33554432}
+
   h2:
     console:
       # Off by default — this is a service, not a shell. There is no authentication in front of it and
@@ -191,9 +203,61 @@ fsm:
     # a second POST would be another clone plus two builds on top of the ones already going.
     connect-attempts: ${FSM_RUNNER_CONNECT_ATTEMPTS:3}
     connect-retry-delay-ms: ${FSM_RUNNER_CONNECT_RETRY_MS:3000}
+  git:
+    # WHERE A BARE owner/name LIVES, and the one line a Java Guild with their own GitLab changes.
+    #
+    #   FSM_GIT_HOST=gitlab.company.internal
+    #
+    # and `grp/proj` in an ingest body means gitlab.company.internal/grp/proj. It is ONLY what a slug
+    # means: a marker whose `repo` is a full clone URL — https://gitlab.company/grp/proj.git,
+    # ssh://git@host/grp/proj.git, or a bare host/group/project — names its own host and ignores this,
+    # which is what lets one backlog span two servers.
+    #
+    # The default stays github.com so the bundled example, every runbook and every curl in the README
+    # keep working unchanged.
+    #
+    # THE CREDENTIAL FOR IT IS GIT_TOKEN (GITHUB_TOKEN is still read as a fallback), and it never
+    # reaches a URL: tech.mikhailov.fsm.runner.Workspace hands it to git through a one-shot credential
+    # helper in the environment, so it is not written into any checkout's .git/config. A `repo` that
+    # arrives WITH a credential in it is refused for exactly that reason — see
+    # tech.mikhailov.fsm.runner.CloneUrl.
+    host: ${FSM_GIT_HOST:github.com}
+  source:
+    # WHERE THE PROVE READS THE MARKER'S SOURCE FROM, and the knob that used not to exist.
+    #
+    #   checkout (default) — one file out of the read-only clone the prove ALREADY makes, through the
+    #                        same route the dashboard's source window uses. Works for any host `git
+    #                        clone` can reach, costs no API rate limit, and shows the reproducer the
+    #                        exact bytes the reviewer sees.
+    #   github             — GET {fsm.github.api-base-url}/repos/{repo}/contents/{file}?ref={branch},
+    #                        which is what every deployment ran before this setting existed. It needs an
+    #                        owner/name repo and REFUSES anything else loudly, because the alternative is
+    #                        a 404 recorded as "the marker's file was deleted from the repository".
+    #
+    # An unknown value REFUSES TO START, naming both, rather than leaving the context without a
+    # SourceClient bean. Which one a deployment got is on the `[source]` line in the boot log.
+    mode: ${FSM_SOURCE_MODE:checkout}
+  ingest:
+    # THE SVACE REPORT ON ITS WAY IN, and the bound on it.
+    #
+    # A report is UNTRUSTED INPUT arriving over a port with no authentication in front of it, so the
+    # size is capped before any of it is kept — once on the REQUEST (nothing is ever buffered whole) and
+    # once on what is WRITTEN (a chunked upload cannot fill the disk). 32 MiB: a 356-row WebGoat report
+    # is 30 kB, and a six-figure-marker report off a real monorepo is a few tens of MB.
+    #
+    # It REFUSES rather than truncates. Half a report ingests as a backlog that silently omits markers,
+    # which is the one outcome an operator cannot see.
+    max-csv-bytes: ${FSM_INGEST_MAX_CSV_BYTES:33554432}
+    # WHERE AN UPLOADED REPORT IS WRITTEN while the ingest job reads it. Empty means the container's own
+    # temp directory, and that is deliberate: the whole point of accepting the report in the request is
+    # that a client no longer needs write access to a volume this container shares, so demanding a new
+    # mount for it would put the gap straight back. The file lives for the seconds an ingest takes and
+    # stale ones are swept by age on the next upload.
+    spool-dir: ${FSM_INGEST_SPOOL_DIR:}
   github:
-    # Only an enterprise install or a test moves this. It reaches BOTH callers of the contents API —
-    # the source fetch and Prep prover's default-branch lookup.
+    # Only an enterprise install or a test moves this, and it is read only under fsm.source.mode=github.
+    # It reaches BOTH callers of the contents API — the source fetch and Prep prover's default-branch
+    # lookup.
     api-base-url: ${FSM_GITHUB_API:https://api.github.com}
     # Timeout, tries and the wait between them, for the source fetch. A rate limit or a single 502 must
     # not cost a marker its place in the queue; a 401/403/404 is never retried, because none of those

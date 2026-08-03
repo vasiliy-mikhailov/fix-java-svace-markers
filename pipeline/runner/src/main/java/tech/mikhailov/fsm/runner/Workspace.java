@@ -68,6 +68,23 @@ final class Workspace {
     static final int MAX_CONTENT = 80_000;
 
     /**
+     * The most a caller may ask for with {@code max_content}, and why the knob exists at all.
+     *
+     * <p>{@link #MAX_CONTENT} is a REVIEWER'S window — a screenful either side of one line. The prove's
+     * source fetch reads through this same route now that the pipeline no longer needs a host-specific
+     * contents API, and a screenful is the wrong answer for it: {@code BuildReproduceInput} re-anchors
+     * the marker against whatever comes back, so an 80 kB slice of a 200 kB file puts the marker's line
+     * past the end of the source and the marker is written up as drift — a fabricated finding about
+     * somebody else's repository. So a caller may ask for more.
+     *
+     * <p>1 MB, matching what the GitHub contents API itself serves before it stops inlining content, so
+     * the two source paths cannot disagree about which files are too big. And it is a CEILING because the
+     * reply is assembled in memory on a route that is deliberately not serialised: "as much as you like"
+     * is a request any caller could repeat until the heap is gone.
+     */
+    static final int MAX_CONTENT_CEILING = 1_000_000;
+
+    /**
      * Where the token is handed to git — an environment variable of this process's own choosing, read by
      * {@link #CREDENTIAL_HELPER} and written nowhere.
      *
@@ -106,6 +123,15 @@ final class Workspace {
     private final Proc.Exec exec;
 
     /**
+     * Where a bare {@code owner/name} lives — {@link CloneUrl#DEFAULT_HOST} unless a deployment moved it.
+     *
+     * <p>A FIELD and not a constant, which is the second gap in one word: the host used to be spelled
+     * into the clone URL, so a Guild with gitlab.company.internal could not point this pipeline at their
+     * code with any setting at all.
+     */
+    private final String gitHost;
+
+    /**
      * base -> when its clone last failed. ConcurrentHashMap because {@code /fs/read_file} is NOT
      * serialised: it only reads, and two reviewers opening two markers really do arrive at once.
      */
@@ -115,14 +141,27 @@ final class Workspace {
     private final LongSupplier clock;
 
     Workspace(Path cache, String token, Proc.Exec exec) {
-        this(cache, token, exec, System::currentTimeMillis);
+        this(cache, token, exec, CloneUrl.DEFAULT_HOST);
+    }
+
+    Workspace(Path cache, String token, Proc.Exec exec, String gitHost) {
+        this(cache, token, exec, gitHost, System::currentTimeMillis);
     }
 
     Workspace(Path cache, String token, Proc.Exec exec, LongSupplier clock) {
+        this(cache, token, exec, CloneUrl.DEFAULT_HOST, clock);
+    }
+
+    Workspace(Path cache, String token, Proc.Exec exec, String gitHost, LongSupplier clock) {
         this.cache = cache;
         this.fsCache = cache.resolve("fs");
-        this.token = token;
+        // NULL IS NOT EMPTY, and it arrives here: an unset variable reads back as null through
+        // Secrets, and every clone on a tokenless deployment died in gitEnv with a
+        // NullPointerException that named nothing an operator could act on. Normalised once, here,
+        // because "no credential" is one state and the rest of this class tests it with isEmpty().
+        this.token = token == null ? "" : token;
         this.exec = exec;
+        this.gitHost = gitHost == null || gitHost.isBlank() ? CloneUrl.DEFAULT_HOST : gitHost.trim();
         this.clock = clock;
     }
 
@@ -146,11 +185,17 @@ final class Workspace {
     }
 
     /**
-     * The clone URL. NO CREDENTIAL IN IT — see {@link #CREDENTIAL_HELPER} for where the token goes
-     * instead, and why a URL is the one place it must not be.
+     * The clone URL, or the reason this {@code repo} is not one.
+     *
+     * <p>NO CREDENTIAL IN IT — see {@link #CREDENTIAL_HELPER} for where the token goes instead, and why a
+     * URL is the one place it must not be. {@link CloneUrl} refuses a URL that carries one, so that
+     * property cannot be undone from the outside either.
+     *
+     * <p>It used to be {@code "https://github.com/" + repo + ".git"}, one line, and that line was the
+     * whole reason this pipeline could analyse GitHub and nothing else.
      */
-    String cloneUrl(String repo) {
-        return "https://github.com/" + repo + ".git";
+    CloneUrl.Resolved cloneUrl(String repo) {
+        return CloneUrl.of(repo, gitHost);
     }
 
     /**
@@ -215,6 +260,15 @@ final class Workspace {
      * a workspace that stays broken is the rest of the run.
      */
     Prepared prepareWs(String repo, String branch) {
+        // FIRST, and before any directory is touched or any process is started. A repo that is not a
+        // repository is not a clone failure: nothing was asked of any host, so "clone failed" would send
+        // a reviewer to the network and the token for a value somebody typed. And `git clone
+        // --upload-pack=<command>` RUNS that command, so a guard that ran after the exec would be no
+        // guard at all.
+        CloneUrl.Resolved url = cloneUrl(repo);
+        if (!url.ok()) {
+            return new Prepared(null, url.error());
+        }
         Path base = cache.resolve(keyFor(repo, branch));
         String unclean = null;
         if (Files.exists(base.resolve(".git"))) {
@@ -243,7 +297,7 @@ final class Workspace {
             }
         }
         Proc.Result r = exec.run(
-                List.of("git", "clone", "--depth", "1", "--branch", branch, cloneUrl(repo),
+                List.of("git", "clone", "--depth", "1", "--branch", branch, url.url(),
                         base.toString()),
                 null, gitEnv(), WS_CLONE_TIMEOUT_MS);
         if (r.code() != 0) {
@@ -268,6 +322,11 @@ final class Workspace {
      * per-key mutex here and nothing else changes.
      */
     Path prepareFs(String repo, String branch) {
+        // Same guard as prepareWs and for the same reason; the caller turns null into a reason of its
+        // own, which is why this one does not have to carry the text.
+        if (!cloneUrl(repo).ok()) {
+            return null;
+        }
         Path base = fsCache.resolve(keyFor(repo, branch));
         if (Files.exists(base.resolve(FS_DONE))) {
             return base;
@@ -292,8 +351,8 @@ final class Workspace {
             Path tmp = base.resolveSibling(base.getFileName() + ".tmp");
             deleteTree(tmp);
             Proc.Result r = exec.run(
-                    List.of("git", "clone", "--depth", "1", "--branch", branch, cloneUrl(repo),
-                            tmp.toString()),
+                    List.of("git", "clone", "--depth", "1", "--branch", branch,
+                            cloneUrl(repo).url(), tmp.toString()),
                     null, gitEnv(), FS_CLONE_TIMEOUT_MS);
             if (r.code() != 0) {
                 deleteTree(tmp);
@@ -328,6 +387,14 @@ final class Workspace {
     Map<String, Object> readFile(Object body) {
         String repo = Text.field(body, "repo");
         String branch = Text.orDefault(Json.get(body, "branch"), "main");
+        // Answered SEPARATELY from "clone failed", because they send a reader to different places: one
+        // is the network or the token, the other is a value somebody typed into the ingest body. The
+        // prove-time source fetch reads this route too and turns the two into different outcomes — a
+        // refused repo is never a file that has gone missing.
+        CloneUrl.Resolved url = cloneUrl(repo);
+        if (!url.ok()) {
+            return error(url.error());
+        }
         Path base = prepareFs(repo, branch);
         if (base == null) {
             return error("clone failed");
@@ -394,12 +461,30 @@ final class Workspace {
             return error("file not found: " + Text.field(body, "path"));
         }
 
+        int cap = capFor(Json.get(body, "max_content"));
         Map<String, Object> out = new LinkedHashMap<>();
         // The request's own value, uncoerced: the caller matches the reply to the file it asked for.
         out.put("path", requested);
-        out.put("content", content.length() > MAX_CONTENT ? content.substring(0, MAX_CONTENT) : content);
-        out.put("truncated", content.length() > MAX_CONTENT);
+        out.put("content", content.length() > cap ? content.substring(0, cap) : content);
+        out.put("truncated", content.length() > cap);
         return out;
+    }
+
+    /**
+     * How much of the file this reply may carry.
+     *
+     * <p>Absent, unparseable or non-positive all mean {@link #MAX_CONTENT} — the dashboard's window, which
+     * is what every caller got before this parameter existed and what a caller sending nothing must keep
+     * getting. Anything above {@link #MAX_CONTENT_CEILING} is clamped rather than refused: the request is
+     * still answerable, and a refusal here would reach the source window as "source unavailable" for a
+     * file that is perfectly readable.
+     */
+    private static int capFor(Object requested) {
+        double asked = Js.parseInt10(Js.orEmptyString(requested).trim());
+        if (Double.isNaN(asked) || asked <= 0) {
+            return MAX_CONTENT;
+        }
+        return (int) Math.min(asked, MAX_CONTENT_CEILING);
     }
 
     /**

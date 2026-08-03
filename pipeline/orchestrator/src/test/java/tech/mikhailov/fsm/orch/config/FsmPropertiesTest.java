@@ -1,6 +1,7 @@
 package tech.mikhailov.fsm.orch.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.util.List;
@@ -15,6 +16,7 @@ import org.springframework.context.annotation.ClassPathScanningCandidateComponen
 import org.springframework.core.type.filter.AnnotationTypeFilter;
 import org.springframework.test.context.ActiveProfiles;
 import tech.mikhailov.fsm.nodes.PrepProver;
+import tech.mikhailov.fsm.orch.batch.CsvSpool;
 import tech.mikhailov.fsm.orch.batch.ProveProcessor;
 import tech.mikhailov.fsm.orch.batch.SuspicionReader;
 import tech.mikhailov.fsm.orch.client.GithubRepoLookup;
@@ -25,7 +27,9 @@ import tech.mikhailov.fsm.orch.client.LlmClient;
 import tech.mikhailov.fsm.orch.client.RunnerClient;
 import tech.mikhailov.fsm.orch.client.SourceClient;
 import tech.mikhailov.fsm.orch.feedback.FeedbackStore;
+import tech.mikhailov.fsm.orch.web.IngestSizeLimit;
 import tech.mikhailov.fsm.orch.web.SourceWindowService;
+import tech.mikhailov.fsm.runner.CloneUrl;
 
 /**
  * A DOCUMENTED KNOB MUST NOT LIE.
@@ -52,7 +56,13 @@ import tech.mikhailov.fsm.orch.web.SourceWindowService;
         "fsm.prove.min-attempts=5",
         "fsm.prove.max-markers-per-run=7",
         "fsm.prove.verdict-enabled=false",
+        // github, because the four knobs below belong to THAT client — under the default `checkout`
+        // there is no API root, no timeout and nothing for them to reach. Which client each mode
+        // produces is pinned by TheSourceFetchIsChosenByConfigurationTest.
+        "fsm.source.mode=github",
         "fsm.github.api-base-url=https://github.example.test/api/v3",
+        "fsm.ingest.max-csv-bytes=4242",
+        "fsm.ingest.spool-dir=/tmp/fsm-properties-test/spool",
         "fsm.github.timeout-ms=11000",
         "fsm.github.attempts=6",
         "fsm.github.retry-delay-ms=1500",
@@ -96,6 +106,12 @@ class FsmPropertiesTest {
 
     @Autowired
     private FeedbackStore feedback;
+
+    @Autowired
+    private CsvSpool spool;
+
+    @Autowired
+    private IngestSizeLimit requestLimit;
 
     // ---- the prefix ------------------------------------------------------------------------------
 
@@ -182,6 +198,21 @@ class FsmPropertiesTest {
     }
 
     @Test
+    void theIngestKnobsReachBothPlacesTheReportIsBounded() {
+        // ONE number, TWO enforcement points, and they have to be the same number: the spool caps what
+        // is WRITTEN and the filter caps the REQUEST, so a deployment that raised one and not the other
+        // would refuse reports it says it accepts — or accept into the heap what it refuses onto disk.
+        assertThat(spool.maxBytes()).isEqualTo(4242L);
+        assertThat(requestLimit.maxRequestBytes())
+                .as("the request bound is the report bound plus room for the JSON envelope")
+                .isEqualTo(4242L + IngestSizeLimit.ENVELOPE);
+        // The directory, which fails silently if it never arrives: the default is under
+        // java.io.tmpdir, so a spool that ignored this setting would still work and would still be in
+        // the wrong place.
+        assertThat(spool.dir()).isEqualTo(java.nio.file.Path.of("/tmp/fsm-properties-test/spool"));
+    }
+
+    @Test
     void theDefaultsAreStillTheOnesTheWorkflowUsed() {
         // Bound with nothing set, which is what an orchestrator started with no configuration gets.
         FsmProperties defaults = new Binder(new MapConfigurationPropertySource(Map.of()))
@@ -213,6 +244,31 @@ class FsmPropertiesTest {
         // that is discarded with the container — the same shape as an unset FSM_DB_PATH.
         assertThat(defaults.feedback().path())
                 .isEqualTo("/data/feedback/" + FeedbackStore.DEFAULT_FILE_NAME);
+        // THE SOURCE FETCH IS THE CHECKOUT BY DEFAULT, which is what makes an unconfigured deployment
+        // able to analyse a host that is not GitHub at all. Flip this default and the pipeline is
+        // GitHub-only again for everybody who set nothing.
+        assertThat(defaults.source().mode()).isEqualTo(FsmProperties.Source.CHECKOUT);
+        // …and a bare owner/name still means github.com, because the bundled example, the deployed
+        // runbooks and every curl in the README send one.
+        assertThat(defaults.git().host()).isEqualTo(CloneUrl.DEFAULT_HOST);
+        assertThat(defaults.ingest().maxCsvBytes()).isEqualTo(32L * 1024 * 1024);
+        // Blank means the container's own temp directory. A default that named a MOUNT would put back
+        // exactly the requirement the upload exists to remove.
+        assertThat(defaults.ingest().spoolDir()).isEmpty();
+    }
+
+    @Test
+    void aSourceModeThatIsNeitherRefusesToBindRatherThanLeavingTheContextWithoutAClient() {
+        // The same rule fsm.runner.mode has: a typo must be a process that will not start with the
+        // value printed, not a stack trace about a dependency nobody configured.
+        assertThatThrownBy(() -> new Binder(new MapConfigurationPropertySource(
+                Map.of("fsm.source.mode", "gitlab"))).bindOrCreate("fsm", FsmProperties.class))
+                // The value AND both accepted spellings, on the exception the process dies with —
+                // Boot's own wrapper says only which key failed to bind.
+                .rootCause()
+                .hasMessageContaining("gitlab")
+                .hasMessageContaining(FsmProperties.Source.CHECKOUT)
+                .hasMessageContaining(FsmProperties.Source.GITHUB);
     }
 
     /** Whether this {@code @ConfigurationProperties} class binds the {@code fsm} prefix. */

@@ -21,7 +21,7 @@ All three end at the same place: one container, `http://localhost:8085`.
 ```bash
 git clone git@github.com:vasiliy-mikhailov/fix-java-svace-markers.git
 cd fix-java-svace-markers/pipeline/deploy
-cp .env.example .env             # fill in QWEN_* and GITHUB_TOKEN
+cp .env.example .env             # fill in QWEN_* and GIT_TOKEN
 docker compose up -d --build
 ```
 
@@ -72,7 +72,7 @@ docker images | grep fsm             # fsm  latest
 mkdir -p fsm/pipeline/deploy fsm/data/svace fsm/prompts
 # put docker-compose.yml + .env.example in fsm/pipeline/deploy/, the CSV in fsm/data/svace/
 cd fsm/pipeline/deploy
-cp .env.example .env                 # fill in QWEN_* and GITHUB_TOKEN
+cp .env.example .env                 # fill in QWEN_* and GIT_TOKEN
 docker compose up -d --no-build      # --no-build is the point: use the loaded image
 ```
 
@@ -90,7 +90,7 @@ It works. What the flags buy:
 
 ```bash
 docker run -d --name fsm -p 127.0.0.1:8085:8085 \
-  -e QWEN_BASE_URL=... -e QWEN_API_KEY=... -e QWEN_MODEL=... -e GITHUB_TOKEN=... \
+  -e QWEN_BASE_URL=... -e QWEN_API_KEY=... -e QWEN_MODEL=... -e GIT_TOKEN=... \
   -v fsm_fsm-orchestrator-state:/state \
   -v fsm_fsm-runner-cache:/cache \
   -v "$PWD":/data:ro \
@@ -134,17 +134,49 @@ answer "what is deployed?" after the fact.
 ```bash
 curl -s localhost:8085/healthz        # -> ok   (a real query against the marker table)
 
-curl -s -X POST localhost:8085/api/ingest -H 'Content-Type: application/json' -d '{
-  "csvPath": "/data/data/svace/webgoat-markers-356.csv",
-  "repo": "WebGoat/WebGoat", "branch": "main", "pathPrefix": "src/main/java/"}'
+# the report travels IN the request — no mount, no volume, no shell on the host
+curl -sS -X POST localhost:8085/api/ingest \
+  -F 'csv=@svace-report.csv' \
+  -F 'repo=WebGoat/WebGoat' -F 'branch=main' -F 'path_prefix=src/main/java/'
 
 curl -s -X POST localhost:8085/api/prove
 ```
 
 Dashboard at **http://localhost:8085/**.
 
+### …and the same thing against a GitLab
+
+```bash
+curl -sS -X POST localhost:8085/api/ingest \
+  -F 'csv=@svace-report.csv' \
+  -F 'repo=https://gitlab.company.internal/platform/payments-api.git' \
+  -F 'branch=main' \
+  -F 'path_prefix=/builds/gitlab/platform/payments-api/'
+```
+
+`repo` may be `owner/name`, `group/sub/project`, a full `https://`/`ssh://` clone URL, the
+`git@host:group/project.git` shorthand, or a bare `host/group/project`. **`branch` is required for
+anything that is not `owner/name`** — a blank branch is resolved through the GitHub API, which cannot
+answer for another host, and the request is refused rather than failing 282 times six hours later.
+
+Set `FSM_GIT_HOST=gitlab.company.internal` and a bare `group/project` means that server instead;
+`GIT_TOKEN` is the credential for it. Nothing else changes: source for the prove is read out of the
+checkout the prove already makes, so no host-specific API is involved.
+
+### The three ways to hand over the report
+
+| | when |
+|---|---|
+| `-F 'csv=@report.csv'` | **the default.** Streamed to disk, never escaped into JSON, bounded at 32 MiB (`FSM_INGEST_MAX_CSV_BYTES`) |
+| `{"csv_text": "Severity,Checker,…"}` | a small report, or one being pasted into a script |
+| `{"csvPath": "/data/data/svace/x.csv"}` | the report is already on the `/data` mount |
+
 `csvPath` is a path **inside the container**. `/data` is the repo root, so a report at
-`data/svace/x.csv` is `/data/data/svace/x.csv`. That doubled `data` is not a typo.
+`data/svace/x.csv` is `/data/data/svace/x.csv`. That doubled `data` is not a typo — and it is exactly
+the assumption the other two remove: before them, ingesting anything required write access to a volume
+this container shares, which a client with a report on a laptop does not have.
+
+An oversized report is **413, never truncated**: half a report is a backlog silently missing markers.
 
 ---
 
@@ -248,6 +280,12 @@ FSM_RUNNER_MODE=http FSM_RUNNER_URL=http://fsm-split-runner:8090 docker compose 
 docker compose logs fsm | grep '\[runner\]'
 # [runner] http://fsm-split-runner:8090/run_test, up to 5400s per prove, 3 connect attempt(s)
 ```
+
+**The same trap applies to `FSM_GIT_HOST` and `GIT_TOKEN`,** which is why both are listed in the
+committed compose file with empty defaults — a Guild's own git server must be selectable without
+editing the file, and a host that silently fell back to `github.com` would clone
+`github.com/<their-group>/<their-project>`: a well-formed URL, a 404, and every marker filed as an
+infrastructure failure hours in. `DeploymentTest` pins them.
 
 **Read that last line rather than trusting the command.** Compose passes a variable to the process only
 if it is listed under `environment:`; a name set in your shell or in `.env` otherwise reaches Compose's

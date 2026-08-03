@@ -24,7 +24,7 @@ it for you), and afterwards confirm the marker count is what it was before you s
 Each module has its own README with the detail — endpoints, configuration, and why particular decisions
 were made the way they were.
 
-`runner` stays a module rather than being folded into `orchestrator`, and that is deliberate: its 188
+`runner` stays a module rather than being folded into `orchestrator`, and that is deliberate: its 216
 tests are the specification of the one distinction the whole pipeline rests on — did the test RUN and
 fail, or did it never run — and it holds a zero-third-party-dependency policy that a merge into a Spring
 Boot module would quietly break.
@@ -59,7 +59,7 @@ it takes effect with no rebuild. See `runner/src/main/java/.../MavenSettings.jav
 ## Tests
 
 ```bash
-mvn -B test                        # 1658 tests across the three modules
+mvn -B test                        # 1751 tests across the three modules
 orchestrator/playwright/run.sh     # the browser suite, inside the Playwright image
 ```
 

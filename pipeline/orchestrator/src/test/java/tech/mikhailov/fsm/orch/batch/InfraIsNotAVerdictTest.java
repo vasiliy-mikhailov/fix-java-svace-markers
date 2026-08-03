@@ -220,6 +220,61 @@ class InfraIsNotAVerdictTest {
         aMarkerBackOnTheQueue();
     }
 
+    /**
+     * A HOST THAT DOES NOT RESOLVE IS NOT A FALSE POSITIVE.
+     *
+     * <p>The first failure a Java Guild pointed at {@code gitlab.company.internal} will hit — a VPN
+     * that is down, a name that only resolves inside their network, a firewall between this container
+     * and their server. It arrives as a perfectly ordinary 200 from the runner carrying
+     * {@code ok:false}, exactly like a build that failed, and the whole backlog is behind it: get this
+     * wrong and 282 markers retire as {@code not_reproduced} — "we wrote a test and it did not fail" —
+     * about code this pipeline never so much as downloaded.
+     */
+    @Test
+    void aCloneAgainstAHostThatDoesNotResolveIsRetriedRatherThanArguedAway() throws Exception {
+        suspicions.upsert(ProveScript.marker(0L));
+        ProveScript.theCloneHostDoesNotResolve(source, runner, model);
+
+        JobExecution execution = prove.launchJob(oneProveOf(ProveScript.KEY));
+
+        assertThat(execution.getStatus()).isEqualTo(BatchStatus.COMPLETED);
+        assertThat(stepOf(execution).getProcessSkipCount()).isZero();
+
+        Bug recorded = anInfraRowWithNoJudgement();
+        // git's own words on the row, so the next reader goes to DNS and the VPN rather than reading
+        // the marker again. The hostname itself is past the column's clip — the DIAGNOSIS is what has
+        // to survive, and "Could not resolve host" is it.
+        assertThat(recorded.infraReason()).contains("run_test(reproduce): clone failed")
+                .contains("Could not resolve host");
+        assertThat(recorded.redVerified()).isFalse();
+
+        aMarkerBackOnTheQueue();
+    }
+
+    /**
+     * …AND NEITHER IS A {@code repo} THAT IS NOT A REPOSITORY.
+     *
+     * <p>{@link tech.mikhailov.fsm.runner.CloneUrl} refuses it before a process is started, which makes
+     * it the one failure in this file where NOTHING happened at all — no network, no clone, no build.
+     * It must still land here and not on the code: the difference between "your ingest body has a typo"
+     * and "this marker is a false positive" is the whole trustworthiness of the output.
+     */
+    @Test
+    void aRepoThatIsNotARepositoryIsRetriedRatherThanArguedAway() throws Exception {
+        suspicions.upsert(ProveScript.marker(0L));
+        ProveScript.theRepoIsNotARepository(source, runner, model);
+
+        JobExecution execution = prove.launchJob(oneProveOf(ProveScript.KEY));
+
+        assertThat(execution.getStatus()).isEqualTo(BatchStatus.COMPLETED);
+
+        Bug recorded = anInfraRowWithNoJudgement();
+        // Named precisely enough to send a reader to the ingest body, which is where the fix is.
+        assertThat(recorded.infraReason()).contains("`repo`").contains("OPTION");
+
+        aMarkerBackOnTheQueue();
+    }
+
     // ---- and RETRY means re-attempted, not merely re-labelled -------------------------------------
 
     /**

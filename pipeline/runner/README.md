@@ -186,7 +186,8 @@ compile under.
 | `PORT` | `8090` | `RunnerServer.DEFAULT_PORT`, and `HttpRunnerClient.DEFAULT_BASE_URL` names it too, so moving it means moving `FSM_RUNNER_URL` with it. A value that is not a number makes the process **refuse to start**, rather than bind a random port and look healthy to everything except the caller. |
 | `BIND` | `0.0.0.0` | Leave it. The service publishes no ports; loopback would make it unreachable from every other container while looking perfectly healthy from inside its own. |
 | `CACHE` | `/cache` | Where the clones go. The image prepares this path and compose mounts a named volume on it. |
-| `GITHUB_TOKEN` | *(unset)* | The clone credential. Absent is legitimate — public repositories clone without one, and the failure when it *is* needed is a git error inside `error`, not a crash. |
+| `GIT_TOKEN` (`GITHUB_TOKEN` when it is unset) | *(unset)* | The clone credential, for whatever host the marker's `repo` names. Absent is legitimate — public repositories clone without one, and the failure when it *is* needed is a git error inside `error`, not a crash. |
+| `FSM_GIT_HOST` | `github.com` | Where a bare `owner/name` is cloned from. A `repo` that is a full clone URL (`https://gitlab.company/g/p.git`, `ssh://git@host/g/p.git`, `git@host:g/p.git`) or a bare `host/group/project` names its own host and ignores this. `tech.mikhailov.fsm.runner.CloneUrl` decides, and refuses anything that is not a repository — a leading `-` (an option to `git clone`), `ext::` (a transport that runs a command), `file://`, and any URL carrying a credential. |
 
 No `QWEN_*`, no `SVACE_*`: this service never calls a model. It has one secret and one job.
 
@@ -234,7 +235,7 @@ provers.** Three reasons, each sufficient on its own:
 that has a `.git`, and `prepareFs` takes any tree whose `HEAD` resolves; neither rewrites
 `remote.origin.url`. So if a checkout on that volume was cloned from `https://<token>@github.com/…`, git
 wrote that token verbatim into its `.git/config` and this service will keep using it — past a rotation of
-`GITHUB_TOKEN` in `.env`, because nothing ever looks at that config again. Nothing here creates such a
+`GIT_TOKEN` in `.env`, because nothing ever looks at that config again. Nothing here creates such a
 checkout: `Workspace.CREDENTIAL_HELPER` hands the token to git through a one-shot `GIT_CONFIG_COUNT`
 helper that leaves nothing on disk, and `/fs/read_file` refuses any path with a dot-named component at
 any depth, links resolved, so `.git/config` cannot be read back out through the port either. Adoption is

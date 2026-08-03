@@ -50,10 +50,10 @@ class WorkspaceTest {
         // sits inside the tree /fs/read_file serves. The token that can open pull requests was therefore
         // one POST away from any caller that could reach this service.
         Workspace withToken = new Workspace(cache, "ghp_secret", new FakeExec(c -> FakeExec.ok("")));
-        assertEquals("https://github.com/o/r.git", withToken.cloneUrl("o/r"),
+        assertEquals("https://github.com/o/r.git", withToken.cloneUrl("o/r").url(),
                 "the URL is what lands on disk, so the credential must not be in it");
         Workspace without = new Workspace(cache, "", new FakeExec(c -> FakeExec.ok("")));
-        assertEquals("https://github.com/o/r.git", without.cloneUrl("o/r"));
+        assertEquals("https://github.com/o/r.git", without.cloneUrl("o/r").url());
     }
 
     @Test
@@ -88,6 +88,36 @@ class WorkspaceTest {
                 "execFile REPLACES the environment, so the inherited one has to be carried over");
     }
 
+    /**
+     * A CREDENTIAL THAT IS UNSET IS NULL, NOT EMPTY — and it used to take the whole clone down.
+     *
+     * <p>FOUND BY RUNNING IT (2026-08-03). {@code Secrets.gitToken()} answers null when the variable is
+     * unset, {@code ClientConfig} hands that straight to {@code LocalRunner.open}, and {@link #gitEnv}
+     * asked it {@code isEmpty()}. Every clone on a deployment with no token — which is every deployment
+     * analysing a public repository, and every developer's first run — died with a
+     * NullPointerException. It surfaced as "source unavailable — NullPointerException" in the marker
+     * tab and, on the prove path, as {@code {"ok": false}} carrying a stack trace: recorded as
+     * {@code infra_error}, retried three times, and parked as {@code infra_stuck}. Nothing about the
+     * message said "you have no token", which is the entire diagnosis.
+     *
+     * <p>It predates the multi-host work and was simply never reached: the prove-time source fetch used
+     * to go to the GitHub API, so a tokenless deployment failed earlier and elsewhere. Making the
+     * checkout the default source path put it on the main road.
+     */
+    @Test
+    void anUnsetTokenIsTheSameAsNoTokenAndNotACrash(@TempDir Path cache) {
+        FakeExec exec = new FakeExec(c -> {
+            FakeExec.clonedInto(c);
+            return FakeExec.ok("");
+        });
+        Workspace.Prepared prepared = new Workspace(cache, null, exec).prepareWs("o/r", "main");
+
+        assertTrue(prepared.ok(), String.valueOf(prepared.error()));
+        Map<String, String> env = exec.calls().getFirst().env();
+        assertNull(env.get("GIT_CONFIG_COUNT"), "no credential is configured, exactly as for \"\"");
+        assertEquals("0", env.get("GIT_TERMINAL_PROMPT"));
+    }
+
     @Test
     void withNoTokenNoCredentialIsConfiguredAtAll(@TempDir Path cache) {
         // An empty password offered to git is not "no credential": github answers 401 for a repository
@@ -102,6 +132,140 @@ class WorkspaceTest {
         assertNull(env.get("GIT_CONFIG_COUNT"));
         assertNull(env.get("FSM_GIT_TOKEN"));
         assertEquals("0", env.get("GIT_TERMINAL_PROMPT"));
+    }
+
+    /**
+     * ANY HOST {@code git clone} CAN REACH, which is the whole of the second gap.
+     *
+     * <p>{@code cloneUrl} was {@code "https://github.com/" + repo + ".git"}. A Guild with
+     * {@code gitlab.company.internal} could not point this pipeline at their code at all — not with a
+     * setting, not with a mount, not at all — and the one knob that looks like it would help
+     * ({@code FSM_GITHUB_API}) moves the CONTENTS API and not the clone.
+     *
+     * <p>{@link CloneUrl} owns which strings are repositories; what is pinned HERE is that its answer is
+     * the one that reaches git, and that a refusal costs no process at all.
+     */
+    @Nested
+    class AnyGitHostAtAll {
+
+        @Test
+        void aFullCloneUrlReachesGitVerbatim(@TempDir Path cache) {
+            FakeExec exec = new FakeExec(c -> {
+                FakeExec.clonedInto(c);
+                return FakeExec.ok("");
+            });
+            Workspace.Prepared p = new Workspace(cache, "", exec)
+                    .prepareWs("https://gitlab.company.internal/grp/proj.git", "main");
+
+            assertTrue(p.ok(), String.valueOf(p.error()));
+            assertEquals(List.of("git clone --depth 1 --branch main "
+                    + "https://gitlab.company.internal/grp/proj.git " + p.ws()), exec.commands());
+        }
+
+        @Test
+        void theDefaultHostMovesSoASlugCanMeanTheGuildsOwnServer(@TempDir Path cache) {
+            FakeExec exec = new FakeExec(c -> {
+                FakeExec.clonedInto(c);
+                return FakeExec.ok("");
+            });
+            new Workspace(cache, "", exec, "gitlab.company.internal").prepareWs("grp/proj", "main");
+
+            assertTrue(exec.commands().getFirst()
+                            .contains("https://gitlab.company.internal/grp/proj.git"),
+                    exec.commands().getFirst());
+        }
+
+        @Test
+        void aRepoThatIsNotARepositoryStartsNoProcessAtAll(@TempDir Path cache) {
+            // `git clone --upload-pack=<command> <dir>` RUNS that command. The argv is assembled in
+            // Workspace, so a refusal that still spawned git would be no refusal at all — and this
+            // assertion is the one that would notice a guard moved below the exec.
+            FakeExec exec = new FakeExec(c -> FakeExec.ok(""));
+            Workspace.Prepared p = new Workspace(cache, "", exec)
+                    .prepareWs("--upload-pack=/bin/sh", "main");
+
+            assertFalse(p.ok());
+            assertNull(p.ws());
+            assertTrue(p.error().contains("OPTION"), p.error());
+            assertEquals(List.of(), exec.commands(), "a refused repo must cost no process");
+        }
+
+        @Test
+        void aRefusedRepoIsNotACloneFailure(@TempDir Path cache) {
+            // The distinction a reviewer reads off a stuck marker: "clone failed" sends them to the
+            // network and the token, and this is neither — nobody ever asked the host anything.
+            Workspace.Prepared p = new Workspace(cache, "", new FakeExec(c -> FakeExec.ok("")))
+                    .prepareWs("WebGoat", "main");
+            assertFalse(p.ok());
+            assertFalse(p.error().startsWith("clone failed"), p.error());
+            assertTrue(p.error().contains("`repo`"), p.error());
+        }
+
+        @Test
+        void theSourceWindowSaysWhichRepoItRefusedRatherThanCloneFailed(@TempDir Path cache) {
+            Map<String, Object> r = new Workspace(cache, "", new FakeExec(c -> FakeExec.ok("")))
+                    .readFile(body("repo", "ext::whoami", "path", "A.java"));
+            // "clone failed" on the dashboard reads as an outage. This one is a value somebody typed.
+            assertTrue(String.valueOf(r.get("error")).contains("transport helper"),
+                    String.valueOf(r.get("error")));
+        }
+    }
+
+    /**
+     * ONE WINDOW FOR A REVIEWER, THE WHOLE FILE FOR THE PROVE.
+     *
+     * <p>{@link Workspace#MAX_CONTENT} is the dashboard's screenful. The prove-time source fetch reads
+     * through this same route now, and it must NOT get a screenful: the reproducer is re-anchored against
+     * whatever comes back, so an 80 kB slice of a 200 kB file puts the marker's line past the end of the
+     * source and the marker is reported as drift — a fabricated finding about somebody else's repository.
+     */
+    @Nested
+    class HowMuchOfTheFileIsServed {
+
+        @Test
+        void aCallerMayAskForMoreThanTheDashboardsWindow(@TempDir Path cache) {
+            String big = "x".repeat(Workspace.MAX_CONTENT + 10);
+            Map<String, Object> r = withFile(cache, "A.java", big)
+                    .readFile(body("repo", "o/r", "path", "A.java",
+                            "max_content", Workspace.MAX_CONTENT_CEILING));
+
+            assertEquals(big, r.get("content"));
+            assertEquals(Boolean.FALSE, r.get("truncated"));
+        }
+
+        @Test
+        void andNoMoreThanTheCeiling(@TempDir Path cache) {
+            // The reply is built in memory and this route is not serialised, so "as much as you like" is
+            // a request any caller could use to hold the heap.
+            String big = "x".repeat(Workspace.MAX_CONTENT_CEILING + 10);
+            Map<String, Object> r = withFile(cache, "A.java", big)
+                    .readFile(body("repo", "o/r", "path", "A.java", "max_content", 50_000_000));
+
+            assertEquals(Workspace.MAX_CONTENT_CEILING, ((String) r.get("content")).length());
+            assertEquals(Boolean.TRUE, r.get("truncated"));
+        }
+
+        @Test
+        void anAbsentOrUselessValueLeavesTheDashboardsWindowExactlyAsItWas(@TempDir Path cache) {
+            String big = "x".repeat(Workspace.MAX_CONTENT + 10);
+            Workspace workspace = withFile(cache, "A.java", big);
+
+            for (Object useless : new Object[] {null, "", "banana", -1, 0}) {
+                Map<String, Object> r = workspace
+                        .readFile(body("repo", "o/r", "path", "A.java", "max_content", useless));
+                assertEquals(Workspace.MAX_CONTENT, ((String) r.get("content")).length(),
+                        "max_content=" + useless);
+            }
+        }
+
+        private Workspace withFile(Path cache, String name, String content) {
+            return new Workspace(cache, "", new FakeExec(c -> {
+                Path target = FakeExec.clonedInto(c);
+                Files.createDirectories(target.resolve(name).toAbsolutePath().getParent());
+                Files.writeString(target.resolve(name), content);
+                return FakeExec.ok("");
+            }));
+        }
     }
 
     @Nested

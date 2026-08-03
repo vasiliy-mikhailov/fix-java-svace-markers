@@ -23,7 +23,16 @@ public final class Runner {
         Path cache = Path.of(cacheDir);
         // The clone URL's credential. Absent is legitimate — public repositories clone without one, and
         // the failure when it is needed is a git error in `error`, not a crash here.
-        String token = env("GITHUB_TOKEN", "");
+        //
+        // GIT_TOKEN, falling back to GITHUB_TOKEN: the name was a lie the moment this runner started
+        // cloning gitlab.company.internal, and the old one is still read because every deployed .env, the
+        // committed compose file and every runbook name it.
+        String token = env(CloneUrl.GIT_TOKEN_ENV, env(CloneUrl.LEGACY_GIT_TOKEN_ENV, ""));
+
+        // WHERE A BARE owner/name LIVES. A full clone URL in the marker's row overrides it per
+        // repository; this is only what a SLUG means, and it stays github.com so every existing runbook
+        // keeps working.
+        String gitHost = env(CloneUrl.HOST_ENV, CloneUrl.DEFAULT_HOST);
 
         // WHERE MAVEN RESOLVES FROM, and it is a RUN-TIME setting rather than an image layer. Unset
         // means Central, which is what a machine with nothing but Docker gets and what must work; set
@@ -32,7 +41,7 @@ public final class Runner {
 
         RunnerServer.ensureCache(cache);
         RunnerServer server = RunnerServer.start(host, port,
-                LocalRunner.open(cache, token, mirror), true);
+                LocalRunner.open(cache, token, mirror, gitHost), true);
         // Compose sends SIGTERM on `down` and `restart`. Without this hook the JVM dies with the
         // listening socket still open in the kernel and the next start can lose the race for the port,
         // which reads as "the runner did not come back up" rather than as a shutdown bug. It also kills
@@ -46,6 +55,7 @@ public final class Runner {
         System.out.println("fsm-runner listening on " + host + ":" + server.port()
                 + " (cache " + cache + ", java " + Runtime.version()
                 + ", maven " + (mirror == null || mirror.isBlank() ? "central" : mirror)
+                + ", git host " + gitHost
                 + ", " + PathEncoding.describe() + ")");
         if (!PathEncoding.spellsNonAscii()) {
             // Not fatal: the runner still proves every marker whose paths are ASCII, which is nearly all

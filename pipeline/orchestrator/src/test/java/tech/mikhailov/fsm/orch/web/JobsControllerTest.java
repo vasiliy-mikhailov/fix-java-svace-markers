@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import tech.mikhailov.fsm.orch.batch.BatchConfig;
+import tech.mikhailov.fsm.orch.batch.CsvSpool;
 import tech.mikhailov.fsm.orch.batch.IngestRequest;
 import tech.mikhailov.fsm.orch.batch.JobLaunches;
 
@@ -66,11 +67,24 @@ class JobsControllerTest {
         }
     }
 
+    /**
+     * The controller with a spool it never uses.
+     *
+     * <p>Every case in THIS class names a {@code csvPath} or no report at all, which is the shape that
+     * predates uploads entirely; the spooling routes have their own file —
+     * {@code TheReportCanTravelInTheRequestTest} — because their assertions are about a file on disk and
+     * belong beside each other. A bound of one byte here is deliberate: it would fail loudly if any case
+     * below started spooling something without saying so.
+     */
+    private static JobsController controller(JobLaunches launches) {
+        return new JobsController(launches, new CsvSpool(1, null));
+    }
+
     @Test
     void aProveIsAcceptedWithTheExecutionIdRatherThanHeldOpenForTwentySixHours() {
         Recorder launches = new Recorder(false);
 
-        ResponseEntity<Map<String, Object>> answer = new JobsController(launches).prove();
+        ResponseEntity<Map<String, Object>> answer = controller(launches).prove();
 
         assertThat(answer.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(answer.getBody()).containsEntry("started", true)
@@ -81,7 +95,7 @@ class JobsControllerTest {
 
     @Test
     void aRefusedLaunchIsAConflictAndNotAFailure() {
-        ResponseEntity<Map<String, Object>> answer = new JobsController(new Recorder(true)).prove();
+        ResponseEntity<Map<String, Object>> answer = controller(new Recorder(true)).prove();
 
         assertThat(answer.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(answer.getBody()).containsEntry("started", false);
@@ -92,7 +106,7 @@ class JobsControllerTest {
     void oneNamedMarkerCanBeProvedFromTheCommandLineWithoutWaitingForATick() {
         Recorder launches = new Recorder(false);
 
-        ResponseEntity<Map<String, Object>> answer = new JobsController(launches).proveMarker(
+        ResponseEntity<Map<String, Object>> answer = controller(launches).proveMarker(
                 new JobsController.MarkerBody("WebGoat/WebGoat|src/main/java/A.java|42|SIZE"));
 
         assertThat(answer.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
@@ -107,7 +121,7 @@ class JobsControllerTest {
         Recorder launches = new Recorder(false);
 
         ResponseEntity<Map<String, Object>> answer =
-                new JobsController(launches).proveMarker(new JobsController.MarkerBody("  "));
+                controller(launches).proveMarker(new JobsController.MarkerBody("  "));
 
         // The dangerous alternative is falling through to `prove()`: someone asking to reproduce ONE
         // marker would start a 26-hour drain instead.
@@ -120,7 +134,7 @@ class JobsControllerTest {
     void aProveOfOneMarkerWithNoBodyAtAllIsRejected() {
         Recorder launches = new Recorder(false);
 
-        assertThat(new JobsController(launches).proveMarker(null).getStatusCode())
+        assertThat(controller(launches).proveMarker(null).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(launches.provedKey).isNull();
     }
@@ -129,8 +143,8 @@ class JobsControllerTest {
     void anIngestWithoutARepoIsRejectedAtTheEdgeRatherThanAsAFailedRun() {
         Recorder launches = new Recorder(false);
 
-        ResponseEntity<Map<String, Object>> answer = new JobsController(launches).ingest(
-                new JobsController.IngestBody("/data/x.csv", "  ", null, null, null, null, null));
+        ResponseEntity<Map<String, Object>> answer = controller(launches).ingest(
+                new JobsController.IngestBody("/data/x.csv", null, "  ", null, null, null, null, null));
 
         assertThat(answer.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(String.valueOf(answer.getBody().get("reason"))).contains("`repo` is required");
@@ -142,9 +156,9 @@ class JobsControllerTest {
     void anIngestBodyReachesTheJobWithEveryFieldItCarried() {
         Recorder launches = new Recorder(false);
 
-        ResponseEntity<Map<String, Object>> answer = new JobsController(launches).ingest(
-                new JobsController.IngestBody("/data/svace.csv", "WebGoat/WebGoat", "develop", "",
-                        Boolean.TRUE, List.of("DEREF_OF_NULL"), "Major"));
+        ResponseEntity<Map<String, Object>> answer = controller(launches).ingest(
+                new JobsController.IngestBody("/data/svace.csv", null, "WebGoat/WebGoat", "develop",
+                        "", Boolean.TRUE, List.of("DEREF_OF_NULL"), "Major"));
 
         assertThat(answer.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
         assertThat(launches.ingested).isEqualTo(new IngestRequest("/data/svace.csv",
@@ -158,7 +172,7 @@ class JobsControllerTest {
     void anIngestWithNoBodyAtAllIsRejectedRatherThanClearingTheBacklog() {
         Recorder launches = new Recorder(false);
 
-        ResponseEntity<Map<String, Object>> answer = new JobsController(launches).ingest(null);
+        ResponseEntity<Map<String, Object>> answer = controller(launches).ingest(null);
 
         assertThat(answer.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(launches.ingested).isNull();

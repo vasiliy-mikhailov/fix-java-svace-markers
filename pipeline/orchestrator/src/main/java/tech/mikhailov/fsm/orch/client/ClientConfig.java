@@ -13,6 +13,7 @@ import org.springframework.context.annotation.Configuration;
 import tech.mikhailov.fsm.lib.Llm;
 import tech.mikhailov.fsm.orch.Secrets;
 import tech.mikhailov.fsm.orch.config.FsmProperties;
+import tech.mikhailov.fsm.runner.CloneUrl;
 import tech.mikhailov.fsm.runner.LocalRunner;
 import tech.mikhailov.fsm.runner.MavenSettings;
 
@@ -78,7 +79,10 @@ public class ClientConfig {
         add(absent, "QWEN_BASE_URL", qwen.baseUrl());
         add(absent, "QWEN_API_KEY", qwen.apiKey());
         add(absent, "QWEN_MODEL", qwen.model());
-        add(absent, "GITHUB_TOKEN", secrets.githubToken());
+        // BOTH names, because either one satisfies it and naming only the new one would tell a
+        // deployment that is working perfectly that its credential is missing.
+        add(absent, CloneUrl.GIT_TOKEN_ENV + " (or " + CloneUrl.LEGACY_GIT_TOKEN_ENV + ")",
+                secrets.gitToken());
         return List.copyOf(absent);
     }
 
@@ -123,11 +127,15 @@ public class ClientConfig {
         // The mirror is a RUN-TIME setting read straight off the environment, not a build argument baked
         // into the image: the Guild runs an image they did not build, pointed at a Nexus of their own.
         // Unset means Central, which is what a machine with nothing but Docker gets. See MavenSettings.
-        LocalRunner runner = LocalRunner.open(Path.of(configured.cache()), secrets.githubToken(),
-                System.getenv(MavenSettings.MIRROR_ENV));
-        log.info("[runner] in-process, cache {}, maven {}", runner.cache(),
+        LocalRunner runner = LocalRunner.open(Path.of(configured.cache()), secrets.gitToken(),
+                System.getenv(MavenSettings.MIRROR_ENV), properties.git().host());
+        // The git host is in this line for the same reason the cache and the mirror are: it decides
+        // which repository every slug in the backlog names, and getting it wrong is a clone that fails
+        // against a host that exists — which reads as a broken repository, not as a setting.
+        log.info("[runner] in-process, cache {}, maven {}, git host {}", runner.cache(),
                 runner.mavenSettings().map(Path::toString).orElse("central (no "
-                        + MavenSettings.MIRROR_ENV + ")"));
+                        + MavenSettings.MIRROR_ENV + ")"),
+                runner.gitHost());
         return runner;
     }
 
@@ -180,11 +188,37 @@ public class ClientConfig {
         return new HttpSourceReader(transport, properties.runner().baseUrl());
     }
 
+    /**
+     * WHERE THE PROVE'S SOURCE COMES FROM, and the second half of making this pipeline host-agnostic.
+     *
+     * <p>ONE {@code @Bean} METHOD RATHER THAN TWO {@code @ConditionalOnProperty} ONES, unlike the runner
+     * pair above, and the difference is deliberate: the checkout client needs the {@link SourceReader}
+     * that is itself chosen by {@code fsm.runner.mode}, so two conditions would multiply into four bean
+     * definitions of which two are unreachable. A branch nobody can reach is a branch that has rotted;
+     * this way the choice is one {@code if} with both sides exercised — see
+     * {@code TheSourceFetchIsChosenByConfigurationTest}.
+     *
+     * <p>The line it logs is the only place a deployment says which one it got. A source path that is
+     * wrong for the host does not fail loudly on its own: it 404s, and a 404 is recorded as "the
+     * marker's file has moved or gone". The client refuses that case now, and this line is how an
+     * operator sees the mode without provoking it.
+     */
     @Bean
-    public SourceClient sourceClient(HttpTransport transport, FsmProperties properties) {
+    public SourceClient sourceClient(HttpTransport transport, FsmProperties properties,
+                                     SourceReader reader) {
+        if (properties.source().isCheckout()) {
+            CheckoutSourceClient client = new CheckoutSourceClient(reader);
+            log.info("[source] the prove reads source from {} (fsm.source.mode={})",
+                    client.describe(), FsmProperties.Source.CHECKOUT);
+            return client;
+        }
         FsmProperties.Github configured = properties.github();
-        return new GithubSourceClient(transport, configured.apiBaseUrl(),
+        GithubSourceClient client = new GithubSourceClient(transport, configured.apiBaseUrl(),
                 Duration.ofMillis(configured.timeoutMs()), configured.attempts(),
                 Duration.ofMillis(configured.retryDelayMs()));
+        log.info("[source] the prove reads source from {} (fsm.source.mode={}); this needs an "
+                + "owner/name repo and will refuse anything else", client.apiBaseUrl(),
+                GithubSourceClient.MODE);
+        return client;
     }
 }

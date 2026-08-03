@@ -201,7 +201,8 @@ final class Proc {
      * {@code fsm.runner.mode=http}, which is still supported for exactly this reason.
      */
     static final java.util.Set<String> SECRETS = java.util.Set.of(
-            "GITHUB_TOKEN", "QWEN_API_KEY", "SVACE_TOKEN", "FSM_DB_PASSWORD");
+            CloneUrl.GIT_TOKEN_ENV, CloneUrl.LEGACY_GIT_TOKEN_ENV,
+            "QWEN_API_KEY", "SVACE_TOKEN", "FSM_DB_PASSWORD");
 
     /**
      * Kill the process AND EVERYTHING UNDER IT.

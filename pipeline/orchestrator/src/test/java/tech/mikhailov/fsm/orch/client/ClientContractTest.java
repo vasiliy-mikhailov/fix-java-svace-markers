@@ -697,7 +697,7 @@ class ClientContractTest {
         assertThat(Llm.concat(secrets.qwen().apiKey())).isEqualTo("undefined");
         // Null for the client, which sends `Bearer undefined` and gets a visible 401 — never a
         // blank Bearer, which reads as a request nobody meant to authenticate.
-        assertThat(secrets.githubToken()).isNull();
+        assertThat(secrets.gitToken()).isNull();
         assertThat(secrets.svaceBaseUrl()).isNull();
     }
 

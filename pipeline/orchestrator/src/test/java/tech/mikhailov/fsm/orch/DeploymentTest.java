@@ -535,6 +535,49 @@ class DeploymentTest {
     }
 
     /**
+     * A GUILD THAT IS NOT ON GITHUB CAN CONFIGURE THIS STACK WITHOUT EDITING IT.
+     *
+     * <p>Same rule as the runner address above, and the same failure shape if it is broken: Compose
+     * hands a variable to the process only when it is listed under {@code environment:}, and one set in
+     * the shell or {@code .env} but not listed here reaches Compose's own interpolation and stops. With
+     * {@code FSM_GIT_HOST} unlisted, {@code FSM_GIT_HOST=gitlab.company.internal docker compose up -d}
+     * starts a healthy stack that clones {@code github.com/<their-group>/<their-project>} — a
+     * WELL-FORMED URL and a 404 — and files every marker in the report as an infrastructure failure,
+     * hours in. Nothing anywhere says the setting was dropped.
+     *
+     * <p>The token is the other half. {@code GIT_TOKEN} is the name now, because the credential is for
+     * whichever host the marker's row names; {@code GITHUB_TOKEN} is still read as a fallback and must
+     * still travel, or the rename breaks every deployment that has one.
+     */
+    @Test
+    void theGitHostAndItsCredentialBothTravelThroughCompose() {
+        Service app = COMPOSE.get(APP);
+
+        assertThat(app.environmentValue("FSM_GIT_HOST"))
+                .as("a Guild's own git server cannot be selected without editing this file")
+                .isPresent();
+        assertThat(composeDefault(app.environmentValue("FSM_GIT_HOST").orElse("")))
+                .as("a host written here is a knob that changes nothing for the deployment this file "
+                        + "describes and is believed by the next reader; it defaults to github.com in "
+                        + "application.yml")
+                .isEmpty();
+
+        assertThat(app.environmentValue("GIT_TOKEN"))
+                .as("the clone credential's current name does not reach the process, so a deployment "
+                        + "that set only GIT_TOKEN clones anonymously and records every private "
+                        + "repository as a file nobody could read")
+                .isPresent();
+        assertThat(app.environmentValue("GITHUB_TOKEN"))
+                .as("the previous name is documented as a fallback, so dropping it here breaks every "
+                        + "deployed .env that carries one")
+                .isPresent();
+
+        // …and the report can be sent in the request, which is the setting that removes the OTHER
+        // shared-filesystem requirement. Its bound must be settable without rebuilding the image.
+        assertThat(app.environmentValue("FSM_INGEST_MAX_CSV_BYTES")).isPresent();
+    }
+
+    /**
      * THE REMOTE SHAPE IS STILL COHERENT, in the two places that remain.
      *
      * <p>{@code fsm.runner.mode=http} is supported — {@code /run_test} runs third-party build scripts,
@@ -695,10 +738,15 @@ class DeploymentTest {
                 ROOT.resolve("orchestrator").resolve(".env.example"), StandardCharsets.UTF_8);
         assertThat(example).anyMatch(line -> line.startsWith("QWEN_BASE_URL="))
                 .anyMatch(line -> line.startsWith("QWEN_API_KEY="))
+                // BOTH spellings of the clone credential. The example is where a reader learns the
+                // name, and a reader who only ever sees GITHUB_TOKEN will keep believing this pipeline
+                // is GitHub-only.
+                .anyMatch(line -> line.startsWith("GIT_TOKEN="))
                 .anyMatch(line -> line.startsWith("GITHUB_TOKEN="));
         assertThat(example)
                 .as("an example file with a real key in it is how a credential reaches git history")
                 .noneMatch(line -> line.startsWith("QWEN_API_KEY=") && line.length() > "QWEN_API_KEY=".length())
+                .noneMatch(line -> line.startsWith("GIT_TOKEN=") && line.length() > "GIT_TOKEN=".length())
                 .noneMatch(line -> line.startsWith("GITHUB_TOKEN=") && line.length() > "GITHUB_TOKEN=".length());
     }
 
