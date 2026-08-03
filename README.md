@@ -232,7 +232,6 @@ code. If you change that, you break the only property that makes the output trus
 
 - The run that produced the reference numbers spanned three deploys — a clean cold *start*, but a
   mixed-version *run*. A single-binary drain would be a stronger claim.
-- `migrate-to-spring.sh` renames the deployment and has never been executed end to end.
 - Two toothless tests are known and unfixed: one assertion that cannot fail, and a dead-anchor check
   that was run by hand but never shipped.
 - MAC (coverage × mutation) is 93.9 / 76.2 / 74.1 for engine / orchestrator / runner. Only the engine

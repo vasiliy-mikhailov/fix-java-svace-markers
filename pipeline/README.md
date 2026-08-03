@@ -7,8 +7,9 @@ Moving this directory, or renaming the Compose project, is safe in the one way t
 volume in `deploy/docker-compose.yml` pins its PHYSICAL name, so the live data is not addressed through
 the directory or the project name. Keep those pins — without them Compose derives `<project>_<key>`,
 looks for a volume that does not exist, creates it empty, and serves an empty backlog with nothing red.
-A move still invalidates runbooks, and a deployed checkout has to be moved rather than re-cloned;
-`migrate-to-spring.sh` does that with backups and a post-flight that verifies the marker count survived.
+A move still invalidates runbooks, and a deployed checkout has to be moved rather than re-cloned —
+so back up the H2 volume cold first, carry `.env` across by hand (it is gitignored, so nothing moves
+it for you), and afterwards confirm the marker count is what it was before you started.
 
 ## The reactor
 
