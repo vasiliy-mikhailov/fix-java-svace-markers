@@ -10,6 +10,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -830,11 +832,26 @@ class DeploymentTest {
         }
 
         /** The value of an {@code environment} entry written {@code - NAME=value}. */
+        /**
+         * The value a variable is given, or {@code ""} when it is listed BARE.
+         *
+         * <p>A bare {@code - VAR} is Compose's pass-through: the variable is forwarded only when it is
+         * set in the environment, and is absent from the container otherwise. That is the correct shape
+         * for anything with a non-empty default in {@code application.yml}, because
+         * {@code ${VAR:default}} applies its default only when the variable is ABSENT — an empty value
+         * defeats it. {@code =${VAR:-}} forwards it SET TO EMPTY, which is the bug this distinction
+         * exists to prevent, so both shapes count as "the variable travels".
+         */
         Optional<String> environmentValue(String name) {
             return environment.stream()
-                    .filter(entry -> entry.startsWith(name + "="))
-                    .map(entry -> entry.substring(name.length() + 1))
+                    .filter(entry -> entry.equals(name) || entry.startsWith(name + "="))
+                    .map(entry -> entry.equals(name) ? "" : entry.substring(name.length() + 1))
                     .findFirst();
+        }
+
+        /** True when the variable is listed BARE, i.e. forwarded only if set. */
+        boolean isPassThrough(String name) {
+            return environment.stream().anyMatch(entry -> entry.equals(name));
         }
     }
 
@@ -1021,4 +1038,44 @@ class DeploymentTest {
         // turns this null into a skip with a reason.
         return null;
     }
+
+    /**
+     * A VARIABLE WITH A NON-EMPTY DEFAULT MUST NOT BE FORWARDED AS EMPTY.
+     *
+     * <p>{@code - VAR=${VAR:-}} forwards the variable SET TO EMPTY when the operator has not set it.
+     * Spring's {@code ${VAR:default}} applies its default only when the variable is ABSENT, so an empty
+     * value silently defeats it. {@code FSM_INGEST_MAX_CSV_BYTES} failed loudly that way — a
+     * {@code DataSize} cannot parse {@code ""}, and the container crash-looped on a deployment host
+     * with a green {@code mvn test} behind it, because the suite never boots a servlet container with
+     * that binding. The other three bound to {@code ""} in silence: {@code FSM_GIT_HOST=""} builds
+     * clone URLs like {@code https:///owner/name.git}.
+     *
+     * <p>The fix is the bare {@code - VAR} pass-through, which forwards it only when set.
+     */
+    @Test
+    void aVariableWithADefaultIsNeverForwardedAsEmpty() throws IOException {
+        String yml = read(ROOT.resolve("orchestrator").resolve("src").resolve("main")
+                .resolve("resources").resolve("application.yml"));
+        Service app = COMPOSE.get(APP);
+
+        List<String> offenders = new ArrayList<>();
+        for (String entry : app.environment) {
+            int eq = entry.indexOf('=');
+            if (eq < 0) continue;                                   // bare: already correct
+            String name = entry.substring(0, eq);
+            if (!entry.substring(eq + 1).equals("${" + name + ":-}")) continue;
+            // does application.yml give it a non-empty default that an empty value would defeat?
+            Matcher m = Pattern.compile("\\$\\{" + Pattern.quote(name) + ":([^}]+)}").matcher(yml);
+            if (m.find() && !m.group(1).isBlank()) {
+                offenders.add(name + " (yml default: " + m.group(1) + ")");
+            }
+        }
+
+        assertThat(offenders)
+                .as("these travel as `=${VAR:-}`, so an operator who has not set them gets the variable "
+                        + "SET TO EMPTY and application.yml's default never applies. List them bare "
+                        + "(`- VAR`) so Compose forwards them only when set")
+                .isEmpty();
+    }
+
 }
