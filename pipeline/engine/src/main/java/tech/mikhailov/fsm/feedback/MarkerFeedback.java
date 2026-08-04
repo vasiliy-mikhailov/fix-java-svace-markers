@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import tech.mikhailov.fsm.lib.Json;
+import tech.mikhailov.fsm.lib.SuspicionStatus;
 
 /**
  * ONE MARKER'S WHOLE PROVE, AS ONE RECORD — what the pipeline was given, what it produced, and what was
@@ -214,7 +215,9 @@ public record MarkerFeedback(String dedupKey, String writtenAt, Object prep, Obj
         m.put("suspicion_note", Json.str(verdict, "suspicion_note"));
         // `new` is what an infra error below the ceiling and a pending retry both write. Counting
         // either as settled would treat a marker the pipeline has not finished with as evidence.
-        m.put("settled", !"new".equals(suspicionStatus()));
+        // Asked of the enum that owns the column's vocabulary, not of a literal: the queue token and
+        // this comparison have to agree, and there is now one place they are spelled.
+        m.put("settled", SuspicionStatus.of(suspicionStatus()) != SuspicionStatus.NEW);
         m.put("versions", versions);
         return m;
     }

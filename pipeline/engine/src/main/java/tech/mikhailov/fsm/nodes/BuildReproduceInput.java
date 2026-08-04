@@ -6,6 +6,7 @@ import java.util.Set;
 import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import tech.mikhailov.fsm.lib.AnchorStatus;
 import tech.mikhailov.fsm.lib.Js;
 import tech.mikhailov.fsm.lib.JsText;
 import tech.mikhailov.fsm.lib.JsValue;
@@ -19,7 +20,7 @@ import tech.mikhailov.fsm.lib.Json;
  * number it cannot trust is how a marker gets adjudicated against the WRONG code, and a confident
  * verdict on the wrong lines is worse than no verdict at all. So the line is resolved to its enclosing
  * METHOD by brace matching, and the result is labelled with how far the location can be trusted:
- * {@code exact}, {@code no-method} or {@code unresolved}.
+ * {@link AnchorStatus#EXACT}, {@link AnchorStatus#NO_METHOD} or {@link AnchorStatus#UNRESOLVED}.
  *
  * <p>WHY THE SPAN MATTERS AS MUCH AS THE NAME. Every offset in this class — the newline index, the two
  * brace balancers, the mask that blanks comments and literals IN PLACE — exists to keep
@@ -134,9 +135,12 @@ public final class BuildReproduceInput {
      *
      * @param marker       the {@code Prep prover} item, spread back out so every field it carries
      *                     reaches the stages after the reproducer
-     * @param anchorStatus {@code exact} (the line is inside a method body), {@code no-method} (it is a
-     *                     field, annotation or import), or {@code unresolved} (no source, or the line
-     *                     is past the end of the file)
+     * @param anchorStatus the wire spelling of an {@link AnchorStatus} — {@code exact} (the line is
+     *                     inside a method body), {@code no-method} (it is a field, annotation or
+     *                     import), or {@code unresolved} (no source, or the line is past the end of the
+     *                     file). A String because it is the column's value; the fourth spelling of that
+     *                     column, {@code pending}, is written by {@code ParseMarkers} at ingest, and
+     *                     the enum is where all four are declared once.
      * @param lineText     the line as it reads in the checked-out tree, or UNDEFINED when there is
      *                     none — which is NOT the same as the empty string, because an empty fenced
      *                     java block reads to a model as "the line is blank"
@@ -179,7 +183,9 @@ public final class BuildReproduceInput {
         String[] lines = JsValue.split(src, "\n");
         double svLine = JsValue.numberOrZero(JsValue.prop(j, "svace_line"));
         String anchor = "";
-        String anchorStatus = "unresolved";
+        // The pessimistic start, and every branch below either leaves it or earns something better.
+        // @see AnchorStatus
+        AnchorStatus anchorStatus = AnchorStatus.UNRESOLVED;
         String anchorNote = "";
         String methodText = "";
         Object lineText = "";
@@ -198,7 +204,7 @@ public final class BuildReproduceInput {
             Method em = enclosingMethod(src, svLine);
             if (em != null) {
                 anchor = em.name();
-                anchorStatus = "exact";
+                anchorStatus = AnchorStatus.EXACT;
                 methodText = em.text();
                 anchorNote = "line " + Js.numberToString(svLine) + " falls inside " + em.name()
                         + "() (lines " + em.startLine() + "-" + em.endLine() + ")";
@@ -206,7 +212,7 @@ public final class BuildReproduceInput {
                 // Every remaining unanchored marker in the WebGoat report lands on a field or a
                 // Lombok annotation. That is not drift and not a parser gap — name the real
                 // situation instead, or the agent clears a marker it never looked at.
-                anchorStatus = "no-method";
+                anchorStatus = AnchorStatus.NO_METHOD;
                 anchorNote = "line " + Js.numberToString(svLine)
                         + " is not inside any method body (it is a field, annotation or import)"
                         + (LOMBOK.matcher(src).find()
@@ -230,7 +236,7 @@ public final class BuildReproduceInput {
                 // The blanket "line numbers may have drifted" warning lives in the reproducer's
                 // SYSTEM message. What this node contributes is the per-marker signal: how far the
                 // location can be trusted for THIS marker.
-                + "LOCATION CONFIDENCE: " + anchorStatus + " — " + anchorNote + "\n"
+                + "LOCATION CONFIDENCE: " + anchorStatus.wire() + " — " + anchorNote + "\n"
                 + (JsValue.truthy(lineText)
                    ? "Line " + Js.numberToString(svLine) + " as it reads in the checked-out tree:\n"
                      + "```java\n" + JsValue.string(lineText) + "\n```\n"
@@ -249,7 +255,7 @@ public final class BuildReproduceInput {
                    : "FULL SOURCE FILE:\n```java\n")
                 + src + "\n```";
 
-        return new Outcome(j, src, srcTruncated, agentInput, anchor, anchorStatus, anchorNote,
+        return new Outcome(j, src, srcTruncated, agentInput, anchor, anchorStatus.wire(), anchorNote,
                 lineText, methodText);
     }
 

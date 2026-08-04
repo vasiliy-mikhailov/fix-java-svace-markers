@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import tech.mikhailov.fsm.lib.CheckerMap;
 import tech.mikhailov.fsm.lib.JsText;
 import tech.mikhailov.fsm.lib.JsValue;
 import tech.mikhailov.fsm.lib.Json;
@@ -144,10 +145,14 @@ public final class PrepProver {
      *                    {@code (ri && ri.default_branch) || ''} does not coerce
      * @param branchError the ONLY record of why a branch is missing, and the difference between
      *                    "retry this" and "this repo has no default branch"
-     * @param settleBy    'test' = a JUnit test can exhibit this; 'argue' = nothing observable at
-     *                    runtime distinguishes the flagged code (dead store, hard-coded secret), so
-     *                    the only honest outcome is a written verdict. Decides whether a
-     *                    non-reproduction is worth a second prove attempt.
+     * @param settleBy    the wire spelling of a {@link CheckerMap.SettleBy}: 'test' = a JUnit test can
+     *                    exhibit this; 'argue' = nothing observable at runtime distinguishes the
+     *                    flagged code (dead store, hard-coded secret), so the only honest outcome is a
+     *                    written verdict. Decides whether a non-reproduction is worth a second prove
+     *                    attempt. A String and NOT the enum, because the value is recovered by grepping
+     *                    a free-form evidence blob and whatever word that finds is carried through
+     *                    verbatim — see the read below and {@link CheckerMap.SettleBy#of(Object)},
+     *                    which is where a caller turns it back into one of the two that mean anything.
      */
     public record Outcome(Object suspicionKey, Object repo, Object branch, boolean branchOk,
                           String branchError, double proveAttempts, String file, String module,
@@ -259,7 +264,11 @@ public final class PrepProver {
                 JsValue.or(JsValue.prop(s, "marker_id"), ""),
                 JsValue.or(JsValue.prop(s, "svace_checker"), ""),
                 JsValue.or(JsValue.prop(s, "svace_severity"), ""),
-                svaceLine, settle.find() ? settle.group(1) : "test");
+                // The DEFAULT, off the enum that owns the vocabulary: a marker whose evidence carries
+                // no Settle-by hint at all is treated as one a test can settle. The literal used to
+                // sit here while `ParseMarkers` wrote the same word out of CheckerMap.SettleBy and
+                // `Verdict` compared against its sibling — three copies of a two-word vocabulary.
+                svaceLine, settle.find() ? settle.group(1) : CheckerMap.SettleBy.TEST.wire());
     }
 
     /** The lookup, spelled out: every header here is the fix for a way the call has failed before. */

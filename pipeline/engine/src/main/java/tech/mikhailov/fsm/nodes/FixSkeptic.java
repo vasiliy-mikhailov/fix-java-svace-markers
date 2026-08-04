@@ -1,12 +1,12 @@
 package tech.mikhailov.fsm.nodes;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import tech.mikhailov.fsm.lib.Js;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.Llm;
+import tech.mikhailov.fsm.lib.SkepticVerdict;
 
 /**
  * {@code Fix skeptic} — the second opinion on a fix that has already passed its own regression test.
@@ -50,9 +50,6 @@ public final class FixSkeptic {
 
     /** How much of a failed call's message reaches the row. The row is not a log file. */
     private static final int REASON_CUT = 150;
-
-    /** The only three words the prompt asks for. Anything else has certified nothing. */
-    private static final List<String> KNOWN = List.of("sound", "over-fit", "regression-risk");
 
     /**
      * The exact text the skeptic sends, as a Java 25 text block.
@@ -110,7 +107,15 @@ public final class FixSkeptic {
                               Object fixEditsJson) {
     }
 
-    /** The pair the parser produces and the row records. */
+    /**
+     * The pair the parser produces and the row records.
+     *
+     * @param verdict the WIRE SPELLING of a {@link SkepticVerdict}, and a String rather than the enum
+     *                because it is the value of the {@code skeptic_verdict} column: this record is
+     *                serialised straight into the row three later stages read. The vocabulary is typed
+     *                where it is DECIDED — inside {@link #parseSkepticReply} — and flattened here, at
+     *                the edge, which is the same rule the rest of the package follows.
+     */
     public record Reply(String verdict, String reason) {
     }
 
@@ -186,7 +191,8 @@ public final class FixSkeptic {
     /**
      * A chat-completions reply to the {@code {verdict, reason}} pair the node returns.
      *
-     * <p>Only the three words the prompt asked for are accepted. Anything else is {@code unknown}: a
+     * <p>Only {@link SkepticVerdict#ANSWERS} — the three words the prompt asked for — are accepted.
+     * Anything else is {@code unknown}: a
      * model that answers "looks fine to me" has not certified anything, and passing its word through
      * would let an unreviewed patch reach a PR. A reply with no JSON object at all leaves the pair at
      * its {@code not-run} start, and the last step promotes that to {@code unknown} — {@code not-run}
@@ -199,7 +205,7 @@ public final class FixSkeptic {
      * verdict" would report a broken endpoint as a model that had nothing to say.
      */
     public static Reply parseSkepticReply(Object r) {
-        String verdict = "not-run";
+        SkepticVerdict verdict = SkepticVerdict.NOT_RUN;
         String reason = "skeptic did not run";
         String t = Llm.replyText(r);
         int a = t.indexOf('{');
@@ -207,8 +213,13 @@ public final class FixSkeptic {
         if (a >= 0 && b > a) {
             Object jj = Json.parse(t.substring(a, b + 1));
             String v = Js.orEmptyString(Json.get(jj, "verdict"));
-            boolean known = KNOWN.contains(v);
-            verdict = known ? v : "unknown";
+            // THE WHITELIST, AND IT IS THE ENUM'S. `of` recognises all five spellings — including the
+            // two the STAGE writes — and ANSWERS is the three the PROMPT asked for, so a model that
+            // replies 'not-run' or 'unknown' is treated as having said something unrecognised rather
+            // than as having reported its own absence. @see SkepticVerdict#ANSWERS
+            SkepticVerdict said = SkepticVerdict.of(v);
+            boolean known = said != null && SkepticVerdict.ANSWERS.contains(said);
+            verdict = known ? said : SkepticVerdict.UNKNOWN;
             String given = Js.orEmptyString(Json.get(jj, "reason"));
             // A recognised verdict with no reason is NOT an unrecognised verdict: "unrecognised
             // verdict: sound" in the row sends a reviewer hunting a parser bug that does not exist,
@@ -218,11 +229,13 @@ public final class FixSkeptic {
                     : !v.isEmpty() ? "unrecognised verdict: " + v
                     : "skeptic reply carried no verdict field";
         }
-        if ("not-run".equals(verdict)) {
-            verdict = "unknown";
+        // Nothing above replaced the initialiser, so no object was found at all: the call HAPPENED and
+        // came back useless, which is not the same event as the block being skipped.
+        if (verdict == SkepticVerdict.NOT_RUN) {
+            verdict = SkepticVerdict.UNKNOWN;
             reason = "skeptic returned no usable verdict";
         }
-        return new Reply(verdict, reason);
+        return new Reply(verdict.wire(), reason);
     }
 
     /**
@@ -239,9 +252,10 @@ public final class FixSkeptic {
         Object fixrun = req.item();                      // run_test fix verdict flows in
         boolean proven = Json.truthy(fixrun, "proven");
 
-        // The 'not-run' initialiser is deliberate: when the block is SKIPPED (not proven, or the fixer
-        // declined) nothing has certified this fix, and 'sound' would have claimed otherwise.
-        String verdict = "not-run";
+        // The NOT_RUN initialiser is deliberate: when the block is SKIPPED (not proven, or the fixer
+        // declined) nothing has certified this fix, and SOUND would have claimed otherwise. Written
+        // through the enum so this stage and the four that read the column cannot spell it apart.
+        String verdict = SkepticVerdict.NOT_RUN.wire();
         String reason = "skeptic did not run";
         // THE RECEIPT — true on the one path where the model's own answer was read back, exactly as
         // PrMaker's `pr_curated` is. ORIGIN (2026-07-30): 'unknown' is returned BOTH for a call that
@@ -267,7 +281,7 @@ public final class FixSkeptic {
                 // spoken when what it sent could not be read.
                 answered = true;
             } catch (Exception e) {
-                verdict = "unknown";
+                verdict = SkepticVerdict.UNKNOWN.wire();
                 reason = "skeptic call failed: " + Llm.failureText(e, REASON_CUT, "error");
             }
         }

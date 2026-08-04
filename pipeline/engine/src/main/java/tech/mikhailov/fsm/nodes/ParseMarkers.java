@@ -13,6 +13,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import tech.mikhailov.fsm.lib.AnchorStatus;
 import tech.mikhailov.fsm.lib.CheckerMap;
 import tech.mikhailov.fsm.lib.Csv;
 import tech.mikhailov.fsm.lib.Js;
@@ -264,51 +265,81 @@ public final class ParseMarkers {
         }
     }
 
+    /**
+     * THE INGEST BODY, parsed — every key of the webhook payload, read once and in one place.
+     *
+     * <p>It is a hand-written curl payload (see the class comment), so each of these carries a
+     * deliberate answer to "what if this field is absent, null, or the wrong type?", and each of those
+     * answers is a decision somebody has to be able to find. They were already read in one block at the
+     * top of {@link #parseMarkers}; naming the block is what makes the REQUEST CONTRACT legible on its
+     * own — twenty lines instead of a method that has to be read to its end to learn what it accepts.
+     *
+     * <p>THE FILE IS NOT READ HERE. {@link #csvPath} resolves the default and stops; the read is a side
+     * effect and it belongs after the {@code repo} check, or a request that names no repository would
+     * touch the disk before it is rejected.
+     *
+     * @param prefix       the CI path prefix to strip. ABSENT means "use the WebGoat default";
+     *                     PRESENT-BUT-FALSY means "do not strip at all". Those are different requests
+     *                     and JSON can express both, so the distinction is a containsKey and not a null
+     *                     check.
+     * @param includeTests STRICTLY true, not merely truthy: the string "false" is a plausible typo in a
+     *                     hand-written body and "false" is truthy — reading it as a request for the 74
+     *                     structurally unfixable test-tree markers would put a day of prover time into
+     *                     work the runner refuses to do.
+     * @param onlyCheckers NULL means no filter at all, and that is NOT the same as an empty set: an
+     *                     {@code only_checkers: []} filters nothing, where an empty SET would filter
+     *                     everything and ingest a backlog of nothing.
+     * @param minRank      from a value that is deliberately NOT trimmed: min_severity is looked up
+     *                     verbatim, so a padded value ranks -1 and filters nothing. That is the safe
+     *                     direction — the opposite mistake drops markers the operator asked to keep.
+     */
+    private record Body(String repo, String branch, boolean includeTests, String prefix,
+                        Set<String> onlyCheckers, int minRank, String csvText, String csvPath) {
+
+        static Body of(Object b) {
+            Object rawOnly = Json.get(b, "only_checkers");
+            Set<String> onlyCheckers = null;
+            if (rawOnly instanceof List<?> l && !l.isEmpty()) {
+                // Trimmed, because the list arrives from a hand-written request body and a padded name
+                // matches no checker at all — which would silently ingest nothing and read as "the
+                // report has no such findings".
+                onlyCheckers = new LinkedHashSet<>();
+                for (Object o : l) {
+                    onlyCheckers.add(JsText.trim(Js.string(o)));
+                }
+            }
+            Object path = Json.get(b, "csv_path");
+            return new Body(
+                    JsText.trim(Js.orEmptyString(Json.get(b, "repo"))),
+                    JsText.trim(Js.orEmptyString(Json.get(b, "branch"))),
+                    Boolean.TRUE.equals(Json.get(b, "include_tests")),
+                    has(b, "path_prefix")
+                            ? Js.orEmptyString(Json.get(b, "path_prefix")) : DEFAULT_PATH_PREFIX,
+                    onlyCheckers,
+                    Severity.rankOf(Js.orEmptyString(Json.get(b, "min_severity"))),
+                    Js.orEmptyString(Json.get(b, "csv_text")),
+                    Js.truthy(path) ? Js.string(path) : DEFAULT_CSV_PATH);
+        }
+    }
+
     /** Turn the request's CSV into the backlog. */
     public static Result parseMarkers(Request req) {
-        Object b = req.body();
-
-        String repo = JsText.trim(Js.orEmptyString(Json.get(b, "repo")));
+        // THE PARSE, AND IT IS THE ONLY ONE: nothing below this line reads a key of the request.
+        Body body = Body.of(req.body());
+        String repo = body.repo();
         if (repo.isEmpty()) {
             throw new IngestFailed("ingest: `repo` is required (e.g. \"WebGoat/WebGoat\")");
         }
-        String branch = JsText.trim(Js.orEmptyString(Json.get(b, "branch")));
-        // Strictly true, not merely truthy. include_tests arrives from a hand-written body where the
-        // string "false" is a plausible typo, and "false" is truthy — reading it as a request for the
-        // 74 structurally unfixable test-tree markers would put a day of prover time into work the
-        // runner refuses to do.
-        boolean includeTests = Boolean.TRUE.equals(Json.get(b, "include_tests"));
-
-        // ABSENT means "use the WebGoat default"; PRESENT-BUT-FALSY means "do not strip at all". Those
-        // are different requests and JSON can express both, so the distinction is a containsKey and
-        // not a null check.
-        String prefix = has(b, "path_prefix")
-                ? Js.orEmptyString(Json.get(b, "path_prefix")) : DEFAULT_PATH_PREFIX;
-
-        Object rawOnly = Json.get(b, "only_checkers");
-        Set<String> onlyCheckers = null;
-        if (rawOnly instanceof List<?> l && !l.isEmpty()) {
-            // Trimmed, because the list arrives from a hand-written request body and a padded name
-            // matches no checker at all — which would silently ingest nothing and read as "the report
-            // has no such findings".
-            onlyCheckers = new LinkedHashSet<>();
-            for (Object o : l) {
-                onlyCheckers.add(JsText.trim(Js.string(o)));
-            }
-        }
-        // NOT trimmed, deliberately: min_severity is looked up verbatim, so a padded value ranks -1
-        // and filters nothing. That is the safe direction — the opposite mistake drops markers the
-        // operator asked to keep.
-        int minRank = Severity.rankOf(Js.orEmptyString(Json.get(b, "min_severity")));
+        String prefix = body.prefix();
+        Set<String> onlyCheckers = body.onlyCheckers();
+        int minRank = body.minRank();
 
         // source: an inline body, or a file off the mounted repo
-        String text = Js.orEmptyString(Json.get(b, "csv_text"));
+        String text = body.csvText();
         String source = "csv_text";
         if (text.isEmpty()) {
-            Object p = Json.get(b, "csv_path");
-            String path = Js.truthy(p) ? Js.string(p) : DEFAULT_CSV_PATH;
-            text = read(path);
-            source = path;
+            text = read(body.csvPath());
+            source = body.csvPath();
         }
 
         List<List<String>> rows = Csv.parse(text);
@@ -360,7 +391,7 @@ public final class ParseMarkers {
             }
 
             String file = normalisePath(rawFile, prefix);
-            if (TEST_TREE.matcher(file).find() && !includeTests) {
+            if (TEST_TREE.matcher(file).find() && !body.includeTests()) {
                 tests++;
                 continue;
             }
@@ -389,13 +420,16 @@ public final class ParseMarkers {
             out.add(new Suspicion(
                     base + suffix,
                     checker + "@" + file + ":" + lineText + suffix,
-                    repo, branch, file,
+                    repo, body.branch(), file,
                     className,
                     "",
                     line,
                     line,
                     "",
-                    "pending",
+                    // No anchor yet — `Build reproduce input` re-anchors this against the real
+                    // checkout and overwrites the column with one of the other three spellings. Off
+                    // the enum, which is the only place all four are written down. @see AnchorStatus
+                    AnchorStatus.PENDING.wire(),
                     category,
                     graded == null ? Severity.Grade.LOW.wire() : graded.grade().wire(),
                     checker,
@@ -428,7 +462,7 @@ public final class ParseMarkers {
         for (Suspicion s : out) {
             bySeverity.merge(s.svaceSeverity(), 1L, Long::sum);
         }
-        Summary summary = new Summary(source, repo, branch, out.size(), rows.size() - 1L,
+        Summary summary = new Summary(source, repo, body.branch(), out.size(), rows.size() - 1L,
                 bySeverity, new Skipped(tests, checkerFilter, severityFilter, unmappedKept, badRow),
                 unmapped);
         if (out.isEmpty()) {

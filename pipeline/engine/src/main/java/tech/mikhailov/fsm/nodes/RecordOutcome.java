@@ -9,6 +9,8 @@ import java.util.regex.Pattern;
 import tech.mikhailov.fsm.lib.JsText;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.MarkerState;
+import tech.mikhailov.fsm.lib.PrDecision;
+import tech.mikhailov.fsm.lib.SkepticVerdict;
 
 /**
  * {@code Record outcome} — decides what a marker becomes.
@@ -29,6 +31,12 @@ import tech.mikhailov.fsm.lib.MarkerState;
  * also preserves the property the routing relies on: an item
  * that is missing, null, or not an object at all reads as ALL FIELDS ABSENT, which is exactly what
  * {@code $('Parse fix').item.json || {}} did.
+ *
+ * <p>…AND WHY THEY ARE READ EXACTLY ONCE. The maps stay at the EDGE. {@link #read} is the only method
+ * in this file that names a key of an input, and {@link Outcome#toMap} is the only one that names a key
+ * of the output; the five phases in between run on typed values. Before that, "did the skeptic answer?"
+ * was asked of the raw item in three places with three spellings of the same word, and a row whose
+ * state, banner and {@code infra_reason} disagreed about one run was a defect no compiler could see.
  */
 public final class RecordOutcome {
 
@@ -140,23 +148,279 @@ public final class RecordOutcome {
         }
     }
 
+    // ---- THE PARSE: every key this stage reads off an upstream item, in ONE place -----------------
+    //
+    // Six items arrive as `Object` — see the class comment for why they are not DTOs. They are read
+    // HERE, once, by {@link #read}, and below that this node works on typed values: no phase names a
+    // key of an input, and the only other keys in the file are the ones {@link Outcome#toMap} writes.
+    //
+    // WHERE A COMPONENT IS STILL `Object`, THE COERCION WAS DEFERRED ON PURPOSE. {@link Json#str}
+    // SERIALISES anything that is not a string, and refuses a non-finite double — `1e400` is
+    // well-formed JSON and parses to one. Four of the fields below are build logs and error messages
+    // that are quoted into a message only when a particular failure fired, and coercing them at the
+    // parse would let a malformed field this run never reads throw out of a node whose whole contract
+    // is that a malformed item reads as ALL FIELDS ABSENT. Those are carried raw and coerced by the
+    // accessor beside them, which is still the only place that coercion is written down.
+
+    /**
+     * THE MARKER, off {@code Prep prover}.
+     *
+     * @param proveAttempts the count AS RECORDED; the row this node writes carries it incremented
+     * @param branchFailed  STRICTLY false, not merely falsy: an ABSENT {@code branch_ok} is a row
+     *                      written before the flag existed, not a lookup that failed
+     * @param branchError   raw — see the note above. @see #branchErrorText()
+     */
+    private record Marker(String suspicionKey, String repo, String file, String title, String branch,
+                          String testPath, double proveAttempts, boolean branchFailed,
+                          Object branchError) {
+
+        static Marker of(Object j) {
+            return new Marker(Json.str(j, "suspicion_key"), Json.str(j, "repo"), Json.str(j, "file"),
+                    Json.str(j, "title"), Json.str(j, "branch"), Json.str(j, "test_path"),
+                    Json.num(j, "prove_attempts"),
+                    Boolean.FALSE.equals(Json.get(j, "branch_ok")), Json.get(j, "branch_error"));
+        }
+
+        /** WHY the branch is missing: "retry this" and "this repo has no default branch" differ. */
+        String branchErrorText() {
+            return Json.str(branchError);
+        }
+    }
+
+    /**
+     * THE REPRODUCER'S REPLY, off {@code Parse test}.
+     *
+     * @param parseFailed the reply was unusable — NOT a verdict about the marker
+     * @param unsound     STRICTLY false again: an ABSENT {@code test_sound} means the realness scoring
+     *                    never ran and says nothing, while {@code false} is a finding. Treating
+     *                    absence as a finding would park every marker from a node that had not
+     *                    reported yet.
+     * @param score       {@code Number(x) || 0} with no rounding anywhere; see {@link Outcome}
+     * @param realness    raw — quoted into exactly one banner. @see #realnessText()
+     */
+    private record TestReply(boolean canProve, boolean parseFailed, boolean unsound, String code,
+                             double score, String valueVerdict, Object realness) {
+
+        static TestReply of(Object parseTest) {
+            return new TestReply(Json.truthy(parseTest, "can_prove"),
+                    Json.truthy(parseTest, "parse_failed"),
+                    Boolean.FALSE.equals(Json.get(parseTest, "test_sound")),
+                    Json.str(parseTest, "test_code"), Json.num(parseTest, "test_score"),
+                    Json.str(parseTest, "repro_value_verdict"),
+                    Json.get(parseTest, "test_realness"));
+        }
+
+        /** Why the test does not exercise the real code, in the reviewer's own banner. */
+        String realnessText() {
+            return Json.str(realness);
+        }
+    }
+
+    /**
+     * THE FIXER'S REPLY, off {@code Parse fix}.
+     *
+     * @param rejectedValue ONE KEY, TWO COERCIONS, and they are components of one value here rather
+     *                      than two reads ninety lines apart: {@code !!x} decides whether the
+     *                      source-only allowlist refused anything, {@code String(x || '')} is what the
+     *                      row quotes. @see #rejected() @see #rejectedPaths()
+     */
+    private record FixReply(boolean parseFailed, Object rejectedValue, String editsJson,
+                            String prTitle, String prBody) {
+
+        static FixReply of(Object parseFix) {
+            return new FixReply(Json.truthy(parseFix, "fix_parse_failed"),
+                    Json.get(parseFix, "fix_rejected"), Json.str(parseFix, "fix_edits_json"),
+                    Json.str(parseFix, "pr_title"), Json.str(parseFix, "pr_body"));
+        }
+
+        /** Whether the allowlist refused anything at all. */
+        boolean rejected() {
+            return Json.truthy(rejectedValue);
+        }
+
+        /** The paths it refused, as the row records them. */
+        String rejectedPaths() {
+            return Json.str(rejectedValue);
+        }
+    }
+
+    /**
+     * THE REPRODUCER'S RUN, off {@code run_test reproduce}.
+     *
+     * @param testNotExecuted STRICTLY false: the test never ran, which is a BUILD failure and not a
+     *                        verdict that the bug is unreal. An ABSENT flag is a runner that did not
+     *                        report one, and inventing a build failure from it would requeue for ever.
+     * @param output          raw, and the reason the deferral note above exists: this is a Maven log
+     * @param error           raw, and read BOTH ways. @see #failed() @see #errorText()
+     */
+    private record ReproRun(boolean reproduced, boolean ok, boolean testNotExecuted, String jdk,
+                            Object output, Object error) {
+
+        static ReproRun of(Object repro) {
+            return new ReproRun(Json.truthy(repro, "red_reproduced"), Json.truthy(repro, "ok"),
+                    Boolean.FALSE.equals(Json.get(Json.get(repro, "red_summary"), "test_executed")),
+                    Json.str(repro, "jdk"), Json.get(repro, "red_output"), Json.get(repro, "error"));
+        }
+
+        /** Whether the run itself failed, as opposed to the test failing. */
+        boolean failed() {
+            return Json.truthy(error);
+        }
+
+        /** The failure, for the row. @see #clip */
+        String errorText() {
+            return Json.str(error);
+        }
+
+        /** The build log the cause is read out of. @see #cause */
+        String outputText() {
+            return Json.str(output);
+        }
+    }
+
+    /**
+     * THE FIX RUN, off the item this node runs on.
+     *
+     * <p>THAT ITEM CARRIES TWO STAGES' WORTH OF FIELDS, which is why it is parsed by two records: the
+     * {@code run_test fix} verdict flows through {@code Fix skeptic} and {@code PR maker} untouched,
+     * so the run's own fields and the two judges' answers arrive together. {@link Judges} is the other
+     * half, and keeping them apart is what stops "the build" and "the judgement" being read as one
+     * thing — they fail independently and this node reports them separately.
+     *
+     * @param greenTestNotExecuted STRICTLY false, for the reason {@link ReproRun#testNotExecuted} is
+     * @param redTestNotExecuted   the fix run's OWN red build, which can be killed too
+     */
+    private record FixRun(boolean green, boolean proven, boolean ok, String jdk,
+                          boolean greenTestNotExecuted, boolean greenCompileError,
+                          boolean redTestNotExecuted, Object greenOutput, Object redOutput,
+                          Object error, List<Object> editErrors, List<Object> appliedFiles) {
+
+        static FixRun of(Object pm) {
+            Object greenSummary = Json.get(pm, "green_summary");
+            return new FixRun(Json.truthy(pm, "green_passed"), Json.truthy(pm, "proven"),
+                    Json.truthy(pm, "ok"), Json.str(pm, "jdk"),
+                    Boolean.FALSE.equals(Json.get(greenSummary, "test_executed")),
+                    Json.truthy(greenSummary, "compile_error"),
+                    Boolean.FALSE.equals(Json.get(Json.get(pm, "red_summary"), "test_executed")),
+                    Json.get(pm, "green_output"), Json.get(pm, "red_output"), Json.get(pm, "error"),
+                    listOf(Json.get(pm, "edit_errors")), listOf(Json.get(pm, "applied_files")));
+        }
+
+        /** @see ReproRun#failed() */
+        boolean failed() {
+            return Json.truthy(error);
+        }
+
+        /** @see ReproRun#errorText() */
+        String errorText() {
+            return Json.str(error);
+        }
+
+        /** The green build's log. @see #cause */
+        String greenOutputText() {
+            return Json.str(greenOutput);
+        }
+
+        /** The fix run's own RED build log — a different build from {@link ReproRun#outputText()}. */
+        String redOutputText() {
+            return Json.str(redOutput);
+        }
+    }
+
+    /**
+     * THE TWO JUDGES, off the same item {@link FixRun} is read from.
+     *
+     * <p>Both vocabularies are TYPED here and nowhere else in this node: {@link SkepticVerdict} and
+     * {@link PrDecision} own the spellings, and the three questions this node asks of them —
+     * {@link #certified()}, {@link #skepticNeverAnswered()}, {@link #curatorNeverDecided()} — are
+     * asked once each instead of at the seven sites that used to compare against a literal.
+     *
+     * @param skepticText     the word AS IT ARRIVED, with its {@code || 'unknown'} fallback. Kept
+     *                        beside the typed verdict because the banner quotes it back: a word this
+     *                        vocabulary does not know still has to reach a human intact, and
+     *                        {@link #skeptic} is null for exactly those.
+     * @param skepticAnsweredFalse STRICTLY false — the machine-readable half of "never answered". An
+     *                        ABSENT receipt is a row written before the receipt existed, not a stage
+     *                        that failed.
+     * @param decisionText    the curator's word as it arrived. @see #skepticText
+     * @param curatorNeverRan STRICTLY false, and NOT the same question as {@link #curatorNeverDecided}
+     */
+    private record Judges(String skepticText, SkepticVerdict skeptic, boolean skepticAnsweredFalse,
+                          String skepticReason, String decisionText, PrDecision decision,
+                          boolean curatorNeverRan, String prReason, String prTitle, String prBody) {
+
+        static Judges of(Object pm) {
+            // silence is NOT approval, and nor is a crash: both read as the vocabulary's own word for
+            // "nobody said anything", never as an answer.
+            String skepticText = or(Json.str(pm, "skeptic_verdict"), SkepticVerdict.UNKNOWN.wire());
+            String decisionText = or(Json.str(pm, "pr_decision"), PrDecision.UNKNOWN.wire());
+            return new Judges(skepticText, SkepticVerdict.of(skepticText),
+                    Boolean.FALSE.equals(Json.get(pm, "skeptic_answered")),
+                    Json.str(pm, "skeptic_reason"), decisionText, PrDecision.of(decisionText),
+                    Boolean.FALSE.equals(Json.get(pm, "pr_curated")), Json.str(pm, "pr_reason"),
+                    Json.str(pm, "pr_title"), Json.str(pm, "pr_body"));
+        }
+
+        /** Whether the skeptic CERTIFIED this fix. @see SkepticVerdict#certifies() */
+        boolean certified() {
+            return skeptic != null && skeptic.certifies();
+        }
+
+        /**
+         * WHICH JUDGE WAS SILENT, as opposed to which judge had doubts. Both settle a proven fix short
+         * of a pull request, and the state alone cannot tell them apart — see the banners in
+         * {@link #prText}, and the reasons in {@link #infraReason}, which read this in opposite ways.
+         *
+         * <p>The verdict has to be {@code unknown} as well as the receipt false, because a SKIPPED
+         * skeptic reports {@code not-run} with no answer either and it was never asked for one.
+         */
+        boolean skepticNeverAnswered() {
+            return skeptic == SkepticVerdict.UNKNOWN && skepticAnsweredFalse;
+        }
+
+        /**
+         * THE CURATOR DECIDED NOTHING — which is not the same question as {@link #curatorNeverRan},
+         * and the difference is a whole class of invented infra reason. A marker held back because its
+         * edits did not apply, or because its test never drove the real class, reaches
+         * {@code needs_review} with a curator that answered {@code make} perfectly well; reporting THAT
+         * row as a curator that never answered sends an operator to look at a stage that worked.
+         *
+         * <p>{@code make} and {@code reject} are the only two answers this stage recognises, so
+         * anything else — {@code n/a} from the fail-closed catch, {@code unknown} for a missing field,
+         * a word the model made up (which is null here) — is the curator failing to decide.
+         */
+        boolean curatorNeverDecided() {
+            return decision == null || !decision.decides();
+        }
+    }
+
     /**
      * WHAT THE FIVE UPSTREAM STAGES SAID, read once and in one place.
      *
      * <p>Every phase below branches on these and only these, which is the point: the routing, the PR
-     * banner and the {@code infra_reason} column all read THE SAME flags instead of each re-deriving
+     * banner and the {@code infra_reason} column all read THE SAME values instead of each re-deriving
      * "did the skeptic answer?" from the raw items. A read that drifted between two of them is a row
      * whose state, banner and reason disagree about one run — see {@link #prText} and
      * {@link #infraReason}, which branch on the same conditions with opposite logic.
      *
      * <p>The maps stay at the edge, as the class doc requires: this is the wire-shaped request boiled
      * down INSIDE the node, and nothing outside it ever sees this type.
+     *
+     * <p>TWO COMPONENTS ARE DERIVED AND THE REST ARE READ. {@link #proven} and {@link #jdk} are the
+     * only facts here that no single stage reported — each is a reading of TWO items — so each is
+     * computed once, in {@link #read}, rather than at the four sites that want it.
+     *
+     * @param sourceMissing   the source fetch returned nothing; read straight off
+     *                        {@code Build reproduce input} rather than through a record, because two
+     *                        booleans do not need one
+     * @param sourceTruncated the file was cut at {@link #SRC_MAX_CHARS}, so no verdict on it is safe
+     * @param proven          red AND green, re-verified: the reproduce run went red and the fix run
+     *                        says so too
+     * @param jdk             the release the FIX run resolved, falling back to the reproduce run's
      */
-    private record Signals(boolean canProve, boolean reproduced, boolean green, boolean proven,
-                           String skeptic, String decision, String skepticReason, String prReason,
-                           boolean skepticNeverAnswered, boolean curatorNeverRan,
-                           boolean curatorNeverDecided, boolean testUnsound, String jdk,
-                           List<Object> editErrors, List<Object> appliedFiles) {
+    private record Signals(Marker marker, TestReply test, FixReply fix, ReproRun repro, FixRun run,
+                           Judges judges, boolean sourceMissing, boolean sourceTruncated,
+                           boolean proven, String jdk) {
 
         /**
          * "no errors" is not "it applied": zero edits also produces zero errors. A red-&gt;green flip
@@ -164,7 +428,7 @@ public final class RecordOutcome {
          * would publish.
          */
         boolean notApplied() {
-            return !editErrors.isEmpty() || appliedFiles.isEmpty();
+            return !run.editErrors().isEmpty() || run.appliedFiles().isEmpty();
         }
     }
 
@@ -181,71 +445,52 @@ public final class RecordOutcome {
      * ({@link #infraReason}). Each phase reads the ones before it and none reaches back.
      */
     public static Outcome recordOutcome(Request req) {
+        // THE PARSE, AND IT IS THE ONLY ONE: every key the six upstream items are read by is named in
+        // read() and nowhere else, so from here down this stage has no string-keyed access at all.
         Signals sig = read(req);
-        List<String> infra = infraFailures(req, sig);
+        List<String> infra = infraFailures(sig);
         MarkerState state = route(sig, !infra.isEmpty());
-        PrText pr = prText(state, req, sig);
+        PrText pr = prText(state, sig);
 
-        Object j = req.prepProver();
-        Object parseTest = req.parseTest();
+        Marker marker = sig.marker();
+        TestReply test = sig.test();
+        // THE SERIALISE, AND IT IS THE ONLY ONE: {@link Outcome#toMap} names the columns, this names
+        // the values, and nothing between the two lines above touches a map.
         return new Outcome(
-                Json.str(j, "suspicion_key"), Json.str(j, "repo"), Json.str(j, "file"),
-                Json.str(j, "title"), sig.jdk(),
-                Json.str(j, "test_path"), Json.str(parseTest, "test_code"),
-                or(Json.str(req.parseFix(), "fix_edits_json"), "[]"),
-                sig.reproduced(), sig.green(),
+                marker.suspicionKey(), marker.repo(), marker.file(), marker.title(), sig.jdk(),
+                marker.testPath(), test.code(),
+                or(sig.fix().editsJson(), "[]"),
+                sig.repro().reproduced(), sig.run().green(),
                 state == MarkerState.PR_READY || state == MarkerState.NEEDS_REVIEW
-                        ? Json.num(parseTest, "test_score") : 0,
-                Json.str(parseTest, "repro_value_verdict"), pr.title(), pr.body(), state,
+                        ? test.score() : 0,
+                test.valueVerdict(), pr.title(), pr.body(), state,
                 infraReason(state, sig, infra),
-                (long) Json.num(j, "prove_attempts") + 1,
-                Json.str(j, "branch"), req.versions());
+                (long) marker.proveAttempts() + 1,
+                marker.branch(), req.versions());
     }
 
-    /** PHASE 1 — read the stage flags. Every {@code ||} and {@code !!} the routing depends on. */
+    /**
+     * PHASE 1 — THE PARSE. Every {@code ||} and {@code !!} the routing depends on, and every key the
+     * node reads: the six items go in, typed values come out, and no later phase sees a map.
+     */
     private static Signals read(Request req) {
-        Object parseTest = req.parseTest();
-        Object repro = req.reproduce();
-        Object pm = req.prMaker();
+        Marker marker = Marker.of(req.prepProver());
+        TestReply test = TestReply.of(req.parseTest());
+        FixReply fix = FixReply.of(req.parseFix());
+        ReproRun repro = ReproRun.of(req.reproduce());
+        // ONE ITEM, TWO RECORDS — the run and the judges that flowed through it. @see FixRun
+        FixRun run = FixRun.of(req.prMaker());
+        Judges judges = Judges.of(req.prMaker());
+        Object bri = req.buildReproduceInput();
 
-        boolean reproduced = Json.truthy(repro, "red_reproduced");   // REPRODUCER stage result
-        boolean green = Json.truthy(pm, "green_passed");             // FIXER stage result
-        boolean proven = reproduced && Json.truthy(pm, "proven");    // re-verifies red AND green
-        String skeptic = or(Json.str(pm, "skeptic_verdict"), "unknown");  // silence is NOT approval
-        String decision = or(Json.str(pm, "pr_decision"), "unknown");     // nor is a crash
-        boolean canProve = Json.truthy(parseTest, "can_prove");
-        String skepticReason = Json.str(pm, "skeptic_reason");
-        String prReason = Json.str(pm, "pr_reason");
-
-        // WHICH JUDGE WAS SILENT, as opposed to which judge had doubts. Both settle a proven fix short
-        // of a pull request, and the state alone cannot tell them apart — see the banners in prText,
-        // and the reasons in infraReason, which read these two flags in opposite ways.
-        //
-        // Strictly false in both cases, exactly as pr_curated is read further down: an ABSENT receipt is
-        // a row written before the receipt existed, not a stage that failed. And the skeptic's verdict
-        // has to be `unknown` as well, because a SKIPPED skeptic reports `not-run` with no answer either
-        // and it was never asked for one.
-        boolean skepticNeverAnswered = "unknown".equals(skeptic)
-                && Boolean.FALSE.equals(Json.get(pm, "skeptic_answered"));
-        boolean curatorNeverRan = Boolean.FALSE.equals(Json.get(pm, "pr_curated"));
-        // THE CURATOR DECIDED NOTHING — which is not the same question as {@code pr_curated}, and the
-        // difference is a whole class of invented infra reason. A marker held back because its edits did
-        // not apply, or because its test never drove the real class, reaches `needs_review` with a
-        // curator that answered `make` perfectly well; reporting THAT row as a curator that never
-        // answered sends an operator to look at a stage that worked. `make` and `reject` are the only two
-        // answers this stage recognises, so anything else — `n/a` from the fail-closed catch, `unknown`
-        // for a missing field, a word the model made up — is the curator failing to decide.
-        boolean curatorNeverDecided = !"make".equals(decision) && !"reject".equals(decision);
-
-        // Strictly false, not merely falsy: an ABSENT test_sound means the realness scoring never ran
-        // and says nothing, while `false` is a finding. Treating absence as a finding would park every
-        // marker from a node that had not reported yet.
-        boolean testUnsound = Boolean.FALSE.equals(Json.get(parseTest, "test_sound"));
-
-        return new Signals(canProve, reproduced, green, proven, skeptic, decision, skepticReason,
-                prReason, skepticNeverAnswered, curatorNeverRan, curatorNeverDecided, testUnsound,
-                or(Json.str(pm, "jdk"), Json.str(repro, "jdk")),
-                listOf(Json.get(pm, "edit_errors")), listOf(Json.get(pm, "applied_files")));
+        return new Signals(marker, test, fix, repro, run, judges,
+                // JsText.isBlank, NOT String.isBlank: they disagree about four characters in each
+                // direction, and a source file that is nothing but a byte-order mark is one of them. To
+                // JsText that file is empty — infra_error, retried. To String.isBlank it has content,
+                // and the marker would be adjudicated against a file with no code in it. See JsText.
+                JsText.isBlank(Json.str(bri, "src")), Json.truthy(bri, "src_truncated"),
+                repro.reproduced() && run.proven(),          // re-verifies red AND green
+                or(run.jdk(), repro.jdk()));
     }
 
     /**
@@ -254,30 +499,23 @@ public final class RecordOutcome {
      * <p>Anything on this list forces {@code infra_error} in {@link #route} and is retried; nothing on
      * it is ever a judgement about the code. That is the distinction the whole node exists to protect.
      */
-    private static List<String> infraFailures(Request req, Signals sig) {
-        Object j = req.prepProver();
-        Object parseTest = req.parseTest();
-        Object parseFix = req.parseFix();
-        Object repro = req.reproduce();
-        Object pm = req.prMaker();
-        Object bri = req.buildReproduceInput();
+    private static List<String> infraFailures(Signals sig) {
+        Marker marker = sig.marker();
+        ReproRun repro = sig.repro();
+        FixRun run = sig.run();
 
         List<String> infra = new ArrayList<>();
-        if (Boolean.FALSE.equals(Json.get(j, "branch_ok"))) {
-            infra.add("branch unresolved: " + or(Json.str(j, "branch_error"), "?"));
+        if (marker.branchFailed()) {
+            infra.add("branch unresolved: " + or(marker.branchErrorText(), "?"));
         }
-        // JsText.isBlank, NOT String.isBlank: they disagree about four characters in each direction,
-        // and a source file that is nothing but a byte-order mark is one of them. To JsText that file
-        // is empty — infra_error, retried. To String.isBlank it has content, and the marker would be
-        // adjudicated against a file with no code in it. See JsText for the whole list.
-        if (JsText.isBlank(Json.str(bri, "src"))) {
+        if (sig.sourceMissing()) {
             infra.add("source fetch returned nothing");
         }
-        if (Json.truthy(bri, "src_truncated")) {
+        if (sig.sourceTruncated()) {
             infra.add("source file exceeded " + SRC_MAX_CHARS
                     + " chars and was truncated — a verdict on it is not trustworthy");
         }
-        if (Json.truthy(parseTest, "parse_failed")) {
+        if (sig.test().parseFailed()) {
             infra.add("reproducer reply was not parseable JSON");
         }
 
@@ -286,11 +524,9 @@ public final class RecordOutcome {
         // suspicion is retried and the build failure is visible, instead of silently RETIRING a real
         // bug. Gated on can_prove because a marker the reproducer DECLINED has no test to execute:
         // reporting that as a build failure would requeue for ever something already judged.
-        Object redSummary = Json.get(repro, "red_summary");
-        if (sig.canProve() && Json.truthy(repro, "ok")
-                && Boolean.FALSE.equals(Json.get(redSummary, "test_executed"))) {
+        if (sig.test().canProve() && repro.ok() && repro.testNotExecuted()) {
             infra.add("reproducer test never executed (build failed, jdk "
-                    + or(Json.str(repro, "jdk"), "?") + ")" + cause(Json.str(repro, "red_output")));
+                    + or(repro.jdk(), "?") + ")" + cause(repro.outputText()));
         }
         // THE GREEN COUNTERPART, and it exists for exactly the reason the red one does. A GREEN build
         // that never executed the test settles NOTHING about the fix — and the runner kills a build at
@@ -310,15 +546,13 @@ public final class RecordOutcome {
         // Gated on `reproduced` for the same reason the red guard is gated on can_prove: a marker that
         // never went red is decided by the red run alone, and reporting its green build would requeue
         // every not_reproduced marker whose fix run happened not to reach a test.
-        Object greenSummary = Json.get(pm, "green_summary");
-        if (sig.reproduced() && Json.truthy(pm, "ok")
-                && Boolean.FALSE.equals(Json.get(greenSummary, "test_executed"))
-                && !Json.truthy(greenSummary, "compile_error")) {
+        if (repro.reproduced() && run.ok() && run.greenTestNotExecuted()
+                && !run.greenCompileError()) {
             // NOT worded "test never executed (build failed" — that phrase is what opens Verdict's
             // `unprovable` hatch, which argues the marker as one no test ever compiled for. Here a test
             // compiled and went RED; only the verification of the fix never ran.
             infra.add("fix verification never ran the test (green build failed, jdk "
-                    + or(sig.jdk(), "?") + ")" + cause(Json.str(pm, "green_output")));
+                    + or(sig.jdk(), "?") + ")" + cause(run.greenOutputText()));
         }
         // THE OTHER HALF OF THE SAME RUN, and the same hole. The fix run builds RED itself before
         // applying the edits, and that build can be killed too — a cold dependency cache is the obvious
@@ -335,25 +569,22 @@ public final class RecordOutcome {
         // Gated on `green` because that is the only shape it changes: a fix run that came back NOT green
         // is settled as fix_failed by a green build that DID run the test, which is a fair judgement and
         // needs no help from this half.
-        Object fixRedSummary = Json.get(pm, "red_summary");
-        if (sig.reproduced() && sig.green() && Json.truthy(pm, "ok")
-                && Boolean.FALSE.equals(Json.get(fixRedSummary, "test_executed"))) {
+        if (repro.reproduced() && run.green() && run.ok() && run.redTestNotExecuted()) {
             infra.add("fix run never re-established red (its own red build ran no test, jdk "
-                    + or(sig.jdk(), "?") + ")" + cause(Json.str(pm, "red_output")));
+                    + or(sig.jdk(), "?") + ")" + cause(run.redOutputText()));
         }
-        if (Json.truthy(repro, "error")) {
-            infra.add("run_test(reproduce): " + clip(Json.str(repro, "error")));
+        if (repro.failed()) {
+            infra.add("run_test(reproduce): " + clip(repro.errorText()));
         }
-        if (Json.truthy(pm, "error")) {
-            infra.add("run_test(fix): " + clip(Json.str(pm, "error")));
+        if (run.failed()) {
+            infra.add("run_test(fix): " + clip(run.errorText()));
         }
 
-        if (Json.truthy(parseFix, "fix_parse_failed")) {
+        if (sig.fix().parseFailed()) {
             infra.add("fixer reply was not parseable JSON");
         }
-        if (Json.truthy(parseFix, "fix_rejected")) {
-            infra.add("edits rejected by the source-only allowlist: "
-                    + Json.str(parseFix, "fix_rejected"));
+        if (sig.fix().rejected()) {
+            infra.add("edits rejected by the source-only allowlist: " + sig.fix().rejectedPaths());
         }
         return infra;
     }
@@ -376,18 +607,19 @@ public final class RecordOutcome {
         // A red->green flip is only evidence about THIS FILE if the test drove the real class. When
         // the class under test is mocked, or never constructed, the flip can come entirely from the
         // test's own stubbing — the execution proof looks identical and establishes nothing.
-        } else if (sig.proven() && sig.canProve() && sig.testUnsound()) {
+        } else if (sig.proven() && sig.test().canProve() && sig.test().unsound()) {
             return MarkerState.NEEDS_REVIEW;
-        } else if (!sig.canProve()) {
+        } else if (!sig.test().canProve()) {
             return MarkerState.NOT_A_BUG;
-        } else if (sig.proven() && "sound".equals(sig.skeptic()) && "make".equals(sig.decision())) {
+        } else if (sig.proven() && sig.judges().certified()
+                && sig.judges().decision() == PrDecision.MAKE) {
             return MarkerState.PR_READY;
-        } else if (sig.proven() && "sound".equals(sig.skeptic())
-                && "reject".equals(sig.decision())) {
+        } else if (sig.proven() && sig.judges().certified()
+                && sig.judges().decision() == PrDecision.REJECT) {
             return MarkerState.PR_REJECTED;
         } else if (sig.proven()) {
             return MarkerState.NEEDS_REVIEW;             // proven, but the fix-skeptic flagged it
-        } else if (sig.reproduced() && !sig.green()) {
+        } else if (sig.repro().reproduced() && !sig.run().green()) {
             return MarkerState.FIX_FAILED;
         } else {
             return MarkerState.NOT_REPRODUCED;
@@ -404,15 +636,12 @@ public final class RecordOutcome {
      * tell a judge that was SILENT from a judge that had DOUBTS; this is where the difference is
      * written down for a human, and {@link #infraReason} is where it is written down for a query.
      */
-    private static PrText prText(MarkerState state, Request req, Signals sig) {
-        Object j = req.prepProver();
-        Object parseTest = req.parseTest();
-        Object parseFix = req.parseFix();
-        Object pm = req.prMaker();
+    private static PrText prText(MarkerState state, Signals sig) {
+        Judges judges = sig.judges();
 
-        String prTitle = or(Json.str(pm, "pr_title"),
-                or(Json.str(parseFix, "pr_title"), Json.str(j, "title")));
-        String prBody = or(Json.str(pm, "pr_body"), Json.str(parseFix, "pr_body"));
+        String prTitle = or(judges.prTitle(),
+                or(sig.fix().prTitle(), sig.marker().title()));
+        String prBody = or(judges.prBody(), sig.fix().prBody());
 
         switch (state) {
             case NEEDS_REVIEW -> {
@@ -420,52 +649,54 @@ public final class RecordOutcome {
                 // is a warning about a particular defect; stacking them buries the reason the fix was
                 // held back, and a banner on a clean draft teaches reviewers to skip them all.
                 String why;
-                if (!sig.editErrors().isEmpty()) {
+                if (!sig.run().editErrors().isEmpty()) {
                     why = "⚠ FIX NOT FULLY APPLIED — the recorded diff is NOT what was verified: "
-                            + joinJs(sig.editErrors());
-                } else if (sig.appliedFiles().isEmpty()) {
+                            + joinJs(sig.run().editErrors());
+                } else if (sig.run().appliedFiles().isEmpty()) {
                     why = "⚠ NO EDIT WAS APPLIED AT ALL — the red→green flip happened on an unchanged "
                             + "tree, so it is test flakiness or build state, not a fix";
-                } else if (sig.testUnsound()) {
+                } else if (sig.test().unsound()) {
                     why = "⚠ THE TEST DOES NOT EXERCISE THE REAL CODE — "
-                            + Json.str(parseTest, "test_realness")
+                            + sig.test().realnessText()
                             + ". The red→green flip may have been produced by the test's own stubbing "
                             + "rather than by the fix, so it is not evidence about "
-                            + Json.str(j, "file") + ".";
+                            + sig.marker().file() + ".";
                 // NEVER ANSWERED is a different banner from a verdict of `unknown`, and the difference is
                 // what an operator is left with: "the model was reached and certified nothing" sends
                 // them to the prompt, "the model never answered" sends them to the endpoint. Written as
                 // its own line rather than folded into the wording below, because the row is the only
                 // place either of them is ever recorded.
-                } else if (sig.skepticNeverAnswered()) {
+                } else if (judges.skepticNeverAnswered()) {
                     why = "⚠ FIX SKEPTIC NEVER ANSWERED — nobody checked this fix for over-fitting, so "
                             + "it is held back UNCERTIFIED rather than doubted ("
-                            + sig.skepticReason() + ")";
+                            + judges.skepticReason() + ")";
                 // The skeptic PASSED this fix, so it is not the blocker and must not be named as one.
                 // A row reading "⚠ FIX SKEPTIC (sound):" with an empty reason describes nothing and
                 // reads like a considered outcome — which is the most expensive kind of silence.
-                } else if ("sound".equals(sig.skeptic())) {
-                    why = "⚠ PR CURATOR RETURNED NO DECISION (`" + sig.decision() + "`) — the skeptic "
-                            + "certified this fix SOUND, so nothing here doubts it; it is held back "
-                            + "because nobody decided whether to propose it"
-                            + (sig.prReason().isEmpty() ? "" : ": " + sig.prReason());
+                } else if (judges.certified()) {
+                    why = "⚠ PR CURATOR RETURNED NO DECISION (`" + judges.decisionText() + "`) — the "
+                            + "skeptic certified this fix SOUND, so nothing here doubts it; it is held "
+                            + "back because nobody decided whether to propose it"
+                            + (judges.prReason().isEmpty() ? "" : ": " + judges.prReason());
                 } else {
-                    why = "⚠ FIX SKEPTIC (" + sig.skeptic() + "): " + sig.skepticReason();
+                    // The word AS IT ARRIVED, not the type: a verdict this pipeline has no constant for
+                    // still has to reach the reviewer intact. @see Judges#skepticText
+                    why = "⚠ FIX SKEPTIC (" + judges.skepticText() + "): " + judges.skepticReason();
                 }
                 prBody = why + "\n\n" + prBody;
             }
             case PR_REJECTED -> {
                 prTitle = "PR rejected";
-                prBody = "⛔ NOT PR-WORTHY (" + Json.str(j, "repo") + "): " + Json.str(pm, "pr_reason");
+                prBody = "⛔ NOT PR-WORTHY (" + sig.marker().repo() + "): " + judges.prReason();
             }
             case PR_READY -> {
                 // WHY the curator never ran is quoted: "unreviewed" with no cause reads as a pipeline
                 // quirk, and the reviewer needs to know whether to re-run it or read the draft with
                 // their own eyes. Strictly false again — an absent pr_curated is a curator that was
                 // never asked to report, not one that failed.
-                if (sig.curatorNeverRan()) {
+                if (judges.curatorNeverRan()) {
                     prBody = "⚠ PR CURATOR NEVER RAN — this is the fixer's own unreviewed draft ("
-                            + sig.prReason() + ")\n\n" + prBody;
+                            + judges.prReason() + ")\n\n" + prBody;
                 }
             }
             default -> { }
@@ -488,7 +719,7 @@ public final class RecordOutcome {
         // renders a null element as the word "null" where a join renders it as "". Both are kept,
         // because infra_reason is machine-greppable audit and the banner is prose for a human.
         List<String> reasons = new ArrayList<>(infra);
-        for (Object e : sig.editErrors()) {
+        for (Object e : sig.run().editErrors()) {
             reasons.add("edit not applied: " + e);
         }
 
@@ -503,19 +734,20 @@ public final class RecordOutcome {
         // is then the whole question "which markers were downgraded by a model call that failed?" — asked
         // of the artifact, which survives, rather than of a log, which rotates. A stage that ANSWERED,
         // even unusably, even to say it has doubts, adds nothing here: nothing broke.
-        if (state == MarkerState.NEEDS_REVIEW && sig.skepticNeverAnswered()) {
-            reasons.add("fix skeptic never answered: " + sig.skepticReason());
+        if (state == MarkerState.NEEDS_REVIEW && sig.judges().skepticNeverAnswered()) {
+            reasons.add("fix skeptic never answered: " + sig.judges().skepticReason());
         // …and ONLY when the curator is what is holding the marker: the skeptic passed the fix and no
         // decision came back. Without the second half this clause fires on every needs_review row whose
         // skeptic said `sound` — including the ones the curator answered `make` for, which are held back
         // by an unapplied edit or an unsound test and have nothing wrong with their curator at all.
-        } else if (state == MarkerState.NEEDS_REVIEW && "sound".equals(sig.skeptic())
-                && sig.curatorNeverDecided()) {
+        } else if (state == MarkerState.NEEDS_REVIEW && sig.judges().certified()
+                && sig.judges().curatorNeverDecided()) {
             reasons.add("pr curator never answered: "
-                    + or(sig.prReason(), "pr_decision `" + sig.decision() + "`"));
-        } else if (state == MarkerState.PR_READY && sig.curatorNeverRan()) {
+                    + or(sig.judges().prReason(),
+                            "pr_decision `" + sig.judges().decisionText() + "`"));
+        } else if (state == MarkerState.PR_READY && sig.judges().curatorNeverRan()) {
             reasons.add("pr curator never answered: "
-                    + or(sig.prReason(), "the curator gave no reason"));
+                    + or(sig.judges().prReason(), "the curator gave no reason"));
         }
         return String.join("; ", reasons);
     }

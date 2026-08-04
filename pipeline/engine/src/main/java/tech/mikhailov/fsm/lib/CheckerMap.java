@@ -50,6 +50,27 @@ public final class CheckerMap {
         public String wire() {
             return wire;
         }
+
+        /**
+         * The kind with this spelling, or null for anything else — and "anything else" is REAL TRAFFIC
+         * here, not a defensive nicety. {@code PrepProver} recovers this value by grepping
+         * {@code (\w+)} out of a free-form evidence blob, so whatever word that group captures reaches
+         * the {@code settle_by} column verbatim; the value is a hint the pipeline reads back, not one
+         * it controls. The two constants below are the only ones that mean anything, and this is the
+         * one place a string becomes one of them.
+         *
+         * <p>Takes an {@code Object} because the column is read off an untyped item: coercing first
+         * would make {@code ["argue"]} — which {@code String()} renders as {@code argue} — deny a
+         * marker its retry.
+         */
+        public static SettleBy of(Object wire) {
+            for (SettleBy s : values()) {
+                if (s.wire.equals(wire)) {
+                    return s;
+                }
+            }
+            return null;
+        }
     }
 
     /**

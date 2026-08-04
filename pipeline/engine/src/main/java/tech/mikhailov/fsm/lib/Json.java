@@ -216,7 +216,23 @@ public final class Json {
 
     /** {@code String(x || '')}: absent, null, false and 0 all read as the empty string. */
     public static String str(Object container, String key) {
-        Object v = get(container, key);
+        return str(get(container, key));
+    }
+
+    /**
+     * {@code String(x || '')} of a VALUE the caller already has.
+     *
+     * <p>Split out from the field read for the reason {@link #truthy(Object)} is: a stage that has
+     * parsed its row into typed values still needs this coercion, and writing a second copy of it
+     * inside that stage is precisely the two-places-for-one-value divergence the parse exists to
+     * prevent.
+     *
+     * <p>IT CAN THROW, and a caller holding a value it might not use should know when. Anything that is
+     * not a String and not falsy is serialised, and {@link #stringify} refuses a non-finite double —
+     * {@code 1e400} is well-formed JSON and parses to one. So a node that defers this coercion to the
+     * branch that actually needs the text keeps a value it never reads from taking the stage down.
+     */
+    public static String str(Object v) {
         if (v == null || Boolean.FALSE.equals(v)) {
             return "";
         }

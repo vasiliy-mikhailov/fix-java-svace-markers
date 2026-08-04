@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
+import tech.mikhailov.fsm.lib.CheckerMap;
 import tech.mikhailov.fsm.lib.ExecVerdict;
 import tech.mikhailov.fsm.lib.Js;
 import tech.mikhailov.fsm.lib.JsText;
@@ -86,9 +87,6 @@ public final class Verdict {
 
     /** How much of a failed call's message reaches the confidence column, which is narrow. */
     private static final int ERROR_CUT = 200;
-
-    /** The three kinds the prompt asks for; anything else falls back rather than inventing one. */
-    private static final List<String> KINDS = List.of("false-positive", "by-design", "unprovable");
 
     /** The keys the extractor anchors on, in the reply this stage asks for. */
     private static final List<String> REPLY_KEYS = List.of("kind", "verdict", "confidence");
@@ -235,6 +233,277 @@ public final class Verdict {
     private record Detail(String message, String trace) {
     }
 
+    // ---- THE PARSE: every key this stage reads off an incoming item, in ONE place -----------------
+    //
+    // Seven upstream items arrive as `Object`, because they are JSON rows and a stage that never ran
+    // wrote nothing at all. They are read HERE, once, by {@link Inputs#of}, and below this block the
+    // node works on typed values: the only other place in the file that names a key of an item is the
+    // map {@link #verdict} builds on its last lines, which is the item it returns.
+    //
+    // WHERE A COMPONENT IS STILL `Object` IT IS BECAUSE THE RAW VALUE CROSSES THE BOUNDARY UNCHANGED —
+    // `anchor`, `anchor_status`, `svace_checker` and `state` are copied into the returned item exactly
+    // as they arrived, so a number that arrived as a number leaves as one, and coercing it at the read
+    // would rewrite the wire. Those four are named as such below; nothing else here is untyped.
+
+    /**
+     * THE TWO COLUMNS THIS STAGE READS OFF THE ROW IT WAS HANDED AND WRITES BACK TO THAT SAME ROW.
+     *
+     * <p>They are named once because they are the only genuine parse/serialise PAIRS in the file, and a
+     * pair is where the new pattern can drift: a key read on the way in and written differently on the
+     * way out is a bug no compiler catches. {@code infra_reason} is the sharp one — {@link #verdict}
+     * APPENDS to the value {@link Row} read, so a rename on one side would silently start the append
+     * from an empty string and drop whichever earlier stage's failure was already recorded there.
+     *
+     * <p>THE OTHER EMITTED KEYS ARE DELIBERATELY NOT CONSTANTS. {@code anchor}, {@code anchor_status}
+     * and {@code svace_checker} are READ off other stages' items and WRITTEN onto this row: they are
+     * two different contracts that happen to share a name, and one constant would assert a coupling
+     * that does not exist — renaming the verdict row's column must not rename Prep prover's. The
+     * {@code ev.put} sites in {@link #evidence} are a third contract again: those are
+     * {@link ExecVerdict.Evidence}'s own key names, which that class reads back.
+     */
+    private static final String STATE = "state";
+
+    /** @see #STATE */
+    private static final String INFRA_REASON = "infra_reason";
+
+    /**
+     * The attempt counter, read ONCE with BOTH of its fallbacks named on it.
+     *
+     * <p>{@code attempts} is read twice by this stage under two different JS idioms — {@code || 1} for
+     * the argument, because an uncounted attempt is the FIRST one, and {@code || 0} for the status
+     * routing, because the note reports the count AS RECORDED. The two reads used to sit 152 lines
+     * apart in one method under near-identical names, and confusing them swaps a retry for a permanent
+     * retirement. There is now one read of the column and two named ways to ask it a question.
+     */
+    private record Attempts(double recorded) {
+
+        /** {@code Number(x) || 1} — which attempt this IS. @see #recorded() */
+        double current() {
+            return recorded == 0 ? 1 : recorded;
+        }
+    }
+
+    /**
+     * THE ROW THIS STAGE RUNS ON — the {@code Record outcome} item.
+     *
+     * @param state     the arriving value EXACTLY as it arrived, and {@code Object} on purpose: it is
+     *                  re-emitted verbatim whenever no argument replaces it, and {@link #markerState}
+     *                  is a String IDENTITY test — see the note there for why concatenating first
+     *                  would be a different function.
+     * @param stateText the same value concatenated AT THE READ, where an absent key and an explicit
+     *                  null can still be told apart. @see Llm#concat(Object, String)
+     * @param infraText {@code (x || '') + ''} — what the two regexes and the notes read.
+     * @param infraJson {@code String(x || '')} as {@link Json#str} spells it — what
+     *                  {@link ExecVerdict.Evidence} reads. ONE KEY, TWO COERCIONS, and they disagree
+     *                  for exactly one shape: a list or an object, which Js renders {@code 1,2} and
+     *                  {@code [object Object]} where Json renders JSON. Both spellings are already
+     *                  live at four call sites, so both are read here rather than one being quietly
+     *                  picked — and that they are two components of ONE record is the point. Spread
+     *                  across the file the divergence is invisible; here it is a line of javadoc.
+     */
+    private record Row(Object state, String stateText, String infraText, String infraJson,
+                       Attempts attempts, String testPath, String jdk, String prTitle,
+                       String prBody) {
+
+        static Row of(Object rec) {
+            return new Row(Json.get(rec, STATE), Llm.concat(rec, STATE),
+                    Js.orEmptyString(Json.get(rec, INFRA_REASON)), Json.str(rec, INFRA_REASON),
+                    new Attempts(Json.num(rec, "attempts")),
+                    Json.str(rec, "test_path"), Json.str(rec, "jdk"),
+                    Json.str(rec, "pr_title"), Json.str(rec, "pr_body"));
+        }
+    }
+
+    /**
+     * THE MARKER, off {@code Prep prover}.
+     *
+     * @param svaceChecker     the raw value, because it is copied into the returned item.
+     * @param svaceCheckerText the same value as the prompt prints it, with the {@code ?} fallback.
+     * @param markerIdGiven    whether there is a marker id at all — a SEPARATE component from the text
+     *                         on purpose. The fetch gates on JS truthiness and then prints
+     *                         {@code String(x)}, and those two disagree about an empty array:
+     *                         {@code Boolean([])} is true and {@code String([])} is {@code ""}. Folding
+     *                         them into "the text is non-empty" would stop that one shape reaching the
+     *                         endpoint.
+     * @param argueOnly        {@code settle_by === 'argue'}: a checker that can only be settled by
+     *                         ARGUMENT gets no retry, because a second reproducer sample cannot write a
+     *                         runtime test for a dead store. Asked of {@link CheckerMap.SettleBy},
+     *                         which is where that two-word vocabulary is declared — this stage is its
+     *                         third reader, after the table that assigns it and the ingest that writes
+     *                         it into the evidence line, and it was the one comparing against a literal.
+     */
+    private record Marker(String suspicionKey, String repo, String file, Object svaceChecker,
+                          String svaceCheckerText, String svaceSeverity, String svaceLine,
+                          String description, boolean markerIdGiven, String markerId,
+                          boolean argueOnly) {
+
+        static Marker of(Object j) {
+            Object markerId = Json.get(j, "marker_id");
+            Object checker = Json.get(j, "svace_checker");
+            return new Marker(
+                    Llm.concat(j, "suspicion_key"), Llm.concat(j, "repo"), Llm.concat(j, "file"),
+                    or(checker, ""), Js.string(or(checker, "?")),
+                    Js.string(or(Json.get(j, "svace_severity"), "?")),
+                    Js.string(or(Json.get(j, "svace_line"), "?")),
+                    Js.orEmptyString(Json.get(j, "description")),
+                    Js.truthy(markerId), Js.string(markerId),
+                    CheckerMap.SettleBy.of(or(Json.get(j, "settle_by"),
+                            CheckerMap.SettleBy.TEST.wire())) == CheckerMap.SettleBy.ARGUE);
+        }
+    }
+
+    /**
+     * THE SOURCE THAT WAS ACTUALLY READ, off {@code Build reproduce input}.
+     *
+     * @param anchor           raw — copied into the returned item. @see Marker#svaceChecker
+     * @param anchorStatus     raw, and for the same reason.
+     * @param anchorStatusText the same value as the prompt prints it.
+     * @param methodGiven      whether a method body was quoted at all, split from its text for the
+     *                         reason {@link Marker#markerIdGiven} is split from its.
+     */
+    private record Source(Object anchor, Object anchorStatus, String anchorStatusText,
+                          String anchorNote, boolean methodGiven, String methodText, String src) {
+
+        static Source of(Object bri) {
+            Object status = Json.get(bri, "anchor_status");
+            Object methodText = Json.get(bri, "method_text");
+            return new Source(or(Json.get(bri, "anchor"), ""), or(status, ""),
+                    Js.string(or(status, "?")),
+                    Js.orEmptyString(Json.get(bri, "anchor_note")),
+                    Js.truthy(methodText), Js.string(methodText),
+                    Js.orEmptyString(Json.get(bri, "src")));
+        }
+    }
+
+    /** THE REPRODUCER'S RUN, off {@code run_test reproduce}. */
+    private record ReproRun(boolean testExecuted, String redOutput) {
+
+        static ReproRun of(Object repro) {
+            return new ReproRun(Json.truthy(Json.get(repro, "red_summary"), "test_executed"),
+                    Js.string(or(Json.get(repro, "red_output"), "(no build output captured)")));
+        }
+    }
+
+    /**
+     * THE REPRODUCER'S REPLY, off {@code Parse test}.
+     *
+     * @param score the realness score RAW, and the one component here that could not be typed. Its
+     *              coercion is {@code '' + x} and it is PRIVATE to {@link ExecVerdict.Evidence#of} —
+     *              a measured score of 0 has to stay distinguishable from one nobody measured, which
+     *              {@link Json#str} would not do. Writing a second copy of that coercion in this file
+     *              is precisely the two-places-for-one-value drift this class exists to avoid, so the
+     *              raw value is carried to {@link #evidence} and the coercion stays where it is owned.
+     */
+    private record TestReply(boolean canProve, String rootCause, Object score, String realness) {
+
+        static TestReply of(Object parseTest) {
+            return new TestReply(Json.truthy(parseTest, "can_prove"),
+                    Js.string(or(Json.get(parseTest, "repro_root_cause"), "(none given)")),
+                    Json.get(parseTest, "test_score"), Json.str(parseTest, "test_realness"));
+        }
+    }
+
+    /** EVERYTHING THE STAGE READS, parsed. Nothing below this record names a key of an input. */
+    private record Inputs(Row row, Marker marker, Source source, ReproRun repro, TestReply test,
+                          String fixRootCause, String prReason) {
+
+        static Inputs of(Request req) {
+            return new Inputs(Row.of(req.item()), Marker.of(req.prepProver()),
+                    Source.of(req.buildReproduceInput()), ReproRun.of(req.reproduce()),
+                    TestReply.of(req.parseTest()),
+                    Json.str(req.parseFix(), "fix_root_cause"),
+                    // the PR curator's repo-specific reasoning, needed to explain a
+                    // proven-but-not-proposed outcome
+                    Js.orEmptyString(Json.get(req.prMaker(), "pr_reason")));
+        }
+    }
+
+    /**
+     * WHAT THE {@code state} COLUMN SETTLES AT — and the ONLY two things it can be.
+     *
+     * <p>It was an {@code Object} local that started as the arriving value and was sometimes
+     * overwritten with a status spelling, so "which of the two is in there now?" was a question the
+     * type could not answer and any string could be assigned to it. Sealed, it can only hold the value
+     * that ARRIVED or a conclusion this stage actually reached, and {@link #wire()} is the one place
+     * either becomes a value in the returned item.
+     */
+    private sealed interface Settled {
+
+        /** What is written back into {@code state}. */
+        Object wire();
+
+        /** The value the row arrived with: nothing replaced it. */
+        record Arrived(Object raw) implements Settled {
+
+            @Override
+            public Object wire() {
+                return raw;
+            }
+        }
+
+        /** The conclusion a WRITTEN argument replaced it with. */
+        record Concluded(SuspicionStatus status) implements Settled {
+
+            @Override
+            public Object wire() {
+                return status.wire();
+            }
+        }
+    }
+
+    /**
+     * THE THREE KINDS AN ARGUMENT MAY COME TO, each naming the status it settles the backlog row at IN
+     * THE SAME LINE.
+     *
+     * <p>WHY THE PAIR IS ONE CONSTANT. The kind is the model's own word and is copied verbatim into the
+     * artifact's {@code verdict_kind}; the status is where the suspicion goes next. They used to be a
+     * {@code List.of} of three spellings and, thirty lines later, a nested ternary whose FINAL ARM was
+     * {@code SuspicionStatus.FALSE_POSITIVE} — a default. So a fourth kind added to that list would
+     * have been accepted off the model, written into the column {@code SELECT verdict_kind, COUNT(*)}
+     * counts findings in, and filed as a false positive: the strongest claim in the vocabulary,
+     * invented for a word nobody had mapped. Here the mapping is a constructor argument, so a fourth
+     * kind does not compile until somebody has said where it sends the row.
+     */
+    private enum ArguedKind {
+
+        /** We tested it and the claim does not hold. */
+        FALSE_POSITIVE("false-positive", SuspicionStatus.FALSE_POSITIVE),
+
+        /** The claim holds, and the code is deliberately written that way. */
+        BY_DESIGN("by-design", SuspicionStatus.BY_DESIGN),
+
+        /** No runtime test could demonstrate the defect, so nothing was executed. */
+        UNPROVABLE("unprovable", SuspicionStatus.UNPROVABLE);
+
+        private final String wire;
+        private final SuspicionStatus status;
+
+        ArguedKind(String wire, SuspicionStatus status) {
+            this.wire = wire;
+            this.status = status;
+        }
+
+        /** The spelling the prompt asks for and the artifact stores. */
+        String wire() {
+            return wire;
+        }
+
+        /** Where a row carrying this kind settles. */
+        SuspicionStatus status() {
+            return status;
+        }
+
+        /** The kind with this spelling, or null when the model named something else. */
+        static ArguedKind of(String wire) {
+            for (ArguedKind k : values()) {
+                if (k.wire.equals(wire)) {
+                    return k;
+                }
+            }
+            return null;
+        }
+    }
+
     /**
      * Argue, compose or retry — and decide what the suspicion's next status is. TWO decisions, and the
      * word "and" is the whole reason they are {@link #argue} and {@link #nextSuspicionStatus} rather
@@ -246,23 +515,24 @@ public final class Verdict {
      *            any other output.
      */
     public static Map<String, Object> verdict(Request req, Llm.Http http, Consumer<String> log) {
-        Object rec = req.item();                                     // Record outcome
-        Object j = req.prepProver();
-        Object bri = req.buildReproduceInput();
-        // The state AS IT ARRIVED, concatenated at the read so that a row with no state and a row
-        // whose state is an explicit null still read differently downstream. Both of its users — the
-        // composed verdict and the routing-gap note — want the arriving state, not the one a verdict
-        // may replace it with further down. Read HERE, once, and handed to both decisions, so neither
-        // can quietly start reading the replaced one.
-        String stateText = Llm.concat(rec, "state");
+        // THE PARSE, AND IT IS THE ONLY ONE. Every key the seven upstream items are read by is named
+        // in Inputs.of and nowhere else, so from here down this stage has no string-keyed access at
+        // all — including the state AS IT ARRIVED, concatenated at the read so that a row with no
+        // state and a row whose state is an explicit null still read differently downstream. Both of
+        // its users — the composed verdict and the routing-gap note — want the arriving state, not the
+        // one a verdict may replace it with further down.
+        Inputs in = Inputs.of(req);
 
         // THE TWO DECISIONS, IN ORDER. They are independent — the first says what is argued, the
         // second says where the suspicion goes next — and everything the second is allowed to know
         // about the first travels in the Argument. Nothing else passes between them.
-        Argument argued = argue(req, http, log, stateText);
-        Suspicion suspicion = nextSuspicionStatus(argued, rec, stateText);
+        Argument argued = argue(req, http, log, in);
+        Suspicion suspicion = nextSuspicionStatus(argued, in);
 
-        Map<String, Object> out = spread(rec);
+        // THE SERIALISE, AND IT IS THE ONLY ONE. Every key below is a key of the RETURNED item, and
+        // the spread is the whole of the row this stage was handed: the node is a pass-through with
+        // overrides, so what is not named here leaves exactly as it arrived.
+        Map<String, Object> out = spread(req.item());
         // THE ARTIFACT'S OWN RECORD of a call that failed. `verdict_confidence` carries "error: …", and
         // it is not one of the 21 columns of the bugs table — so without this line the row keeps NO trace
         // of the failure, and an empty verdict_text is what a marker nobody argued looks like anyway.
@@ -270,10 +540,10 @@ public final class Verdict {
         // wording matches the two clauses Record outcome writes for the other fail-closed stages, so one
         // query over `never answered` finds every marker any judging call was lost on.
         if (!argued.callFailure().isEmpty()) {
-            out.put("infra_reason", also(Js.orEmptyString(Json.get(rec, "infra_reason")),
+            out.put(INFRA_REASON, also(in.row().infraText(),
                     "verdict writer never answered: " + argued.callFailure()));
         }
-        out.put("state", argued.state());
+        out.put(STATE, argued.state().wire());
         out.put("retry", argued.retry());
         out.put("verdict_text", argued.text());
         out.put("verdict_kind", argued.kind());
@@ -282,9 +552,9 @@ public final class Verdict {
         out.put("suspicion_note", suspicion.note());
         // The anchor and the checker ride along so the verdicts table reads on its own: a verdict about
         // a marker that has since moved is worth less, and the reader has to be able to see that.
-        out.put("anchor", or(Json.get(bri, "anchor"), ""));
-        out.put("anchor_status", or(Json.get(bri, "anchor_status"), ""));
-        out.put("svace_checker", or(Json.get(j, "svace_checker"), ""));
+        out.put("anchor", in.source().anchor());
+        out.put("anchor_status", in.source().anchorStatus());
+        out.put("svace_checker", in.marker().svaceChecker());
         // LAST, AND ONLY WHEN THERE IS SOMETHING TO SAY. An argument that was attempted — however it
         // went — writes no key here, so the item a normal run returns keeps exactly the keys, in exactly
         // the order, that it always had. @see #SKIPPED
@@ -305,7 +575,7 @@ public final class Verdict {
      *
      * @param state the state the row settles at: the one it arrived with, unless a verdict replaced it.
      */
-    private record Argument(Object state, String text, String kind, String confidence,
+    private record Argument(Settled state, String text, String kind, String confidence,
                             String callFailure, boolean skipped, boolean retry) {
     }
 
@@ -317,17 +587,13 @@ public final class Verdict {
      * deliberately argue nothing, because "nothing was argued, and here is which nothing" is what the
      * row has to be able to say.
      *
-     * @param stateText the state AS IT ARRIVED — see the read in {@link #verdict}. The logs and the
-     *                  composed verdicts are worded from it, never from the state this method may
-     *                  replace it with.
+     * @param in the parsed request. {@code in.row().stateText()} is the state AS IT ARRIVED — see the
+     *           parse in {@link #verdict}. The logs and the composed verdicts are worded from it,
+     *           never from the state this method may replace it with.
      */
-    private static Argument argue(Request req, Llm.Http http, Consumer<String> log,
-                                  String stateText) {
-        Object rec = req.item();                                     // Record outcome
-        Object j = req.prepProver();
-        Object parseTest = req.parseTest();
-        // the PR curator's repo-specific reasoning, needed to explain a proven-but-not-proposed outcome
-        String pmReason = Js.orEmptyString(Json.get(req.prMaker(), "pr_reason"));
+    private static Argument argue(Request req, Llm.Http http, Consumer<String> log, Inputs in) {
+        Row row = in.row();
+        Marker marker = in.marker();
 
         String verdictText = "";
         String verdictKind = "";
@@ -341,22 +607,16 @@ public final class Verdict {
         // has lost nothing and must not claim it has. @see #SKIPPED
         boolean skipped = false;
         boolean retry = false;
-        Object state = Json.get(rec, "state");
+        Settled state = new Settled.Arrived(row.state());
 
-        // `Number(x) || 1`: an uncounted attempt is the FIRST attempt, not the zeroth. Json.num folds
-        // NaN to 0, so the two together are the whole fallback chain. NAMED for that reading, because
-        // the status routing reads the SAME column with `|| 0` — see `recordedAttempts` in
-        // {@link #nextSuspicionStatus}. Confusing the two swaps a retry for a permanent retirement.
-        double attemptNo = Json.num(rec, "attempts");
-        if (attemptNo == 0) {
-            attemptNo = 1;
-        }
-        String infraReason = Js.orEmptyString(Json.get(rec, "infra_reason"));
-        boolean buildOnly = BUILD_FAILED.matcher(infraReason).find()
-                && !REAL_INFRA.matcher(infraReason).find();
-        // THE PARSE HAPPENS ONCE, HERE, AT THE TOP OF THE DECISION — and everything below branches on
-        // the enum rather than on the string. @see #markerState
-        MarkerState arrived = markerState(state);
+        // WHICH ATTEMPT THIS IS — `Number(x) || 1`, because an uncounted attempt is the FIRST one, not
+        // the zeroth. NOT the same question the status routing asks of the same column; see
+        // {@link Attempts}, which is where both are named.
+        double attemptNo = row.attempts().current();
+        boolean buildOnly = BUILD_FAILED.matcher(row.infraText()).find()
+                && !REAL_INFRA.matcher(row.infraText()).find();
+        // Everything below branches on the enum rather than on the string. @see #markerState
+        MarkerState arrived = markerState(row.state());
         boolean exhaustedBuild = arrived == MarkerState.INFRA_ERROR && attemptNo >= MAX_ATTEMPTS
                 && buildOnly;
         Route route = Route.of(arrived);
@@ -373,13 +633,10 @@ public final class Verdict {
         // exhaustedBuild is tested FIRST because it diverts an at-the-ceiling infra_error, whose own
         // route is STUCK, into the argument. The order is the same one the literal chain had.
         if (exhaustedBuild || route == Route.ARGUE) {
-            // A checker that can only be settled by ARGUMENT gets no retry — a second reproducer sample
-            // cannot write a runtime test for a dead store or a hard-coded constant, so it would only
-            // burn a build.
-            boolean argueOnly = "argue".equals(or(Json.get(j, "settle_by"), "test"));
-            if (!exhaustedBuild && !argueOnly && attemptNo < req.minAttempts()) {
+            // A checker that can only be settled by ARGUMENT gets no retry — see Marker#argueOnly.
+            if (!exhaustedBuild && !marker.argueOnly() && attemptNo < req.minAttempts()) {
                 retry = true;
-                log.accept("[verdict] " + Llm.concat(j, "suspicion_key") + " attempt "
+                log.accept("[verdict] " + marker.suspicionKey() + " attempt "
                         + Js.numberToString(attemptNo) + " — retrying before writing a verdict");
             // AFTER the retry gate, and that ordering is the whole design of the toggle. The samples a
             // non-reproduction is worth belong to the REPRODUCER, which is the prompt this toggle exists
@@ -390,29 +647,39 @@ public final class Verdict {
                 // The row records this too, but a log line is what an operator watching a cheap run
                 // reads to confirm that the missing arguments are the toggle and not a dead endpoint —
                 // the two produce very similar-looking rows and only one of them is fine.
-                log.accept("[verdict] " + Llm.concat(j, "suspicion_key")
-                        + " — the argument is switched off; `" + stateText
+                log.accept("[verdict] " + marker.suspicionKey()
+                        + " — the argument is switched off; `" + row.stateText()
                         + "` settles with no verdict written");
             } else {
-                String prompt = argumentPrompt(req, http, exhaustedBuild, attemptNo);
+                String prompt = argumentPrompt(req, http, in, exhaustedBuild, attemptNo);
+                // THE MODEL'S REPLY IS THE STAGE'S OTHER EDGE, and the only string-keyed read left
+                // below the parse: it is a document that has just been extracted out of prose, so
+                // there is nothing upstream of this line for it to have been parsed at. It becomes a
+                // typed ArguedKind on the very next statement.
+                ArguedKind kind = null;
                 try {
                     Object r = http.request(Llm.chat(req.llm(), prompt, 0.2));
                     // The robust extractor, not indexOf('{')..lastIndexOf('}'): verdict prose routinely
                     // contains braces (generics, {@code} references), and the naive scan then discards
                     // a perfectly good verdict.
                     Map<String, Object> jj = JsonExtract.extractJson(Llm.replyText(r), REPLY_KEYS);
-                    String kind = Js.orEmptyString(Json.get(jj, "kind"));
-                    verdictKind = KINDS.contains(kind) ? kind : "false-positive";
+                    kind = ArguedKind.of(Js.orEmptyString(Json.get(jj, "kind")));
+                    if (kind == null) {
+                        // A word the model made up falls back rather than inventing a fourth kind.
+                        kind = ArguedKind.FALSE_POSITIVE;
+                    }
                     // With no test that ever compiled we cannot assert the claim FAILS TO HOLD —
                     // nothing was executed, so 'false-positive' would be an untested exoneration.
                     // 'by-design' is NOT downgraded: it concedes the claim is correct and judges the
                     // code's INTENT, which is read off the source and needs no execution.
-                    if (exhaustedBuild && "false-positive".equals(verdictKind)) {
-                        verdictKind = "unprovable";
+                    if (exhaustedBuild && kind == ArguedKind.FALSE_POSITIVE) {
+                        kind = ArguedKind.UNPROVABLE;
                     }
+                    verdictKind = kind.wire();
                     verdictText = Js.orEmptyString(Json.get(jj, "verdict"));
                     verdictConfidence = Js.orEmptyString(Json.get(jj, "confidence"));
                 } catch (Exception e) {
+                    kind = null;
                     verdictText = "";
                     // Kept verbatim, bounded: it is what an operator greps for, and the confidence is
                     // one narrow column rather than a place to paste a 500 page.
@@ -427,12 +694,10 @@ public final class Verdict {
                     // never managed to test it. Collapsing them would let a tooling failure read as an
                     // exoneration, or a deliberate vulnerability read as a bug.
                     // The KIND is the model's own word (hyphenated, its own small vocabulary); the
-                    // STATE it maps to is a SuspicionStatus, spelled by the enum so the two spellings
-                    // of the same conclusion — `by-design` the kind, `by_design` the state — cannot
-                    // drift apart in the one place they are converted.
-                    state = ("by-design".equals(verdictKind) ? SuspicionStatus.BY_DESIGN
-                            : "unprovable".equals(verdictKind) ? SuspicionStatus.UNPROVABLE
-                            : SuspicionStatus.FALSE_POSITIVE).wire();
+                    // STATE it maps to is a SuspicionStatus, and the two travel together on one
+                    // constant so the two spellings of the same conclusion — `by-design` the kind,
+                    // `by_design` the state — cannot drift apart. @see ArguedKind
+                    state = new Settled.Concluded(kind.status());
                 } else {
                     // NOTHING WAS ARGUED, SO NOTHING IS FILED — and the KIND goes with the text.
                     //
@@ -457,9 +722,9 @@ public final class Verdict {
                         // the note below are the only places the failure is ever stated. "produced no
                         // text" would be a lie about a call that produced nothing at all, and it is the
                         // lie that reads as a model with nothing to say.
-                        log.accept("[verdict] " + Llm.concat(j, "suspicion_key")
+                        log.accept("[verdict] " + marker.suspicionKey()
                                 + " — the verdict call FAILED: " + callFailure
-                                + "; nothing was argued, left " + stateText);
+                                + "; nothing was argued, left " + row.stateText());
                     } else {
                         // No text = no verdict. Leaving the state alone is the honest outcome: an EMPTY
                         // false_positive row would claim the marker was argued away when nothing was
@@ -467,8 +732,8 @@ public final class Verdict {
                         // from the exhaustedBuild hatch, where the row is an `infra_error` and a line
                         // reading "left not_reproduced" sends the next reader down a route the marker
                         // never took.
-                        log.accept("[verdict] " + Llm.concat(j, "suspicion_key")
-                                + " — verdict call produced no text; left " + stateText);
+                        log.accept("[verdict] " + marker.suspicionKey()
+                                + " — verdict call produced no text; left " + row.stateText());
                     }
                 }
             }
@@ -476,7 +741,7 @@ public final class Verdict {
             // Below the retry ceiling this is not an outcome at all — the marker goes back on the queue
             // and must NOT carry a verdict, or a transient failure would read as a decision.
             if (attemptNo >= MAX_ATTEMPTS) {
-                ExecVerdict.Verdict vi = stuck(rec, attemptNo);
+                ExecVerdict.Verdict vi = stuck(row, attemptNo);
                 verdictKind = vi.kind().wire();
                 verdictText = vi.text();
             }
@@ -484,9 +749,7 @@ public final class Verdict {
             // EVERY OTHER TERMINAL STATE GETS A VERDICT TOO, so the verdicts table covers all 282
             // markers rather than only the ones that failed to reproduce. A reviewer should be able to
             // read one table and know where every marker landed.
-            ExecVerdict.Verdict v = ExecVerdict.of(stateText,
-                    evidence(rec, parseTest, req.parseFix(), Json.get(rec, "infra_reason"),
-                            attemptNo, pmReason));
+            ExecVerdict.Verdict v = ExecVerdict.of(row.stateText(), evidence(in, attemptNo));
             verdictKind = v.kind().wire();
             verdictText = v.text();
         }
@@ -502,7 +765,7 @@ public final class Verdict {
         // The same row with any OTHER infra reason gets the full "NOT SETTLED" text. Compose it here
         // too, so the hatch can only ever ADD an argument, never subtract the fallback.
         if (exhaustedBuild && JsText.isBlank(verdictText)) {
-            ExecVerdict.Verdict vi = stuck(rec, attemptNo);
+            ExecVerdict.Verdict vi = stuck(row, attemptNo);
             verdictKind = vi.kind().wire();
             verdictText = vi.text();
         }
@@ -524,26 +787,30 @@ public final class Verdict {
      * is what makes "an {@code infra_error} at attempt 2 goes back to {@code new}" a fact about this
      * method rather than something only reachable by driving a model call.
      *
-     * @param stateText the state AS IT ARRIVED, for the notes that name it back to a reader. The
-     *                  BRANCHING is on {@code argued.state()}, which a verdict may have replaced.
+     * @param in the parsed request. {@code in.row().stateText()} is the state AS IT ARRIVED, for the
+     *           notes that name it back to a reader. The BRANCHING is on {@code argued.state()}, which
+     *           a verdict may have replaced.
      */
-    private static Suspicion nextSuspicionStatus(Argument argued, Object rec, String stateText) {
-        Object state = argued.state();
+    private static Suspicion nextSuspicionStatus(Argument argued, Inputs in) {
+        Row row = in.row();
+        Settled state = argued.state();
         String callFailure = argued.callFailure();
         boolean skipped = argued.skipped();
-        // THE PARSE, ONCE, FOR BOTH VOCABULARIES — because `state` here is genuinely one or the other:
-        // the MarkerState the row arrived with, or the SuspicionStatus a written argument replaced it
-        // with. Reading it as both and asking each question of the right type is what keeps the two
-        // apart; `infra_stuck` is a member of BOTH enums and means a different thing in each, and the
-        // branches below are careful never to ask the wrong one about it. @see #markerState
-        MarkerState marker = markerState(state);
-        SuspicionStatus concluded = suspicionStatus(state);
+        // BOTH VOCABULARIES, EACH ASKED OF THE TYPE THAT CAN ANSWER IT. A state that ARRIVED is read
+        // as both, because it is genuinely either: `infra_stuck` is a member of BOTH enums and means a
+        // different thing in each, and the branches below are careful never to ask the wrong one about
+        // it. A state this stage CONCLUDED is already a SuspicionStatus and is no MarkerState at all —
+        // the three conclusions have no MarkerState spelling — so it is not re-parsed from a string it
+        // would only have been turned into to turn it back. @see #markerState
+        MarkerState marker = state instanceof Settled.Arrived a ? markerState(a.raw()) : null;
+        SuspicionStatus concluded = switch (state) {
+            case Settled.Arrived a -> suspicionStatus(a.raw());
+            case Settled.Concluded c -> c.status();
+        };
         SuspicionStatus settled = marker == null ? null : settledBy(marker);
-        // `Number(x) || 0` — the count AS RECORDED. NOT `attemptNo` in argue(), which reads this same
-        // column with `|| 1` because an uncounted attempt is the FIRST one. The two reads used to sit
-        // 152 lines apart in one method under near-identical names; confusing them swaps a retry for a
-        // permanent retirement.
-        double recordedAttempts = Json.num(rec, "attempts");
+        // THE COUNT AS RECORDED — `Number(x) || 0`, not the `|| 1` argue() asks the same column for.
+        // @see Attempts
+        double recordedAttempts = row.attempts().recorded();
         SuspicionStatus suspicionStatus;
         String suspicionNote = "";
         if (marker == MarkerState.INFRA_ERROR) {
@@ -554,7 +821,7 @@ public final class Verdict {
             // and why.
             suspicionNote = "[prover] infra failure (attempt "
                     + Js.numberToString(recordedAttempts) + "/" + MAX_ATTEMPTS + "): "
-                    + Js.orEmptyString(Json.get(rec, "infra_reason"));
+                    + row.infraText();
             // THE EXHAUSTED-BUILD HATCH, WITH THE ARGUMENT OFF. This row would have been argued and
             // downgraded to `unprovable`; instead it parks `infra_stuck` carrying the composed fallback,
             // which is character-for-character what a marker gets when the endpoint is down. Appended,
@@ -588,7 +855,7 @@ public final class Verdict {
         // `verdict_status` says it on the artifact.
         } else if (skipped) {
             suspicionStatus = SuspicionStatus.REJECTED;
-            suspicionNote = SKIPPED_LABEL + "the argument is switched off, so `" + stateText
+            suspicionNote = SKIPPED_LABEL + "the argument is switched off, so `" + row.stateText()
                     + "` was retired with no verdict written; re-queue this marker with "
                     + "fsm.prove.verdict-enabled=true to have the claim argued";
         } else if (!callFailure.isEmpty()) {
@@ -601,7 +868,7 @@ public final class Verdict {
             // and two Maven builds per attempt against an endpoint that is down. The note is what makes
             // it visible instead.
             suspicionStatus = SuspicionStatus.REJECTED;
-            suspicionNote = "[verdict] the verdict call FAILED, so `" + stateText
+            suspicionNote = "[verdict] the verdict call FAILED, so `" + row.stateText()
                     + "` was retired with no argument: " + callFailure;
         } else {
             // Reaching here means the marker is being RETIRED with neither a patch nor an argument.
@@ -616,7 +883,7 @@ public final class Verdict {
             // thing left. The note quotes it back verbatim — a state nobody can name is a routing gap
             // and has to be readable as one on the dashboard the same day.
             suspicionStatus = SuspicionStatus.REJECTED;
-            suspicionNote = "[gap] retired as `" + stateText + "` with no verdict written — "
+            suspicionNote = "[gap] retired as `" + row.stateText() + "` with no verdict written — "
                     + "this marker was never argued; the verdict stage does not route this state";
         }
         return new Suspicion(suspicionStatus.wire(), suspicionNote);
@@ -707,34 +974,38 @@ public final class Verdict {
      * {@code infra_stuck} row must not pick up a test path or a PR title from a run that never got
      * that far.
      */
-    private static ExecVerdict.Verdict stuck(Object rec, double attempts) {
-        return ExecVerdict.of(MarkerState.INFRA_STUCK.wire(),
-                evidence(null, null, null, Json.get(rec, "infra_reason"), attempts, ""));
+    private static ExecVerdict.Verdict stuck(Row row, double attempts) {
+        Map<String, Object> ev = new LinkedHashMap<>();
+        ev.put("infra_reason", row.infraJson());
+        ev.put("attempts", attempts);
+        return ExecVerdict.of(MarkerState.INFRA_STUCK.wire(), ExecVerdict.Evidence.of(ev));
     }
 
     /**
      * The evidence {@link ExecVerdict} words the outcome from, gathered off several nodes.
      *
-     * <p>Assembled as a map and read back through {@link ExecVerdict.Evidence#of} rather than passed to
-     * the constructor, because that factory is where {@code test_score} is coerced with {@code '' + x}
-     * instead of {@code x || ''} — a measured score of ZERO has to stay distinguishable from one nobody
-     * measured, and it is the worst tests the pipeline produces that a reviewer most needs to see
-     * rated.
+     * <p>STILL ASSEMBLED AS A MAP, and this is the one place in the stage where that is deliberate
+     * rather than left over. {@link ExecVerdict.Evidence#of} is where {@code test_score} is coerced
+     * with {@code '' + x} instead of {@code x || ''} — a measured score of ZERO has to stay
+     * distinguishable from one nobody measured, and it is the worst tests the pipeline produces that a
+     * reviewer most needs to see rated — and that coercion is PRIVATE to it. Calling the constructor
+     * directly would mean a second copy of it in this file, which is exactly the two-places-for-one-
+     * value drift this class exists to prevent. So the keys are written here and read back there, and
+     * the coercion stays where it is owned. THE VALUES ARE TYPED; only the ten names are not.
      */
-    private static ExecVerdict.Evidence evidence(Object rec, Object parseTest, Object parseFix,
-                                                 Object infraReason, double attempts,
-                                                 String prReason) {
+    private static ExecVerdict.Evidence evidence(Inputs in, double attempts) {
+        Row row = in.row();
         Map<String, Object> ev = new LinkedHashMap<>();
-        ev.put("test_path", Json.get(rec, "test_path"));
-        ev.put("jdk", Json.get(rec, "jdk"));
-        ev.put("pr_title", Json.get(rec, "pr_title"));
-        ev.put("pr_body", Json.get(rec, "pr_body"));
-        ev.put("infra_reason", infraReason);
+        ev.put("test_path", row.testPath());
+        ev.put("jdk", row.jdk());
+        ev.put("pr_title", row.prTitle());
+        ev.put("pr_body", row.prBody());
+        ev.put("infra_reason", row.infraJson());
         ev.put("attempts", attempts);
-        ev.put("pr_reason", prReason);
-        ev.put("fix_root_cause", Json.get(parseFix, "fix_root_cause"));
-        ev.put("test_score", Json.get(parseTest, "test_score"));
-        ev.put("test_realness", Json.get(parseTest, "test_realness"));
+        ev.put("pr_reason", in.prReason());
+        ev.put("fix_root_cause", in.fixRootCause());
+        ev.put("test_score", in.test().score());
+        ev.put("test_realness", in.test().realness());
         return ExecVerdict.Evidence.of(ev);
     }
 
@@ -746,22 +1017,18 @@ public final class Verdict {
      * and that the marker is named in full. A verdict written about "[?] at line ?" cannot be checked
      * back against the row it settles.
      */
-    private static String argumentPrompt(Request req, Llm.Http http, boolean exhaustedBuild,
-                                         double attempts) {
-        Object j = req.prepProver();
-        Object bri = req.buildReproduceInput();
-        Object repro = req.reproduce();
-        Object parseTest = req.parseTest();
+    private static String argumentPrompt(Request req, Llm.Http http, Inputs in,
+                                         boolean exhaustedBuild, double attempts) {
+        Marker marker = in.marker();
+        Source source = in.source();
 
-        Detail detail = svaceDetail(req, http, Json.get(j, "marker_id"));
-        Object methodText = Json.get(bri, "method_text");
-        String code = Js.truthy(methodText)
+        Detail detail = svaceDetail(req, http, marker);
+        String code = source.methodGiven()
                 ? "The method the marker points into:\n```java\n"
-                        + head(Js.string(methodText), CODE_CUT) + "\n```"
-                : "Source file:\n```java\n"
-                        + head(Js.orEmptyString(Json.get(bri, "src")), CODE_CUT) + "\n```";
+                        + head(source.methodText(), CODE_CUT) + "\n```"
+                : "Source file:\n```java\n" + head(source.src(), CODE_CUT) + "\n```";
 
-        String rootCause = Js.string(or(Json.get(parseTest, "repro_root_cause"), "(none given)"));
+        String rootCause = in.test().rootCause();
         String whatHappened;
         if (exhaustedBuild) {
             whatHappened = "The reproducer wrote a test " + Js.numberToString(attempts)
@@ -770,11 +1037,10 @@ public final class Verdict {
                     + "not clear the marker on this basis. The last compiler output was:\n"
                     // From the END: javac says what is wrong at the bottom of a long Maven log, and the
                     // reactor banner above it is not worth the tokens.
-                    + tail(Js.string(or(Json.get(repro, "red_output"),
-                            "(no build output captured)")), BUILD_LOG_TAIL);
-        } else if (!Json.truthy(parseTest, "can_prove")) {
+                    + tail(in.repro().redOutput(), BUILD_LOG_TAIL);
+        } else if (!in.test().canProve()) {
             whatHappened = "The reproducer declined to write a test. Its stated reason: " + rootCause;
-        } else if (Json.truthy(Json.get(repro, "red_summary"), "test_executed")) {
+        } else if (in.repro().testExecuted()) {
             whatHappened = "The reproducer wrote a test targeting this marker. It COMPILED AND RAN "
                     + "against the unpatched code and PASSED — so the code did not exhibit the defect "
                     + "the checker claims. The reproducer's reasoning was: " + rootCause;
@@ -790,13 +1056,9 @@ public final class Verdict {
 
         return req.promptTemplate().formatted(Llm.concat(req.verdictStamp()),
                 Js.numberToString(attempts),
-                Llm.concat(j, "repo"), Llm.concat(j, "file"),
-                Js.string(or(Json.get(j, "svace_checker"), "?")),
-                Js.string(or(Json.get(j, "svace_severity"), "?")),
-                Js.string(or(Json.get(j, "svace_line"), "?")),
-                Js.orEmptyString(Json.get(j, "description")),
-                Js.string(or(Json.get(bri, "anchor_status"), "?")),
-                Js.orEmptyString(Json.get(bri, "anchor_note")),
+                marker.repo(), marker.file(), marker.svaceCheckerText(), marker.svaceSeverity(),
+                marker.svaceLine(), marker.description(),
+                source.anchorStatusText(), source.anchorNote(),
                 svace, code, whatHappened);
     }
 
@@ -861,10 +1123,10 @@ public final class Verdict {
      * <p>An endpoint that fails must not take the verdict down with it: the whole fetch is inside the
      * catch, and a failure means the argument is made from the code alone.
      */
-    private static Detail svaceDetail(Request req, Llm.Http http, Object markerId) {
+    private static Detail svaceDetail(Request req, Llm.Http http, Marker marker) {
         // .trim(): a variable set to a stray space would otherwise be fetched as if it were a host.
         String base = JsText.trim(Js.orEmptyString(req.svaceBaseUrl()));
-        if (base.isEmpty() || !Js.truthy(markerId)) {
+        if (base.isEmpty() || !marker.markerIdGiven()) {
             return null;
         }
         try {
@@ -879,7 +1141,7 @@ public final class Verdict {
             // A base URL is pasted into config with trailing slashes constantly, and '//markers/m1' is
             // a 404.
             options.put("url", base.replaceAll("/+$", "") + "/markers/"
-                    + encodeUriComponent(Js.string(markerId)));
+                    + encodeUriComponent(marker.markerId()));
             options.put("headers", headers);
             options.put("json", Boolean.TRUE);
             options.put("timeout", 60_000L);

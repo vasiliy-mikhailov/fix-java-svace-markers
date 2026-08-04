@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Map;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.JsText;
+import tech.mikhailov.fsm.lib.PrDecision;
+import tech.mikhailov.fsm.lib.SkepticVerdict;
 import tech.mikhailov.fsm.lib.TestRealness;
 
 /**
@@ -56,9 +58,6 @@ public final class Critiques {
      * it last, and a reader who wants the rest has it in the same record.
      */
     static final int QUOTED_LOG_TAIL = 400;
-
-    /** The two words the curator's prompt asks for; anything else decided nothing. */
-    private static final List<String> DECISIONS = List.of("make", "reject");
 
     /** Every complaint that can be read off one settled prove, in the order the chain produced them. */
     public static List<Critique> harvest(MarkerFeedback trace) {
@@ -221,10 +220,13 @@ public final class Critiques {
         if (Json.truthy(t.skeptic(), "skeptic_answered")) {
             String verdict = Json.str(t.skeptic(), "skeptic_verdict");
             String reason = Json.str(t.skeptic(), "skeptic_reason");
-            if ("over-fit".equals(verdict)) {
+            // The word is kept for the context line — a complaint has to quote what was actually said —
+            // and the BRANCHES are on the type, which is the one place these spellings are declared.
+            SkepticVerdict said = SkepticVerdict.of(verdict);
+            if (said == SkepticVerdict.OVER_FIT) {
                 out.add(new Critique(Critique.FIXER, Critique.SOURCE_FIX_SKEPTIC,
                         CritiqueKind.FIX_OVERFIT, reason, context("skeptic_verdict", verdict)));
-            } else if ("regression-risk".equals(verdict)) {
+            } else if (said == SkepticVerdict.REGRESSION_RISK) {
                 out.add(new Critique(Critique.FIXER, Critique.SOURCE_FIX_SKEPTIC,
                         CritiqueKind.FIX_REGRESSION_RISK, reason,
                         context("skeptic_verdict", verdict)));
@@ -239,7 +241,8 @@ public final class Critiques {
         // FALSE means the call never produced one, which is infra: the stage failed CLOSED and
         // reported success, and no prompt edit fixes a refused connection.
         if (Json.truthy(t.skeptic(), "skeptic_answered")
-                && "unknown".equals(Json.str(t.skeptic(), "skeptic_verdict"))) {
+                && SkepticVerdict.of(Json.str(t.skeptic(), "skeptic_verdict"))
+                        == SkepticVerdict.UNKNOWN) {
             out.add(new Critique(Critique.FIX_SKEPTIC, Critique.SOURCE_PARSER,
                     CritiqueKind.REPLY_UNPARSEABLE, Json.str(t.skeptic(), "skeptic_reason"),
                     context("reply_chars", replyChars(t.fixSkeptic()))));
@@ -252,10 +255,14 @@ public final class Critiques {
             String reason = Json.str(t.curated(), "pr_reason");
             boolean title = !JsText.isBlank(Json.str(t.curated(), "pr_title"));
             boolean body = !JsText.isBlank(Json.str(t.curated(), "pr_body"));
-            if ("reject".equals(decision)) {
+            // As with the skeptic above: the word is quoted, the branch is on the type. `decided`
+            // covers both "a word the curator invented" (null) and the two spellings that report the
+            // ABSENCE of a decision — n/a and unknown — which are not decisions either. @see PrDecision
+            PrDecision decided = PrDecision.of(decision);
+            if (decided == PrDecision.REJECT) {
                 out.add(new Critique(Critique.PR_MAKER, Critique.SOURCE_PR_MAKER,
                         CritiqueKind.PR_REJECTED, reason, context("pr_decision", decision)));
-            } else if (!DECISIONS.contains(decision)) {
+            } else if (decided == null || !decided.decides()) {
                 out.add(new Critique(Critique.PR_MAKER, Critique.SOURCE_PARSER,
                         CritiqueKind.UNRECOGNISED_DECISION,
                         "the curator answered `" + decision + "`, which is neither make nor reject, so "

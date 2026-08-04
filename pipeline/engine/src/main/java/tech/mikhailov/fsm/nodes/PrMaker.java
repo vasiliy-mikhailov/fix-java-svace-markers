@@ -7,6 +7,8 @@ import java.util.Objects;
 import tech.mikhailov.fsm.lib.Js;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.Llm;
+import tech.mikhailov.fsm.lib.PrDecision;
+import tech.mikhailov.fsm.lib.SkepticVerdict;
 
 /**
  * {@code PR maker} — whether an execution-proven fix is worth putting in front of a maintainer.
@@ -118,7 +120,16 @@ public final class PrMaker {
     public record PromptInput(String prStamp, Object prepProver, Object parseTest, Object parseFix) {
     }
 
-    /** The curator's answer, or the shape of one that never came. */
+    /**
+     * The curator's answer, or the shape of one that never came.
+     *
+     * @param decision the wire spelling of a {@link PrDecision} — or a word the model invented, which
+     *                 is why it is a String and not the enum. It is passed through UNTRANSLATED on
+     *                 purpose: {@code RecordOutcome} reports "the curator answered `x`, which is
+     *                 neither make nor reject" and {@code Critiques} files that as a parser fault, and
+     *                 both need the word the model actually used. The vocabulary is typed where it is
+     *                 BRANCHED ON; it is not typed here, where it is only carried.
+     */
     public record Curation(String decision, String reason, boolean curated, String title,
                            String body) {
     }
@@ -194,8 +205,8 @@ public final class PrMaker {
      */
     public static Curation parsePrReply(Object r, String prTitle, String prBody) {
         // The same "did not decide" state prMaker initialises for the skipped path: a reply that
-        // carried no object is worth exactly as much as a curator that never ran.
-        String decision = "n/a";
+        // carried no object is worth exactly as much as a curator that never ran. @see PrDecision
+        String decision = PrDecision.NOT_APPLICABLE.wire();
         String reason = "";
         boolean curated = false;
         String title = prTitle;
@@ -213,7 +224,7 @@ public final class PrMaker {
             // It replied with an object, so it DID curate; 'make' matches the stage's bias toward not
             // discarding an execution-proven fix, and the receipt stays true because a machine
             // judgement really was made here — unlike on the catch path.
-            decision = Js.string(or(Json.get(jj, "decision"), "make"));
+            decision = Js.string(or(Json.get(jj, "decision"), PrDecision.MAKE.wire()));
             reason = Js.orEmptyString(Json.get(jj, "reason"));
             curated = true;
             if (Js.truthy(Json.get(jj, "pr_title"))) {
@@ -245,11 +256,15 @@ public final class PrMaker {
         Object skepticOut = req.item();
         boolean proven = Json.truthy(req.reproduce(), "red_reproduced") && Json.truthy(skepticOut,
                 "proven");
-        // missing != certified
-        boolean skepticSound = "sound".equals(or(Json.get(skepticOut, "skeptic_verdict"),
-                "unknown"));
+        // MISSING != CERTIFIED, and the fallback says so: an absent verdict reads as UNKNOWN, which
+        // certifies nothing. A word this vocabulary does not know reads as null, which certifies
+        // nothing either — so the gate is "the skeptic said the one thing that certifies a fix", asked
+        // of the type that owns that fact rather than of a literal. @see SkepticVerdict#certifies()
+        SkepticVerdict skeptic = SkepticVerdict.of(or(Json.get(skepticOut, "skeptic_verdict"),
+                SkepticVerdict.UNKNOWN.wire()));
+        boolean skepticSound = skeptic != null && skeptic.certifies();
 
-        String decision = "n/a";
+        String decision = PrDecision.NOT_APPLICABLE.wire();
         String reason = "";
         boolean curated = false;
         // A PR with no title is rejected by the API outright, so the marker's own title is better than
@@ -269,7 +284,7 @@ public final class PrMaker {
                 title = c.title();
                 body = c.body();
             } catch (Exception e) {
-                decision = "make";
+                decision = PrDecision.MAKE.wire();
                 reason = "(pr maker unavailable — defaulting to draft): "
                         + Llm.failureText(e, REASON_CUT, "error");
             }
