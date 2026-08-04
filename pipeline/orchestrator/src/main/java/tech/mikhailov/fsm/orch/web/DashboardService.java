@@ -22,15 +22,24 @@ import tech.mikhailov.fsm.orch.model.Suspicion;
  * The dashboard's read model: {@code state()} and {@code bugFor()}, over H2 through the DAOs.
  *
  * <p>THE PAYLOAD SHAPE IS A CONTRACT WITH {@code public/app.js}, which is copied into
- * {@code src/main/resources/static} essentially unchanged. Every key below is read by name somewhere in
- * that file, so this is deliberately built as maps of wire names rather than as records with Java
- * names: the JSON the page was written against is visible here in one place, and a renamed field is a
- * visible edit rather than a serialisation surprise.
+ * {@code src/main/resources/static} essentially unchanged. Every key is read by name somewhere in that
+ * file, so it is deliberately carried as maps of wire names rather than as records with Java names: the
+ * JSON the page was written against is visible in one place, and a renamed field is a visible edit
+ * rather than a serialisation surprise.
  *
  * <p>WHY MAPS AND NOT DTOs. The rows themselves already exist in the engine's item shape —
  * {@link Suspicion#toMap()} and {@link Bug#toMap()} are the same maps the pipeline passes to the
  * engine's nodes. Re-describing them as web DTOs would create a second column list that can drift from
- * the one the pipeline uses, which is the failure this whole module is built to avoid.
+ * the one the pipeline uses, which is the failure this whole module is built to avoid. That argument
+ * was re-tested rather than inherited, and it survived: see {@link DashboardPresenter} for the count
+ * that decides it, and {@code TheReadPathHasNoSecondColumnListTest} for the check that now holds this
+ * class to it instead of leaving it as a comment.
+ *
+ * <p>WHAT MOVED. This class no longer NAMES a single wire key. It reads, it degrades, it does the
+ * arithmetic that decides what "settled" means — and {@link DashboardPresenter} says the answer. The
+ * split is not cosmetic: the shape of every read-path response can now be read in one file and asserted
+ * without a database, which is what let the page/API agreement check be extended past
+ * {@code asComment()} for the first time.
  *
  * <p>EVERY READ DEGRADES RATHER THAN FAILS. A read against a database that a prove is mid-write on
  * must never take the dashboard down — it is the only view onto a run that lasts days. The same rule
@@ -131,28 +140,11 @@ public class DashboardService {
 
         List<Map<String, Object>> artifactRows = new ArrayList<>(artifacts.size());
         for (Bug b : artifacts) {
-            Map<String, Object> row = b.toMap();
-            MarkerColumns.join(row, byKey.get(b.suspicionKey()));
-            artifactRows.add(row);
+            artifactRows.add(MarkerColumns.joined(b.toMap(), byKey.get(b.suspicionKey())));
         }
 
-        Map<String, Object> scan = new LinkedHashMap<>();
-        // 'idle' verbatim: the file-walking scanner belonged to the LLM suspector that the Svace
-        // ingester replaced. The key stays because the page's payload shape is shared with the sibling
-        // dashboard, and an absent key there reads as a broken response rather than a retired stage.
-        scan.put("status", "idle");
-        scan.put("repo", markers.isEmpty() ? null : markers.get(0).repo());
-
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("scan", scan);
-        // Always empty: there is no file scan, only a marker backlog.
-        out.put("files", List.of());
-        out.put("suspicions", markerRows);
-        out.put("bugs", artifactRows);
-        out.put("activity", activity());
-        out.put("work", work(markers, artifacts));
-        out.put("prover_built", proverBuilt());
-        return out;
+        return DashboardPresenter.state(markers.isEmpty() ? null : markers.get(0).repo(),
+                markerRows, artifactRows, activity(), work(markers, artifacts), proverBuilt());
     }
 
     /**
@@ -169,15 +161,14 @@ public class DashboardService {
      */
     public Map<String, Object> bugFor(String suspicionKey) {
         if (suspicionKey == null || suspicionKey.isBlank()) {
-            return Map.of();
+            return DashboardPresenter.noArtifact();
         }
         Optional<Bug> found = bugs.find(suspicionKey);
         if (found.isEmpty()) {
-            return Map.of();
+            return DashboardPresenter.noArtifact();
         }
-        Map<String, Object> row = found.get().toMap();
-        MarkerColumns.join(row, suspicions.find(suspicionKey).map(Suspicion::toMap).orElse(null));
-        return row;
+        return MarkerColumns.joined(found.get().toMap(),
+                suspicions.find(suspicionKey).map(Suspicion::toMap).orElse(null));
     }
 
     /**
@@ -201,37 +192,24 @@ public class DashboardService {
         // Effort panel will disagree about the same run.
         long settled = total - queued - proving;
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("byStatus", byStatus);
-        out.put("byState", statesOrEmpty());
-        out.put("total", total);
-        out.put("queued", queued);
-        out.put("proving", proving);
-        out.put("settled", settled);
-        out.put("remaining", total - settled);
-        out.put("bugs", bugCountOrZero());
-        out.put("pct", total > 0 ? Math.round(settled * 100.0 / total) : 0L);
-        out.put("at", Instant.now().toEpochMilli());
-        return out;
+        return DashboardPresenter.counts(byStatus, statesOrEmpty(), total, queued, proving, settled,
+                total - settled, bugCountOrZero(),
+                total > 0 ? Math.round(settled * 100.0 / total) : 0L,
+                Instant.now().toEpochMilli());
     }
 
     /**
-     * The most recent runs, newest first — {@code wf}, {@code status}, {@code started}, {@code file}
-     * and {@code dur}, exactly the five keys the activity table renders.
+     * The most recent runs, newest first, each said in the shape {@link DashboardPresenter#run} names.
      *
-     * <p>{@code file} is always EMPTY: an execution row carries no marker reference, and inventing one
-     * from the batch metadata would put a marker name against a run that touched several.
+     * <p>What this method decides is which runs and how each one is CLASSIFIED — {@link #flowOf},
+     * {@link #runStatusOf} and {@link #seconds}, every one of which is a judgement with a test behind
+     * it. What the row is CALLED is the presenter's.
      */
     List<Map<String, Object>> activity() {
         List<Map<String, Object>> out = new ArrayList<>();
         for (JobRunDao.JobRun run : runs.findRecent(ACTIVITY_LIMIT)) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("wf", flowOf(run.jobName()));
-            row.put("status", runStatusOf(run));
-            row.put("started", wireTime(run.startedAtMs()));
-            row.put("file", "");
-            row.put("dur", seconds(run.startedAtMs(), run.stoppedAtMs()));
-            out.add(row);
+            out.add(DashboardPresenter.run(flowOf(run.jobName()), runStatusOf(run),
+                    wireTime(run.startedAtMs()), seconds(run.startedAtMs(), run.stoppedAtMs())));
         }
         return out;
     }

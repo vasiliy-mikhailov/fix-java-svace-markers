@@ -75,7 +75,7 @@ class TheArtifactIsWrittenBeforeTheMarkerIsRetiredTest {
     @Test
     void aReleaseThatStillHeldTheClaimIsAnnouncedAndReportedBack() {
         Releases releases = new Releases();
-        Requeue requeue = new ReleaseClaim(releases, releases).release(claimed(), InfraReason.of("x"));
+        Requeue requeue = new ReleaseClaim(releases, releases).release(requeueOf(claimed()));
 
         assertThat(requeue).isNotNull();
         assertThat(requeue.attempts()).isEqualTo(2L);
@@ -88,7 +88,7 @@ class TheArtifactIsWrittenBeforeTheMarkerIsRetiredTest {
         Releases releases = new Releases();
         releases.matches = 0;
 
-        Requeue requeue = new ReleaseClaim(releases, releases).release(claimed(), InfraReason.of("x"));
+        Requeue requeue = new ReleaseClaim(releases, releases).release(requeueOf(claimed()));
 
         assertThat(requeue)
                 .as("null is the caller's signal that this failure says nothing about the marker: two "
@@ -100,6 +100,15 @@ class TheArtifactIsWrittenBeforeTheMarkerIsRetiredTest {
 
     private static Marker claimed() {
         return new Marker(KEY, 2L, new MarkerSnapshot(Map.of("dedup_key", KEY.value())));
+    }
+
+    /**
+     * The release a prove that reached no answer decided on — {@code ProveMarker}'s line, spelled out
+     * here because {@link ReleaseClaim} PERFORMS a requeue and no longer computes one. There is exactly
+     * one place in the running system that computes it, and this stands in for that place.
+     */
+    private static Requeue requeueOf(Marker marker) {
+        return marker.release(InfraReason.of("x"));
     }
 
     private static Settlement settlement() {

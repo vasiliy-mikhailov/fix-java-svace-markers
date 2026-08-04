@@ -3,7 +3,6 @@ package tech.mikhailov.fsm.orch.web;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -19,9 +18,7 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartFile;
-import tech.mikhailov.fsm.orch.batch.BatchConfig;
 import tech.mikhailov.fsm.orch.batch.CsvSpool;
-import tech.mikhailov.fsm.orch.batch.IngestAccount;
 import tech.mikhailov.fsm.orch.batch.IngestHistory;
 import tech.mikhailov.fsm.orch.batch.IngestRequest;
 import tech.mikhailov.fsm.orch.batch.JobLaunches;
@@ -62,6 +59,12 @@ import tech.mikhailov.fsm.runner.CloneUrl;
  *       is the destructive one, and its refusal names the count to send back, so it doubles as the dry
  *       run of a reset.</li>
  * </ul>
+ *
+ * <p>WHAT THE BODIES LOOK LIKE IS NOT IN THIS FILE. {@link JobsPresenter} holds every one of them, so
+ * the reply to a reset — the one document in this service that precedes destroying a day of work — can
+ * be read beside the reply that refuses it, rather than reconstructed from three call frames. What is
+ * still decided here, and deliberately: which requests are refused, when the census is read, and which
+ * status code an outcome carries.
  */
 @RestController
 @RequestMapping("/api")
@@ -184,18 +187,11 @@ public class JobsController {
             @RequestBody(required = false) MarkerBody body) {
         String key = body == null ? null : body.dedupKey();
         if (key == null || key.isBlank()) {
-            Map<String, Object> problem = new LinkedHashMap<>();
-            problem.put("started", false);
-            problem.put("job", BatchConfig.PROVE_JOB);
-            problem.put("reason", "`dedup_key` is required; to drain the whole backlog POST /api/prove");
-            return ResponseEntity.badRequest().body(problem);
+            return ResponseEntity.badRequest().body(JobsPresenter.refusedProve(
+                    "`dedup_key` is required; to drain the whole backlog POST /api/prove"));
         }
         JobLaunches.Launch launch = launches.proveMarker(key, "api");
-        Map<String, Object> answer = describe(launch);
-        // Echoed so a caller that shell-quoted the key wrongly sees what actually arrived, rather than
-        // reading a run history for a marker it did not ask about.
-        answer.put("dedupKey", key);
-        return status(launch, answer);
+        return status(launch, JobsPresenter.startedForMarker(launch, key));
     }
 
     /**
@@ -350,27 +346,7 @@ public class JobsController {
      */
     @GetMapping("/ingest/last")
     public ResponseEntity<Map<String, Object>> lastIngest() {
-        Map<String, Object> answer = new LinkedHashMap<>();
-        answer.put("job", BatchConfig.INGEST_JOB);
-        IngestHistory.Entry last = history.lastIngest();
-        if (last == null) {
-            answer.put("ran", false);
-            answer.put("reason", "no ingest has run against this database");
-            return ResponseEntity.ok(answer);
-        }
-        answer.put("ran", true);
-        answer.put("executionId", last.executionId());
-        answer.put("status", last.status());
-        answer.put("startedAt", last.startedAt());
-        answer.put("endedAt", last.endedAt());
-        if (last.account() == null) {
-            answer.put("account", null);
-            answer.put("reason", "that execution recorded no account of itself — it failed before it "
-                    + "could write one, or it predates this record");
-        } else {
-            answer.put("account", last.account().toMap());
-        }
-        return ResponseEntity.ok(answer);
+        return ResponseEntity.ok(JobsPresenter.lastIngest(history.lastIngest()));
     }
 
     /**
@@ -428,19 +404,8 @@ public class JobsController {
     private ResponseEntity<Map<String, Object>> answerIngest(JobLaunches.Launch launch,
                                                              Boolean requestedReset,
                                                              ResetPolicy.Census census) {
-        Map<String, Object> body = describe(launch);
-        boolean resets = resetPolicy.resets(requestedReset);
-        body.put("mode", resets ? IngestAccount.RESET : IngestAccount.ADDITIVE);
-        body.put("effect", ResetPolicy.effect(resets));
-        body.put("backlogBefore", census.markers());
-        body.put("settledBefore", census.settled());
-        body.put("artifactsBefore", census.artifacts());
-        // ZERO IS THE HEADLINE on the additive path. The message this replaces read the same whether it
-        // had destroyed a day of model and Maven time or nothing at all.
-        body.put("discards", resets ? census.markers() : 0L);
-        body.put("discardsSettled", resets ? census.settled() : 0L);
-        body.put("discardsArtifacts", resets ? census.artifacts() : 0L);
-        return status(launch, body);
+        return status(launch, JobsPresenter.ingestStarting(launch,
+                resetPolicy.resets(requestedReset), census));
     }
 
     private ResponseEntity<Map<String, Object>> refuse(String repo, String branch) {
@@ -457,9 +422,8 @@ public class JobsController {
     }
 
     private static ResponseEntity<Map<String, Object>> tooLarge(CsvSpool.TooLarge tooLarge) {
-        Map<String, Object> problem = problem(tooLarge.getMessage());
-        problem.put("maxCsvBytes", tooLarge.limit());
-        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(problem);
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(JobsPresenter.tooLarge(tooLarge));
     }
 
     /**
@@ -467,34 +431,16 @@ public class JobsController {
      * broken, not the request, and a 4xx would send the caller to look at their own report.
      */
     private static ResponseEntity<Map<String, Object>> unwritable(IOException e) {
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problem(
-                "the report could not be written to this container's spool directory "
-                + "(fsm.ingest.spool-dir, FSM_INGEST_SPOOL_DIR): " + e));
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(JobsPresenter.unwritableSpool(e));
     }
 
     private static ResponseEntity<Map<String, Object>> badRequest(String reason) {
-        return ResponseEntity.badRequest().body(problem(reason));
-    }
-
-    private static Map<String, Object> problem(String reason) {
-        Map<String, Object> problem = new LinkedHashMap<>();
-        problem.put("started", false);
-        problem.put("job", BatchConfig.INGEST_JOB);
-        problem.put("reason", reason);
-        return problem;
+        return ResponseEntity.badRequest().body(JobsPresenter.refused(reason));
     }
 
     private static ResponseEntity<Map<String, Object>> answer(JobLaunches.Launch launch) {
-        return status(launch, describe(launch));
-    }
-
-    private static Map<String, Object> describe(JobLaunches.Launch launch) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("started", launch.started());
-        body.put("job", launch.jobName());
-        body.put("executionId", launch.executionId());
-        body.put("reason", launch.reason());
-        return body;
+        return status(launch, JobsPresenter.started(launch));
     }
 
     private static ResponseEntity<Map<String, Object>> status(JobLaunches.Launch launch,

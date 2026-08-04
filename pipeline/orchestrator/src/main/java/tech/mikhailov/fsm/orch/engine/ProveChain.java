@@ -300,8 +300,11 @@ public class ProveChain implements JudgementEngine {
      *
      * <p>The cause is not decoration. The Spring Batch step skips on the {@link InfraFailure} TYPE and
      * declares it {@code noRollback}, so the release of the claim commits in the transaction that took
-     * it; the driver takes the original back out of here and rethrows it, and a re-wrapped copy would
-     * change the transaction semantics of the step rather than just its stack trace.
+     * it; the driver takes the original back out of here and throws it on — carried by a subclass that
+     * inherits its {@code reason()} and is classified identically, so that the prove's own decision
+     * about the marker travels with it. What must never happen is the reason or the type being rebuilt
+     * into something the step's classifier no longer matches: that would change the transaction
+     * semantics of the step rather than just its stack trace. See {@code ProveProcessor.requeue}.
      */
     private static EngineUnreachable unreachable(InfraFailure failure) {
         return new EngineUnreachable(failure.reason(), failure);

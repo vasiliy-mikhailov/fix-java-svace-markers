@@ -10,10 +10,12 @@ package tech.mikhailov.fsm.orch.usecase;
  *
  * <p>THE ORIGINAL IS KEPT AS THE CAUSE, and the adapter that raised it is expected to take it back out
  * — see {@code ProveProcessor}. That is not a leak: the Spring Batch step declares
- * {@code skip(InfraFailure.class)} and {@code noRollback(InfraFailure.class)}, so the exception INSTANCE
- * is what decides whether the chunk transaction that took the claim survives long enough to release it.
- * Re-wrapping it into a new one would change the transaction semantics of the step, which is the one
- * thing this refactor is not allowed to move.
+ * {@code skip(InfraFailure.class)} and {@code noRollback(InfraFailure.class)}, so the exception the
+ * adapter throws is what decides whether the chunk transaction that took the claim survives long enough
+ * to release it. It must keep that type and that reason — the adapter throws a SUBCLASS of the original
+ * type, carrying the original as its cause and its reason unchanged, so the classifier and the note both
+ * behave exactly as before. Re-wrapping it into an unrelated type would change the transaction semantics
+ * of the step, which is the one thing this refactor is not allowed to move.
  */
 public class EngineUnreachable extends Exception {
 

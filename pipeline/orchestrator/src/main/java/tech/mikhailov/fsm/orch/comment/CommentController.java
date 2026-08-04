@@ -1,8 +1,6 @@
 package tech.mikhailov.fsm.orch.comment;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -101,6 +99,11 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>Every GET also carries {@code stages}, {@code known_kinds} and {@code limits}, so the form can be
  * built from the one call the modal already makes rather than from constants copied into JavaScript
  * that then drift from {@link CommentKinds}.
+ *
+ * <p>THE SEVEN DOCUMENTS ABOVE ARE WRITTEN OUT IN {@link CommentPresenter} AND NOT IN THIS FILE. What
+ * this class still decides is what HTTP decides: which slug is a 404 and which is a 400, which
+ * parameter falls back rather than 400-ing, and which exceptions become an answer instead of Boot's
+ * error page. {@code NoControllerAssemblesItsOwnResponseTest} keeps the two apart.
  */
 @RestController
 public class CommentController {
@@ -154,7 +157,8 @@ public class CommentController {
         if (!written.ok()) {
             return refusal(written, given.dedupKey());
         }
-        return answer(HttpStatus.CREATED, accepted(written));
+        return answer(HttpStatus.CREATED,
+                CommentPresenter.accepted(written, comments.journal().path().toString()));
     }
 
     /**
@@ -172,13 +176,8 @@ public class CommentController {
                     String includeRetracted) {
         boolean retracted = flag(includeRetracted);
         List<MarkerComment> found = comments.forMarker(key, retracted);
-        Map<String, Object> out = header();
-        out.put("key", key == null ? "" : key);
-        out.put("marker_present", comments.markerExists(key));
-        out.put("include_retracted", retracted);
-        out.put("count", found.size());
-        out.put("comments", wire(found));
-        return answer(HttpStatus.OK, out);
+        return answer(HttpStatus.OK, CommentPresenter.forMarker(comments.journal(), key,
+                comments.markerExists(key), retracted, found));
     }
 
     /**
@@ -196,17 +195,8 @@ public class CommentController {
                     String includeRetracted) {
         boolean retracted = flag(includeRetracted);
         List<MarkerComment> found = comments.recent(count(limit), stage, retracted);
-        Map<String, Object> out = header();
-        out.put("stage", stage == null ? "" : stage);
-        out.put("include_retracted", retracted);
-        // THE SIZE OF THE PAGE AND THE SIZE OF THE STORE, as two different numbers. They were one
-        // number and it was the wrong one: `totals()` put a `comments` COUNT into this map and the
-        // array below then overwrote it, so the only caller-visible total was the page's own size and
-        // a truncated answer was indistinguishable from a complete one.
-        out.put("count", found.size());
-        out.putAll(comments.index(retracted));
-        out.put("comments", wire(found));
-        return answer(HttpStatus.OK, out);
+        return answer(HttpStatus.OK, CommentPresenter.recent(comments.journal(), stage, retracted,
+                found, comments.index(retracted)));
     }
 
     /**
@@ -233,10 +223,8 @@ public class CommentController {
             @RequestParam(name = "include_retracted", required = false, defaultValue = "")
                     String includeRetracted) {
         boolean retracted = flag(includeRetracted);
-        Map<String, Object> out = header();
-        out.put("include_retracted", retracted);
-        out.putAll(comments.index(retracted));
-        return answer(HttpStatus.OK, out);
+        return answer(HttpStatus.OK, CommentPresenter.index(comments.journal(), retracted,
+                comments.index(retracted)));
     }
 
     /**
@@ -260,79 +248,26 @@ public class CommentController {
         if (!written.ok()) {
             return refusal(written, "");
         }
-        return answer(HttpStatus.OK, accepted(written));
+        return answer(HttpStatus.OK,
+                CommentPresenter.accepted(written, comments.journal().path().toString()));
     }
 
-    // ---- the shapes -------------------------------------------------------------------------------
+    // ---- what the HTTP layer still decides ---------------------------------------------------------
 
-    private Map<String, Object> accepted(CommentService.Written written) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("ok", true);
-        out.put("error", "");
-        out.put("comment", written.comment().toMap());
-        Map<String, Object> stored = new LinkedHashMap<>();
-        stored.put("database", true);
-        stored.put("journal", written.journal().wire());
-        stored.put("journal_path", comments.journal().path().toString());
-        out.put("stored", stored);
-        // NEVER EMPTY WHEN THE DURABLE COPY DID NOT LAND. The row is safe either way, so this is not an
-        // error — but "saved" over a comment that a fresh deploy will destroy is a promise the caller
-        // did not get, and the only place they will ever see it is here.
-        out.put("warning", warning(written.journal()));
-        return out;
-    }
-
-    private String warning(CommentJournal.Outcome outcome) {
-        return switch (outcome) {
-            case WRITTEN, UNCHANGED -> "";
-            case OFF -> "stored in the database only: the durable journal is switched off "
-                    + "(fsm.comments.enabled / FSM_COMMENTS_JOURNAL). The H2 store is destroyed by a "
-                    + "fresh deploy, so this comment will not survive one.";
-            case FAILED -> "stored in the database, but the durable journal at "
-                    + comments.journal().path() + " could NOT be written — check that the directory "
-                    + "exists and is owned by the container's user. The H2 store is destroyed by a "
-                    + "fresh deploy, so this comment will not survive one until that is fixed.";
-        };
-    }
-
+    /**
+     * A refusal, and THE STATUS IS THE PART THAT LIVES HERE.
+     *
+     * <p>Which slug is a 404 and which is a 400 is a fact about HTTP, not about the document — the
+     * body is identical either way, deliberately, so a UI that branches on {@code error} rather than
+     * on the status has the same fields in both cases. @see CommentPresenter#refusal
+     */
     private ResponseEntity<Map<String, Object>> refusal(CommentService.Written written, String key) {
-        Map<String, Object> out = header();
-        out.put("ok", false);
-        out.put("error", written.error());
-        out.put("reason", written.reason());
-        out.put("dedup_key", key == null ? "" : key);
         HttpStatus status = switch (written.error()) {
             case CommentService.ERR_UNKNOWN_MARKER, CommentService.ERR_UNKNOWN_COMMENT ->
                     HttpStatus.NOT_FOUND;
             default -> HttpStatus.BAD_REQUEST;
         };
-        return answer(status, out);
-    }
-
-    /**
-     * The block every answer here carries: the vocabularies and the bounds.
-     *
-     * <p>Served rather than documented, because the alternative is the same five stage names and the
-     * same character limit copied into JavaScript, where nothing makes them follow
-     * {@link CommentKinds}. A form built from this block cannot offer a stage the server refuses.
-     */
-    private Map<String, Object> header() {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("identity", MarkerComment.AUTHOR_TRUST);
-        Map<String, Object> limits = new LinkedHashMap<>();
-        limits.put("text_max", CommentService.TEXT_MAX);
-        limits.put("author_max", CommentService.AUTHOR_MAX);
-        limits.put("kind_max", CommentKinds.KIND_MAX);
-        limits.put("page_max", CommentService.PAGE_MAX);
-        limits.put("page_default", CommentService.PAGE_DEFAULT);
-        out.put("limits", limits);
-        out.put("stages", CommentKinds.STAGES);
-        out.put("known_kinds", CommentKinds.KNOWN);
-        Map<String, Object> journal = new LinkedHashMap<>();
-        journal.put("enabled", comments.journal().enabled());
-        journal.put("path", comments.journal().path().toString());
-        out.put("journal", journal);
-        return out;
+        return answer(status, CommentPresenter.refusal(comments.journal(), written, key));
     }
 
     /**
@@ -367,14 +302,6 @@ public class CommentController {
         return raw != null && "true".equalsIgnoreCase(raw.trim());
     }
 
-    private static List<Map<String, Object>> wire(List<MarkerComment> found) {
-        List<Map<String, Object>> out = new ArrayList<>(found.size());
-        for (MarkerComment c : found) {
-            out.add(c.toMap());
-        }
-        return out;
-    }
-
     private static ResponseEntity<Map<String, Object>> answer(HttpStatus status,
                                                               Map<String, Object> body) {
         return ResponseEntity.status(status)
@@ -392,11 +319,8 @@ public class CommentController {
      */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Map<String, Object>> malformed(HttpMessageNotReadableException e) {
-        Map<String, Object> out = header();
-        out.put("ok", false);
-        out.put("error", "malformed_json");
-        out.put("reason", "the request body is not readable JSON: " + rootMessage(e));
-        return answer(HttpStatus.BAD_REQUEST, out);
+        return answer(HttpStatus.BAD_REQUEST,
+                CommentPresenter.malformed(comments.journal(), rootMessage(e)));
     }
 
     /**
@@ -409,11 +333,8 @@ public class CommentController {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> failed(Exception e) {
         log.warn("[comment] request failed: {}", e.toString());
-        Map<String, Object> out = header();
-        out.put("ok", false);
-        out.put("error", "server_error");
-        out.put("reason", String.valueOf(e.getMessage() == null ? e : e.getMessage()));
-        return answer(HttpStatus.INTERNAL_SERVER_ERROR, out);
+        return answer(HttpStatus.INTERNAL_SERVER_ERROR, CommentPresenter.serverError(
+                comments.journal(), String.valueOf(e.getMessage() == null ? e : e.getMessage())));
     }
 
     private static String rootMessage(Throwable e) {

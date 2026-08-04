@@ -22,6 +22,7 @@ import tech.mikhailov.fsm.orch.usecase.ChargeInfrastructureFailures.RequeuedMark
 import tech.mikhailov.fsm.orch.usecase.ChargeInfrastructureFailures.RunReport;
 import tech.mikhailov.fsm.orch.usecase.InfrastructurePresenter;
 import tech.mikhailov.fsm.orch.usecase.MarkerRepository;
+import tech.mikhailov.fsm.orch.usecase.ProveMarker;
 import tech.mikhailov.fsm.orch.usecase.ReleaseClaim;
 import tech.mikhailov.fsm.orch.usecase.ReleasePresenter;
 
@@ -39,6 +40,11 @@ import tech.mikhailov.fsm.orch.usecase.ReleasePresenter;
  *   <li>THE REASON SURVIVES. The note is the entire audit trail for a row that goes back on the queue.
  *       A requeue with no note is indistinguishable from a marker nothing has got to yet.</li>
  * </ol>
+ *
+ * <p>WHAT IT DOES NOT DECIDE: WHICH RELEASE. {@link ProveMarker} already decided that, one circle in,
+ * and {@link ProveProcessor} sends the decision here on the throwable — see {@link #requeueOf} and
+ * {@link RequeuedClaim}. This class used to derive its own from the persisted row and the exception,
+ * which meant the use case named a release beside the one that ran instead of the one that ran.
  *
  * <p>WHY A {@link SkipListener} AND NOT A {@code catch} IN THE PROCESSOR. The step declares
  * {@code noRollback(InfraFailure.class)}, so this method runs INSIDE the chunk transaction that took
@@ -86,12 +92,33 @@ public class ClaimReleaseListener
 
     @Override
     public void onSkipInProcess(Suspicion item, Throwable t) {
-        InfraReason reason = InfraReason.of(reason(t));
-        if (releaseClaim.release(item.marker(), reason) != null) {
+        Requeue requeue = requeueOf(item, t);
+        if (releaseClaim.release(requeue) != null) {
             // Remembered, not charged. Whether this failure says anything about the MARKER depends on
             // how the rest of the step went, and the step is not over. See #afterStep.
-            requeuedThisStep.add(new RequeuedMarker(MarkerId.of(item.dedupKey()), reason));
+            requeuedThisStep.add(new RequeuedMarker(requeue.id(), requeue.reason()));
         }
+    }
+
+    /**
+     * WHICH RELEASE THIS SKIP PERFORMS — the prove's own decision whenever there is one.
+     *
+     * <p>{@link ProveMarker} decided what an unanswered question does to this marker, and
+     * {@link ProveProcessor} put that decision on the exception it threw, because the throwable is the
+     * only thing the framework carries from a processor's throw to this hook. Reading it back here is
+     * what makes the use case's requeue the one the system performs, rather than a description of one
+     * beside it — see {@link RequeuedClaim}.
+     *
+     * <p>THE FALLBACK IS THE ONLY OTHER READING OF A FAILURE IN THE PROVE PATH, and it is unreachable
+     * from the step as configured: {@code InfraFailure} is the one declared skip and
+     * {@link ProveProcessor} is the one thing that raises one. It is kept because a marker stranded in
+     * {@code proving} is the worst outcome available here — worse than a note composed from a throwable
+     * nobody planned for — and because {@code Marker.release} is the same entity method either way, so
+     * the two cannot disagree about what a requeue IS, only about the words on it.
+     */
+    static Requeue requeueOf(Suspicion item, Throwable t) {
+        Requeue decided = RequeuedClaim.decidedOn(t);
+        return decided != null ? decided : item.marker().release(InfraReason.of(reason(t)));
     }
 
     // ---- the streak, and the one thing that ages a marker out ------------------------------------

@@ -32,7 +32,9 @@ import tech.mikhailov.fsm.orch.usecase.ProveOutcome;
  *   <li>it PRESENTS — the one line a settled marker writes to the run log used to be inline in the
  *       chain, and being inline is what forced the policy to depend on SLF4J;</li>
  *   <li>it TRANSLATES the use case's outcome back into the framework's vocabulary, which for a requeue
- *       means putting the original exception back on the stack.</li>
+ *       means throwing the failure the prove died on WITH the release the use case decided on riding
+ *       along — the throwable being the only thing the framework carries from here to the hook that
+ *       performs it.</li>
  * </ol>
  * The chain itself — fourteen stages, 23 engine call sites, eight network calls — is
  * {@link ProveChain}, behind the port. Nothing in this file knows a stage exists.
@@ -43,9 +45,10 @@ import tech.mikhailov.fsm.orch.usecase.ProveOutcome;
  * that took it. A processor that caught the failure and returned normally would return null, Spring
  * Batch would FILTER the item rather than SKIP it, no listener would fire, no strike would be counted,
  * and the transaction semantics of the step would change. So the use case decides, as a value, and this
- * method throws — the ORIGINAL exception, kept as the cause of {@link EngineUnreachable}, because the
- * step's skip policy matches on the type and the listener reads {@code InfraFailure.reason()} off the
- * instance.
+ * method throws a {@link RequeuedClaim} — an {@code InfraFailure} carrying that value, over the
+ * ORIGINAL exception kept as the cause of {@link EngineUnreachable}, because the step's skip policy
+ * matches on the type and the listener reads {@code InfraFailure.reason()} off the instance. Both of
+ * those still hold, and the decision now reaches the listener instead of being made twice.
  *
  * <p>ITS CONSTRUCTORS AND ACCESSORS ARE UNCHANGED. Four settings arrive here — {@code min-attempts},
  * {@code runner.timeout}, {@code verdict-enabled}, and the critique store — and each is readable back
@@ -135,7 +138,7 @@ public class ProveProcessor
         ProveOutcome outcome = proveMarker.prove(new ProveMarkerRequest(suspicion.marker()));
         return switch (outcome) {
             case ProveOutcome.Settled settled -> ProvenMarker.of(settled.settlement());
-            case ProveOutcome.Requeued requeued -> throw rethrow(requeued);
+            case ProveOutcome.Requeued requeued -> throw requeue(requeued);
         };
     }
 
@@ -166,18 +169,28 @@ public class ProveProcessor
     }
 
     /**
-     * The use case's requeue, back in the framework's own currency.
+     * The use case's requeue, back in the framework's own currency — AND CARRYING THE REQUEUE ITSELF.
      *
-     * <p>The ORIGINAL instance, not a copy of it: {@code ClaimReleaseListener} reads
-     * {@link InfraFailure#reason()} off it to write the marker's note, and the step's skip policy
-     * matches on the type. The fallback exists because {@link EngineUnreachable} is the use case's
-     * vocabulary and a future adapter could raise one that did not come from a client — in which case
-     * the reason still travels and the marker is still released, which is the property that matters.
+     * <p>THE DECISION TRAVELS, NOT JUST THE FAILURE, and that is the whole point of this method. The
+     * release cannot happen here — it has to commit inside the chunk transaction that took the claim,
+     * so it happens in the skip listener — and the framework hands that listener the item and the
+     * throwable and nothing else. Dropping {@link ProveOutcome.Requeued#requeue()} at this line is what
+     * previously forced {@link ClaimReleaseListener} to read the decision a SECOND time, off the
+     * persisted row and the exception, so that {@link tech.mikhailov.fsm.orch.usecase.ProveMarker} was
+     * describing a release the system did not perform. See {@link RequeuedClaim}.
+     *
+     * <p>Nothing about the step moves: the classifier matches {@code InfraFailure} by assignability and
+     * {@link InfraFailure#reason()} is inherited from the failure this prove died on. That failure is
+     * kept as the cause, so the log and the stack trace still name the client call that broke. The
+     * fallback exists because {@link EngineUnreachable} is the use case's vocabulary and a future
+     * adapter could raise one that did not come from a client — in which case the reason still travels
+     * and the marker is still released, which is the property that matters.
      */
-    private static InfraFailure rethrow(ProveOutcome.Requeued requeued) {
+    static RequeuedClaim requeue(ProveOutcome.Requeued requeued) {
         Throwable cause = requeued.unreachable().getCause();
-        return cause instanceof InfraFailure infra
+        InfraFailure raising = cause instanceof InfraFailure infra
                 ? infra
                 : new InfraFailure(requeued.unreachable().reason(), requeued.unreachable());
+        return new RequeuedClaim(requeued.requeue(), raising);
     }
 }

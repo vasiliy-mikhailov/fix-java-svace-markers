@@ -1,5 +1,6 @@
 package tech.mikhailov.fsm.orch.web;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -33,7 +34,7 @@ final class MarkerColumns {
             "anchor_status", "description", "evidence", "status", "prove_attempts", "note");
 
     /**
-     * Copy the marker's columns onto the artifact, and record whether the marker still exists.
+     * The artifact row WITH the marker's columns on it, and whether the marker still exists.
      *
      * <p>THE ARTIFACT ALWAYS WINS: a value the artifact owns is never clobbered by the join, so only
      * a blank is filled in. That matters for exactly one column today,
@@ -47,16 +48,26 @@ final class MarkerColumns {
      * renders as "marker row gone — re-ingested since" rather than showing a verdict whose question
      * has silently changed.
      *
-     * @param bug    the artifact row, mutated in place
+     * <p>IT RETURNS A ROW RATHER THAN EDITING ONE. This took the artifact's map and mutated it in
+     * place, which made "what is in this response" a question about who had called what beforehand —
+     * the one question a reader of a payload should never have to ask. The copy costs one map per
+     * artifact on a document that already carries their CLOBs, and it makes the join a function: the
+     * same two inputs give the same row, which is what lets the shape be asserted without a database.
+     * Insertion order is unchanged, because a copied {@link java.util.LinkedHashMap} keeps it and
+     * re-putting an existing key does not move it.
+     *
+     * @param bug    the artifact row, left untouched
      * @param marker the marker row keyed by {@code bugs.suspicion_key}, or null when it has gone
      */
-    static void join(Map<String, Object> bug, Map<String, Object> marker) {
+    static Map<String, Object> joined(Map<String, Object> bug, Map<String, Object> marker) {
+        Map<String, Object> row = new LinkedHashMap<>(bug);
         for (String column : ALL) {
-            if (blank(bug.get(column))) {
-                bug.put(column, marker == null ? null : marker.get(column));
+            if (blank(row.get(column))) {
+                row.put(column, marker == null ? null : marker.get(column));
             }
         }
-        bug.put("marker_orphaned", marker == null);
+        row.put("marker_orphaned", marker == null);
+        return row;
     }
 
     /**

@@ -137,6 +137,14 @@ COPY runner/pom.xml runner/pom.xml
 RUN mvn -B -q -pl orchestrator -am -Pui dependency:go-offline || true
 
 COPY engine/src engine/src
+# THE RUNNER'S SOURCES, and their absence is why this image stopped building at all. `orchestrator`
+# imports `tech.mikhailov.fsm.runner.CloneUrl` — the host rule that decides whether a blank branch can
+# be resolved — so `-pl orchestrator -am` builds `runner` too. Its POM was copied above and its sources
+# were not, which fails the image build with 21 "package tech.mikhailov.fsm.runner does not exist"
+# errors: not a browser problem, not a test problem, and nothing about the message says the fix is one
+# COPY line. ../Dockerfile has carried this line since the dependency was added; the same rule stated
+# above about ../../pom.xml's <modules> applies to what those modules are COMPILED from.
+COPY runner/src runner/src
 COPY orchestrator/src orchestrator/src
 # The engine's frozen differential fixtures: a TEST INPUT, and `-am` builds the engine with its tests.
 COPY engine/harness/fixtures engine/harness/fixtures

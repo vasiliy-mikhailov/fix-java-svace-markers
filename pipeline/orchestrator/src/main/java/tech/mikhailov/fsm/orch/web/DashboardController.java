@@ -1,7 +1,5 @@
 package tech.mikhailov.fsm.orch.web;
 
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +32,13 @@ import tech.mikhailov.fsm.orch.feedback.CritiqueIndex;
  *
  * <p>{@code DashboardEndpointsTest} enumerates the paths {@code static/app.js} fetches and asserts each
  * one is mapped, which is the check the Node dashboard grew after that outage.
+ *
+ * <p>NO METHOD HERE BUILDS A BODY. Routing, status codes, cache headers and the binding of a
+ * fat-fingered query parameter are this class's job; what a response is SHAPED like is
+ * {@link DashboardPresenter}'s, including the empty documents above — those are payloads with a
+ * contract, not throwaway literals, and a reader looking for the shape of any of them should not have
+ * to find the handler that happens to return it. {@code NoControllerAssemblesItsOwnResponseTest} keeps
+ * it that way.
  */
 @RestController
 public class DashboardController {
@@ -144,16 +149,13 @@ public class DashboardController {
     @GetMapping(value = {"/api/live", "/api/dialogs", "/api/dialog"},
             produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> dialogs() {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("dialogs", List.of());
-        body.put("dialog", "");
-        return json(body);
+        return json(DashboardPresenter.noDialogs());
     }
 
     /** Per-method suspector runs. There is no suspector; the shape is kept. @see #dialogs() */
     @GetMapping(value = "/api/methods", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> methods() {
-        return json(Map.of("methods", List.of()));
+        return json(DashboardPresenter.noMethods());
     }
 
     /**
@@ -166,7 +168,7 @@ public class DashboardController {
      */
     @GetMapping(value = "/api/errors", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> errors() {
-        return json(Map.of("errors", List.of()));
+        return json(DashboardPresenter.noErrors());
     }
 
     /**
@@ -214,7 +216,8 @@ public class DashboardController {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .header(HttpHeaders.CACHE_CONTROL, NO_STORE)
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("error", String.valueOf(e.getMessage() == null ? e : e.getMessage())));
+                .body(DashboardPresenter.readFailed(
+                        String.valueOf(e.getMessage() == null ? e : e.getMessage())));
     }
 
     private static <T> ResponseEntity<T> json(T body) {

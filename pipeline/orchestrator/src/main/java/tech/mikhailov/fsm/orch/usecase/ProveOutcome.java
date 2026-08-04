@@ -29,6 +29,12 @@ public sealed interface ProveOutcome {
     /**
      * The engine was never reached, so the marker goes back untouched.
      *
+     * @param requeue     THE release, not a description of one. The adapter carries this exact value
+     *                    through to {@link ReleaseClaim}, which performs it — see
+     *                    {@code ProveProcessor.requeue}. It has to travel rather than be re-derived
+     *                    from the row on the other side: two derivations of one event agree until they
+     *                    do not, and the one that reads like the flow is not necessarily the one that
+     *                    runs.
      * @param unreachable the failure as it was raised, kept whole so the adapter can put the ORIGINAL
      *                    exception back on the stack. See {@link EngineUnreachable}.
      */

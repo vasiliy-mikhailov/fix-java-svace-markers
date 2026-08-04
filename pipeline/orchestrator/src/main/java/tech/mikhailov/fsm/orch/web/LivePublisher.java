@@ -1,7 +1,6 @@
 package tech.mikhailov.fsm.orch.web;
 
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
@@ -110,15 +109,8 @@ public class LivePublisher {
      * not a view.
      */
     public void pushMarker(String dedupKey, String from, String to, String note) {
-        send(LiveTopics.MARKERS, () -> {
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("dedupKey", dedupKey);
-            payload.put("from", from);
-            payload.put("to", to);
-            payload.put("note", note);
-            payload.put("at", Instant.now().toEpochMilli());
-            return payload;
-        });
+        send(LiveTopics.MARKERS, () -> DashboardPresenter.markerTransition(
+                dedupKey, from, to, note, Instant.now().toEpochMilli()));
     }
 
     /**
@@ -129,13 +121,8 @@ public class LivePublisher {
      *              so it is a fixed vocabulary rather than prose
      */
     public void pushProgress(String event, Map<String, Object> detail) {
-        send(LiveTopics.PROGRESS, () -> {
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("event", event);
-            payload.put("at", Instant.now().toEpochMilli());
-            payload.putAll(detail);
-            return payload;
-        });
+        send(LiveTopics.PROGRESS, () -> DashboardPresenter.progress(
+                event, Instant.now().toEpochMilli(), detail));
     }
 
     /**

@@ -48,6 +48,10 @@ public final class ProveMarker {
             // NOTHING IS RECORDED ON THIS PATH — not a verdict, not an artifact, and deliberately not a
             // critique either: a marker whose question was never asked has nothing to say about a
             // prompt, and keeping one would put the pipeline's worst day in the file as the model's.
+            //
+            // THIS VALUE IS THE RELEASE, not a description of one. It travels — through the driver's
+            // throw and the framework's skip hook — to ReleaseClaim, which writes exactly it. The one
+            // reading of this failure there is is on this line.
             return new ProveOutcome.Requeued(marker.release(InfraReason.of(unreachable.reason())),
                     unreachable);
         }

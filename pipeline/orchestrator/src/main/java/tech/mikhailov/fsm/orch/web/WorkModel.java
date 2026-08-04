@@ -256,7 +256,7 @@ public final class WorkModel {
      * @param column what was read, so the line says which of the two vocabularies was expected
      */
     private static void report(String column, String value) {
-        if (REPORTED.add(column + ' ' + value)) {
+        if (REPORTED.add(column + '\0' + value)) {
             log.warn("[work] {} = `{}` is a spelling the effort model has no judgement about, so it was "
                     + "charged triage+assess only and counted as SETTLED. If the engine has grown a "
                     + "state, add it to MarkerState or SuspicionStatus — every set here is derived from "
