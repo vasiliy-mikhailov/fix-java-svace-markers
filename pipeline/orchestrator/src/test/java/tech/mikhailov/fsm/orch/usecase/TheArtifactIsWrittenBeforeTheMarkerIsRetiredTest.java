@@ -51,7 +51,7 @@ class TheArtifactIsWrittenBeforeTheMarkerIsRetiredTest {
 
     @Test
     void aMarkerReIngestedMidProveKeepsItsArtifactAndIsReportedRatherThanRolledBack() {
-        writes.settleMatches = 0;
+        writes.reIngested();
 
         record.record(settlement());
 
@@ -86,7 +86,7 @@ class TheArtifactIsWrittenBeforeTheMarkerIsRetiredTest {
     @Test
     void aReleaseThatMatchedNoClaimedRowIsNotChargedAgainstTheMarker() {
         Releases releases = new Releases();
-        releases.matches = 0;
+        releases.settledByAnotherPath();
 
         Requeue requeue = new ReleaseClaim(releases, releases).release(requeueOf(claimed()));
 
@@ -116,11 +116,27 @@ class TheArtifactIsWrittenBeforeTheMarkerIsRetiredTest {
                 ARTIFACT);
     }
 
-    /** One object for both repositories, because the ORDER between them is what is being asserted. */
+    /**
+     * One object for both repositories, because the ORDER between them is what is being asserted.
+     *
+     * <p>The settle itself goes through the shared fake, so the update count comes from whether the row
+     * is THERE rather than from a field: {@link #reIngested()} deletes it, which is the one thing that
+     * causes a zero in production. A settle is deliberately not guarded on status — see
+     * {@code MarkerRepositoryContract} — so nothing else about the row can produce one.
+     */
     private static final class Writes implements ArtifactRepository, MarkerRepository {
 
         private final List<String> order = new ArrayList<>();
-        private int settleMatches = 1;
+        private final InMemoryMarkerRepository rows = new InMemoryMarkerRepository();
+
+        Writes() {
+            rows.given(KEY, SuspicionStatus.PROVING, 2L);
+        }
+
+        /** The backlog no longer holds this marker: an ingest replaced the report mid-prove. */
+        void reIngested() {
+            rows.forget(KEY);
+        }
 
         @Override
         public void store(Artifact artifact) {
@@ -130,7 +146,7 @@ class TheArtifactIsWrittenBeforeTheMarkerIsRetiredTest {
         @Override
         public int settle(Settlement settlement) {
             order.add("marker");
-            return settleMatches;
+            return rows.settle(settlement);
         }
 
         @Override
@@ -159,15 +175,32 @@ class TheArtifactIsWrittenBeforeTheMarkerIsRetiredTest {
         }
     }
 
+    /**
+     * The release path's repository, over the shared fake.
+     *
+     * <p>{@link #settledByAnotherPath()} is what a "no claimed row matched" now IS: the marker was
+     * settled while this prove was still holding it, which is the state
+     * {@code MarkerTransition.RELEASE} refuses and the SQL's {@code AND status = 'proving'} refuses with
+     * it. Previously this was an int the test set to 0, so the branch was reachable without anything in
+     * the system being able to reach it.
+     */
     private static final class Releases implements MarkerRepository, ReleasePresenter {
 
         private final List<Requeue> requeued = new ArrayList<>();
         private final List<Requeue> missed = new ArrayList<>();
-        private int matches = 1;
+        private final InMemoryMarkerRepository rows = new InMemoryMarkerRepository();
+
+        Releases() {
+            rows.given(KEY, SuspicionStatus.PROVING, 2L);
+        }
+
+        void settledByAnotherPath() {
+            rows.given(KEY, SuspicionStatus.VERIFIED, 3L);
+        }
 
         @Override
         public int release(Requeue requeue) {
-            return matches;
+            return rows.release(requeue);
         }
 
         @Override

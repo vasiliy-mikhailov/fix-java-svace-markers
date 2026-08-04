@@ -30,8 +30,12 @@ import tech.mikhailov.fsm.orch.config.FsmProperties;
 import tech.mikhailov.fsm.orch.feedback.CritiqueIndex;
 import tech.mikhailov.fsm.orch.feedback.FeedbackStore;
 import tech.mikhailov.fsm.orch.dao.BugDao;
+import tech.mikhailov.fsm.orch.dao.JdbcArtifactRepository;
+import tech.mikhailov.fsm.orch.dao.JdbcMarkerRepository;
 import tech.mikhailov.fsm.orch.dao.SuspicionDao;
 import tech.mikhailov.fsm.orch.model.Suspicion;
+import tech.mikhailov.fsm.orch.usecase.ArtifactRepository;
+import tech.mikhailov.fsm.orch.usecase.MarkerRepository;
 
 /**
  * The two jobs that replace the two workflows.
@@ -88,6 +92,18 @@ import tech.mikhailov.fsm.orch.model.Suspicion;
  * looking like a stage that found nothing, and the marker is written off as not-a-bug. Failing is also
  * SAFE here — the chunk rolls back, which undoes
  * the claim, so the marker is back on the queue without anyone having to remember to release it.
+ *
+ * <h2>THIS IS ALSO THE COMPOSITION ROOT, AND IT IS THE ONE PLACE ALLOWED TO NAME AN ADAPTER</h2>
+ *
+ * <p>{@link #markerRepository} and {@link #artifactRepository} build the two JDBC adapters; the two
+ * objects on the prove path are handed the PORTS. What still takes {@link SuspicionDao} directly is
+ * three beans and each has an argument that is not "it was already written that way":
+ * {@link #suspicionReader} needs the CLAIM, which is concurrency control the database adjudicates and
+ * no in-memory port can stand in for; {@link #resetPolicy} needs two COUNTs the write port does not
+ * expose and should not; {@link #ingestStep} builds the tasklet that raises and discards the whole
+ * backlog, which is a different lifecycle from the four writes one prove makes. Those three are named,
+ * with the reasons, in {@code NoNewCallerReachesTheBacklogAroundItsPortTest}, which goes red on a
+ * fourth.
  */
 @Configuration
 @EnableConfigurationProperties(FsmProperties.class)
@@ -236,15 +252,43 @@ public class BatchConfig {
         return new CritiqueIndex(store);
     }
 
+    /**
+     * THE TWO ADAPTERS, BUILT IN THE ONE PLACE THAT IS SUPPOSED TO NAME THEM.
+     *
+     * <p>WHY THEY ARE BEANS AND NOT {@code new} CALLS INSIDE THE OBJECTS THAT NEED THEM, which is what
+     * they were. {@link ProveWriter} and {@link ClaimReleaseListener} each took a DAO for one purpose —
+     * to wrap it in an adapter in their own constructor — and called no method on it. The effect was
+     * that two classes whose every collaborator is a PORT could not be constructed without a datasource
+     * behind them, so the in-memory {@code MarkerRepository} that {@code MarkerRepositoryContract} holds
+     * to the same rules as the SQL could not be handed to either of them. Naming a concrete adapter is
+     * what a composition root is FOR; doing it anywhere else is what makes a port a door most code walks
+     * around.
+     *
+     * <p>Declared as the INTERFACE, deliberately. The return type is what everything downstream is
+     * injected with, and a bean typed as the adapter would let a caller reach past the port for one
+     * extra method without changing a line of wiring — which is the same drift in a quieter voice.
+     * {@code NoNewCallerReachesTheBacklogAroundItsPortTest} is what keeps saying so.
+     */
     @Bean
-    public ProveWriter proveWriter(BugDao bugs, SuspicionDao suspicions) {
-        return new ProveWriter(bugs, suspicions);
+    public MarkerRepository markerRepository(SuspicionDao suspicions) {
+        return new JdbcMarkerRepository(suspicions);
+    }
+
+    /** @see #markerRepository */
+    @Bean
+    public ArtifactRepository artifactRepository(BugDao bugs) {
+        return new JdbcArtifactRepository(bugs);
     }
 
     @Bean
-    public ClaimReleaseListener claimReleaseListener(SuspicionDao suspicions,
+    public ProveWriter proveWriter(ArtifactRepository artifacts, MarkerRepository markers) {
+        return new ProveWriter(artifacts, markers);
+    }
+
+    @Bean
+    public ClaimReleaseListener claimReleaseListener(MarkerRepository markers,
                                                     FsmProperties properties) {
-        return new ClaimReleaseListener(suspicions, properties.prove().maxInfraStrikes());
+        return new ClaimReleaseListener(markers, properties.prove().maxInfraStrikes());
     }
 
     /**

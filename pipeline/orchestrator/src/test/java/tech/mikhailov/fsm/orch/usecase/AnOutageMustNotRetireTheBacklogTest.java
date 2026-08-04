@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import tech.mikhailov.fsm.lib.SuspicionStatus;
 import tech.mikhailov.fsm.orch.domain.InfraReason;
 import tech.mikhailov.fsm.orch.domain.InfraStreak;
 import tech.mikhailov.fsm.orch.domain.MarkerId;
@@ -85,7 +86,7 @@ class AnOutageMustNotRetireTheBacklogTest {
 
     @Test
     void belowTheCeilingTheMarkerIsStruckAndStaysOnTheQueue() {
-        markers.nextStrike = 2L;
+        markers.given(FIRST, SuspicionStatus.NEW, 1L);
 
         charge.charge(new RunReport(List.of(new RequeuedMarker(FIRST, REFUSED)), true, "COMPLETED",
                 3));
@@ -98,7 +99,7 @@ class AnOutageMustNotRetireTheBacklogTest {
 
     @Test
     void atTheCeilingTheMarkerIsParkedWithItsAttemptCountUntouchedAndNoVerdict() {
-        markers.nextStrike = 3L;
+        markers.given(FIRST, SuspicionStatus.NEW, 2L);
 
         charge.charge(new RunReport(List.of(new RequeuedMarker(FIRST, REFUSED)), true, "COMPLETED",
                 3));
@@ -117,8 +118,11 @@ class AnOutageMustNotRetireTheBacklogTest {
 
     @Test
     void aMarkerSomethingElseTookInTheMeantimeIsLeftAloneRatherThanOverwritten() {
-        markers.nextStrike = 5L;
-        markers.parkWins = false;
+        // CLAIMED AGAIN between the release and here — the state, not a boolean saying what the park
+        // returns. Which statuses a park is legal from is MarkerTransition.PARK, and the JDBC statement
+        // binds its predicate from the same enum, so this arrangement is refused for the same reason
+        // the database refuses it.
+        markers.given(FIRST, SuspicionStatus.PROVING, 4L);
 
         charge.charge(new RunReport(List.of(new RequeuedMarker(FIRST, REFUSED)), true, "COMPLETED",
                 3));
@@ -131,7 +135,8 @@ class AnOutageMustNotRetireTheBacklogTest {
 
     @Test
     void everyRequeuedMarkerIsChargedAndTheyAreChargedIndependently() {
-        markers.nextStrike = 3L;
+        markers.given(FIRST, SuspicionStatus.NEW, 2L);
+        markers.given(SECOND, SuspicionStatus.NEW, 2L);
 
         charge.charge(new RunReport(List.of(new RequeuedMarker(FIRST, REFUSED),
                 new RequeuedMarker(SECOND, InfraReason.of("runner: 502"))), true, "COMPLETED", 3));
@@ -151,13 +156,33 @@ class AnOutageMustNotRetireTheBacklogTest {
         assertThat(new InfraStreak(FIRST, REFUSED, 4L).parksAt(3)).isTrue();
     }
 
-    /** A {@code suspicions} table that remembers what it was asked to do, and nothing more. */
+    /**
+     * A {@code suspicions} table that remembers what it was asked to do — over the SHARED fake, not a
+     * pair of dials.
+     *
+     * <p>WHAT CHANGED AND WHY IT MATTERS TO THESE ASSERTIONS. This used to be a {@code nextStrike} long
+     * and a {@code parkWins} boolean, which meant "the marker had already moved on" was a field a test
+     * set rather than a state a marker was in — and the double would just as happily have parked a
+     * SETTLED marker, which the database refuses. Now the arrangement says what is true of the row and
+     * the answers follow from it, on the same rule ({@code MarkerTransition}) the SQL binds. Every
+     * assertion below is unchanged; only the setup names a status instead of an outcome.
+     */
     private static final class Markers implements MarkerRepository {
 
+        private final InMemoryMarkerRepository rows = new InMemoryMarkerRepository();
         private final List<Map.Entry<MarkerId, InfraReason>> strikes = new ArrayList<>();
         private final Map<MarkerId, String> parked = new LinkedHashMap<>();
-        private long nextStrike = 1L;
-        private boolean parkWins = true;
+
+        /**
+         * A marker in the backlog in {@code status}, already carrying {@code priorStrikes} consecutive
+         * never-answered proves — so the next strike this run charges returns {@code priorStrikes + 1}.
+         */
+        void given(MarkerId marker, SuspicionStatus status, long priorStrikes) {
+            rows.given(marker, status, 0L);
+            for (long i = 0; i < priorStrikes; i++) {
+                rows.strike(marker, InfraReason.of("an earlier run"));
+            }
+        }
 
         @Override
         public int settle(Settlement settlement) {
@@ -174,16 +199,16 @@ class AnOutageMustNotRetireTheBacklogTest {
         @Override
         public long strike(MarkerId marker, InfraReason reason) {
             strikes.add(Map.entry(marker, reason));
-            return nextStrike;
+            return rows.strike(marker, reason);
         }
 
         @Override
         public int park(MarkerId marker, String note) {
-            if (!parkWins) {
-                return 0;
+            int moved = rows.park(marker, note);
+            if (moved == 1) {
+                parked.put(marker, note);
             }
-            parked.put(marker, note);
-            return 1;
+            return moved;
         }
     }
 

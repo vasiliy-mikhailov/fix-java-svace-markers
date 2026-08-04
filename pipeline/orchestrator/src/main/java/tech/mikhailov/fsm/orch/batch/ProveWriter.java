@@ -4,10 +4,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.item.Chunk;
 import org.springframework.batch.item.ItemWriter;
-import tech.mikhailov.fsm.orch.dao.BugDao;
-import tech.mikhailov.fsm.orch.dao.JdbcArtifactRepository;
-import tech.mikhailov.fsm.orch.dao.JdbcMarkerRepository;
-import tech.mikhailov.fsm.orch.dao.SuspicionDao;
+import tech.mikhailov.fsm.orch.usecase.ArtifactRepository;
+import tech.mikhailov.fsm.orch.usecase.MarkerRepository;
 import tech.mikhailov.fsm.orch.usecase.RecordProvenMarker;
 import tech.mikhailov.fsm.orch.usecase.SettlementPresenter;
 
@@ -29,6 +27,15 @@ import tech.mikhailov.fsm.orch.usecase.SettlementPresenter;
  * <p>ONE TRANSACTION, in practice: the chunk's. So neither half can land without the other, and a
  * settled status whose artifact is missing — the one inconsistency a reviewer cannot diagnose from the
  * dashboard — cannot arise from an ordinary failure.
+ *
+ * <p>IT TAKES THE TWO PORTS AND NOT THE TWO DAOs, which is a change to this constructor and to nothing
+ * else. It took {@code BugDao} and {@code SuspicionDao} for one purpose — to build a
+ * {@code JdbcArtifactRepository} and a {@code JdbcMarkerRepository} in this constructor — and called no
+ * method on either, which meant a class whose only collaborators were already ports could not be
+ * constructed without a datasource behind them. Building the adapters is
+ * {@link BatchConfig the composition root}'s job; what this class is handed now is exactly what
+ * {@link RecordProvenMarker} declares, so the in-memory {@code MarkerRepository} that
+ * {@code MarkerRepositoryContract} holds honest can be handed to it too.
  */
 public class ProveWriter implements ItemWriter<ProvenMarker>, SettlementPresenter {
 
@@ -36,9 +43,8 @@ public class ProveWriter implements ItemWriter<ProvenMarker>, SettlementPresente
 
     private final RecordProvenMarker record;
 
-    public ProveWriter(BugDao bugs, SuspicionDao suspicions) {
-        this.record = new RecordProvenMarker(new JdbcArtifactRepository(bugs),
-                new JdbcMarkerRepository(suspicions), this);
+    public ProveWriter(ArtifactRepository artifacts, MarkerRepository markers) {
+        this.record = new RecordProvenMarker(artifacts, markers, this);
     }
 
     @Override

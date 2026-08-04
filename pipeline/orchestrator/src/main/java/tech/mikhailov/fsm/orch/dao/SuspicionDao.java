@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 import tech.mikhailov.fsm.lib.MarkerState;
 import tech.mikhailov.fsm.lib.Severity;
 import tech.mikhailov.fsm.lib.SuspicionStatus;
+import tech.mikhailov.fsm.orch.domain.MarkerTransition;
 import tech.mikhailov.fsm.orch.model.Suspicion;
 
 /**
@@ -24,6 +25,27 @@ import tech.mikhailov.fsm.orch.model.Suspicion;
  * the state are the same row and cannot disagree. The cost is that a process which dies mid-prove now
  * leaves a marker parked in {@link #STATUS_PROVING}, which is why
  * {@link #reconcileInFlight(String)} exists and why it runs before anything else on start.
+ *
+ * <h2>EVERY WHERE CLAUSE IN THIS FILE IS CLASSIFIED, AND THE CLASSIFICATION IS ON THE METHOD</h2>
+ *
+ * <p>A predicate on a write is one of two things and the difference decides where it may live. A RULE
+ * says which transitions are legal — the same answer everywhere, so it belongs on the entity where a
+ * test double inherits it rather than guesses it. CONCURRENCY CONTROL says which of two racing writers
+ * won — an answer only the database has, so it stays here and no in-memory check can stand in for it.
+ * The distinction was not idle: {@code MarkerRepository} is a port with hand-written doubles behind it,
+ * and while these rules lived only in SQL the doubles disagreed with production about four of them. See
+ * {@code MarkerRepositoryContract}.
+ *
+ * <p>WHAT MOVED. The two guarded transitions — {@link #releaseClaim} and {@link #parkInfraStuck} —
+ * now BIND their predicate from {@link MarkerTransition} instead of naming a status. The statement is
+ * byte-for-byte the same statement with the same bound values; what changed is that the rule has one
+ * home, and {@code InMemoryMarkerRepository} reads it from there too.
+ *
+ * <p>WHAT STAYED, AND IT IS DECLARED RATHER THAN QUIETLY KEPT. Five predicates are concurrency control
+ * and each says so at its own method: {@link #claimNext(Suspicion)}, {@link #claimAnotherSample},
+ * {@link #claimKey}, {@link #flagStranded} and the transition guards themselves. They are covered
+ * against the real H2 by {@code TheClaimIsTheOnePredicateThatStaysInSqlTest} and
+ * {@code ClaimExclusivityTest}, because a property of the database cannot be proved against a mock.
  */
 @Repository
 public class SuspicionDao {
@@ -154,6 +176,14 @@ public class SuspicionDao {
     /**
      * Take the next queued marker AFTER {@code after} in {@link #ORDER_BY}, atomically.
      *
+     * <p>CLASSIFICATION: CONCURRENCY, and it is the exception the whole distinction was drawn around.
+     * {@code AND status = 'new'} is not a guard in front of a decision — it IS the decision, and the
+     * database is what takes it. Two drains issue this statement, one sees a count of 1 and the other
+     * sees 0, and that is the only thing standing between the pipeline and two provers building the
+     * same marker in one cached workspace. An in-memory check cannot adjudicate a race, so {@code Marker}
+     * deliberately has no {@code claim()} and {@code MarkerRepository} deliberately has no port for one.
+     * Covered against the real H2, from six threads, by {@code ClaimExclusivityTest}.
+     *
      * <p>Read-then-conditional-UPDATE rather than {@code SELECT ... FOR UPDATE}: the UPDATE carries
      * {@code AND status = 'new'} in its WHERE clause, so the database itself decides who won and the
      * loser sees an update count of zero and moves to the next candidate. That is correct under every
@@ -226,6 +256,15 @@ public class SuspicionDao {
      *       waits a whole drain for the sample it was promised.</li>
      * </ul>
      *
+     * <p>CLASSIFICATION: CONCURRENCY, on BOTH halves of the predicate. {@code status = 'new'} is a claim,
+     * for the reason {@link #claimNext(Suspicion)} gives. {@code prove_attempts > ?} reads like a rule —
+     * "is this marker owed a sample?" — and is not one: it is compared against the count THIS reader was
+     * handed the row with, inside the same statement that takes the row, so what it decides is which of
+     * two readers gets the completed attempt. Answered from memory it would be a read racing with every
+     * settle in flight, and the reader would re-offer the same attempt for ever. {@code Marker}'s javadoc
+     * retires {@code owesAnotherSample} on exactly this argument. Covered by
+     * {@code TheClaimIsTheOnePredicateThatStaysInSqlTest}.
+     *
      * <p>So this claim carries {@code AND prove_attempts > ?}. It cannot spin, and that is the point of
      * putting the guard in the WHERE clause rather than in the caller: a marker released without an
      * answer can never satisfy it, and one that did answer satisfies it exactly once per completed
@@ -252,6 +291,11 @@ public class SuspicionDao {
      * SETTLED; that is how anyone knows it is wrong. A claim restricted to {@code new} would refuse
      * every marker anybody ever asks about by name.
      *
+     * <p>CLASSIFICATION: CONCURRENCY. {@code AND status <> 'proving'} is the same statement as
+     * {@link #claimNext(Suspicion)} with a wider predicate: it takes the row and decides who took it in
+     * one write. It is not a legality rule — every other status is acceptable — it is mutual exclusion
+     * over one cached workspace. Covered by {@code TheClaimIsTheOnePredicateThatStaysInSqlTest}.
+     *
      * <p>SO THE ONE STATUS IT REFUSES IS {@link #STATUS_PROVING}, and it refuses it for the same reason
      * the queue exists: there is one cached workspace per repository, and two provers in it patch each
      * other's tree. {@code AND status <> 'proving'} makes the database decide that, exactly as
@@ -275,6 +319,12 @@ public class SuspicionDao {
 
     /**
      * Return every claimed marker to the queue. Run once, at startup, before any prover ticks.
+     *
+     * <p>CLASSIFICATION: NEITHER — {@code WHERE status = 'proving'} here is a SET SELECTION and not a
+     * guard on a decision about one marker. There is no marker in hand to ask an entity about; the
+     * statement's job is to find every row a dead JVM left claimed, and it runs before any prover ticks,
+     * so nothing is racing it. Moving it would mean reading 282 rows to write back a subset of them.
+     * Covered by {@code OrchestratorFoundationTest.reconcileRequeuesOnlyTheMarkerThatWasMidProve}.
      *
      * <p>WHAT IT MUST AND MUST NOT TOUCH:
      * <ul>
@@ -302,6 +352,16 @@ public class SuspicionDao {
 
     /**
      * Write back what the prove decided: five columns, all authored by {@code Verdict}.
+     *
+     * <p>CLASSIFICATION: RULE, AND THE SQL IS ALREADY UNCONDITIONAL. {@code WHERE dedup_key = ?} is
+     * identity and nothing else: every rule about settling lives on {@code Marker.settle} — the
+     * judgement must be about the marker it is being written to, and {@code prove_attempts} may never go
+     * backwards — where both implementations of {@code MarkerRepository} inherit them. There is
+     * deliberately no status predicate: the engine settles a marker to {@link #STATUS_NEW} when it wants
+     * another sample and a re-prove settles one whose existing verdict is the thing in dispute, so a
+     * guard would break both paths. The count therefore answers "did the row exist" — see
+     * {@code RecordProvenMarker}, which reads a zero as a re-ingest mid-prove and reports the orphaned
+     * artifact rather than rolling it back. Both readings are pinned by {@code MarkerRepositoryContract}.
      *
      * <p>Those five columns and no others. {@code Verdict} authors all five and a partial write is how
      * a status and its note come to describe different attempts.
@@ -331,6 +391,13 @@ public class SuspicionDao {
     /**
      * Label a marker that is still owed a sample nobody took — the queue's {@code [gap]}.
      *
+     * <p>CLASSIFICATION: CONCURRENCY, and it is the least obvious of the exceptions, so: the DETECTION
+     * and the LABELLING are one statement. The caller has no marker in hand — it is walking a map of what
+     * this run was handed, after the step — and the question it is asking is "is this row STILL owed a
+     * sample", which is a fact about the present instant and not a legality rule. Split into a read and
+     * an unconditional write it would put a defect note on a marker another drain claimed in between.
+     * Covered by {@code TheClaimIsTheOnePredicateThatStaysInSqlTest}.
+     *
      * <p>Guarded on the SAME two columns {@link #claimAnotherSample} is, and for the same reason: those
      * two conditions together are the definition of "owed a sample". {@code status = 'new'} because a
      * marker something has since claimed or settled is not stranded, and {@code prove_attempts > ?}
@@ -356,13 +423,20 @@ public class SuspicionDao {
      * see {@link tech.mikhailov.fsm.orch.client.InfraFailure}. The row returns to the queue with its
      * attempt count UNTOUCHED, because no attempt was completed and no judgement was reached.
      *
-     * <p>Guarded on {@link #STATUS_PROVING} so a late release cannot resurrect a marker that some other
-     * path has already settled.
+     * <p>CLASSIFICATION: CONCURRENCY, over a RULE that no longer lives here. WHICH statuses a release is
+     * legal from and lands in is {@link MarkerTransition#RELEASE} — one expression, bound below rather
+     * than typed out, and read by the in-memory repository too so the two cannot disagree. WHETHER this
+     * row is still in that status at the instant of the write is a race between this prove and whatever
+     * else is looking at the marker, and only the database can settle it: the caller reads a zero as
+     * "some other path settled it first and knows more than this one does" and must not charge the
+     * failure against the marker. Reading the row first and writing unconditionally would replace that
+     * with a decision this process takes hopefully. @see tech.mikhailov.fsm.orch.usecase.ReleaseClaim
      */
     public int releaseClaim(String dedupKey, String note) {
         return jdbc.update(
                 "UPDATE suspicions SET status = ?, note = ? WHERE dedup_key = ? AND status = ?",
-                STATUS_NEW, note, dedupKey, STATUS_PROVING);
+                MarkerTransition.RELEASE.to().wire(), note, dedupKey,
+                MarkerTransition.RELEASE.from().wire());
     }
 
     // ---- the infra streak, and what it is allowed to do -------------------------------------------
@@ -391,15 +465,19 @@ public class SuspicionDao {
      *       nobody ever read; the note is the whole audit trail, and it has to say so.</li>
      * </ul>
      *
-     * <p>Guarded on {@link #STATUS_NEW}: the marker has already been released by the time a streak is
-     * counted, and anything that has since re-claimed or settled it knows more than this does.
+     * <p>CLASSIFICATION: CONCURRENCY, over a RULE that no longer lives here. {@link MarkerTransition#PARK}
+     * is where "queued, and only queued, may be parked" is written; the predicate below is bound from it.
+     * The marker has already been released by the time a streak is counted, so anything that has since
+     * re-claimed or settled it knows more than this does — and which of those happened first is a race
+     * the database decides, not this process. The caller reports {@code moved on} off the zero.
      *
      * @return 1 when the marker was parked, 0 when something else had already moved it
      */
     public int parkInfraStuck(String dedupKey, String note) {
         return jdbc.update(
                 "UPDATE suspicions SET status = ?, note = ? WHERE dedup_key = ? AND status = ?",
-                SuspicionStatus.INFRA_STUCK.wire(), note, dedupKey, STATUS_NEW);
+                MarkerTransition.PARK.to().wire(), note, dedupKey,
+                MarkerTransition.PARK.from().wire());
     }
 
     /**
@@ -412,6 +490,19 @@ public class SuspicionDao {
      * {@code infra_strikes} table pays that cost without breaking the rule: it records how many times
      * IN A ROW the pipeline failed to reach an answer, which is a statement about the plumbing and can
      * never be read as a finding about the code.
+     *
+     * <p>CLASSIFICATION: CONCURRENCY. {@code WHERE dedup_key = ?} is identity; the concurrency is in
+     * {@code strikes = strikes + 1}, which is a read-modify-write the database does atomically and this
+     * process could not. There is no rule here to move: WHAT a streak means at a given length is
+     * {@code InfraStreak.parksAt}, one circle in, and this only counts.
+     *
+     * <p>THE READ-BACK IS A SECOND STATEMENT, stated because the port's javadoc once claimed otherwise.
+     * The increment is atomic; the {@code SELECT} that follows it is not part of it, so two provers
+     * striking the same marker at the same instant can both read the higher total. What that costs is
+     * one strike of imprecision on the ceiling, on a counter whose whole purpose is to stop retrying a
+     * marker for ever — never a lost verdict and never a spent attempt. It is left alone rather than
+     * tightened because the prove step is single-flight and because changing it changes behaviour on a
+     * deployment mid-run.
      *
      * <p>Cleared by {@link #settle} (any verdict ends the streak, by definition) and by
      * {@link #deleteAll} (a re-ingest raises the marker fresh).

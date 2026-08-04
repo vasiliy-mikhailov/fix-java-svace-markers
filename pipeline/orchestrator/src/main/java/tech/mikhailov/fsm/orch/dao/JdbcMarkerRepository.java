@@ -10,13 +10,17 @@ import tech.mikhailov.fsm.orch.usecase.MarkerRepository;
  * {@code MarkerRepository} over the {@code suspicions} table — four lines of translation and nothing
  * else.
  *
- * <p>IT WRAPS {@link SuspicionDao} UNCHANGED, and that is deliberate rather than lazy. Those methods
- * are not "the DAO layer" in the ordinary sense: they are conditional UPDATEs whose WHERE clauses are
- * the pipeline's CONCURRENCY CONTROL — {@code AND status = 'proving'} on a release, {@code AND status =
- * 'new'} on a park — and the database is what adjudicates them. Re-expressing any of that in an
- * adapter, or "simplifying" a guard into a read-then-write, would replace a decision the database takes
- * atomically with one this process takes hopefully. So the SQL stays exactly where it is and this class
- * only unwraps the domain's types into the strings the statements bind.
+ * <p>IT ADDS NO RULE OF ITS OWN, and that is deliberate rather than lazy. The statements behind it are
+ * conditional UPDATEs and the database is what adjudicates them: re-expressing a guard here, or
+ * "simplifying" one into a read-then-write, would replace a decision the database takes atomically with
+ * one this process takes hopefully. So this class only unwraps the domain's types into the values the
+ * statements bind.
+ *
+ * <p>WHERE THE RULE LIVES NOW. Which statuses a release and a park are legal from is
+ * {@link tech.mikhailov.fsm.orch.domain.MarkerTransition}, in the domain, and {@link SuspicionDao}
+ * BINDS its predicate from that enum rather than naming a status. That is what stops this class and the
+ * in-memory {@code MarkerRepository} the use-case tests inject disagreeing about a rule while both look
+ * correct in isolation — the failure {@code MarkerRepositoryContract} was written to catch, and did.
  *
  * <p>THE COLUMN SPELLINGS LIVE ON THE OTHER SIDE OF THIS LINE. 282 live rows fix them permanently; the
  * layers above this one now name a {@link MarkerId} and a {@code SuspicionStatus} instead.

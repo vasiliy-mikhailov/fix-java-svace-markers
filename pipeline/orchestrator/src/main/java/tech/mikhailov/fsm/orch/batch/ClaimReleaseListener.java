@@ -10,8 +10,6 @@ import org.springframework.batch.core.SkipListener;
 import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.StepExecutionListener;
 import tech.mikhailov.fsm.orch.client.InfraFailure;
-import tech.mikhailov.fsm.orch.dao.JdbcMarkerRepository;
-import tech.mikhailov.fsm.orch.dao.SuspicionDao;
 import tech.mikhailov.fsm.orch.domain.InfraReason;
 import tech.mikhailov.fsm.orch.domain.InfraStreak;
 import tech.mikhailov.fsm.orch.domain.MarkerId;
@@ -79,12 +77,20 @@ public class ClaimReleaseListener
     private final List<RequeuedMarker> requeuedThisStep = new ArrayList<>();
 
     /**
+     * IT TAKES THE PORT, and on this class the reason is sharper than tidiness. Both use cases below
+     * BRANCH ON AN UPDATE COUNT OF ZERO — {@link ReleaseClaim} reads it as "something else settled this
+     * marker, so this failure says nothing about it", {@link ChargeInfrastructureFailures} reads the
+     * same from a park — and that is precisely the branch a hand-written double got wrong while looking
+     * correct. Taking a {@code SuspicionDao} here, purely to build a {@code JdbcMarkerRepository} in this
+     * constructor and call nothing on it, meant the object driving those two branches could only ever be
+     * assembled with H2 underneath it. The adapter is built by {@link BatchConfig the composition root};
+     * what arrives here is the port that {@code MarkerRepositoryContract} holds both implementations to.
+     *
      * @param maxInfraStrikes how many never-answered proves in a row retire a marker as
      *                        {@code infra_stuck}; 0 or less never retires one, which is the behaviour
      *                        this class had before the streak existed
      */
-    public ClaimReleaseListener(SuspicionDao suspicions, int maxInfraStrikes) {
-        MarkerRepository markers = new JdbcMarkerRepository(suspicions);
+    public ClaimReleaseListener(MarkerRepository markers, int maxInfraStrikes) {
         this.releaseClaim = new ReleaseClaim(markers, this);
         this.charge = new ChargeInfrastructureFailures(markers, this);
         this.maxInfraStrikes = maxInfraStrikes;
