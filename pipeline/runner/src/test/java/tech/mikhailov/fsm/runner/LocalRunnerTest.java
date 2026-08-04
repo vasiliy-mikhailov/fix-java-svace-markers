@@ -183,6 +183,11 @@ class LocalRunnerTest {
      * <p>{@code MavenSettings} writes the file and this is what proves the path it wrote reaches the
      * {@code mvn} invocation — the half of the runtime-mirror fix that a file on disk does not
      * demonstrate on its own.
+     *
+     * <p>EVERY {@code mvn}, INCLUDING THE ONE {@link Preflight} RUNS ON THE WAY UP. {@code mvn -v}
+     * ignores {@code -s} — it prints its banner and exits 0 whatever the file says — so the flag proves
+     * nothing there; what this assertion is worth is that the rule has no exception in it for somebody
+     * to copy into a command that does resolve.
      */
     @Test
     void aConfiguredMirrorReachesEveryMavenCommand() throws IOException {
@@ -192,6 +197,11 @@ class LocalRunnerTest {
             commands.add(call.command());
             if (call.isGitClone()) {
                 Files.createDirectories(FakeExec.clonedInto(call));
+                return FakeExec.ok("");
+            }
+            // A fake that answered `git --version` with a build failure would be scripting an image with
+            // no git in it, which this test does not mean and Preflight now refuses to start over.
+            if (!"mvn".equals(call.command().getFirst())) {
                 return FakeExec.ok("");
             }
             return FakeExec.failed(RED_LOG);

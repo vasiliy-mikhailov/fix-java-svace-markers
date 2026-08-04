@@ -40,9 +40,11 @@ import java.util.concurrent.Future;
  *       must not wait behind a ninety-minute build. {@link Workspace} serves those out of a SEPARATE
  *       read-only checkout, so nothing a build is doing can be observed half-applied.</li>
  *   <li>THE CACHE IS A VOLUME AND THE PROCESS OWNS IT. That is the image's job, not this class's, but
- *       {@link #open} refuses to start when the directory cannot be made — a runner whose cache is
- *       unwritable answers every prove with a clone failure, which reads as "every repository is
- *       broken".</li>
+ *       constructing one of these refuses over a cache this process cannot use — a runner whose cache is
+ *       unwritable, or whose inherited checkouts git will not touch, answers every prove with a clone
+ *       failure, which reads as "every repository is broken". {@link Preflight} is that check, it runs
+ *       before any field here is assigned, and it is where the argument for refusing rather than warning
+ *       is written down.</li>
  * </ul>
  *
  * <p>WHAT THE MERGE DOES COST, stated plainly: this object runs arbitrary third-party build scripts in
@@ -102,6 +104,12 @@ public final class LocalRunner implements AutoCloseable {
 
     LocalRunner(Path cache, String token, Proc.Exec exec, Path jdkRoot, Path mavenSettings,
                 String gitHost) {
+        // FIRST, AND IN THE CONSTRUCTOR RATHER THAN IN open(). A check that lived only in the static
+        // factory would be a check the suite cannot reach and the injectable seam does not have, which
+        // is this project's most expensive recurring defect — a check nothing calls is indistinguishable
+        // from a check that works. Before any field is assigned, so a refusal cannot leak the build
+        // thread. See Preflight for what refuses, what only speaks, and why the line is drawn there.
+        Preflight.check(cache, exec, jdkRoot, mavenSettings);
         this.cache = cache;
         this.jdkRoot = jdkRoot;
         this.mavenSettings = mavenSettings;

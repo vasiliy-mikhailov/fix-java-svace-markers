@@ -56,33 +56,57 @@ public class ClientConfig {
      * field where it could go stale or reach a log.
      */
     public ClientConfig(Secrets secrets) {
-        List<String> missing = missing(secrets);
-        if (!missing.isEmpty()) {
-            // Loud, once, on the way up. The alternative is finding out from a hundred rows that
-            // settled as needs_review with skeptic_verdict 'unknown' and nothing red anywhere.
-            log.warn("[env] not set: {} — the pipeline will run and fail closed on whatever needs "
-                    + "them; set them in the orchestrator's environment, never in application.yml",
-                    missing);
+        List<String> model = missingModelVariables(secrets);
+        if (!model.isEmpty()) {
+            // ERROR, AND IT SAYS WHAT THE RUN WILL DO. Both halves were wrong before and both cost the
+            // same thing. WARN is where a healthy process's ordinary chatter lives, and a reader who
+            // has learned to skim WARN skims this too — FeedbackStore#probe settled that for this
+            // codebase, at ERROR, for exactly this class of fault: permanent, silent, and something an
+            // operator must act on BEFORE the run starts. And "QWEN_BASE_URL is not set" has never told
+            // anybody that 282 markers are about to park, which is the only thing the line is for.
+            log.error("[env] THE MODEL ENDPOINT IS NOT CONFIGURED: {} unset. This run will prove "
+                    + "NOTHING: every agent call becomes an InfraFailure, which charges no attempt and "
+                    + "writes no verdict, so each marker parks as infra_stuck after "
+                    + "fsm.prove.max-infra-strikes failures and the run history stays green while it "
+                    + "happens. Set them in the orchestrator's ENVIRONMENT, never in application.yml. "
+                    + "The process still starts, because the dashboard, the ingest, the comments and "
+                    + "the marker view over a finished backlog are all still worth serving.", model);
+        }
+        // A WARNING AND NOT AN ERROR, and the difference from the block above is what a deployment
+        // without one can still do: public repositories clone and read without a credential, and a run
+        // over a public backlog is unaffected. A private one answers 401 on the clone, per marker, as
+        // infra — visible, attributable, and not a reason to shout on a deployment that is fine.
+        String gitToken = secrets.gitToken();
+        if (gitToken == null || gitToken.isBlank()) {
+            // BOTH names, because either one satisfies it and naming only the new one would tell a
+            // deployment that is working perfectly that its credential is missing.
+            log.warn("[env] neither {} nor {} is set — public repositories still clone, and every "
+                    + "private one answers 401 on the clone and is recorded per marker as infra",
+                    CloneUrl.GIT_TOKEN_ENV, CloneUrl.LEGACY_GIT_TOKEN_ENV);
         }
     }
 
     /**
-     * Which variables are unset, BY NAME.
+     * Which of the model's three variables are unset, BY NAME.
      *
      * <p>Never a value: this line goes to a log an operator pastes into a ticket. {@code SVACE_TOKEN}
      * is not checked because {@code Verdict} treats an absent Svace endpoint as "argue from the code"
      * rather than as a failure, and warning about it would train the reader to ignore the line.
+     *
+     * <p>AND THE ENDPOINT IS NOT PINGED, here or anywhere else on the way up. Not configured is
+     * permanent — {@link Secrets} reads the process environment, which cannot change without a restart.
+     * Unreachable is minutes long, is retried ({@code fsm.llm.attempts}), and requeues the marker
+     * untouched. A preflight that pinged the model would cry wolf on every deploy that landed during a
+     * model restart, and a line that is wrong sometimes is a line an operator learns to ignore — which
+     * would cost the ERROR above its entire value. Pinned by
+     * {@code AModelEndpointThatIsNotConfiguredIsSaidLoudlyTest}.
      */
-    private static List<String> missing(Secrets secrets) {
+    private static List<String> missingModelVariables(Secrets secrets) {
         Llm.Endpoint qwen = secrets.qwen();
         List<String> absent = new ArrayList<>();
         add(absent, "QWEN_BASE_URL", qwen.baseUrl());
         add(absent, "QWEN_API_KEY", qwen.apiKey());
         add(absent, "QWEN_MODEL", qwen.model());
-        // BOTH names, because either one satisfies it and naming only the new one would tell a
-        // deployment that is working perfectly that its credential is missing.
-        add(absent, CloneUrl.GIT_TOKEN_ENV + " (or " + CloneUrl.LEGACY_GIT_TOKEN_ENV + ")",
-                secrets.gitToken());
         return List.copyOf(absent);
     }
 

@@ -48,6 +48,22 @@ public final class LogLines implements AutoCloseable {
     }
 
     /**
+     * ERROR only — the level that survives a skim.
+     *
+     * <p>{@code FeedbackStore#probe} settled this distinction for the codebase: a fault an operator has
+     * to ACT on before the run starts is written at ERROR, because WARN is where a healthy process's
+     * ordinary chatter lives and a reader who has learned to skim WARN will skim this too. So "is it
+     * loud?" is a question about the level, and a test that asked only for the text would pass on a
+     * line nobody reads.
+     */
+    public List<String> errors() {
+        return appender.list.stream()
+                .filter(event -> event.getLevel().isGreaterOrEqual(Level.ERROR))
+                .map(ILoggingEvent::getFormattedMessage)
+                .toList();
+    }
+
+    /**
      * Every line, at every level.
      *
      * <p>{@link #warnings()} is the right filter for a failure that has to reach an operator mid-run.
