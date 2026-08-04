@@ -5,7 +5,6 @@ import java.util.List;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.explore.JobExplorer;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -51,16 +50,18 @@ public class IngestHistory {
     private final String prefix;
 
     /**
-     * @param prefix {@code spring.batch.jdbc.table-prefix}, read from configuration for the reason
+     * @param tables {@code spring.batch.jdbc.table-prefix}, read from configuration for the reason
      *               {@link tech.mikhailov.fsm.orch.dao.JobRunDao} and {@link StaleExecutionReconciler}
      *               read it: a deployment that renames the tables would otherwise get a reader that
      *               silently finds nothing, and "found nothing" reads exactly like "no ingest has run".
+     *               {@link BatchTables} rather than the raw string because a table name has no bind
+     *               parameter, so it is checked as an identifier once, at boot, instead of three times
+     *               or never.
      */
-    public IngestHistory(JdbcTemplate jdbc, JobExplorer explorer,
-                         @Value("${spring.batch.jdbc.table-prefix:BATCH_}") String prefix) {
+    public IngestHistory(JdbcTemplate jdbc, JobExplorer explorer, BatchTables tables) {
         this.jdbc = jdbc;
         this.explorer = explorer;
-        this.prefix = prefix;
+        this.prefix = tables.prefix();
     }
 
     /** The most recent execution of the ingest job, or null when none has ever run. */

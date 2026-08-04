@@ -47,6 +47,24 @@ public class CommentDao {
     /** @see CommentDao */
     private static final String NEWEST_FIRST = " ORDER BY c.created_at DESC, c.seq DESC";
 
+    /**
+     * "NOT WITHDRAWN", in the two spellings the two reads need.
+     *
+     * <p>These were written inline, as the two arms of a ternary on {@code includeRetracted}, and a
+     * reader was right to stop on a query built with {@code +}. They are named here so that stopping
+     * takes one line instead of three: both are literals fixed at compile time, both are chosen by a
+     * boolean and never by a value, and NOTHING FROM A REQUEST HAS EVER REACHED EITHER OF THEM — the
+     * caller's {@code dedupKey}, {@code stage} and {@code limit} are bound with {@code ?} in the same
+     * statements and always have been. No behaviour changed with the names, and none needed to.
+     *
+     * <p>The two differ only in whether they open the {@code where} clause or extend one, because
+     * {@link #forMarker} already has a predicate and {@link #countsByMarker} does not.
+     */
+    private static final String AND_NOT_RETRACTED = " AND c.retracted_at IS NULL";
+
+    /** @see #AND_NOT_RETRACTED */
+    private static final String WHERE_NOT_RETRACTED = " WHERE retracted_at IS NULL";
+
     private final JdbcTemplate jdbc;
 
     public CommentDao(JdbcTemplate jdbc) {
@@ -128,7 +146,7 @@ public class CommentDao {
         if (dedupKey == null || dedupKey.isBlank()) {
             return List.of();
         }
-        String live = includeRetracted ? "" : " AND c.retracted_at IS NULL";
+        String live = includeRetracted ? "" : AND_NOT_RETRACTED;
         return jdbc.query(SELECT + " WHERE c.dedup_key = ?" + live + NEWEST_FIRST, MAPPER, dedupKey);
     }
 
@@ -141,7 +159,7 @@ public class CommentDao {
     public List<MarkerComment> recent(int limit, String stage, boolean includeRetracted) {
         StringBuilder sql = new StringBuilder(SELECT).append(" WHERE 1 = 1");
         if (!includeRetracted) {
-            sql.append(" AND c.retracted_at IS NULL");
+            sql.append(AND_NOT_RETRACTED);
         }
         if (stage != null && !stage.isEmpty()) {
             sql.append(" AND c.stage = ?");
@@ -189,7 +207,7 @@ public class CommentDao {
      * @return marker key to count, ordered by key so two calls give one answer
      */
     public Map<String, Long> countsByMarker(boolean includeRetracted) {
-        String live = includeRetracted ? "" : " WHERE retracted_at IS NULL";
+        String live = includeRetracted ? "" : WHERE_NOT_RETRACTED;
         Map<String, Long> counts = new LinkedHashMap<>();
         jdbc.query("SELECT dedup_key, COUNT(*) AS n FROM marker_comments" + live
                         + " GROUP BY dedup_key ORDER BY dedup_key",

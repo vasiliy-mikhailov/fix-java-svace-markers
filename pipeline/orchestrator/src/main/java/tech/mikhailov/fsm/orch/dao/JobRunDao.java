@@ -4,11 +4,11 @@ import java.sql.Timestamp;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
+import tech.mikhailov.fsm.orch.batch.BatchTables;
 
 /**
  * The run history, read out of Spring Batch's job repository.
@@ -58,15 +58,19 @@ public class JobRunDao {
     private final String prefix;
 
     /**
-     * @param prefix {@code spring.batch.jdbc.table-prefix}. Read from configuration rather than
-     *               hard-coded, because a deployment that changes it would otherwise get a dashboard
-     *               that silently reports zero machine time — and zero machine time reads as "the
-     *               prover never ran", not as "this query is looking at the wrong table".
+     * @param tables {@code spring.batch.jdbc.table-prefix}, taken as a type rather than as a
+     *               {@code @Value String}. Read from configuration rather than hard-coded, because a
+     *               deployment that changes it would otherwise get a dashboard that silently reports
+     *               zero machine time — and zero machine time reads as "the prover never ran", not as
+     *               "this query is looking at the wrong table". Taken as {@link BatchTables} because
+     *               the name goes into a {@code from} clause and no driver can bind a table name:
+     *               {@link BatchTables} checks it is an identifier and refuses to start the process
+     *               otherwise, so what arrives here cannot carry a quote. See
+     *               {@code NoQueryIsBuiltFromANonConstantTest}, which allows this one splice by name.
      */
-    public JobRunDao(JdbcTemplate jdbc,
-                     @Value("${spring.batch.jdbc.table-prefix:BATCH_}") String prefix) {
+    public JobRunDao(JdbcTemplate jdbc, BatchTables tables) {
         this.jdbc = jdbc;
-        this.prefix = prefix;
+        this.prefix = tables.prefix();
     }
 
     private static final RowMapper<JobRun> MAPPER = (rs, n) -> {
@@ -130,10 +134,19 @@ public class JobRunDao {
                 + groupBy() + "ORDER BY e.START_TIME ASC");
     }
 
-    /** The most recent runs, newest first — the activity panel and nothing else. */
+    /**
+     * The most recent runs, newest first — the activity panel and nothing else.
+     *
+     * <p>THE CAP IS BOUND, NOT WRITTEN IN. It used to be {@code "… LIMIT " + limit}, and the honest
+     * account of that is narrow: {@code limit} is an {@code int}, the only caller passes
+     * {@link tech.mikhailov.fsm.orch.web.DashboardService#ACTIVITY_LIMIT}, and an {@code int} cannot
+     * carry a quote or a semicolon — so nothing was reachable and nothing is being repaired here. What
+     * it was, was the exact shape of finding this repository exists to triage, sitting in the source
+     * of the thing doing the triaging. It binds in one character, so it binds.
+     */
     public List<JobRun> findRecent(int limit) {
         return query(select() + groupBy()
-                + "ORDER BY COALESCE(e.START_TIME, e.CREATE_TIME) DESC LIMIT " + limit);
+                + "ORDER BY COALESCE(e.START_TIME, e.CREATE_TIME) DESC LIMIT ?", limit);
     }
 
     /**
@@ -155,9 +168,13 @@ public class JobRunDao {
         }
     }
 
-    private List<JobRun> query(String sql) {
+    /**
+     * @param args the bind parameters, if any. Varargs so {@link #findStarted()} — which has none —
+     *             reads the same as {@link #findRecent(int)}, which has one.
+     */
+    private List<JobRun> query(String sql, Object... args) {
         try {
-            return jdbc.query(sql, MAPPER);
+            return jdbc.query(sql, MAPPER, args);
         } catch (DataAccessException e) {
             // Once per occurrence and at debug: a context without the batch tables would otherwise
             // print this on every dashboard tick for the life of the process.

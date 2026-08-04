@@ -12,7 +12,6 @@ import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.explore.JobExplorer;
 import org.springframework.batch.core.repository.JobRepository;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -126,17 +125,20 @@ public class StaleExecutionReconciler {
     private final String prefix;
 
     /**
-     * @param prefix {@code spring.batch.jdbc.table-prefix}, read from configuration for the same
+     * @param tables {@code spring.batch.jdbc.table-prefix}, read from configuration for the same
      *               reason {@link tech.mikhailov.fsm.orch.dao.JobRunDao} reads it: a deployment that
      *               renames the tables would otherwise get a repair that silently finds nothing, and
-     *               "found nothing" is indistinguishable from a healthy start.
+     *               "found nothing" is indistinguishable from a healthy start. {@link BatchTables}
+     *               rather than the raw string because the prefix is written into a {@code from}
+     *               clause and no driver binds a table name — so it is checked as an identifier at
+     *               boot, and this constructor cannot be reached with anything else.
      */
     public StaleExecutionReconciler(JdbcTemplate jdbc, JobExplorer explorer, JobRepository repository,
-                                    @Value("${spring.batch.jdbc.table-prefix:BATCH_}") String prefix) {
+                                    BatchTables tables) {
         this.jdbc = jdbc;
         this.explorer = explorer;
         this.repository = repository;
-        this.prefix = prefix;
+        this.prefix = tables.prefix();
     }
 
     /**
