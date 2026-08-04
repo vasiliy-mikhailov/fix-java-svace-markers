@@ -863,4 +863,62 @@ class RecordOutcomeTest {
                 Json.stringify(marker().parseTest("can_prove", false).prep("prove_attempts", 2)
                         .run().toMap()));
     }
+
+    /**
+     * THE THREE IDENTITY COLUMNS COERCE THE STORED WAY, AND NOT THE PROMPT WAY.
+     *
+     * <p>{@code suspicion_key}, {@code repo} and {@code file} are read off {@code Prep prover} here
+     * and off the same item by {@link Verdict}, and the two stages read them through DIFFERENT
+     * coercions on purpose. This node uses {@code Json.str} — {@code String(x || '')} — because these
+     * become STORED COLUMNS: a cell holding the literal text {@code undefined} is a bug in the
+     * artifact, and a dashboard grouping by {@code repo} would grow a repository by that name. Verdict
+     * uses {@code Llm.concat}, which renders an absent key as {@code undefined} and an explicit null
+     * as {@code null}, because ITS copies go into a prompt and a log line where the two absences are
+     * different diagnoses and have to stay legible.
+     *
+     * <p>NOTHING ELSE CATCHES THIS. Verdict's side is pinned by the node-family catalogue, which goes
+     * red on thirteen cases if that coercion is swapped; this side was reachable by no test at all —
+     * every fixture above sends these three keys as present, non-empty strings, so the whole suite
+     * stayed green with {@code Llm.concat} substituted here and rows would have started carrying
+     * {@code undefined}. That is what this test exists for, so keep the empty spellings exact.
+     */
+    @Test
+    void theIdentityColumnsAreEmptyStringsAndNeverTheWordUndefined() {
+        Map<String, Object> src = item("src", "class B {}");
+
+        // ABSENT: no key at all, the shape a row written before a column existed arrives in.
+        Outcome absent = RecordOutcome.recordOutcome(Request.of(item(
+                "prep_prover", item("title", "t"), "build_reproduce_input", src)));
+        assertEquals("", absent.suspicionKey());
+        assertEquals("", absent.repo());
+        assertEquals("", absent.file());
+        assertTrue(Json.stringify(absent.toMap())
+                        .startsWith("{\"suspicion_key\":\"\",\"repo\":\"\",\"file\":\"\","),
+                "the row's first three columns are empty strings, in order");
+
+        // EXPLICIT NULL: the shape a stored cell with no value round-trips as. Verdict tells this
+        // apart from the above and writes `null`; the row must not, and both must read the same here.
+        Outcome nulls = RecordOutcome.recordOutcome(Request.of(item(
+                "prep_prover", item("suspicion_key", null, "repo", null, "file", null),
+                "build_reproduce_input", src)));
+        assertEquals("", nulls.suspicionKey());
+        assertEquals("", nulls.repo());
+        assertEquals("", nulls.file());
+
+        // FALSY NON-NULLS, which `String(x || '')` also collapses and a bare toString would not.
+        Outcome falsy = RecordOutcome.recordOutcome(Request.of(item(
+                "prep_prover", item("suspicion_key", 0, "repo", false, "file", ""),
+                "build_reproduce_input", src)));
+        assertEquals("", falsy.suspicionKey());
+        assertEquals("", falsy.repo());
+        assertEquals("", falsy.file());
+
+        // AND A WRONG-TYPED CELL IS SERIALISED, not rendered as `[object Object]`: the column keeps
+        // what arrived in a form the next reader can parse back.
+        Outcome wrongType = RecordOutcome.recordOutcome(Request.of(item(
+                "prep_prover", item("repo", item("owner", "o"), "file", List.of("a", "b")),
+                "build_reproduce_input", src)));
+        assertEquals("{\"owner\":\"o\"}", wrongType.repo());
+        assertEquals("[\"a\",\"b\"]", wrongType.file());
+    }
 }

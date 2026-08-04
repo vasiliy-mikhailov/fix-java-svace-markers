@@ -244,6 +244,21 @@ public final class Verdict {
     // `anchor`, `anchor_status`, `svace_checker` and `state` are copied into the returned item exactly
     // as they arrived, so a number that arrived as a number leaves as one, and coercing it at the read
     // would rewrite the wire. Those four are named as such below; nothing else here is untyped.
+    //
+    // WHY THREE OF THESE CARRY A `Verdict` PREFIX AND TWO DO NOT. Every parse record here is named for
+    // the STAGE ITS VALUES CAME OFF, and so is every parse record in {@link RecordOutcome} — which
+    // reads four of the same seven items. Three names therefore landed twice in this package, private
+    // and nested each time, so the compiler was content and `grep 'record Marker'` returned two
+    // different shapes with no way to tell which file a reader was looking at. They are NOT merged and
+    // must not be: at the columns they share, the two stages coerce DIFFERENTLY AND HAVE TO. This
+    // stage's `suspicion_key`, `repo` and `file` go into a PROMPT and a LOG through
+    // {@link Llm#concat}, where a missing key has to read `undefined` and an explicit null has to read
+    // `null`, because "[gap] retired as `undefined`" and "[gap] retired as `null`" are different
+    // diagnoses. Record outcome's go into STORED COLUMNS through {@link Json#str}, where both have to
+    // read "" — a row with the literal text `undefined` in its `repo` column is a bug in the artifact.
+    // One record carrying both coercions of every shared column would hand each stage a component it
+    // must never touch. So the prefix marks exactly the three names that are shared, and says whose
+    // view of them this file holds.
 
     /**
      * THE TWO COLUMNS THIS STAGE READS OFF THE ROW IT WAS HANDED AND WRITES BACK TO THAT SAME ROW.
@@ -315,7 +330,12 @@ public final class Verdict {
     }
 
     /**
-     * THE MARKER, off {@code Prep prover}.
+     * THE MARKER, off {@code Prep prover}, AS THIS STAGE READS IT.
+     *
+     * <p>{@link RecordOutcome} has a nine-component record off the same item and it is a different
+     * view, not a duplicate: the two overlap at {@code suspicion_key}, {@code repo} and {@code file}
+     * and NOWHERE ELSE, and at those three they coerce differently on purpose — see the naming note
+     * above this block.
      *
      * @param svaceChecker     the raw value, because it is copied into the returned item.
      * @param svaceCheckerText the same value as the prompt prints it, with the {@code ?} fallback.
@@ -332,15 +352,15 @@ public final class Verdict {
      *                         third reader, after the table that assigns it and the ingest that writes
      *                         it into the evidence line, and it was the one comparing against a literal.
      */
-    private record Marker(String suspicionKey, String repo, String file, Object svaceChecker,
-                          String svaceCheckerText, String svaceSeverity, String svaceLine,
-                          String description, boolean markerIdGiven, String markerId,
-                          boolean argueOnly) {
+    private record VerdictMarker(String suspicionKey, String repo, String file, Object svaceChecker,
+                                 String svaceCheckerText, String svaceSeverity, String svaceLine,
+                                 String description, boolean markerIdGiven, String markerId,
+                                 boolean argueOnly) {
 
-        static Marker of(Object j) {
+        static VerdictMarker of(Object j) {
             Object markerId = Json.get(j, "marker_id");
             Object checker = Json.get(j, "svace_checker");
-            return new Marker(
+            return new VerdictMarker(
                     Llm.concat(j, "suspicion_key"), Llm.concat(j, "repo"), Llm.concat(j, "file"),
                     or(checker, ""), Js.string(or(checker, "?")),
                     Js.string(or(Json.get(j, "svace_severity"), "?")),
@@ -355,11 +375,11 @@ public final class Verdict {
     /**
      * THE SOURCE THAT WAS ACTUALLY READ, off {@code Build reproduce input}.
      *
-     * @param anchor           raw — copied into the returned item. @see Marker#svaceChecker
+     * @param anchor           raw — copied into the returned item. @see VerdictMarker#svaceChecker
      * @param anchorStatus     raw, and for the same reason.
      * @param anchorStatusText the same value as the prompt prints it.
      * @param methodGiven      whether a method body was quoted at all, split from its text for the
-     *                         reason {@link Marker#markerIdGiven} is split from its.
+     *                         reason {@link VerdictMarker#markerIdGiven} is split from its.
      */
     private record Source(Object anchor, Object anchorStatus, String anchorStatusText,
                           String anchorNote, boolean methodGiven, String methodText, String src) {
@@ -375,17 +395,32 @@ public final class Verdict {
         }
     }
 
-    /** THE REPRODUCER'S RUN, off {@code run_test reproduce}. */
-    private record ReproRun(boolean testExecuted, String redOutput) {
+    /**
+     * THE REPRODUCER'S RUN, off {@code run_test reproduce}, AS THIS STAGE READS IT.
+     *
+     * <p>Two components against {@link RecordOutcome}'s six off the same item, and they do not agree
+     * about {@code red_summary.test_executed} even where they overlap: here the question is "did the
+     * test run?" ({@link Json#truthy}), there it is "did the runner say it did NOT?" (strictly
+     * {@code false}), because an absent flag is a runner that never reported and inventing a build
+     * failure from it would requeue for ever. Merging the two would make one of those questions
+     * unaskable. @see #of
+     */
+    private record VerdictReproRun(boolean testExecuted, String redOutput) {
 
-        static ReproRun of(Object repro) {
-            return new ReproRun(Json.truthy(Json.get(repro, "red_summary"), "test_executed"),
+        static VerdictReproRun of(Object repro) {
+            return new VerdictReproRun(Json.truthy(Json.get(repro, "red_summary"), "test_executed"),
                     Js.string(or(Json.get(repro, "red_output"), "(no build output captured)")));
         }
     }
 
     /**
-     * THE REPRODUCER'S REPLY, off {@code Parse test}.
+     * THE REPRODUCER'S REPLY, off {@code Parse test}, AS THIS STAGE READS IT.
+     *
+     * <p>Four components against {@link RecordOutcome}'s seven off the same item. {@code test_score}
+     * is the one that shows why they are separate: here it is carried RAW so that
+     * {@link ExecVerdict.Evidence} can apply {@code '' + x} and keep a measured 0 distinguishable from
+     * a score nobody took, and there it is {@code Number(x) || 0} because the row's {@code value_score}
+     * column is a double. One record would have to carry both.
      *
      * @param score the realness score RAW, and the one component here that could not be typed. Its
      *              coercion is {@code '' + x} and it is PRIVATE to {@link ExecVerdict.Evidence#of} —
@@ -394,23 +429,24 @@ public final class Verdict {
      *              is precisely the two-places-for-one-value drift this class exists to avoid, so the
      *              raw value is carried to {@link #evidence} and the coercion stays where it is owned.
      */
-    private record TestReply(boolean canProve, String rootCause, Object score, String realness) {
+    private record VerdictTestReply(boolean canProve, String rootCause, Object score,
+                                    String realness) {
 
-        static TestReply of(Object parseTest) {
-            return new TestReply(Json.truthy(parseTest, "can_prove"),
+        static VerdictTestReply of(Object parseTest) {
+            return new VerdictTestReply(Json.truthy(parseTest, "can_prove"),
                     Js.string(or(Json.get(parseTest, "repro_root_cause"), "(none given)")),
                     Json.get(parseTest, "test_score"), Json.str(parseTest, "test_realness"));
         }
     }
 
     /** EVERYTHING THE STAGE READS, parsed. Nothing below this record names a key of an input. */
-    private record Inputs(Row row, Marker marker, Source source, ReproRun repro, TestReply test,
-                          String fixRootCause, String prReason) {
+    private record Inputs(Row row, VerdictMarker marker, Source source, VerdictReproRun repro,
+                          VerdictTestReply test, String fixRootCause, String prReason) {
 
         static Inputs of(Request req) {
-            return new Inputs(Row.of(req.item()), Marker.of(req.prepProver()),
-                    Source.of(req.buildReproduceInput()), ReproRun.of(req.reproduce()),
-                    TestReply.of(req.parseTest()),
+            return new Inputs(Row.of(req.item()), VerdictMarker.of(req.prepProver()),
+                    Source.of(req.buildReproduceInput()), VerdictReproRun.of(req.reproduce()),
+                    VerdictTestReply.of(req.parseTest()),
                     Json.str(req.parseFix(), "fix_root_cause"),
                     // the PR curator's repo-specific reasoning, needed to explain a
                     // proven-but-not-proposed outcome
@@ -593,7 +629,7 @@ public final class Verdict {
      */
     private static Argument argue(Request req, Llm.Http http, Consumer<String> log, Inputs in) {
         Row row = in.row();
-        Marker marker = in.marker();
+        VerdictMarker marker = in.marker();
 
         String verdictText = "";
         String verdictKind = "";
@@ -633,7 +669,7 @@ public final class Verdict {
         // exhaustedBuild is tested FIRST because it diverts an at-the-ceiling infra_error, whose own
         // route is STUCK, into the argument. The order is the same one the literal chain had.
         if (exhaustedBuild || route == Route.ARGUE) {
-            // A checker that can only be settled by ARGUMENT gets no retry — see Marker#argueOnly.
+            // A checker that can only be settled by ARGUMENT gets no retry — see VerdictMarker#argueOnly.
             if (!exhaustedBuild && !marker.argueOnly() && attemptNo < req.minAttempts()) {
                 retry = true;
                 log.accept("[verdict] " + marker.suspicionKey() + " attempt "
@@ -1019,7 +1055,7 @@ public final class Verdict {
      */
     private static String argumentPrompt(Request req, Llm.Http http, Inputs in,
                                          boolean exhaustedBuild, double attempts) {
-        Marker marker = in.marker();
+        VerdictMarker marker = in.marker();
         Source source = in.source();
 
         Detail detail = svaceDetail(req, http, marker);
@@ -1123,7 +1159,7 @@ public final class Verdict {
      * <p>An endpoint that fails must not take the verdict down with it: the whole fetch is inside the
      * catch, and a failure means the argument is made from the code alone.
      */
-    private static Detail svaceDetail(Request req, Llm.Http http, Marker marker) {
+    private static Detail svaceDetail(Request req, Llm.Http http, VerdictMarker marker) {
         // .trim(): a variable set to a stray space would otherwise be fetched as if it were a host.
         String base = JsText.trim(Js.orEmptyString(req.svaceBaseUrl()));
         if (base.isEmpty() || !marker.markerIdGiven()) {

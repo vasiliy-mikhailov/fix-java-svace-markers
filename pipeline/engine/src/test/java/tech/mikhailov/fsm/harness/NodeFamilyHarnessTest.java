@@ -23,10 +23,19 @@ import org.junit.jupiter.api.Test;
  * are that, not a disagreement about behaviour:
  *
  * <ul>
- *   <li><b>171 of them are the whole skeptic family</b> — every single case — and they are one field:
- *       {@code skeptic_answered}, which this module added after the reference was retired so that "the skeptic
- *       said no" could be told apart from "the skeptic never answered". The reference had no such
- *       key. Nothing about the verdict differs.</li>
+ *   <li><b>171 of them are the whole skeptic family</b> — every single case — and for 169 of them the
+ *       difference is one field: {@code skeptic_answered}, which this module added after the reference
+ *       was retired so that "the skeptic said no" could be told apart from "the skeptic never
+ *       answered". The reference had no such key.
+ *       <p>IT IS NOT ONLY THAT FIELD, AND THE CATALOGUE SAYS SO — read it, not this sentence. Seven of
+ *       those 169 also word a failed call differently in {@code skeptic_reason} (V8's JSON message
+ *       against this module's, and "cannot read 'choices' of null" against "the reply is not an
+ *       object"). ONE of the seven — {@code skeptic: no env at all} — differs on
+ *       {@code skeptic_verdict} ITSELF, {@code unknown} against {@code sound}, because the reference
+ *       threw on reading an absent environment variable where this module builds a URL out of it and
+ *       gets an answer back. And the last 2 of the 171 differ on the whole item: the reference
+ *       returned null where this module returns a verdict. So "the verdict never differs" is nearly
+ *       true, which is not the same thing, and the eight cases where it is false are counted.</li>
  *   <li><b>Another large block is the verdict node's FAILURE MESSAGES</b>, rewritten here to say what
  *       failed ({@code "the verdict call FAILED: the reply is not an object"}) where the reference
  *       said only that no text came back. Same routing, different words.</li>
