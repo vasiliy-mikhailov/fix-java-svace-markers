@@ -19,6 +19,7 @@ import tech.mikhailov.fsm.lib.Js;
 import tech.mikhailov.fsm.lib.JsText;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.Severity;
+import tech.mikhailov.fsm.lib.SuspicionStatus;
 
 /**
  * {@code Parse markers} — turns a Svace CSV report into one suspicion row per marker.
@@ -403,7 +404,10 @@ public final class ParseMarkers {
                     meaning,
                     "Svace " + sev + " marker `" + checker + "` at " + file + ":" + lineText
                             + ". Claim: " + meaning + ". Settle-by: " + prove + ".",
-                    "new",
+                    // The queue token, off the enum — the same rule the grade above follows. This is
+                    // where every marker's status vocabulary starts, and a literal here is a spelling
+                    // the drain's `WHERE status = ?` would have to agree with by luck.
+                    SuspicionStatus.NEW.wire(),
                     "",
                     0L,
                     req.version(),

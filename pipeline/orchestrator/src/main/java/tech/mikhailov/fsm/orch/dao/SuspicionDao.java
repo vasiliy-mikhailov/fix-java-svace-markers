@@ -9,6 +9,7 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import tech.mikhailov.fsm.lib.MarkerState;
 import tech.mikhailov.fsm.lib.Severity;
+import tech.mikhailov.fsm.lib.SuspicionStatus;
 import tech.mikhailov.fsm.orch.model.Suspicion;
 
 /**
@@ -27,18 +28,27 @@ import tech.mikhailov.fsm.orch.model.Suspicion;
 @Repository
 public class SuspicionDao {
 
-    /** Queued. The only status the prover will pick up, and where a re-queued marker lands. */
-    public static final String STATUS_NEW = "new";
+    /**
+     * Queued. The only status the prover will pick up, and where a re-queued marker lands.
+     *
+     * <p>Read off {@link SuspicionStatus}, not typed out. The vocabulary of this column is that enum's
+     * and these two are the only members of it the DAO writes on its own; spelling them here as
+     * literals would be the same drift the enum exists to prevent, in the one file that decides which
+     * rows a drain can see.
+     */
+    public static final String STATUS_NEW = SuspicionStatus.NEW.wire();
 
     /**
      * Claimed by a prover, not yet settled.
      *
      * <p>NOT a {@link tech.mikhailov.fsm.lib.MarkerState} and deliberately not added to one: that enum
      * is the vocabulary of what a marker BECAME, and "someone is currently looking at it" is not an
-     * outcome. Nothing downstream branches on it — no dashboard grouping, no verdict routing — and it
-     * is erased on every start by the reconciliation, so it can never be the last word on a marker.
+     * outcome. It is a {@link SuspicionStatus}, which is the vocabulary of where the ROW goes next, and
+     * there it sits beside {@link #STATUS_NEW} as the second of the two unsettled tokens. Nothing
+     * downstream branches on it — no dashboard grouping, no verdict routing — and it is erased on every
+     * start by the reconciliation, so it can never be the last word on a marker.
      */
-    public static final String STATUS_PROVING = "proving";
+    public static final String STATUS_PROVING = SuspicionStatus.PROVING.wire();
 
     /**
      * How many times a lost claim race is retried before {@link #claimNext()} gives up for this tick.
@@ -359,7 +369,13 @@ public class SuspicionDao {
 
     /**
      * Take a queued marker OUT of the queue because the pipeline has never once managed to ask a
-     * question about it — {@link MarkerState#INFRA_STUCK}, and nothing else.
+     * question about it — {@link SuspicionStatus#INFRA_STUCK}, and nothing else.
+     *
+     * <p>THE STATUS, NOT THE STATE, AND THE TWO ARE SPELLED THE SAME. {@link MarkerState#INFRA_STUCK}
+     * is what an ARTIFACT written off past the retry ceiling says about itself; this column says where
+     * the BACKLOG ROW went, and this path writes no artifact at all. The wire spelling is identical, so
+     * getting it wrong changed nothing and could not be seen — which is exactly why it is now the type
+     * that says which fact is being recorded.
      *
      * <p>WHY THIS IS NOT A JUDGEMENT, stated where it is written rather than only where it is decided.
      * {@code infra_stuck} is the one state in the vocabulary that says something about the PIPELINE
@@ -383,7 +399,7 @@ public class SuspicionDao {
     public int parkInfraStuck(String dedupKey, String note) {
         return jdbc.update(
                 "UPDATE suspicions SET status = ?, note = ? WHERE dedup_key = ? AND status = ?",
-                MarkerState.INFRA_STUCK.wire(), note, dedupKey, STATUS_NEW);
+                SuspicionStatus.INFRA_STUCK.wire(), note, dedupKey, STATUS_NEW);
     }
 
     /**

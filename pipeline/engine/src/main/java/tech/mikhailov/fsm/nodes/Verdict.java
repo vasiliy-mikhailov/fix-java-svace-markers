@@ -12,6 +12,8 @@ import tech.mikhailov.fsm.lib.JsText;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.JsonExtract;
 import tech.mikhailov.fsm.lib.Llm;
+import tech.mikhailov.fsm.lib.MarkerState;
+import tech.mikhailov.fsm.lib.SuspicionStatus;
 
 /**
  * {@code Verdict} — the second first-class output of the pipeline.
@@ -45,6 +47,21 @@ import tech.mikhailov.fsm.lib.Llm;
  * asking a model to argue a case already established by running it could only add prose weaker than,
  * or contradicting, the proof it describes. So {@link ExecVerdict} composes those from evidence and the
  * LLM argues the rest.
+ *
+ * <p>TWO VOCABULARIES CROSS THIS FILE AND THEY ARE NOT THE SAME SET. {@link MarkerState} is what the
+ * ARTIFACT became and is what arrives on the row; {@link SuspicionStatus} is where the BACKLOG ROW goes
+ * next and is what this stage writes. {@code infra_stuck} belongs to both and means a different thing
+ * in each, and {@code not-a-bug} is a state that is never a status — so the two are parsed separately,
+ * from the same value, and each question is asked of the type that can answer it. Both used to be 25
+ * bare string literals in this file, where an unknown one fell through a 60-line if/else chain and was
+ * retired as {@code rejected} with a {@code [gap]} note: a verdict nobody made.
+ *
+ * <p>STRINGS AT THE BOUNDARY, TYPES INSIDE IT. The item this node returns is compared field by field
+ * against catalogues recorded from an implementation that no longer exists, so every value that crosses
+ * the boundary is still the wire spelling — written by {@link MarkerState#wire()} and
+ * {@link SuspicionStatus#wire()} rather than typed out. Between the parse and that write, nothing is
+ * a string: a ninth state does not compile until {@link Route}, {@code settledBy} and
+ * {@code ExecVerdict} have all been told what to do with it.
  */
 public final class Verdict {
 
@@ -337,7 +354,12 @@ public final class Verdict {
         String infraReason = Js.orEmptyString(Json.get(rec, "infra_reason"));
         boolean buildOnly = BUILD_FAILED.matcher(infraReason).find()
                 && !REAL_INFRA.matcher(infraReason).find();
-        boolean exhaustedBuild = "infra_error".equals(state) && attemptNo >= MAX_ATTEMPTS && buildOnly;
+        // THE PARSE HAPPENS ONCE, HERE, AT THE TOP OF THE DECISION — and everything below branches on
+        // the enum rather than on the string. @see #markerState
+        MarkerState arrived = markerState(state);
+        boolean exhaustedBuild = arrived == MarkerState.INFRA_ERROR && attemptNo >= MAX_ATTEMPTS
+                && buildOnly;
+        Route route = Route.of(arrived);
 
         // EVERY route that retires a marker without a patch has to land here, or the marker is dropped
         // silently. There are three, and missing one is invisible: the row just reads `rejected` with
@@ -348,7 +370,9 @@ public final class Verdict {
         //                     word of argument recorded against them.
         //   not_reproduced  — a test was written, ran, and passed on the unpatched code.
         //   exhaustedBuild  — no test ever compiled (see BUILD_FAILED).
-        if ("not_reproduced".equals(state) || "not-a-bug".equals(state) || exhaustedBuild) {
+        // exhaustedBuild is tested FIRST because it diverts an at-the-ceiling infra_error, whose own
+        // route is STUCK, into the argument. The order is the same one the literal chain had.
+        if (exhaustedBuild || route == Route.ARGUE) {
             // A checker that can only be settled by ARGUMENT gets no retry — a second reproducer sample
             // cannot write a runtime test for a dead store or a hard-coded constant, so it would only
             // burn a build.
@@ -402,9 +426,13 @@ public final class Verdict {
                     // is deliberately written that way, so there is nothing to fix; `unprovable` = we
                     // never managed to test it. Collapsing them would let a tooling failure read as an
                     // exoneration, or a deliberate vulnerability read as a bug.
-                    state = "by-design".equals(verdictKind) ? "by_design"
-                            : "unprovable".equals(verdictKind) ? "unprovable"
-                            : "false_positive";
+                    // The KIND is the model's own word (hyphenated, its own small vocabulary); the
+                    // STATE it maps to is a SuspicionStatus, spelled by the enum so the two spellings
+                    // of the same conclusion — `by-design` the kind, `by_design` the state — cannot
+                    // drift apart in the one place they are converted.
+                    state = ("by-design".equals(verdictKind) ? SuspicionStatus.BY_DESIGN
+                            : "unprovable".equals(verdictKind) ? SuspicionStatus.UNPROVABLE
+                            : SuspicionStatus.FALSE_POSITIVE).wire();
                 } else {
                     // NOTHING WAS ARGUED, SO NOTHING IS FILED — and the KIND goes with the text.
                     //
@@ -444,7 +472,7 @@ public final class Verdict {
                     }
                 }
             }
-        } else if ("infra_error".equals(state)) {
+        } else if (route == Route.STUCK) {
             // Below the retry ceiling this is not an outcome at all — the marker goes back on the queue
             // and must NOT carry a verdict, or a transient failure would read as a decision.
             if (attemptNo >= MAX_ATTEMPTS) {
@@ -503,16 +531,25 @@ public final class Verdict {
         Object state = argued.state();
         String callFailure = argued.callFailure();
         boolean skipped = argued.skipped();
+        // THE PARSE, ONCE, FOR BOTH VOCABULARIES — because `state` here is genuinely one or the other:
+        // the MarkerState the row arrived with, or the SuspicionStatus a written argument replaced it
+        // with. Reading it as both and asking each question of the right type is what keeps the two
+        // apart; `infra_stuck` is a member of BOTH enums and means a different thing in each, and the
+        // branches below are careful never to ask the wrong one about it. @see #markerState
+        MarkerState marker = markerState(state);
+        SuspicionStatus concluded = suspicionStatus(state);
+        SuspicionStatus settled = marker == null ? null : settledBy(marker);
         // `Number(x) || 0` — the count AS RECORDED. NOT `attemptNo` in argue(), which reads this same
         // column with `|| 1` because an uncounted attempt is the FIRST one. The two reads used to sit
         // 152 lines apart in one method under near-identical names; confusing them swaps a retry for a
         // permanent retirement.
         double recordedAttempts = Json.num(rec, "attempts");
-        String suspicionStatus;
+        SuspicionStatus suspicionStatus;
         String suspicionNote = "";
-        if ("infra_error".equals(state)) {
+        if (marker == MarkerState.INFRA_ERROR) {
             // Never a verdict about the code: retry, but not forever.
-            suspicionStatus = recordedAttempts >= MAX_ATTEMPTS ? "infra_stuck" : "new";
+            suspicionStatus = recordedAttempts >= MAX_ATTEMPTS
+                    ? SuspicionStatus.INFRA_STUCK : SuspicionStatus.NEW;
             // The note is the entire audit trail for a row that goes back on the queue: which attempt,
             // and why.
             suspicionNote = "[prover] infra failure (attempt "
@@ -527,17 +564,19 @@ public final class Verdict {
                         + "this marker was never argued");
             }
         } else if (argued.retry()) {
-            suspicionStatus = "new";
+            suspicionStatus = SuspicionStatus.NEW;
             suspicionNote = "[prover] did not reproduce on attempt "
                     + Js.numberToString(recordedAttempts) + "; retrying before a verdict is written";
-        } else if ("pr_ready".equals(state) || "needs_review".equals(state)
-                || "pr_rejected".equals(state)) {
-            suspicionStatus = "verified";
-        } else if ("fix_failed".equals(state)) {
-            suspicionStatus = "reproduced";
-        } else if ("false_positive".equals(state) || "unprovable".equals(state)
-                || "by_design".equals(state)) {
-            suspicionStatus = (String) state;
+        // SETTLED BY THE ARTIFACT'S STATE. `settledBy` is an exhaustive switch over MarkerState with no
+        // default arm, and null there means "this state does not settle the row on its own" — the four
+        // that route through the branches below rather than here.
+        } else if (settled != null) {
+            suspicionStatus = settled;
+        // SETTLED BY THE ARGUMENT the verdict stage wrote, which replaced the state above with its own
+        // conclusion. EnumSet membership, not three literals: the set is derived from the statuses
+        // themselves, so a fourth conclusion cannot be added to the vocabulary and forgotten here.
+        } else if (concluded != null && SuspicionStatus.ARGUED.contains(concluded)) {
+            suspicionStatus = concluded;
             // One dashboard column: unbounded, an 8k argument makes the table unreadable, and the kind
             // has to lead so the row can be scanned without opening it.
             suspicionNote = "[verdict/" + argued.kind() + "] " + head(argued.text(), NOTE_CUT);
@@ -548,7 +587,7 @@ public final class Verdict {
         // recoverable instead is that the note says exactly which markers to re-queue, and
         // `verdict_status` says it on the artifact.
         } else if (skipped) {
-            suspicionStatus = "rejected";
+            suspicionStatus = SuspicionStatus.REJECTED;
             suspicionNote = SKIPPED_LABEL + "the argument is switched off, so `" + stateText
                     + "` was retired with no verdict written; re-queue this marker with "
                     + "fsm.prove.verdict-enabled=true to have the claim argued";
@@ -561,7 +600,7 @@ public final class Verdict {
             // non-reproduction budget is already spent, and going round again costs two model completions
             // and two Maven builds per attempt against an endpoint that is down. The note is what makes
             // it visible instead.
-            suspicionStatus = "rejected";
+            suspicionStatus = SuspicionStatus.REJECTED;
             suspicionNote = "[verdict] the verdict call FAILED, so `" + stateText
                     + "` was retired with no argument: " + callFailure;
         } else {
@@ -570,11 +609,92 @@ public final class Verdict {
             // `rejected` row is indistinguishable from a real decision unless it says so. Label it so
             // the next one is visible on the dashboard the same day rather than after 8 markers have
             // been quietly thrown away.
-            suspicionStatus = "rejected";
+            //
+            // IT IS ALSO WHERE AN UNPARSEABLE STATE ARRIVES, and that is now the ONLY way to reach it
+            // from a known state: every constant of both vocabularies is matched above by an exhaustive
+            // switch or an EnumSet derived from the enum, so a string neither type claims is the one
+            // thing left. The note quotes it back verbatim — a state nobody can name is a routing gap
+            // and has to be readable as one on the dashboard the same day.
+            suspicionStatus = SuspicionStatus.REJECTED;
             suspicionNote = "[gap] retired as `" + stateText + "` with no verdict written — "
                     + "this marker was never argued; the verdict stage does not route this state";
         }
-        return new Suspicion(suspicionStatus, suspicionNote);
+        return new Suspicion(suspicionStatus.wire(), suspicionNote);
+    }
+
+    /**
+     * THE STATE AS A DECISION — the parse boundary both decisions share, and the reason it takes an
+     * {@code Object}.
+     *
+     * <p>The state travels as whatever the item held: the engine's rows are JSON and a stage upstream
+     * may have put a number, an array or nothing at all under {@code state}. The literal comparisons
+     * this replaces were {@code "not_reproduced".equals(state)} — String IDENTITY, false for every
+     * non-String — so the instanceof is not defensive padding, it IS the old semantics. Concatenating
+     * first would be a different function: {@code String(["not_reproduced"])} is
+     * {@code "not_reproduced"}, and a one-element array would start taking a route it has never taken.
+     *
+     * @return the state this row names, or null when the value is not a string any state claims
+     */
+    private static MarkerState markerState(Object state) {
+        return state instanceof String s ? MarkerState.of(s) : null;
+    }
+
+    /** The conclusion a written argument replaced the state with, or null. @see #markerState */
+    private static SuspicionStatus suspicionStatus(Object state) {
+        return state instanceof String s ? SuspicionStatus.of(s) : null;
+    }
+
+    /**
+     * WHICH STATUS THIS ARTIFACT STATE SETTLES THE ROW AT, or null when the state alone does not settle
+     * it.
+     *
+     * <p>NO DEFAULT ARM, following {@link ExecVerdict} — a ninth {@link MarkerState} does not compile
+     * until somebody has decided where it sends the backlog row. Null is the honest answer for the four
+     * that are routed by something other than the state: {@code infra_error} by the attempt count,
+     * {@code not-a-bug} and {@code not_reproduced} by whether an argument was written, and
+     * {@code infra_stuck} by nothing at all — a row already parked has no next status to be given, so
+     * it falls to the routing-gap branch exactly as it always has.
+     */
+    private static SuspicionStatus settledBy(MarkerState state) {
+        return switch (state) {
+            case PR_READY, PR_REJECTED, NEEDS_REVIEW -> SuspicionStatus.VERIFIED;
+            case FIX_FAILED -> SuspicionStatus.REPRODUCED;
+            case INFRA_ERROR, INFRA_STUCK, NOT_A_BUG, NOT_REPRODUCED -> null;
+        };
+    }
+
+    /**
+     * WHAT THIS STAGE DOES ABOUT AN ARRIVING STATE: argue it, park it, or word it from the evidence.
+     *
+     * <p>NO DEFAULT ARM, for the same reason {@link #settledBy} has none. The three routes were an
+     * if/else-if chain over five string literals, where a ninth state took the {@code else} — the
+     * composed verdict — silently and by accident rather than by anybody's decision.
+     */
+    private enum Route {
+
+        /** Retired without a patch, so a rebuttal is owed and the model is asked for one. */
+        ARGUE,
+
+        /** A pipeline failure: parked with a composed verdict once the retries are spent. */
+        STUCK,
+
+        /** Settled by EXECUTION, so {@link ExecVerdict} words it from the evidence and no model runs. */
+        COMPOSE;
+
+        /** @param arrived null for a state neither this stage nor {@link ExecVerdict} can name */
+        static Route of(MarkerState arrived) {
+            if (arrived == null) {
+                // The unknown state still reaches ExecVerdict, which quotes it back to the reader in an
+                // `undetermined` verdict rather than filing it under a neighbour. That is the loud
+                // handling, and it is the same one this route has always given it.
+                return COMPOSE;
+            }
+            return switch (arrived) {
+                case NOT_REPRODUCED, NOT_A_BUG -> ARGUE;
+                case INFRA_ERROR -> STUCK;
+                case INFRA_STUCK, FIX_FAILED, NEEDS_REVIEW, PR_READY, PR_REJECTED -> COMPOSE;
+            };
+        }
     }
 
     /**
@@ -588,7 +708,7 @@ public final class Verdict {
      * that far.
      */
     private static ExecVerdict.Verdict stuck(Object rec, double attempts) {
-        return ExecVerdict.of("infra_stuck",
+        return ExecVerdict.of(MarkerState.INFRA_STUCK.wire(),
                 evidence(null, null, null, Json.get(rec, "infra_reason"), attempts, ""));
     }
 

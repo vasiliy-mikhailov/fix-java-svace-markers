@@ -5,6 +5,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import tech.mikhailov.fsm.lib.MarkerState;
+import tech.mikhailov.fsm.lib.SuspicionStatus;
 
 /**
  * Human-equivalent effort vs measured machine time.
@@ -25,8 +30,26 @@ import java.util.Set;
  * by flipping it to {@code proving}, and a
  * marker somebody is currently looking at has not been settled by anyone — charging it 45 minutes of
  * human-equivalent work would inflate exactly the figure this file exists to keep honest.
+ *
+ * <p>WHICH OUTCOMES COST WHAT IS NOT DECIDED HERE ANY MORE, and that is the only structural change to
+ * a file whose whole claim is that it is a port. The three sets used to be eleven raw string literals —
+ * {@code Set.of("pr_ready", "pr_rejected", "needs_review", "fix_failed")} and two more — three modules
+ * away from the enum that defines those spellings, so a ninth {@code MarkerState} was a state no set
+ * contained: counted as SETTLED, charged the baseline, and quietly inflating the FTE multiple the
+ * project is judged on. The judgement now lives on the state ({@link MarkerState.Work},
+ * {@link SuspicionStatus.Work}) where the compiler makes a new constant declare it, and this file reads
+ * the derived {@link java.util.EnumSet}s. The MINUTES stay here, because they are the arguable part.
+ *
+ * <p>TWO VOCABULARIES ARRIVE AT THIS FILE. A marker's {@code status} is a {@link SuspicionStatus}; an
+ * artifact's {@code state} is a {@link MarkerState}, EXCEPT for the three the verdict stage substitutes
+ * ({@code false_positive}, {@code by_design}, {@code unprovable}), which are statuses written into the
+ * state column. So {@link #humanTimesheet} tries the artifact vocabulary first and the status
+ * vocabulary second, and never asks one of them a question only the other can answer — {@code
+ * infra_stuck} is in both enums, and {@code reproduced} the STATUS is not {@code fix_failed} the state.
  */
 public final class WorkModel {
+
+    private static final Logger log = LoggerFactory.getLogger(WorkModel.class);
 
     private WorkModel() {
     }
@@ -55,11 +78,20 @@ public final class WorkModel {
         HUMAN_MIN = Collections.unmodifiableMap(m);
     }
 
-    private static final Set<String> REPRODUCED =
-            Set.of("pr_ready", "pr_rejected", "needs_review", "fix_failed");
-    private static final Set<String> FIXED = Set.of("pr_ready", "pr_rejected", "needs_review");
-    private static final Set<String> ARGUED =
-            Set.of("false_positive", "by_design", "unprovable", "undetermined", "not-a-bug");
+    /**
+     * THE ONE SPELLING THIS FILE STILL CARRIES, and it is not in either vocabulary.
+     *
+     * <p>{@code undetermined} is an {@link tech.mikhailov.fsm.lib.ExecVerdict.Kind} — how a verdict is
+     * FILED — and nothing writes it into {@code bugs.state} or {@code suspicions.status}. It was in
+     * work.js's argued set, so a row carrying it has always been charged a rebuttal, and this file's
+     * whole claim is that the same rows produce the same numbers. Dropping it would be a behaviour
+     * change nobody asked for, on a live database of 282 rows, to tidy one line.
+     *
+     * <p>So it is kept, named, and kept OUTSIDE {@link SuspicionStatus}: a spelling the pipeline does
+     * not write is not part of a vocabulary, and putting it in the enum would make it routable
+     * everywhere the enum is routed on.
+     */
+    private static final String LEGACY_ARGUED_KIND = "undetermined";
 
     /**
      * Statuses that mean "nobody has settled this yet", and therefore cost nothing yet.
@@ -68,8 +100,23 @@ public final class WorkModel {
      * {@link tech.mikhailov.fsm.orch.dao.SuspicionDao#STATUS_PROVING}, which is explicit that it is
      * not an outcome and is erased on every restart. Charging it would also move the ETA, which
      * divides observed machine time by the settled count.
+     *
+     * <p>IT IS THE ENUM'S OWN SET, not a copy of it — the same object {@link SuspicionStatus#UNSETTLED}
+     * derives from {@link SuspicionStatus.Work}. Named here because this is the name the dashboard's
+     * own tests point at when they check that {@code counts()} and the Effort panel partition a run the
+     * same way, and because a Set that is re-exported rather than re-spelled cannot drift from the
+     * vocabulary it belongs to.
      */
-    public static final Set<String> UNSETTLED = Set.of("new", "proving");
+    public static final Set<SuspicionStatus> UNSETTLED = SuspicionStatus.UNSETTLED;
+
+    /**
+     * Spellings already reported, so an unrecognised one is loud ONCE rather than on every poll.
+     *
+     * <p>The dashboard reads {@code /api/state} every few seconds and a run is 282 markers; a warning
+     * per unknown row per poll would bury the thing it is warning about within a minute. Per process
+     * rather than per call, because the answer to "what is this state" is the same all afternoon.
+     */
+    private static final Set<String> REPORTED = ConcurrentHashMap.newKeySet();
 
     /** Itemised human-equivalent minutes for a marker that ended in {@code state}. */
     public record Timesheet(Map<String, Integer> items, int totalMin, double hours) {
@@ -151,28 +198,70 @@ public final class WorkModel {
     }
 
     /**
-     * Itemised human-equivalent minutes for a marker that ended in {@code state}.
+     * Itemised human-equivalent minutes for a marker that ended in {@code state} — THE PARSE POINT for
+     * the outcome column, and the one place this file turns a stored string into a judgement.
      *
      * <p>An unrecognised state still costs triage + assess: a human had to find it and look at it
-     * before deciding it was something this model has never heard of.
+     * before deciding it was something this model has never heard of. That answer is unchanged and
+     * deliberately unchanged — but it is no longer SILENT. A string neither vocabulary claims is either
+     * an engine that has grown a state this dashboard has not been taught, or a corrupted row, and both
+     * of those are worth a line in the log naming the value and saying what was charged for it. A
+     * silent baseline here is how eleven literals came to be three modules from the enum in the first
+     * place.
+     *
+     * @param state {@code bugs.state} where an artifact was written, {@code suspicions.status} where
+     *              none was — see {@link #workMetrics}. Both vocabularies arrive here and they are
+     *              tried in that order, artifact first, because that is the column that answers "what
+     *              did settling this actually take".
      */
     public static Timesheet humanTimesheet(String state) {
         Map<String, Integer> items = new LinkedHashMap<>();
         items.put("triage", HUMAN_MIN.get("triage"));
         items.put("assess", HUMAN_MIN.get("assess"));
         String s = state == null ? "" : state;
-        if (REPRODUCED.contains(s)) {
+        MarkerState artifact = MarkerState.of(s);
+        SuspicionStatus status = artifact == null ? SuspicionStatus.of(s) : null;
+        if (artifact != null && MarkerState.REPRODUCED.contains(artifact)) {
             items.put("write_test", HUMAN_MIN.get("write_test"));
             items.put("verify", HUMAN_MIN.get("verify"));
         }
-        if (FIXED.contains(s)) {
+        if (artifact != null && MarkerState.FIXED.contains(artifact)) {
             items.put("write_fix", HUMAN_MIN.get("write_fix"));
         }
-        if (ARGUED.contains(s)) {
+        // A rebuttal is owed on both sides of the vocabulary split: `not-a-bug` is the ARTIFACT state
+        // where the reproducer declined to write a test, and the other three are the CONCLUSIONS the
+        // verdict stage substituted for it. Same charge, two types, and neither set is written out here.
+        if (artifact != null && MarkerState.ARGUED.contains(artifact)
+                || status != null && SuspicionStatus.ARGUED.contains(status)
+                || LEGACY_ARGUED_KIND.equals(s)) {
             items.put("rebut", HUMAN_MIN.get("rebut"));
+        }
+        if (artifact == null && status == null && !LEGACY_ARGUED_KIND.equals(s)) {
+            report("outcome", s);
         }
         int totalMin = items.values().stream().mapToInt(Integer::intValue).sum();
         return new Timesheet(Collections.unmodifiableMap(items), totalMin, round2(totalMin / 60.0));
+    }
+
+    /**
+     * Say, ONCE, that a stored spelling belongs to no vocabulary this model knows — and say what was
+     * done about it.
+     *
+     * <p>WARN AND NOT AN EXCEPTION. This runs behind {@code /api/state} while a prove is in flight:
+     * refusing to serve the page would take the dashboard down over one row, and the page is how anyone
+     * would find out which row. So the honest handling is to keep the arithmetic exactly as it was —
+     * charge the baseline, count the marker as settled — and make the fact that a guess was made
+     * impossible to miss. The number stays defensible and the assumption behind it stops being invisible.
+     *
+     * @param column what was read, so the line says which of the two vocabularies was expected
+     */
+    private static void report(String column, String value) {
+        if (REPORTED.add(column + ' ' + value)) {
+            log.warn("[work] {} = `{}` is a spelling the effort model has no judgement about, so it was "
+                    + "charged triage+assess only and counted as SETTLED. If the engine has grown a "
+                    + "state, add it to MarkerState or SuspicionStatus — every set here is derived from "
+                    + "those, and nothing here decides it separately.", column, value);
+        }
     }
 
     /**
@@ -211,7 +300,16 @@ public final class WorkModel {
         Map<String, Timesheet> perMarker = new LinkedHashMap<>();
         for (Marker s : suspicions) {
             String status = s.status() == null ? "" : s.status();
-            if (UNSETTLED.contains(status)) {
+            // THE PARSE POINT for the queue column. An unrecognised status is NOT unsettled — it counts
+            // as settled and is charged, which is what this has always done and what every total on the
+            // live database was computed with. Unchanged, and now said out loud: this is the read where
+            // an unknown value costs a marker its place in `remaining` and moves the ETA, so it is worth
+            // a line even though the arithmetic is deliberately left alone. `report` fires once per
+            // column-and-spelling, so an afternoon of polling produces one line, not one per poll.
+            SuspicionStatus queued = SuspicionStatus.of(status);
+            if (queued == null) {
+                report("suspicions.status", status);
+            } else if (UNSETTLED.contains(queued)) {
                 continue;
             }
             settled++;
