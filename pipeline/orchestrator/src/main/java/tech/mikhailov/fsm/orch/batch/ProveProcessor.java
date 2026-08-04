@@ -221,7 +221,7 @@ public class ProveProcessor implements ItemProcessor<Suspicion, ProvenMarker> {
 
         // --- FIXER: source-only fix, must pass the reproducer's test, verified green. ---
         BuildFixInput.Outcome fixInput = BuildFixInput.buildFixInput(
-                new BuildFixInput.Request(prep, reproduceItem, testItem, redRun));
+                new BuildFixInput.Request(prep, testItem, redRun, reproduceItem));
         AgentCall fixer = agent(FIXER, prompts.fixerSystem(), fixInput.agentInput(), endpoint);
         ParseFix.Result parsedFix = ParseFix.parseFix(
                 new ParseFix.Request(prep, testItem, redRun, fixer.item()));

@@ -42,18 +42,27 @@ public final class BuildFixInput {
     /**
      * The upstream items this node reads, plus the reproduce verdict the node runs on.
      *
+     * <p>THE COMPONENT ORDER IS THE FAMILY'S ORDER, and that is not cosmetic. Every stage request in
+     * this package is a run of consecutive {@code Object}s, so the compiler cannot tell two of them
+     * apart: a caller that hands the source where the test belongs produces a fixer prompt quoting the
+     * wrong text and still compiles, still passes every unit test here — those build their own
+     * requests — and surfaces only as a whole prove that "did not complete". The one defence is that
+     * ALL of them read {@code prepProver, parseTest, parseFix, reproduce, buildReproduceInput, …},
+     * so the single wiring site writes the same prefix every time and an odd one out is visible on the
+     * page. This record is a subsequence of that order; keep it one.
+     *
      * @param prepProver          {@code Prep prover} — the marker, its branch and the path to fix
-     * @param buildReproduceInput {@code Build reproduce input} — the source that was actually read
      * @param parseTest           {@code Parse test} — the reproducer's test, which is quoted verbatim
      * @param reproduce           the item this node runs on: the {@code run_test reproduce} verdict
+     * @param buildReproduceInput {@code Build reproduce input} — the source that was actually read
      */
-    public record Request(Object prepProver, Object buildReproduceInput, Object parseTest,
-                          Object reproduce) {
+    public record Request(Object prepProver, Object parseTest, Object reproduce,
+                          Object buildReproduceInput) {
 
         /** Read the request out of a posted body. The keys are the stage names, snake-cased. */
         public static Request of(Object body) {
-            return new Request(Json.get(body, "prep_prover"), Json.get(body, "build_reproduce_input"),
-                    Json.get(body, "parse_test"), Json.get(body, "run_test_reproduce"));
+            return new Request(Json.get(body, "prep_prover"), Json.get(body, "parse_test"),
+                    Json.get(body, "run_test_reproduce"), Json.get(body, "build_reproduce_input"));
         }
     }
 

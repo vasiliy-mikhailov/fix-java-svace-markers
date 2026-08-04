@@ -66,7 +66,7 @@ class BuildFixInputTest {
 
     private static Outcome build(Map<String, Object> marker, Object repro, Object bri,
                                  Object parseTest) {
-        return BuildFixInput.buildFixInput(new Request(marker, bri, parseTest, repro));
+        return BuildFixInput.buildFixInput(new Request(marker, parseTest, repro, bri));
     }
 
     @Test

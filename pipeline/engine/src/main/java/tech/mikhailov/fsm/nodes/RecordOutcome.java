@@ -140,14 +140,73 @@ public final class RecordOutcome {
         }
     }
 
-    /** Decide what the marker became. */
+    /**
+     * WHAT THE FIVE UPSTREAM STAGES SAID, read once and in one place.
+     *
+     * <p>Every phase below branches on these and only these, which is the point: the routing, the PR
+     * banner and the {@code infra_reason} column all read THE SAME flags instead of each re-deriving
+     * "did the skeptic answer?" from the raw items. A read that drifted between two of them is a row
+     * whose state, banner and reason disagree about one run — see {@link #prText} and
+     * {@link #infraReason}, which branch on the same conditions with opposite logic.
+     *
+     * <p>The maps stay at the edge, as the class doc requires: this is the wire-shaped request boiled
+     * down INSIDE the node, and nothing outside it ever sees this type.
+     */
+    private record Signals(boolean canProve, boolean reproduced, boolean green, boolean proven,
+                           String skeptic, String decision, String skepticReason, String prReason,
+                           boolean skepticNeverAnswered, boolean curatorNeverRan,
+                           boolean curatorNeverDecided, boolean testUnsound, String jdk,
+                           List<Object> editErrors, List<Object> appliedFiles) {
+
+        /**
+         * "no errors" is not "it applied": zero edits also produces zero errors. A red-&gt;green flip
+         * on a tree nothing changed is test flakiness or build state, never evidence for a diff we
+         * would publish.
+         */
+        boolean notApplied() {
+            return !editErrors.isEmpty() || appliedFiles.isEmpty();
+        }
+    }
+
+    /** What a reviewer reads: the two fields {@link #prText} decides together. */
+    private record PrText(String title, String body) {
+    }
+
+    /**
+     * Decide what the marker became.
+     *
+     * <p>Five phases, in order, each below under the question it answers: what the stages said
+     * ({@link #read}), what BROKE ({@link #infraFailures}), what the marker BECAME ({@link #route}),
+     * what a reviewer reads ({@link #prText}) and which step is on record as having failed
+     * ({@link #infraReason}). Each phase reads the ones before it and none reaches back.
+     */
     public static Outcome recordOutcome(Request req) {
+        Signals sig = read(req);
+        List<String> infra = infraFailures(req, sig);
+        MarkerState state = route(sig, !infra.isEmpty());
+        PrText pr = prText(state, req, sig);
+
         Object j = req.prepProver();
         Object parseTest = req.parseTest();
-        Object parseFix = req.parseFix();
+        return new Outcome(
+                Json.str(j, "suspicion_key"), Json.str(j, "repo"), Json.str(j, "file"),
+                Json.str(j, "title"), sig.jdk(),
+                Json.str(j, "test_path"), Json.str(parseTest, "test_code"),
+                or(Json.str(req.parseFix(), "fix_edits_json"), "[]"),
+                sig.reproduced(), sig.green(),
+                state == MarkerState.PR_READY || state == MarkerState.NEEDS_REVIEW
+                        ? Json.num(parseTest, "test_score") : 0,
+                Json.str(parseTest, "repro_value_verdict"), pr.title(), pr.body(), state,
+                infraReason(state, sig, infra),
+                (long) Json.num(j, "prove_attempts") + 1,
+                Json.str(j, "branch"), req.versions());
+    }
+
+    /** PHASE 1 — read the stage flags. Every {@code ||} and {@code !!} the routing depends on. */
+    private static Signals read(Request req) {
+        Object parseTest = req.parseTest();
         Object repro = req.reproduce();
         Object pm = req.prMaker();
-        Object bri = req.buildReproduceInput();
 
         boolean reproduced = Json.truthy(repro, "red_reproduced");   // REPRODUCER stage result
         boolean green = Json.truthy(pm, "green_passed");             // FIXER stage result
@@ -159,7 +218,8 @@ public final class RecordOutcome {
         String prReason = Json.str(pm, "pr_reason");
 
         // WHICH JUDGE WAS SILENT, as opposed to which judge had doubts. Both settle a proven fix short
-        // of a pull request, and the state alone cannot tell them apart — see the banners below.
+        // of a pull request, and the state alone cannot tell them apart — see the banners in prText,
+        // and the reasons in infraReason, which read these two flags in opposite ways.
         //
         // Strictly false in both cases, exactly as pr_curated is read further down: an ABSENT receipt is
         // a row written before the receipt existed, not a stage that failed. And the skeptic's verdict
@@ -176,6 +236,31 @@ public final class RecordOutcome {
         // answers this stage recognises, so anything else — `n/a` from the fail-closed catch, `unknown`
         // for a missing field, a word the model made up — is the curator failing to decide.
         boolean curatorNeverDecided = !"make".equals(decision) && !"reject".equals(decision);
+
+        // Strictly false, not merely falsy: an ABSENT test_sound means the realness scoring never ran
+        // and says nothing, while `false` is a finding. Treating absence as a finding would park every
+        // marker from a node that had not reported yet.
+        boolean testUnsound = Boolean.FALSE.equals(Json.get(parseTest, "test_sound"));
+
+        return new Signals(canProve, reproduced, green, proven, skeptic, decision, skepticReason,
+                prReason, skepticNeverAnswered, curatorNeverRan, curatorNeverDecided, testUnsound,
+                or(Json.str(pm, "jdk"), Json.str(repro, "jdk")),
+                listOf(Json.get(pm, "edit_errors")), listOf(Json.get(pm, "applied_files")));
+    }
+
+    /**
+     * PHASE 2 — WHAT BROKE: the failures OF THE PIPELINE, in the order they are reported.
+     *
+     * <p>Anything on this list forces {@code infra_error} in {@link #route} and is retried; nothing on
+     * it is ever a judgement about the code. That is the distinction the whole node exists to protect.
+     */
+    private static List<String> infraFailures(Request req, Signals sig) {
+        Object j = req.prepProver();
+        Object parseTest = req.parseTest();
+        Object parseFix = req.parseFix();
+        Object repro = req.reproduce();
+        Object pm = req.prMaker();
+        Object bri = req.buildReproduceInput();
 
         List<String> infra = new ArrayList<>();
         if (Boolean.FALSE.equals(Json.get(j, "branch_ok"))) {
@@ -202,7 +287,7 @@ public final class RecordOutcome {
         // bug. Gated on can_prove because a marker the reproducer DECLINED has no test to execute:
         // reporting that as a build failure would requeue for ever something already judged.
         Object redSummary = Json.get(repro, "red_summary");
-        if (canProve && Json.truthy(repro, "ok")
+        if (sig.canProve() && Json.truthy(repro, "ok")
                 && Boolean.FALSE.equals(Json.get(redSummary, "test_executed"))) {
             infra.add("reproducer test never executed (build failed, jdk "
                     + or(Json.str(repro, "jdk"), "?") + ")" + cause(Json.str(repro, "red_output")));
@@ -226,15 +311,14 @@ public final class RecordOutcome {
         // never went red is decided by the red run alone, and reporting its green build would requeue
         // every not_reproduced marker whose fix run happened not to reach a test.
         Object greenSummary = Json.get(pm, "green_summary");
-        String jdk = or(Json.str(pm, "jdk"), Json.str(repro, "jdk"));
-        if (reproduced && Json.truthy(pm, "ok")
+        if (sig.reproduced() && Json.truthy(pm, "ok")
                 && Boolean.FALSE.equals(Json.get(greenSummary, "test_executed"))
                 && !Json.truthy(greenSummary, "compile_error")) {
             // NOT worded "test never executed (build failed" — that phrase is what opens Verdict's
             // `unprovable` hatch, which argues the marker as one no test ever compiled for. Here a test
             // compiled and went RED; only the verification of the fix never ran.
             infra.add("fix verification never ran the test (green build failed, jdk "
-                    + or(jdk, "?") + ")" + cause(Json.str(pm, "green_output")));
+                    + or(sig.jdk(), "?") + ")" + cause(Json.str(pm, "green_output")));
         }
         // THE OTHER HALF OF THE SAME RUN, and the same hole. The fix run builds RED itself before
         // applying the edits, and that build can be killed too — a cold dependency cache is the obvious
@@ -252,10 +336,10 @@ public final class RecordOutcome {
         // is settled as fix_failed by a green build that DID run the test, which is a fair judgement and
         // needs no help from this half.
         Object fixRedSummary = Json.get(pm, "red_summary");
-        if (reproduced && green && Json.truthy(pm, "ok")
+        if (sig.reproduced() && sig.green() && Json.truthy(pm, "ok")
                 && Boolean.FALSE.equals(Json.get(fixRedSummary, "test_executed"))) {
             infra.add("fix run never re-established red (its own red build ran no test, jdk "
-                    + or(jdk, "?") + ")" + cause(Json.str(pm, "red_output")));
+                    + or(sig.jdk(), "?") + ")" + cause(Json.str(pm, "red_output")));
         }
         if (Json.truthy(repro, "error")) {
             infra.add("run_test(reproduce): " + clip(Json.str(repro, "error")));
@@ -264,12 +348,6 @@ public final class RecordOutcome {
             infra.add("run_test(fix): " + clip(Json.str(pm, "error")));
         }
 
-        List<Object> editErrors = listOf(Json.get(pm, "edit_errors"));
-        List<Object> appliedFiles = listOf(Json.get(pm, "applied_files"));
-        // "no errors" is not "it applied": zero edits also produces zero errors. A red->green flip on
-        // a tree nothing changed is test flakiness or build state, never evidence for a diff we would
-        // publish.
-        boolean notApplied = !editErrors.isEmpty() || appliedFiles.isEmpty();
         if (Json.truthy(parseFix, "fix_parse_failed")) {
             infra.add("fixer reply was not parseable JSON");
         }
@@ -277,35 +355,60 @@ public final class RecordOutcome {
             infra.add("edits rejected by the source-only allowlist: "
                     + Json.str(parseFix, "fix_rejected"));
         }
+        return infra;
+    }
 
-        // Strictly false, not merely falsy: an ABSENT test_sound means the realness scoring never ran
-        // and says nothing, while `false` is a finding. Treating absence as a finding would park every
-        // marker from a node that had not reported yet.
-        boolean testUnsound = Boolean.FALSE.equals(Json.get(parseTest, "test_sound"));
-
-        MarkerState state;
-        if (!infra.isEmpty()) {
-            state = MarkerState.INFRA_ERROR;
-        } else if (proven && notApplied) {
-            state = MarkerState.NEEDS_REVIEW;
+    /**
+     * PHASE 3 — WHAT THE MARKER BECAME. The highest-consequence branch in the pipeline: every
+     * downstream decision keys off the answer.
+     *
+     * <p>ONE chain, first match wins, most specific first — the opposite shape to {@link #infraReason},
+     * which accumulates. Both read {@link Signals} and only {@link Signals}.
+     *
+     * @param infraFailed whether {@link #infraFailures} found anything; if it did, nothing here is a
+     *                    judgement about the code and the marker is retried
+     */
+    private static MarkerState route(Signals sig, boolean infraFailed) {
+        if (infraFailed) {
+            return MarkerState.INFRA_ERROR;
+        } else if (sig.proven() && sig.notApplied()) {
+            return MarkerState.NEEDS_REVIEW;
         // A red->green flip is only evidence about THIS FILE if the test drove the real class. When
         // the class under test is mocked, or never constructed, the flip can come entirely from the
         // test's own stubbing — the execution proof looks identical and establishes nothing.
-        } else if (proven && canProve && testUnsound) {
-            state = MarkerState.NEEDS_REVIEW;
-        } else if (!canProve) {
-            state = MarkerState.NOT_A_BUG;
-        } else if (proven && "sound".equals(skeptic) && "make".equals(decision)) {
-            state = MarkerState.PR_READY;
-        } else if (proven && "sound".equals(skeptic) && "reject".equals(decision)) {
-            state = MarkerState.PR_REJECTED;
-        } else if (proven) {
-            state = MarkerState.NEEDS_REVIEW;            // proven, but the fix-skeptic flagged it
-        } else if (reproduced && !green) {
-            state = MarkerState.FIX_FAILED;
+        } else if (sig.proven() && sig.canProve() && sig.testUnsound()) {
+            return MarkerState.NEEDS_REVIEW;
+        } else if (!sig.canProve()) {
+            return MarkerState.NOT_A_BUG;
+        } else if (sig.proven() && "sound".equals(sig.skeptic()) && "make".equals(sig.decision())) {
+            return MarkerState.PR_READY;
+        } else if (sig.proven() && "sound".equals(sig.skeptic())
+                && "reject".equals(sig.decision())) {
+            return MarkerState.PR_REJECTED;
+        } else if (sig.proven()) {
+            return MarkerState.NEEDS_REVIEW;             // proven, but the fix-skeptic flagged it
+        } else if (sig.reproduced() && !sig.green()) {
+            return MarkerState.FIX_FAILED;
         } else {
-            state = MarkerState.NOT_REPRODUCED;
+            return MarkerState.NOT_REPRODUCED;
         }
+    }
+
+    /**
+     * PHASE 4 — WHAT A REVIEWER READS: the PR title and body, banner included.
+     *
+     * <p>THE COUNTERPART OF {@link #infraReason}, and they must be read together. Both branch on
+     * {@code skepticNeverAnswered} and {@code curatorNeverRan}, and they do it with OPPOSITE logic —
+     * exactly one banner here, an accumulating list there — so a change to one condition that is not
+     * made in both leaves a row whose banner contradicts its own infra_reason. The state alone cannot
+     * tell a judge that was SILENT from a judge that had DOUBTS; this is where the difference is
+     * written down for a human, and {@link #infraReason} is where it is written down for a query.
+     */
+    private static PrText prText(MarkerState state, Request req, Signals sig) {
+        Object j = req.prepProver();
+        Object parseTest = req.parseTest();
+        Object parseFix = req.parseFix();
+        Object pm = req.prMaker();
 
         String prTitle = or(Json.str(pm, "pr_title"),
                 or(Json.str(parseFix, "pr_title"), Json.str(j, "title")));
@@ -317,13 +420,13 @@ public final class RecordOutcome {
                 // is a warning about a particular defect; stacking them buries the reason the fix was
                 // held back, and a banner on a clean draft teaches reviewers to skip them all.
                 String why;
-                if (!editErrors.isEmpty()) {
+                if (!sig.editErrors().isEmpty()) {
                     why = "⚠ FIX NOT FULLY APPLIED — the recorded diff is NOT what was verified: "
-                            + joinJs(editErrors);
-                } else if (appliedFiles.isEmpty()) {
+                            + joinJs(sig.editErrors());
+                } else if (sig.appliedFiles().isEmpty()) {
                     why = "⚠ NO EDIT WAS APPLIED AT ALL — the red→green flip happened on an unchanged "
                             + "tree, so it is test flakiness or build state, not a fix";
-                } else if (testUnsound) {
+                } else if (sig.testUnsound()) {
                     why = "⚠ THE TEST DOES NOT EXERCISE THE REAL CODE — "
                             + Json.str(parseTest, "test_realness")
                             + ". The red→green flip may have been produced by the test's own stubbing "
@@ -334,19 +437,20 @@ public final class RecordOutcome {
                 // them to the prompt, "the model never answered" sends them to the endpoint. Written as
                 // its own line rather than folded into the wording below, because the row is the only
                 // place either of them is ever recorded.
-                } else if (skepticNeverAnswered) {
+                } else if (sig.skepticNeverAnswered()) {
                     why = "⚠ FIX SKEPTIC NEVER ANSWERED — nobody checked this fix for over-fitting, so "
-                            + "it is held back UNCERTIFIED rather than doubted (" + skepticReason + ")";
+                            + "it is held back UNCERTIFIED rather than doubted ("
+                            + sig.skepticReason() + ")";
                 // The skeptic PASSED this fix, so it is not the blocker and must not be named as one.
                 // A row reading "⚠ FIX SKEPTIC (sound):" with an empty reason describes nothing and
                 // reads like a considered outcome — which is the most expensive kind of silence.
-                } else if ("sound".equals(skeptic)) {
-                    why = "⚠ PR CURATOR RETURNED NO DECISION (`" + decision + "`) — the skeptic "
+                } else if ("sound".equals(sig.skeptic())) {
+                    why = "⚠ PR CURATOR RETURNED NO DECISION (`" + sig.decision() + "`) — the skeptic "
                             + "certified this fix SOUND, so nothing here doubts it; it is held back "
                             + "because nobody decided whether to propose it"
-                            + (prReason.isEmpty() ? "" : ": " + prReason);
+                            + (sig.prReason().isEmpty() ? "" : ": " + sig.prReason());
                 } else {
-                    why = "⚠ FIX SKEPTIC (" + skeptic + "): " + skepticReason;
+                    why = "⚠ FIX SKEPTIC (" + sig.skeptic() + "): " + sig.skepticReason();
                 }
                 prBody = why + "\n\n" + prBody;
             }
@@ -359,19 +463,32 @@ public final class RecordOutcome {
                 // quirk, and the reviewer needs to know whether to re-run it or read the draft with
                 // their own eyes. Strictly false again — an absent pr_curated is a curator that was
                 // never asked to report, not one that failed.
-                if (curatorNeverRan) {
+                if (sig.curatorNeverRan()) {
                     prBody = "⚠ PR CURATOR NEVER RAN — this is the fixer's own unreviewed draft ("
-                            + prReason + ")\n\n" + prBody;
+                            + sig.prReason() + ")\n\n" + prBody;
                 }
             }
             default -> { }
         }
+        return new PrText(prTitle, prBody);
+    }
 
-        // Note the asymmetry with the banner above, and that it is deliberate: concatenation renders a
-        // null element as the word "null" where a join renders it as "". Both are kept, because
-        // infra_reason is machine-greppable audit and the banner is prose for a human.
+    /**
+     * PHASE 5 — WHICH STEP IS ON RECORD AS HAVING FAILED: the {@code infra_reason} column.
+     *
+     * <p>Everything {@link #infraFailures} found, plus the two things that are reported WITHOUT moving
+     * the state: an edit that did not apply, and a judging call that failed closed.
+     *
+     * <p>THE COUNTERPART OF {@link #prText} — read its note. This chain ACCUMULATES where the banner
+     * picks exactly one, over the same {@code skepticNeverAnswered} / {@code curatorNeverRan}
+     * conditions, so the two are edited together or not at all.
+     */
+    private static String infraReason(MarkerState state, Signals sig, List<String> infra) {
+        // Note the asymmetry with the banner in prText, and that it is deliberate: concatenation
+        // renders a null element as the word "null" where a join renders it as "". Both are kept,
+        // because infra_reason is machine-greppable audit and the banner is prose for a human.
         List<String> reasons = new ArrayList<>(infra);
-        for (Object e : editErrors) {
+        for (Object e : sig.editErrors()) {
             reasons.add("edit not applied: " + e);
         }
 
@@ -386,33 +503,21 @@ public final class RecordOutcome {
         // is then the whole question "which markers were downgraded by a model call that failed?" — asked
         // of the artifact, which survives, rather than of a log, which rotates. A stage that ANSWERED,
         // even unusably, even to say it has doubts, adds nothing here: nothing broke.
-        if (state == MarkerState.NEEDS_REVIEW && skepticNeverAnswered) {
-            reasons.add("fix skeptic never answered: " + skepticReason);
+        if (state == MarkerState.NEEDS_REVIEW && sig.skepticNeverAnswered()) {
+            reasons.add("fix skeptic never answered: " + sig.skepticReason());
         // …and ONLY when the curator is what is holding the marker: the skeptic passed the fix and no
         // decision came back. Without the second half this clause fires on every needs_review row whose
         // skeptic said `sound` — including the ones the curator answered `make` for, which are held back
         // by an unapplied edit or an unsound test and have nothing wrong with their curator at all.
-        } else if (state == MarkerState.NEEDS_REVIEW && "sound".equals(skeptic)
-                && curatorNeverDecided) {
+        } else if (state == MarkerState.NEEDS_REVIEW && "sound".equals(sig.skeptic())
+                && sig.curatorNeverDecided()) {
             reasons.add("pr curator never answered: "
-                    + or(prReason, "pr_decision `" + decision + "`"));
-        } else if (state == MarkerState.PR_READY && curatorNeverRan) {
+                    + or(sig.prReason(), "pr_decision `" + sig.decision() + "`"));
+        } else if (state == MarkerState.PR_READY && sig.curatorNeverRan()) {
             reasons.add("pr curator never answered: "
-                    + or(prReason, "the curator gave no reason"));
+                    + or(sig.prReason(), "the curator gave no reason"));
         }
-
-        return new Outcome(
-                Json.str(j, "suspicion_key"), Json.str(j, "repo"), Json.str(j, "file"),
-                Json.str(j, "title"), jdk,
-                Json.str(j, "test_path"), Json.str(parseTest, "test_code"),
-                or(Json.str(parseFix, "fix_edits_json"), "[]"),
-                reproduced, green,
-                state == MarkerState.PR_READY || state == MarkerState.NEEDS_REVIEW
-                        ? Json.num(parseTest, "test_score") : 0,
-                Json.str(parseTest, "repro_value_verdict"), prTitle, prBody, state,
-                String.join("; ", reasons),
-                (long) Json.num(j, "prove_attempts") + 1,
-                Json.str(j, "branch"), req.versions());
+        return String.join("; ", reasons);
     }
 
     private static String or(String value, String fallback) {

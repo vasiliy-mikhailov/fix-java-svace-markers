@@ -80,9 +80,9 @@ final class InputFamilyDiff {
             }
             default -> {
                 return BuildFixInput.buildFixInput(new BuildFixInput.Request(
-                        Json.get(input, "prep_prover"), Json.get(input, "build_reproduce_input"),
-                        Json.get(input, "parse_test"),
-                        Json.get(input, "run_test_reproduce"))).toMap();
+                        Json.get(input, "prep_prover"), Json.get(input, "parse_test"),
+                        Json.get(input, "run_test_reproduce"),
+                        Json.get(input, "build_reproduce_input"))).toMap();
             }
         }
     }

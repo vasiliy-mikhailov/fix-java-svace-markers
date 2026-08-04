@@ -219,7 +219,10 @@ public final class Verdict {
     }
 
     /**
-     * Argue, compose or retry — and decide what the suspicion's next status is.
+     * Argue, compose or retry — and decide what the suspicion's next status is. TWO decisions, and the
+     * word "and" is the whole reason they are {@link #argue} and {@link #nextSuspicionStatus} rather
+     * than one method: what is argued about the code, and where the marker goes next, answer different
+     * questions from different evidence. This method is the wiring and the row it writes.
      *
      * @param log the run log. Two outcomes leave NOTHING in the row at all — a retry, and a verdict
      *            call that produced no text — so this is their only trace, and it is asserted on like
@@ -228,9 +231,84 @@ public final class Verdict {
     public static Map<String, Object> verdict(Request req, Llm.Http http, Consumer<String> log) {
         Object rec = req.item();                                     // Record outcome
         Object j = req.prepProver();
-        Object parseTest = req.parseTest();
-        Object repro = req.reproduce();
         Object bri = req.buildReproduceInput();
+        // The state AS IT ARRIVED, concatenated at the read so that a row with no state and a row
+        // whose state is an explicit null still read differently downstream. Both of its users — the
+        // composed verdict and the routing-gap note — want the arriving state, not the one a verdict
+        // may replace it with further down. Read HERE, once, and handed to both decisions, so neither
+        // can quietly start reading the replaced one.
+        String stateText = Llm.concat(rec, "state");
+
+        // THE TWO DECISIONS, IN ORDER. They are independent — the first says what is argued, the
+        // second says where the suspicion goes next — and everything the second is allowed to know
+        // about the first travels in the Argument. Nothing else passes between them.
+        Argument argued = argue(req, http, log, stateText);
+        Suspicion suspicion = nextSuspicionStatus(argued, rec, stateText);
+
+        Map<String, Object> out = spread(rec);
+        // THE ARTIFACT'S OWN RECORD of a call that failed. `verdict_confidence` carries "error: …", and
+        // it is not one of the 21 columns of the bugs table — so without this line the row keeps NO trace
+        // of the failure, and an empty verdict_text is what a marker nobody argued looks like anyway.
+        // Appended, never overwritten: infra_reason is the audit trail of the whole prove, and the
+        // wording matches the two clauses Record outcome writes for the other fail-closed stages, so one
+        // query over `never answered` finds every marker any judging call was lost on.
+        if (!argued.callFailure().isEmpty()) {
+            out.put("infra_reason", also(Js.orEmptyString(Json.get(rec, "infra_reason")),
+                    "verdict writer never answered: " + argued.callFailure()));
+        }
+        out.put("state", argued.state());
+        out.put("retry", argued.retry());
+        out.put("verdict_text", argued.text());
+        out.put("verdict_kind", argued.kind());
+        out.put("verdict_confidence", argued.confidence());
+        out.put("suspicion_status", suspicion.status());
+        out.put("suspicion_note", suspicion.note());
+        // The anchor and the checker ride along so the verdicts table reads on its own: a verdict about
+        // a marker that has since moved is worth less, and the reader has to be able to see that.
+        out.put("anchor", or(Json.get(bri, "anchor"), ""));
+        out.put("anchor_status", or(Json.get(bri, "anchor_status"), ""));
+        out.put("svace_checker", or(Json.get(j, "svace_checker"), ""));
+        // LAST, AND ONLY WHEN THERE IS SOMETHING TO SAY. An argument that was attempted — however it
+        // went — writes no key here, so the item a normal run returns keeps exactly the keys, in exactly
+        // the order, that it always had. @see #SKIPPED
+        if (argued.skipped()) {
+            out.put("verdict_status", SKIPPED);
+        }
+        return out;
+    }
+
+    /**
+     * WHAT THE ARGUMENT CAME TO — and the ONLY channel from the first decision to the second.
+     *
+     * <p>The three verdict columns are the answer; the other four are the facts about HOW the stage
+     * reached it that the status routing needs, and they used to be mutable locals set in one if-chain
+     * and re-read in three arms of another 150 lines below. Nothing writes these after {@link #argue}
+     * returns, so "who set this, and did it run before or after me?" is no longer a question the router
+     * can be got wrong about.
+     *
+     * @param state the state the row settles at: the one it arrived with, unless a verdict replaced it.
+     */
+    private record Argument(Object state, String text, String kind, String confidence,
+                            String callFailure, boolean skipped, boolean retry) {
+    }
+
+    /**
+     * DECISION ONE: what, if anything, is argued about this marker — and it is the only one of the two
+     * that costs a model call, on the three routes that reach {@link #argumentPrompt}.
+     *
+     * <p>Argue, compose or retry. Every route ends in an {@link Argument}, including the ones that
+     * deliberately argue nothing, because "nothing was argued, and here is which nothing" is what the
+     * row has to be able to say.
+     *
+     * @param stateText the state AS IT ARRIVED — see the read in {@link #verdict}. The logs and the
+     *                  composed verdicts are worded from it, never from the state this method may
+     *                  replace it with.
+     */
+    private static Argument argue(Request req, Llm.Http http, Consumer<String> log,
+                                  String stateText) {
+        Object rec = req.item();                                     // Record outcome
+        Object j = req.prepProver();
+        Object parseTest = req.parseTest();
         // the PR curator's repo-specific reasoning, needed to explain a proven-but-not-proposed outcome
         String pmReason = Js.orEmptyString(Json.get(req.prMaker(), "pr_reason"));
 
@@ -247,22 +325,19 @@ public final class Verdict {
         boolean skipped = false;
         boolean retry = false;
         Object state = Json.get(rec, "state");
-        // The state AS IT ARRIVED, concatenated at the read so that a row with no state and a row
-        // whose state is an explicit null still read differently downstream. Both of its users — the
-        // composed verdict and the routing-gap note — want the arriving state, not the one a verdict
-        // may replace it with further down.
-        String stateText = Llm.concat(rec, "state");
 
         // `Number(x) || 1`: an uncounted attempt is the FIRST attempt, not the zeroth. Json.num folds
-        // NaN to 0, so the two together are the whole fallback chain.
-        double attempts0 = Json.num(rec, "attempts");
-        if (attempts0 == 0) {
-            attempts0 = 1;
+        // NaN to 0, so the two together are the whole fallback chain. NAMED for that reading, because
+        // the status routing reads the SAME column with `|| 0` — see `recordedAttempts` in
+        // {@link #nextSuspicionStatus}. Confusing the two swaps a retry for a permanent retirement.
+        double attemptNo = Json.num(rec, "attempts");
+        if (attemptNo == 0) {
+            attemptNo = 1;
         }
         String infraReason = Js.orEmptyString(Json.get(rec, "infra_reason"));
         boolean buildOnly = BUILD_FAILED.matcher(infraReason).find()
                 && !REAL_INFRA.matcher(infraReason).find();
-        boolean exhaustedBuild = "infra_error".equals(state) && attempts0 >= MAX_ATTEMPTS && buildOnly;
+        boolean exhaustedBuild = "infra_error".equals(state) && attemptNo >= MAX_ATTEMPTS && buildOnly;
 
         // EVERY route that retires a marker without a patch has to land here, or the marker is dropped
         // silently. There are three, and missing one is invisible: the row just reads `rejected` with
@@ -278,10 +353,10 @@ public final class Verdict {
             // cannot write a runtime test for a dead store or a hard-coded constant, so it would only
             // burn a build.
             boolean argueOnly = "argue".equals(or(Json.get(j, "settle_by"), "test"));
-            if (!exhaustedBuild && !argueOnly && attempts0 < req.minAttempts()) {
+            if (!exhaustedBuild && !argueOnly && attemptNo < req.minAttempts()) {
                 retry = true;
                 log.accept("[verdict] " + Llm.concat(j, "suspicion_key") + " attempt "
-                        + Js.numberToString(attempts0) + " — retrying before writing a verdict");
+                        + Js.numberToString(attemptNo) + " — retrying before writing a verdict");
             // AFTER the retry gate, and that ordering is the whole design of the toggle. The samples a
             // non-reproduction is worth belong to the REPRODUCER, which is the prompt this toggle exists
             // to iterate on; skipping the argument must make a run cheaper, not settle markers a sample
@@ -295,7 +370,7 @@ public final class Verdict {
                         + " — the argument is switched off; `" + stateText
                         + "` settles with no verdict written");
             } else {
-                String prompt = argumentPrompt(req, http, exhaustedBuild, attempts0);
+                String prompt = argumentPrompt(req, http, exhaustedBuild, attemptNo);
                 try {
                     Object r = http.request(Llm.chat(req.llm(), prompt, 0.2));
                     // The robust extractor, not indexOf('{')..lastIndexOf('}'): verdict prose routinely
@@ -372,8 +447,8 @@ public final class Verdict {
         } else if ("infra_error".equals(state)) {
             // Below the retry ceiling this is not an outcome at all — the marker goes back on the queue
             // and must NOT carry a verdict, or a transient failure would read as a decision.
-            if (attempts0 >= MAX_ATTEMPTS) {
-                ExecVerdict.Verdict vi = stuck(rec, attempts0);
+            if (attemptNo >= MAX_ATTEMPTS) {
+                ExecVerdict.Verdict vi = stuck(rec, attemptNo);
                 verdictKind = vi.kind().wire();
                 verdictText = vi.text();
             }
@@ -383,7 +458,7 @@ public final class Verdict {
             // read one table and know where every marker landed.
             ExecVerdict.Verdict v = ExecVerdict.of(stateText,
                     evidence(rec, parseTest, req.parseFix(), Json.get(rec, "infra_reason"),
-                            attempts0, pmReason));
+                            attemptNo, pmReason));
             verdictKind = v.kind().wire();
             verdictText = v.text();
         }
@@ -399,24 +474,50 @@ public final class Verdict {
         // The same row with any OTHER infra reason gets the full "NOT SETTLED" text. Compose it here
         // too, so the hatch can only ever ADD an argument, never subtract the fallback.
         if (exhaustedBuild && JsText.isBlank(verdictText)) {
-            ExecVerdict.Verdict vi = stuck(rec, attempts0);
+            ExecVerdict.Verdict vi = stuck(rec, attemptNo);
             verdictKind = vi.kind().wire();
             verdictText = vi.text();
         }
 
-        // The suspicion's next status is decided HERE, in code, and must stay here. As a nested
-        // ternary in a template expression it is one 300-character line: one wrong branch silently
-        // retires a marker, and there is nothing a test can reach.
-        double attempts = Json.num(rec, "attempts");     // `Number(x) || 0` — NOT the `|| 1` above
+        return new Argument(state, verdictText, verdictKind, verdictConfidence, callFailure, skipped,
+                retry);
+    }
+
+    /** WHERE THE SUSPICION GOES NEXT, and the note that is the whole of its audit trail. */
+    private record Suspicion(String status, String note) {
+    }
+
+    /**
+     * DECISION TWO: the suspicion's next status is decided HERE, in code, and must stay here. As a
+     * nested ternary in a template expression it is one 300-character line: one wrong branch silently
+     * retires a marker, and there is nothing a test can reach.
+     *
+     * <p>It is arithmetic over the row and the {@link Argument} — no request, no endpoint, no log. That
+     * is what makes "an {@code infra_error} at attempt 2 goes back to {@code new}" a fact about this
+     * method rather than something only reachable by driving a model call.
+     *
+     * @param stateText the state AS IT ARRIVED, for the notes that name it back to a reader. The
+     *                  BRANCHING is on {@code argued.state()}, which a verdict may have replaced.
+     */
+    private static Suspicion nextSuspicionStatus(Argument argued, Object rec, String stateText) {
+        Object state = argued.state();
+        String callFailure = argued.callFailure();
+        boolean skipped = argued.skipped();
+        // `Number(x) || 0` — the count AS RECORDED. NOT `attemptNo` in argue(), which reads this same
+        // column with `|| 1` because an uncounted attempt is the FIRST one. The two reads used to sit
+        // 152 lines apart in one method under near-identical names; confusing them swaps a retry for a
+        // permanent retirement.
+        double recordedAttempts = Json.num(rec, "attempts");
         String suspicionStatus;
         String suspicionNote = "";
         if ("infra_error".equals(state)) {
             // Never a verdict about the code: retry, but not forever.
-            suspicionStatus = attempts >= MAX_ATTEMPTS ? "infra_stuck" : "new";
+            suspicionStatus = recordedAttempts >= MAX_ATTEMPTS ? "infra_stuck" : "new";
             // The note is the entire audit trail for a row that goes back on the queue: which attempt,
             // and why.
-            suspicionNote = "[prover] infra failure (attempt " + Js.numberToString(attempts) + "/"
-                    + MAX_ATTEMPTS + "): " + Js.orEmptyString(Json.get(rec, "infra_reason"));
+            suspicionNote = "[prover] infra failure (attempt "
+                    + Js.numberToString(recordedAttempts) + "/" + MAX_ATTEMPTS + "): "
+                    + Js.orEmptyString(Json.get(rec, "infra_reason"));
             // THE EXHAUSTED-BUILD HATCH, WITH THE ARGUMENT OFF. This row would have been argued and
             // downgraded to `unprovable`; instead it parks `infra_stuck` carrying the composed fallback,
             // which is character-for-character what a marker gets when the endpoint is down. Appended,
@@ -425,10 +526,10 @@ public final class Verdict {
                 suspicionNote = also(suspicionNote, SKIPPED_LABEL + "the argument is switched off, so "
                         + "this marker was never argued");
             }
-        } else if (retry) {
+        } else if (argued.retry()) {
             suspicionStatus = "new";
-            suspicionNote = "[prover] did not reproduce on attempt " + Js.numberToString(attempts)
-                    + "; retrying before a verdict is written";
+            suspicionNote = "[prover] did not reproduce on attempt "
+                    + Js.numberToString(recordedAttempts) + "; retrying before a verdict is written";
         } else if ("pr_ready".equals(state) || "needs_review".equals(state)
                 || "pr_rejected".equals(state)) {
             suspicionStatus = "verified";
@@ -439,7 +540,7 @@ public final class Verdict {
             suspicionStatus = (String) state;
             // One dashboard column: unbounded, an 8k argument makes the table unreadable, and the kind
             // has to lead so the row can be scanned without opening it.
-            suspicionNote = "[verdict/" + verdictKind + "] " + head(verdictText, NOTE_CUT);
+            suspicionNote = "[verdict/" + argued.kind() + "] " + head(argued.text(), NOTE_CUT);
         // NOT the `[gap]` label below, and not the failed-call one either. The routing worked, the
         // endpoint was never asked, and the marker is RETIRED rather than requeued: by the time the
         // argument was due the reproducer's sampling budget was already spent, so going round again
@@ -473,37 +574,7 @@ public final class Verdict {
             suspicionNote = "[gap] retired as `" + stateText + "` with no verdict written — "
                     + "this marker was never argued; the verdict stage does not route this state";
         }
-
-        Map<String, Object> out = spread(rec);
-        // THE ARTIFACT'S OWN RECORD of a call that failed. `verdict_confidence` carries "error: …", and
-        // it is not one of the 21 columns of the bugs table — so without this line the row keeps NO trace
-        // of the failure, and an empty verdict_text is what a marker nobody argued looks like anyway.
-        // Appended, never overwritten: infra_reason is the audit trail of the whole prove, and the
-        // wording matches the two clauses Record outcome writes for the other fail-closed stages, so one
-        // query over `never answered` finds every marker any judging call was lost on.
-        if (!callFailure.isEmpty()) {
-            out.put("infra_reason", also(Js.orEmptyString(Json.get(rec, "infra_reason")),
-                    "verdict writer never answered: " + callFailure));
-        }
-        out.put("state", state);
-        out.put("retry", retry);
-        out.put("verdict_text", verdictText);
-        out.put("verdict_kind", verdictKind);
-        out.put("verdict_confidence", verdictConfidence);
-        out.put("suspicion_status", suspicionStatus);
-        out.put("suspicion_note", suspicionNote);
-        // The anchor and the checker ride along so the verdicts table reads on its own: a verdict about
-        // a marker that has since moved is worth less, and the reader has to be able to see that.
-        out.put("anchor", or(Json.get(bri, "anchor"), ""));
-        out.put("anchor_status", or(Json.get(bri, "anchor_status"), ""));
-        out.put("svace_checker", or(Json.get(j, "svace_checker"), ""));
-        // LAST, AND ONLY WHEN THERE IS SOMETHING TO SAY. An argument that was attempted — however it
-        // went — writes no key here, so the item a normal run returns keeps exactly the keys, in exactly
-        // the order, that it always had. @see #SKIPPED
-        if (skipped) {
-            out.put("verdict_status", SKIPPED);
-        }
-        return out;
+        return new Suspicion(suspicionStatus, suspicionNote);
     }
 
     /**
