@@ -5,47 +5,55 @@ import org.slf4j.LoggerFactory;
 import org.springframework.batch.item.Chunk;
 import org.springframework.batch.item.ItemWriter;
 import tech.mikhailov.fsm.orch.dao.BugDao;
+import tech.mikhailov.fsm.orch.dao.JdbcArtifactRepository;
+import tech.mikhailov.fsm.orch.dao.JdbcMarkerRepository;
 import tech.mikhailov.fsm.orch.dao.SuspicionDao;
+import tech.mikhailov.fsm.orch.usecase.RecordProvenMarker;
+import tech.mikhailov.fsm.orch.usecase.SettlementPresenter;
 
 /**
- * The two writes at the end of the workflow — {@code Upsert bug} then {@code Update suspicion}.
+ * SPRING BATCH, DRIVING {@link RecordProvenMarker} — the two writes at the end of the workflow.
  *
- * <p>IN THAT ORDER, AND IN ONE TRANSACTION. The order is the graph's, and it matters on its own: the
- * artifact is written before the marker is retired, so a failure between them leaves a marker still
- * claimed rather than a marker settled with nothing to show for it. The transaction is the chunk's, so
- * in practice neither half can land without the other — a settled status whose artifact is missing is
- * the one inconsistency a reviewer cannot diagnose from the dashboard.
+ * <p>The ORDER of those writes, and what a missing marker row means, are the use case's; this class
+ * supplies the two repositories, walks the chunk and says what happened. It is its own presenter for
+ * the same reason the processor is: the one thing this write can report is a warning, and a use case
+ * that logged it would be a use case that could not be tested without a logging framework.
  *
- * <p>UPSERT, NEVER INSERT: a marker can be proved more than once, because an infra failure returns it
- * to the queue and the next attempt writes the same {@code suspicion_key} again — after a 20-minute
- * build. Keyed replacement means the last completed attempt wins, which is also the one whose
- * {@code prove_attempts} the suspicion row is carrying.
+ * <p>WHY THE WRITES ARE STILL HERE AND NOT AT THE END OF THE PROVE. The chunk is one transaction but
+ * two PHASES, and the step declares skips for the processor and none for the writer. A write moved up
+ * into the processor would be attributed to the wrong phase the day one fails — {@code onSkipInProcess}
+ * instead of {@code onSkipInWrite} — which is a change to what the step does, not to where the code
+ * lives. Splitting the interactor at the seam the framework already has costs one extra call and moves
+ * nothing.
+ *
+ * <p>ONE TRANSACTION, in practice: the chunk's. So neither half can land without the other, and a
+ * settled status whose artifact is missing — the one inconsistency a reviewer cannot diagnose from the
+ * dashboard — cannot arise from an ordinary failure.
  */
-public class ProveWriter implements ItemWriter<ProvenMarker> {
+public class ProveWriter implements ItemWriter<ProvenMarker>, SettlementPresenter {
 
     private static final Logger log = LoggerFactory.getLogger(ProveWriter.class);
 
-    private final BugDao bugs;
-    private final SuspicionDao suspicions;
+    private final RecordProvenMarker record;
 
     public ProveWriter(BugDao bugs, SuspicionDao suspicions) {
-        this.bugs = bugs;
-        this.suspicions = suspicions;
+        this.record = new RecordProvenMarker(new JdbcArtifactRepository(bugs),
+                new JdbcMarkerRepository(suspicions), this);
     }
 
     @Override
     public void write(Chunk<? extends ProvenMarker> chunk) {
         for (ProvenMarker marker : chunk) {
-            bugs.upsert(marker.bug());
-            int settled = suspicions.settle(marker.dedupKey(), marker.status(), marker.note(),
-                    marker.attempts(), marker.anchor(), marker.anchorStatus());
-            if (settled != 1) {
-                // The row was claimed by this run, so it existed a moment ago. Zero means something
-                // deleted it underneath the prove — a re-ingest is the only thing that does — and the
-                // artifact just written is now an orphan. Loud, because it is invisible otherwise.
-                log.warn("[prove] {} was settled as '{}' but no suspicion row matched; it was most "
-                        + "likely re-ingested mid-prove", marker.dedupKey(), marker.status());
-            }
+            record.record(marker.settlement());
         }
+    }
+
+    @Override
+    public void presentOrphaned(Orphaned orphaned) {
+        // The row was claimed by this run, so it existed a moment ago. Zero means something deleted it
+        // underneath the prove — a re-ingest is the only thing that does — and the artifact just
+        // written is now an orphan. Loud, because it is invisible otherwise.
+        log.warn("[prove] {} was settled as '{}' but no suspicion row matched; it was most likely "
+                + "re-ingested mid-prove", orphaned.marker(), orphaned.status().wire());
     }
 }

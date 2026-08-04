@@ -5,6 +5,9 @@ import java.util.Map;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.JsValue;
 import tech.mikhailov.fsm.nodes.ParseMarkers;
+import tech.mikhailov.fsm.orch.domain.Marker;
+import tech.mikhailov.fsm.orch.domain.MarkerId;
+import tech.mikhailov.fsm.orch.domain.MarkerSnapshot;
 
 /**
  * One row of the {@code suspicions} table — the backlog item the prover leases.
@@ -50,6 +53,20 @@ public record Suspicion(String dedupKey, String markerId, String repo, String br
                 row.anchorStatus(), row.category(), row.severity(), row.svaceChecker(),
                 row.svaceSeverity(), row.title(), row.description(), row.evidence(), row.status(),
                 row.note(), row.proveAttempts(), row.version(), row.methodKey());
+    }
+
+    /**
+     * THIS ROW AS THE THING WITH A LIFECYCLE — the one place a persisted row becomes a {@link Marker}.
+     *
+     * <p>The mapping is deliberately one-way and deliberately narrow. This record is the PERSISTENCE
+     * shape: 23 columns whose spellings 282 live rows fix permanently, read and written by the DAO's
+     * row mapper. {@link Marker} is what the prove path reasons about — an identity, the count of
+     * attempts that reached the engine, and the row as the engine reads it — and it has no columns at
+     * all. Both drivers of the prove use case come through here, so there is one answer to "what is the
+     * marker behind this row" rather than one per call site.
+     */
+    public Marker marker() {
+        return new Marker(MarkerId.of(dedupKey), proveAttempts, new MarkerSnapshot(toMap()));
     }
 
     /**

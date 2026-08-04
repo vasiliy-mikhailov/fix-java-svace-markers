@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.MarkerState;
+import tech.mikhailov.fsm.orch.domain.Artifact;
 
 /**
  * One row of the {@code bugs} table — the artifact a marker leaves behind: the test, the diff, the
@@ -44,13 +45,19 @@ import tech.mikhailov.fsm.lib.MarkerState;
  * verbatim, and {@link #markerState()} is the one place it is interpreted — through
  * {@link MarkerState#of(String)}, which returns null for a state this enum does not claim rather than
  * guessing.
+ *
+ * <p>IT IMPLEMENTS {@link Artifact}, WHICH IS THE INNER TYPE, and the direction is the point: the prove
+ * use case depends on a one-method interface it declares itself, and this outer record satisfies it
+ * with the accessor it already had. Re-declaring these 22 columns inside the domain would create the
+ * second column list {@code DashboardService}'s own javadoc argues against — one that can drift from
+ * the one the pipeline uses — and buy nothing, because no rule in the domain branches on any of them.
  */
 public record Bug(String suspicionKey, String repo, String file, String title, String jdk,
                   String testPath, String testCode, String fixDiff, boolean redVerified,
                   boolean greenVerified, double valueScore, String valueVerdict, String prTitle,
                   String prBody, String state, String infraReason, String branch, String versions,
                   String verdictText, String verdictKind, String svaceChecker,
-                  String verdictStatus) {
+                  String verdictStatus) implements Artifact {
 
     /**
      * The row as every caller that predates the skip toggle builds it: an argument was attempted, so
