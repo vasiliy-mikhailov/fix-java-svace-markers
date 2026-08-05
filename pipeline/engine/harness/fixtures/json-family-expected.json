@@ -1,17 +1,29 @@
 {
   "cases": 1354,
-  "identical": 1272,
-  "divergent": 82,
-  "divergenceClasses": 11,
+  "identical": 1226,
+  "divergent": 128,
+  "divergenceClasses": 20,
   "bySuite_totalThenIdentical": {
     "extract": [955,955],
-    "parse_test": [238,174],
-    "parse_fix": [161,143]
+    "parse_test": [238,143],
+    "parse_fix": [161,128]
   },
   "classes": [
     {
       "cases": 12,
-      "signature": "parse_test | ok | ok | field=repro_root_cause [js num: vs java str:]"
+      "signature": "parse_test | ok | ok | field=test_code [js [ vs java {]"
+    },
+    {
+      "cases": 12,
+      "signature": "parse_test | ok | ok | field=test_code [js 1,2\",\" vs java []"
+    },
+    {
+      "cases": 12,
+      "signature": "parse_test | ok | ok | field=can_prove [js false, vs java true,\"]"
+    },
+    {
+      "cases": 12,
+      "signature": "parse_test | ok | ok | field=repro_value_verdict [js \" vs java 0\",\"re]"
     },
     {
       "cases": 12,
@@ -22,12 +34,16 @@
       "signature": "parse_test | ok | ok | field=repro_value_verdict [js { vs java str:]"
     },
     {
-      "cases": 27,
+      "cases": 21,
       "signature": "parse_test | ok | ok | field=log line only"
     },
     {
       "cases": 1,
       "signature": "parse_test | ok | ok | field=repro_root_cause [js null vs java str:]"
+    },
+    {
+      "cases": 1,
+      "signature": "parse_test | ok | ok | field=parse_failed [js false, vs java true,\"]"
     },
     {
       "cases": 1,
@@ -38,12 +54,32 @@
       "signature": "parse_fix | ok | ok | field=pr_title [js num: vs java str:]"
     },
     {
+      "cases": 1,
+      "signature": "parse_fix | ok | ok | field=fix_rejected [js a\",\"fi vs java []"
+    },
+    {
+      "cases": 1,
+      "signature": "parse_fix | ok | ok | field=fix_rejected [js [ vs java {]"
+    },
+    {
       "cases": 7,
       "signature": "parse_fix | ok | ok | field=test_code [js num: vs java str:]"
     },
     {
       "cases": 7,
       "signature": "parse_fix | ok | ok | field=test_code [js { vs java str:]"
+    },
+    {
+      "cases": 7,
+      "signature": "parse_fix | ok | ok | field=test_code [js \" vs java false\"]"
+    },
+    {
+      "cases": 3,
+      "signature": "parse_fix | ok | ok | field=jdk [js 21\",\"m vs java 0\",\"mo]"
+    },
+    {
+      "cases": 3,
+      "signature": "parse_fix | ok | ok | field=jdk [js 21\",\"m vs java false\"]"
     },
     {
       "cases": 1,

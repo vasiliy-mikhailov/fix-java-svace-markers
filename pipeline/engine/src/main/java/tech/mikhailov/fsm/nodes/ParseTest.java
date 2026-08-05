@@ -3,9 +3,9 @@ package tech.mikhailov.fsm.nodes;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import tech.mikhailov.fsm.lib.Js;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Json;
-import tech.mikhailov.fsm.lib.JsText;
+import tech.mikhailov.fsm.lib.SourceText;
 import tech.mikhailov.fsm.lib.JsonExtract;
 import tech.mikhailov.fsm.lib.TestRealness;
 
@@ -106,22 +106,22 @@ public final class ParseTest {
     /** Parse the reproducer's reply. */
     public static Result parseTest(Request req) {
         Object j = req.prepProver();
-        // Js.orEmptyString, not Json.str: the contract is `($json.output || '').toString()`, and the
+        // Values.text, not Json.str: the contract is `($json.output || '').toString()`, and the
         // two disagree for a value that is not a string. `String(["{...}"])` is the element joined with
         // commas — which PARSES — while a JSON serialiser would produce `["{...}"]`, which does not.
         // The difference lands on parse_failed, so it decides whether the marker is retried.
-        String text = Js.orEmptyString(Json.get(req.reproducer(), "output"));
+        String text = Values.text(Json.get(req.reproducer(), "output"));
 
         // A crashed agent (no `output` at all) and a malformed reply both land here; both are flagged
         // parse_failed so neither can read as the verdict 'not-a-bug'.
-        Map<String, Object> r = JsText.isBlank(text) ? null : JsonExtract.extractJson(text, KEYS);
+        Map<String, Object> r = SourceText.isBlank(text) ? null : JsonExtract.extractJson(text, KEYS);
         boolean parseFailed = r == null;
         // Strictly a boolean: a reply that answered in prose, or one whose can_prove came back as the
         // STRING "true", has not answered the question this stage asked.
         if (!parseFailed && !(Json.get(r, "can_prove") instanceof Boolean)) {
             parseFailed = true;
         }
-        String testCode = Js.orEmptyString(Json.get(r, "test_code"));
+        String testCode = Values.text(Json.get(r, "test_code"));
         boolean canProve = Boolean.TRUE.equals(Json.get(r, "can_prove")) && !testCode.isEmpty();
 
         Map<String, Object> body = new LinkedHashMap<>();
@@ -134,7 +134,7 @@ public final class ParseTest {
         body.put("test_code", testCode);                  // handed on verbatim: the runner compiles it
         body.put("fix_edits", List.of());                 // the reproduce run must carry no fix at all
 
-        String className = Js.orEmptyString(Json.get(j, "class_name"));
+        String className = Values.text(Json.get(j, "class_name"));
         TestRealness.Result realness = TestRealness.testRealness(testCode, className);
         String reasons = String.join("; ", realness.reasons());
         // An operator greps this line by class name, so the name has to survive into it.
@@ -142,8 +142,8 @@ public final class ParseTest {
                 + " score=" + realness.score() + " :: " + reasons;
 
         return new Result(j, canProve, parseFailed, testCode, realness.sound(), realness.score(),
-                reasons, realness.mocksSubject(), Js.orEmptyString(Json.get(r, "value_verdict")),
-                Js.orEmptyString(Json.get(r, "root_cause")), body, log);
+                reasons, realness.mocksSubject(), Values.text(Json.get(r, "value_verdict")),
+                Values.text(Json.get(r, "root_cause")), body, log);
     }
 
     /**

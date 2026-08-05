@@ -5,7 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import tech.mikhailov.fsm.lib.Json;
-import tech.mikhailov.fsm.lib.JsText;
+import tech.mikhailov.fsm.lib.SourceText;
 import tech.mikhailov.fsm.lib.PrDecision;
 import tech.mikhailov.fsm.lib.SkepticVerdict;
 import tech.mikhailov.fsm.lib.TestRealness;
@@ -253,8 +253,8 @@ public final class Critiques {
         if (Json.truthy(t.curated(), "pr_curated")) {
             String decision = Json.str(t.curated(), "pr_decision");
             String reason = Json.str(t.curated(), "pr_reason");
-            boolean title = !JsText.isBlank(Json.str(t.curated(), "pr_title"));
-            boolean body = !JsText.isBlank(Json.str(t.curated(), "pr_body"));
+            boolean title = !SourceText.isBlank(Json.str(t.curated(), "pr_title"));
+            boolean body = !SourceText.isBlank(Json.str(t.curated(), "pr_body"));
             // As with the skeptic above: the word is quoted, the branch is on the type. `decided`
             // covers both "a word the curator invented" (null) and the two spellings that report the
             // ABSENCE of a decision — n/a and unknown — which are not decisions either. @see PrDecision
@@ -285,7 +285,7 @@ public final class Critiques {
         // reader to opposite places: the prompt, or the endpoint.
         StageTrace writer = t.verdictWriter();
         if (writer.called() && writer.reply() != null
-                && JsText.isBlank(Json.str(t.verdict(), "verdict_text"))) {
+                && SourceText.isBlank(Json.str(t.verdict(), "verdict_text"))) {
             out.add(new Critique(Critique.VERDICT, Critique.SOURCE_VERDICT,
                     CritiqueKind.VERDICT_PRODUCED_NO_TEXT,
                     "the verdict writer answered and argued nothing, so the marker was retired with no "

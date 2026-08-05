@@ -2,7 +2,7 @@ package tech.mikhailov.fsm.nodes;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import tech.mikhailov.fsm.lib.JsValue;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Json;
 
 /**
@@ -95,11 +95,18 @@ public final class BuildFixInput {
     /** Assemble the fixer's prompt. */
     public static Outcome buildFixInput(Request req) {
         Object j = req.prepProver();
-        Object src = JsValue.or(JsValue.prop(req.buildReproduceInput(), "src"), "");
-        Object testCode = JsValue.or(JsValue.prop(req.parseTest(), "test_code"), "");
-        Object repro = JsValue.or(req.reproduce(), Map.of());   // a verdict that never arrived
-        boolean red = JsValue.truthy(JsValue.prop(repro, "red_reproduced"));
-        String redOutput = tail(JsValue.orEmpty(JsValue.prop(repro, "red_output")));
+        Object src = Values.orIfAbsent(Json.get(req.buildReproduceInput(), "src"), "");
+        Object testCode = Values.orIfAbsent(Json.get(req.parseTest(), "test_code"), "");
+        Object repro = Values.orIfAbsent(req.reproduce(), Map.of());   // a verdict that never arrived
+        // ONE FIELD, THREE READERS, AND THEY MUST AGREE. `red_reproduced` is also read by
+        // `PrMaker` (where it is half of `proven`) and by `RecordOutcome` (where it decides the row),
+        // and both of those read it through `Json.truthy`. A stricter reading HERE and only here is
+        // not a safer reading: it is a pipeline where the fixer is told "nothing was reproduced,
+        // return can_fix:false" about the very same item PrMaker is calling execution-proven. That
+        // disagreement is silent — no exception, no red test — and it retires a real defect. If this
+        // reading is ever tightened it gets tightened at all three sites in one commit.
+        boolean red = Json.truthy(repro, "red_reproduced");
+        String redOutput = tail(Values.text(Json.get(repro, "red_output")));
 
         String file = str(j, "file");
         String agentInput =
@@ -116,12 +123,12 @@ public final class BuildFixInput {
                 // The line has usually drifted, so the method name is the more trustworthy half of
                 // the location — but with no anchor the hint is omitted ENTIRELY, because
                 // "(in undefined())" would read to the model as a real method.
-                + (JsValue.truthy(JsValue.prop(j, "anchor"))
+                + (!Json.str(j, "anchor").isEmpty()
                    ? "  (in " + str(j, "anchor") + "())" : "")
                 + "\n"
-                + "The checker's claim: " + JsValue.orEmpty(JsValue.prop(j, "description")) + "\n\n"
+                + "The checker's claim: " + Values.text(Json.get(j, "description")) + "\n\n"
                 + "An INDEPENDENT reproducer wrote this failing regression test — you MUST NOT modify "
-                + "it:\n```java\n" + JsValue.string(testCode) + "\n```\n\n"
+                + "it:\n```java\n" + Values.text(testCode) + "\n```\n\n"
                 + (red
                    ? "It FAILS on the unpatched code (the bug is reproduced). Failure output:\n```\n"
                      + redOutput + "\n```\n\n"
@@ -132,14 +139,14 @@ public final class BuildFixInput {
                 + "Write the MINIMAL fix to the SOURCE FILE ONLY (path `" + file
                 + "`) so the test passes. Do NOT touch the test.\n\n"
                 // A fix written against an excerpt is a fix against code the fixer never saw.
-                + "FULL SOURCE FILE:\n```java\n" + JsValue.string(src) + "\n```";
+                + "FULL SOURCE FILE:\n```java\n" + Values.text(src) + "\n```";
 
         return new Outcome(j, testCode, red, redOutput, agentInput);
     }
 
     /** {@code "text " + j.field} — a raw splice, where an absent field really does read "undefined". */
     private static String str(Object marker, String key) {
-        return JsValue.string(JsValue.prop(marker, key));
+        return Values.text(Json.get(marker, key));
     }
 
     /**
@@ -148,7 +155,7 @@ public final class BuildFixInput {
      * fixer invents the missing severity.
      */
     private static String orUnknown(Object marker, String key) {
-        return JsValue.string(JsValue.or(JsValue.prop(marker, key), "?"));
+        return Values.orIfBlank(Json.get(marker, key), "?");
     }
 
     /** {@code s.slice(-2500)} — see {@link #RED_OUTPUT_CHARS}. */

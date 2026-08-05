@@ -7,9 +7,9 @@ import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import tech.mikhailov.fsm.lib.AnchorStatus;
-import tech.mikhailov.fsm.lib.Js;
-import tech.mikhailov.fsm.lib.JsText;
-import tech.mikhailov.fsm.lib.JsValue;
+import tech.mikhailov.fsm.lib.SourceText;
+import tech.mikhailov.fsm.lib.Values;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Json;
 
 /**
@@ -83,14 +83,14 @@ public final class BuildReproduceInput {
      * admit a constructor (no return type at all) and {@code Map<String, List<String>>} (commas and
      * nested angle brackets inside one type).
      *
-     * <p>{@code \s} is JavaScript's here, not Java's — see {@link JsValue#SPACE_CLASS}.
+     * <p>{@code \s} is the WIDER whitespace set, not Java's — see {@link SourceText#SPACE_CLASS}.
      */
     private static final Pattern SIGNATURE = Pattern.compile(
             "(?:^|\\n)([ \\t]*(?:@[\\w$.]+(?:\\([^)]*\\))?[ \\t\\n]*)*"
             + "(?:(?:public|private|protected|static|final|abstract|synchronized|native|default"
             + "|strictfp)[ \\t\\n]+)*"
-            + "[\\w$.<>\\[\\],?&" + JsValue.SPACE_CLASS + "]+?" + JsValue.SPACE
-            + "([A-Za-z_$][\\w$]*)" + JsValue.SPACE + "*)\\(");
+            + "[\\w$.<>\\[\\],?&" + SourceText.SPACE_CLASS + "]+?" + SourceText.SPACE
+            + "([A-Za-z_$][\\w$]*)" + SourceText.SPACE + "*)\\(");
 
     /**
      * Keywords that take a parenthesised head and a braced body, i.e. that look exactly like a method
@@ -163,7 +163,7 @@ public final class BuildReproduceInput {
             m.put("anchor", anchor);
             m.put("anchor_status", anchorStatus);
             m.put("anchor_note", anchorNote);
-            if (lineText != JsValue.UNDEFINED) {           // JSON.stringify drops an undefined value
+            if (lineText != null) {           // JSON.stringify drops an undefined value
                 m.put("line_text", lineText);
             }
             m.put("method_text", methodText);
@@ -174,14 +174,14 @@ public final class BuildReproduceInput {
     /** Re-anchor the marker and build the reproducer's prompt. */
     public static Outcome buildReproduceInput(Request req) {
         Object j = req.prepProver();
-        String src = decode(JsValue.prop(req.githubFile(), "content"));
+        String src = decode(Json.get(req.githubFile(), "content"));
         boolean srcTruncated = src.length() > SRC_MAX;
         if (srcTruncated) {
             src = src.substring(0, SRC_MAX);
         }
 
-        String[] lines = JsValue.split(src, "\n");
-        double svLine = JsValue.numberOrZero(JsValue.prop(j, "svace_line"));
+        String[] lines = src.split("\n", -1);
+        double svLine = Values.numberOr(Json.get(j, "svace_line"), 0);
         String anchor = "";
         // The pessimistic start, and every branch below either leaves it or earns something better.
         // @see AnchorStatus
@@ -189,14 +189,14 @@ public final class BuildReproduceInput {
         String anchorNote = "";
         String methodText = "";
         Object lineText = "";
-        if (JsText.isBlank(src)) {
+        if (SourceText.isBlank(src)) {
             // A blank body is what a failed or empty fetch decodes to. Calling that "line 2 is a
             // field or an annotation" invents a finding about a file nobody has.
             anchorNote = "source file could not be fetched";
         } else if (svLine < 1 || svLine > lines.length) {
             // The file got SHORTER than the marker's line: the drift is proven, not merely suspected,
             // and the length it was compared against is part of the proof.
-            anchorNote = "line " + Js.numberToString(svLine)
+            anchorNote = "line " + Values.plain(svLine)
                     + " is past the end of the file as checked out (" + lines.length
                     + " lines) — the file changed since the scan";
         } else {
@@ -206,14 +206,14 @@ public final class BuildReproduceInput {
                 anchor = em.name();
                 anchorStatus = AnchorStatus.EXACT;
                 methodText = em.text();
-                anchorNote = "line " + Js.numberToString(svLine) + " falls inside " + em.name()
+                anchorNote = "line " + Values.plain(svLine) + " falls inside " + em.name()
                         + "() (lines " + em.startLine() + "-" + em.endLine() + ")";
             } else {
                 // Every remaining unanchored marker in the WebGoat report lands on a field or a
                 // Lombok annotation. That is not drift and not a parser gap — name the real
                 // situation instead, or the agent clears a marker it never looked at.
                 anchorStatus = AnchorStatus.NO_METHOD;
-                anchorNote = "line " + Js.numberToString(svLine)
+                anchorNote = "line " + Values.plain(svLine)
                         + " is not inside any method body (it is a field, annotation or import)"
                         + (LOMBOK.matcher(src).find()
                            ? " — and this class uses Lombok, so the accessor or constructor the "
@@ -224,7 +224,7 @@ public final class BuildReproduceInput {
             }
         }
 
-        String loc = str(j, "file") + ":" + Js.numberToString(svLine);
+        String loc = str(j, "file") + ":" + Values.plain(svLine);
         String agentInput =
                 "Repository: " + str(j, "repo") + "   (branch " + str(j, "branch") + ", module '"
                 + str(j, "module") + "')\n"
@@ -232,14 +232,21 @@ public final class BuildReproduceInput {
                 + "SVACE MARKER  [" + orUnknown(j, "svace_severity") + "]  "
                 + orUnknown(j, "svace_checker") + "\n"
                 + "Location as reported: " + loc + "\n"
-                + "The checker's claim: " + JsValue.orEmpty(JsValue.prop(j, "description")) + "\n\n"
+                + "The checker's claim: " + Values.text(Json.get(j, "description")) + "\n\n"
                 // The blanket "line numbers may have drifted" warning lives in the reproducer's
                 // SYSTEM message. What this node contributes is the per-marker signal: how far the
                 // location can be trusted for THIS marker.
                 + "LOCATION CONFIDENCE: " + anchorStatus.wire() + " — " + anchorNote + "\n"
-                + (JsValue.truthy(lineText)
-                   ? "Line " + Js.numberToString(svLine) + " as it reads in the checked-out tree:\n"
-                     + "```java\n" + JsValue.string(lineText) + "\n```\n"
+                // THE GUARD IS "IS THERE A LINE TO QUOTE", NOT "IS THE FIELD NON-NULL", and the two
+                // are different in the case that matters. `lineText` starts as "" and stays that way
+                // whenever no line was resolved — an unfetched source, or a marker pointing past the
+                // end of the file. A non-null test passes for both of those and emits an EMPTY java
+                // fence, which reads to the model as "line 42 is blank" — a specific, false claim
+                // about the file, where the honest report is that the line is unknown. The block is
+                // omitted for a genuinely blank source line too, and for the same reason.
+                + (!Values.text(lineText).isEmpty()
+                   ? "Line " + Values.plain(svLine) + " as it reads in the checked-out tree:\n"
+                     + "```java\n" + Values.text(lineText) + "\n```\n"
                    : "")
                 + (!methodText.isEmpty()
                    ? "\nThe enclosing method (this is where the claim should be settled):\n```java\n"
@@ -261,7 +268,7 @@ public final class BuildReproduceInput {
 
     /** {@code "text " + j.field} — a raw splice, where an absent field really does read "undefined". */
     private static String str(Object marker, String key) {
-        return JsValue.string(JsValue.prop(marker, key));
+        return Values.text(Json.get(marker, key));
     }
 
     /**
@@ -270,7 +277,7 @@ public final class BuildReproduceInput {
      * missing severity and a literal "undefined" is a claim about the marker the report never made.
      */
     private static String orUnknown(Object marker, String key) {
-        return JsValue.string(JsValue.or(JsValue.prop(marker, key), "?"));
+        return Values.orIfBlank(Json.get(marker, key), "?");
     }
 
     /**
@@ -283,11 +290,11 @@ public final class BuildReproduceInput {
      * reported as a file that could not be fetched rather than taking the run down.
      */
     private static String decode(Object content) {
-        Object v = JsValue.or(content, "");
+        Object v = Values.orIfAbsent(content, "");
         if (!(v instanceof String text)) {
             return "";
         }
-        return JsValue.base64ToUtf8(JsValue.stripSpace(text));
+        return Values.base64ToUtf8(SourceText.stripSpace(text));
     }
 
     /**
@@ -301,7 +308,7 @@ public final class BuildReproduceInput {
      */
     private static Object element(String[] lines, double index) {
         if (index != Math.rint(index) || index < 0 || index >= lines.length) {
-            return JsValue.UNDEFINED;
+            return null;
         }
         return lines[(int) index];
     }
@@ -386,7 +393,7 @@ public final class BuildReproduceInput {
                 continue;
             }
             int k = close + 1;
-            while (k < s.length() && JsText.isSpace(s.charAt(k))) {
+            while (k < s.length() && SourceText.isSpace(s.charAt(k))) {
                 k++;
             }
             // An interface method ends in ';', not '{'. A scan that runs PAST that ';' looking for a

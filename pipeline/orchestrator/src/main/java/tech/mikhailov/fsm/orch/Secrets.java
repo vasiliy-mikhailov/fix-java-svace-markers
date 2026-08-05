@@ -5,7 +5,7 @@ import java.util.Map;
 import java.util.function.UnaryOperator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import tech.mikhailov.fsm.lib.JsValue;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Llm;
 import tech.mikhailov.fsm.runner.CloneUrl;
 
@@ -63,13 +63,15 @@ public class Secrets {
     }
 
     /**
-     * The token as {@code Prep prover} wants it: {@link JsValue#UNDEFINED} when the variable is unset,
-     * so the branch lookup sends {@code Bearer undefined} and gets a 401 that lands in
-     * {@code branch_error} where a human reads it.
+     * The token as {@code Prep prover} wants it: {@code null} when the variable is unset, so the
+     * branch lookup sends {@code Bearer (GITHUB_TOKEN is not set)} — see
+     * {@link tech.mikhailov.fsm.nodes.PrepProver#authorization} — and gets a 401 that lands in
+     * {@code branch_error} naming its own cause, where a human reads it. An empty {@code Bearer} is
+     * the one rendering GitHub does NOT refuse, which is why this must not flatten the absence.
      */
     public Object githubTokenValue() {
         String token = gitToken();
-        return token == null ? JsValue.UNDEFINED : token;
+        return token == null ? null : token;
     }
 
     /**

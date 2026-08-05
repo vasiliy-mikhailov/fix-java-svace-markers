@@ -1,23 +1,23 @@
 {
   "cases": 23401,
-  "identical": 22656,
-  "divergent": 745,
-  "divergenceKinds": 14,
-  "distinctValuePairs": 438,
+  "identical": 22568,
+  "divergent": 833,
+  "divergenceKinds": 29,
+  "distinctValuePairs": 538,
   "byFamily_totalThenIdentical": {
     "wsNorm": [458,458],
     "applyEdit": [17524,16943],
-    "applyEditCoerced": [11,9],
+    "applyEditCoerced": [11,8],
     "fixTarget": [1931,1794],
-    "coerce": [28,28],
+    "coerce": [28,15],
     "summarize": [543,541],
     "requiredJdk": [758,758],
     "keyFor": [15,15],
     "tail": [40,33],
     "buildCmd": [1510,1510],
     "outcome": [433,417],
-    "readFile": [42,42],
-    "keyForCoerced": [108,108]
+    "readFile": [42,36],
+    "keyForCoerced": [108,40]
   },
   "kinds": [
     {
@@ -39,6 +39,21 @@
       "kind": "fixTarget | out.error | s -> null",
       "fieldDifferences": 84,
       "distinctValuePairs": 1
+    },
+    {
+      "kind": "keyForCoerced | out.key | s -> s",
+      "fieldDifferences": 68,
+      "distinctValuePairs": 60
+    },
+    {
+      "kind": "keyForCoerced | out.branch | s -> s",
+      "fieldDifferences": 48,
+      "distinctValuePairs": 4
+    },
+    {
+      "kind": "keyForCoerced | out.repo | s -> s",
+      "fieldDifferences": 36,
+      "distinctValuePairs": 4
     },
     {
       "kind": "fixTarget | out.path | s -> null",
@@ -66,6 +81,16 @@
       "distinctValuePairs": 1
     },
     {
+      "kind": "coerce | out.orEmpty | s -> s",
+      "fieldDifferences": 12,
+      "distinctValuePairs": 11
+    },
+    {
+      "kind": "coerce | out.interpolated | s -> s",
+      "fieldDifferences": 9,
+      "distinctValuePairs": 9
+    },
+    {
       "kind": "tail | out.tail | s -> s",
       "fieldDifferences": 7,
       "distinctValuePairs": 7
@@ -74,6 +99,16 @@
       "kind": "fixTarget | out.edit_error | s -> null",
       "fieldDifferences": 4,
       "distinctValuePairs": 2
+    },
+    {
+      "kind": "coerce | out.truthy | b -> b",
+      "fieldDifferences": 4,
+      "distinctValuePairs": 1
+    },
+    {
+      "kind": "readFile | out.error | s -> s",
+      "fieldDifferences": 3,
+      "distinctValuePairs": 3
     },
     {
       "kind": "applyEditCoerced | out | null -> tree",
@@ -89,6 +124,46 @@
       "kind": "summarize | out.ran | n -> n",
       "fieldDifferences": 2,
       "distinctValuePairs": 2
+    },
+    {
+      "kind": "readFile | out | tree -> null",
+      "fieldDifferences": 2,
+      "distinctValuePairs": 1
+    },
+    {
+      "kind": "readFile | threw | null -> s",
+      "fieldDifferences": 2,
+      "distinctValuePairs": 1
+    },
+    {
+      "kind": "applyEditCoerced | out.text | s -> s",
+      "fieldDifferences": 1,
+      "distinctValuePairs": 1
+    },
+    {
+      "kind": "readFile | out (keys) | path,content,truncated -> error",
+      "fieldDifferences": 1,
+      "distinctValuePairs": 1
+    },
+    {
+      "kind": "readFile | out.path | tree -> absent",
+      "fieldDifferences": 1,
+      "distinctValuePairs": 1
+    },
+    {
+      "kind": "readFile | out.content | s -> absent",
+      "fieldDifferences": 1,
+      "distinctValuePairs": 1
+    },
+    {
+      "kind": "readFile | out.truncated | b -> absent",
+      "fieldDifferences": 1,
+      "distinctValuePairs": 1
+    },
+    {
+      "kind": "readFile | out.error | absent -> s",
+      "fieldDifferences": 1,
+      "distinctValuePairs": 1
     }
   ],
   "invariants_applicableThenViolations": {
@@ -103,7 +178,7 @@
       "the whitespace fallback replaces one span and not the file": [5272,0]
     },
     "java": {
-      "a file that was served is inside the repository": [16,0],
+      "a file that was served is inside the repository": [13,0],
       "a note accompanies a text and only a text": [17524,0],
       "a unique exact match is applied on the exact path": [5345,0],
       "an accepted edit path is inside the workspace": [1177,0],

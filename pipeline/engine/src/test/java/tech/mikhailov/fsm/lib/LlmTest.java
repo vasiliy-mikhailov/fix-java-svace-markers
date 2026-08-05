@@ -42,12 +42,21 @@ class LlmTest {
     }
 
     @Test
-    void anUnsetEndpointIsVisibleInTheUrlRatherThanSilentlyRelative() {
-        // `$env.QWEN_BASE_URL + '/chat/completions'` with nothing set produces a URL an operator can
-        // grep for. "/chat/completions" would look like a relative-path bug somewhere else entirely.
+    void anUnsetEndpointNamesTheVariableRatherThanLookingLikeARelativePath() {
+        // The marker NAMES QWEN_BASE_URL, so the failure it causes carries its own diagnosis.
+        // "/chat/completions" would look like a relative-path bug somewhere else entirely, and the
+        // old "undefined/chat/completions" only helped a reader who already knew that this codebase
+        // spelled "missing" the way JavaScript does. It no longer does — see harness/README.md.
         Map<String, Object> options = Llm.chat(Llm.Endpoint.of(null), "hi", 0);
-        assertEquals("undefined/chat/completions", options.get("url"));
-        assertEquals("Bearer undefined", Json.get(options.get("headers"), "Authorization"));
+        assertEquals("(QWEN_BASE_URL is not set)/chat/completions", options.get("url"));
+        // THE KEY IS DELIBERATELY NOT NAMED THE WAY THE URL IS, and the asymmetry is a decision, not
+        // an oversight. PrepProver.authorization spells out an unset GITHUB_TOKEN because an empty
+        // Bearer is the one rendering GITHUB DOES NOT REFUSE: it drops the run onto the anonymous
+        // quota and fails an hour later. An inference gateway has no anonymous tier to be demoted
+        // onto — it ignores the header or answers 401 on the first call — so the empty Bearer is
+        // already the loud failure there, and naming the variable would mean sending a credential
+        // nobody configured to a host that may log it. Same question, two endpoints, two answers.
+        assertEquals("Bearer ", Json.get(options.get("headers"), "Authorization"));
     }
 
     @Test
@@ -59,17 +68,29 @@ class LlmTest {
     }
 
     @Test
-    void anAbsentValueAndAnExplicitNullConcatenateDifferently() {
-        // Java has one absent value where JS has two, and this is where the difference reaches a human.
-        assertEquals("undefined", Llm.concat(item(), "k"), "the key is not there at all");
-        assertEquals("null", Llm.concat(item("k", null), "k"), "the key is there, holding null");
-        assertEquals("v", Llm.concat(item("k", "v"), "k"));
+    void anAbsentKeyAndAnExplicitNullAreStillDifferentFindings() {
+        // The distinction survived the retirement of the JS emulation; the SPELLING of the absent one
+        // did not. "(absent)" describes itself, where "undefined" was a word from another language
+        // that a reader could mistake for a value this pipeline had actually stored.
+        assertEquals("(absent)", Llm.presence(item(), "k"), "the key is not there at all");
+        assertEquals("null", Llm.presence(item("k", null), "k"), "the key is there, holding null");
+        assertEquals("v", Llm.presence(item("k", "v"), "k"));
         // A container that is not an object at all has no keys, so nothing is "there holding null".
-        assertEquals("undefined", Llm.concat("not an item", "k"));
-        assertEquals("undefined", Llm.concat(null, "k"));
-        // and the value form, for a value that has already been read out
-        assertEquals("undefined", Llm.concat(null));
-        assertEquals("7", Llm.concat(7L));
+        assertEquals("(absent)", Llm.presence("not an item", "k"));
+        assertEquals("(absent)", Llm.presence(null, "k"));
+    }
+
+    @Test
+    void aPromptFieldNamesWhatIsMissingRatherThanGoingBlank() {
+        // A bare label reads to a model as a truncated prompt — PrMaker's template would say
+        // "contributions to ." — so an absent field says which field it was. It is NEVER the word
+        // "undefined", which is what this used to splice into a prompt sent to the model.
+        assertEquals("(repository not recorded)", Llm.orMissing(null, "repository"));
+        assertEquals("(repository not recorded)", Llm.orMissing("", "repository"));
+        assertEquals("o/r", Llm.orMissing("o/r", "repository"));
+        // A present value that is merely falsy in JavaScript is a VALUE and is kept.
+        assertEquals("0", Llm.orMissing(0L, "line"));
+        assertEquals("false", Llm.orMissing(Boolean.FALSE, "flag"));
     }
 
     @Test

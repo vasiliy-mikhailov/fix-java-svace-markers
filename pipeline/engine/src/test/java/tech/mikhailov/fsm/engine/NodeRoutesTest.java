@@ -463,15 +463,25 @@ class NodeRoutesTest {
         Map<?, ?> row = row("/node/fix-skeptic", item(
                 "prep_prover", prepProver(), "parse_test", parseTest(), "parse_fix", parseFix(),
                 "item", item("proven", true, "green_passed", true),
-                // No env at all: the URL is built as `undefined/chat/completions`, deliberately.
+                // No env at all, deliberately: the endpoint the skeptic would call does not exist.
                 "skeptic_stamp", "[stage sk5]"));
 
         assertEquals("unknown", row.get("skeptic_verdict"),
                 "a dead endpoint must not read as certification");
         assertTrue(String.valueOf(row.get("skeptic_reason")).startsWith("skeptic call failed: "),
                 "got: " + row.get("skeptic_reason"));
-        assertTrue(String.valueOf(row.get("skeptic_reason")).contains("undefined"),
-                "an unset QWEN_BASE_URL has to be greppable, which is why the word is kept");
+        // THE REASON MUST NAME THE MISSING VARIABLE. This assertion used to look for the word
+        // `undefined`, because the URL was built as `undefined/chat/completions` — greppable, which
+        // was the argument for it, but only to a reader who already knew that this codebase spelled
+        // "missing" that way. The word went with the JS emulation on 2026-08-05 and rendering the
+        // unset value EMPTY would have been worse than either: `/chat/completions` in a failure reason
+        // reads as a relative-path bug somewhere in the HTTP layer, and that is a maintainer's
+        // afternoon spent in the wrong file.
+        //
+        // So the row carries the variable's NAME, which is both the diagnosis and the fix. Same rule
+        // as the GitHub token header. See Llm.baseUrl.
+        assertTrue(String.valueOf(row.get("skeptic_reason")).contains("QWEN_BASE_URL"),
+                "an unset QWEN_BASE_URL has to name itself in the row: " + row.get("skeptic_reason"));
     }
 
     @Test
@@ -658,11 +668,31 @@ class NodeRoutesTest {
 
     @Test
     void aBugInTheEngineIsDistinguishableFromABadMarker() throws Exception {
-        // 1e400 parses to Infinity, which JSON cannot spell — Json.stringify refuses rather than
-        // writing `null` into a row a reviewer is triaging. The caller has to be able to tell THAT
-        // apart from "this marker is bad": they need different people.
+        // WHAT THIS TEST IS FOR, and it is unchanged: a 500 saying the ENGINE broke and a 400 saying
+        // the MARKER is bad go to different people. If the engine cannot tell them apart, every
+        // engine bug is triaged as bad input by whoever owns the report, and nobody is ever paged.
+        //
+        // ITS VEHICLE CHANGED, AND THAT IS THE FIX WORKING. The input used to be `svace_line: 1e400`,
+        // which parses to Infinity — `Json.stringify` refuses to write one, so Prep prover echoed it
+        // into a row the encoder then rejected, and the 500 fell out. `Values.numberOr` now refuses a
+        // non-finite number at the READ, so that particular route to a broken row is closed and this
+        // input is simply a marker with an unusable line. The first half below pins the fix; the
+        // second half asks the original question through a field that is still a pass-through, so the
+        // routing distinction stays covered rather than quietly lapsing with its vehicle.
+        HttpResponse<String> lineWasSilly = post("/node/prep-prover",
+                "{\"suspicion\":{\"repo\":\"o/r\",\"branch\":\"main\",\"file\":\"" + FILE
+                + "\",\"svace_line\":1e400}}");
+        assertEquals(200, lineWasSilly.statusCode(),
+                "a marker whose line is unreadable is a marker with no usable line, not an outage");
+        Map<?, ?> onlyRow = (Map<?, ?>) ((List<?>) body(lineWasSilly).get("items")).get(0);
+        assertEquals(0.0, ((Number) onlyRow.get("svace_line")).doubleValue(),
+                "and it starts from the default, the same branch a marker with no line takes");
+
+        // THE ORIGINAL QUESTION, through `title` — a column Prep prover passes through untouched, so
+        // an unwritable value still reaches the encoder and still takes the row down. That is a real
+        // engine fault, and it must be answered as one.
         HttpResponse<String> res = post("/node/prep-prover", "{\"suspicion\":{\"repo\":\"o/r\","
-                + "\"branch\":\"main\",\"file\":\"" + FILE + "\",\"svace_line\":1e400}}");
+                + "\"branch\":\"main\",\"file\":\"" + FILE + "\",\"title\":1e400}}");
 
         assertEquals(500, res.statusCode());
         assertEquals("engine_error", body(res).get("code"));

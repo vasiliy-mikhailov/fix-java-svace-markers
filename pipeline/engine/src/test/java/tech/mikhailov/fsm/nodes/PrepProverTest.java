@@ -2,6 +2,7 @@ package tech.mikhailov.fsm.nodes;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -165,11 +166,31 @@ class PrepProverTest {
     }
 
     @Test
-    void onlyTheFirstDotJavaIsStripped() {
-        // String.prototype.replace with a STRING needle replaces the FIRST occurrence; Java's
-        // String.replace replaces every one. On 'Widget.javadoc.java' the two answers differ, and the
-        // class name is what the generated test is named after.
-        assertEquals("Widgetdocjava", prep("file", "src/main/java/x/Widget.javadoc.java")
+    void theExtensionIsStrippedFromTheEndOfTheNameAndNotFromTheMiddle() {
+        // WHAT THIS TEST USED TO SAY. It was `onlyTheFirstDotJavaIsStripped` and it asserted
+        // "Widgetdocjava" — `String.prototype.replace` with a string needle, which replaces the FIRST
+        // occurrence. On `Widget.javadoc.java` that strips the `.java` inside `.javadoc`, leaving
+        // `Widgetdoc.java`, and the trailing extension then survives into the class name as the
+        // letters `java`.
+        //
+        // THE QUESTION THE AUTHOR WAS ASKING is still exactly the right one and is why the test was
+        // written at all: the class name is what the generated proof test is NAMED after, and a
+        // fallback name derived by chopping the wrong substring produces a test class that does not
+        // correspond to the file under test. What the old assertion pinned, though, was the wrong
+        // answer to it — `Widgetdocjava` is not the name of anything. The extension of
+        // `Widget.javadoc.java` is the `.java` at the END; that is what "the extension" means, on
+        // every filesystem and to every reader.
+        //
+        // So it is stripped from the end, and only from the end. Not `String.replace`, which would
+        // take both and give `Widgetdoc`; not `replaceFirst`, which takes the wrong one.
+        assertEquals("Widgetjavadoc", prep("file", "src/main/java/x/Widget.javadoc.java")
+                .out().className(),
+                "Widget.javadoc keeps its name; only the trailing .java is an extension");
+        // The ordinary case, and a name with no extension at all — neither may lose a character.
+        assertEquals("Widget", prep("file", "src/main/java/x/Widget.java").out().className());
+        assertEquals("Widget", prep("file", "src/main/java/x/Widget").out().className());
+        // …and `.java` appearing only in the MIDDLE is not an extension and is not stripped.
+        assertEquals("Widgetjavadoc", prep("file", "src/main/java/x/Widget.javadoc")
                 .out().className());
     }
 
@@ -210,17 +231,39 @@ class PrepProverTest {
     }
 
     @Test
-    void proveAttemptsIsCoercedTheWayJavaScriptCoercesIt() {
-        // The column arrives from a Data Table cell, so it is routinely a string. `Number(x)` is not
-        // `Double.parseDouble`: it reads "0x10" as 16 and rejects the Java literal suffix in "1d".
-        // Getting this wrong resets an attempt counter, and a permanently-broken row is requeued for
-        // ever.
+    void proveAttemptsIsReadAsADecimalCountAndAnythingElseStartsFromZero() {
+        // WHY THIS TEST EXISTS, unchanged since it was written: the column arrives from a Data Table
+        // cell, so it is ROUTINELY a string, and getting the read wrong resets an attempt counter —
+        // after which a permanently-broken row is requeued for ever and the run never converges. The
+        // two shapes that actually occur are the first two assertions, and they are the ones a
+        // regression would break.
         assertEquals(3, prep("file", "a.java", "prove_attempts", "3").out().proveAttempts());
         assertEquals(12, prep("file", "a.java", "prove_attempts", " 12 ").out().proveAttempts());
-        assertEquals(16, prep("file", "a.java", "prove_attempts", "0x10").out().proveAttempts());
+        assertEquals(2, prep("file", "a.java", "prove_attempts", 2L).out().proveAttempts());
+        assertEquals(0, prep("file", "a.java").out().proveAttempts(), "an absent counter is zero");
+
+        // WHAT MOVED: "0x10" WAS 16 AND IS NOW 0, and this is the assertion worth reading twice
+        // because it looks like a loss. `Number("0x10")` is 16 in JavaScript — that is a genuine
+        // ECMAScript rule and the old test named it correctly. It is still the wrong answer HERE.
+        // Nothing writes this column but this pipeline, and this pipeline writes decimal digits; a
+        // cell reading "0x10" is a corrupted cell, and there is no reading of the corruption under
+        // which the marker has been proved sixteen times. Answering 16 invents an attempt history and
+        // may park a live marker as exhausted; answering 0 says the counter is unreadable and starts
+        // it again, which is the same branch an absent counter takes and is the recoverable direction.
+        assertEquals(0, prep("file", "a.java", "prove_attempts", "0x10").out().proveAttempts(),
+                "a hex literal is a corrupt cell, not an attempt count of 16");
+        // The Java-only spellings are refused for the same reason and were always meant to be —
+        // Double.parseDouble accepts every one of these, which is why the read is guarded.
         assertEquals(0, prep("file", "a.java", "prove_attempts", "1d").out().proveAttempts());
+        assertEquals(0, prep("file", "a.java", "prove_attempts", "1f").out().proveAttempts());
+        assertEquals(0, prep("file", "a.java", "prove_attempts", "0x1p3").out().proveAttempts());
+        assertEquals(0, prep("file", "a.java", "prove_attempts", "NaN").out().proveAttempts());
         assertEquals(0, prep("file", "a.java", "prove_attempts", "12abc").out().proveAttempts());
-        assertEquals(1, prep("file", "a.java", "prove_attempts", true).out().proveAttempts());
+        // …and a BOOLEAN is no longer 1. `Number(true)` was 1; nothing has ever written a boolean into
+        // an attempt counter, and reading one as "this marker has been tried once" would be inventing
+        // a history out of a type error. It is unreadable, so it starts from zero like the rest.
+        assertEquals(0, prep("file", "a.java", "prove_attempts", true).out().proveAttempts(),
+                "a boolean is not a count");
     }
 
     @Test
@@ -367,18 +410,46 @@ class PrepProverTest {
 
         @Test
         void aTokenTheEnvironmentNeverSetIsVisibleInTheHeader() {
-            // 'Bearer undefined' is deliberate: GitHub answers it with 401, which is
-            // findable. 'Bearer ' with nothing after it looks like a request nobody meant to
-            // authenticate, and the 60-per-hour anonymous quota then fails only intermittently.
+            // THE HAZARD, WHICH HAS NOT CHANGED: an empty Bearer does not read to GitHub as "no
+            // credential, refuse me". It reads as a request nobody meant to authenticate, drops the
+            // run onto the 60-per-hour ANONYMOUS quota and serves no private repository at all — so
+            // the failure arrives an hour in, on whichever marker crossed the quota, and the header
+            // that caused it looks perfectly ordinary in a log.
+            //
+            // WHAT MOVED IS THE MARKER, NOT THE RULE. This used to be the JavaScript word `undefined`,
+            // which was findable only by a reader who already knew that this codebase spelled
+            // "missing" that way. The header now NAMES THE VARIABLE, so the 401 that comes back
+            // carries its own diagnosis and its own fix. Same answer as Llm.baseUrl gives for an unset
+            // QWEN_BASE_URL; the engine has one spelling for this.
+            //
+            // Either way GitHub answers 401 on the FIRST request — loud, immediate, deterministic —
+            // which is the whole point and is what an empty Bearer costs you.
             List<LookupRequest> calls = new ArrayList<>();
             PrepProver.prepProver(
                     new Request(item("file", "a.java", "branch", "", "repo", "o/r"),
-                            tech.mikhailov.fsm.lib.JsValue.UNDEFINED),
+                            null),
                     request -> {
                         calls.add(request);
                         return answers(item("default_branch", "main")).get();
                     });
-            assertEquals("Bearer undefined", calls.get(0).headers().get("Authorization"));
+            assertEquals("Bearer (GITHUB_TOKEN is not set)",
+                    calls.get(0).headers().get("Authorization"));
+            assertNotEquals("Bearer ", calls.get(0).headers().get("Authorization"),
+                    "an empty Bearer is the one rendering that fails quietly");
+        }
+
+        @Test
+        void aTokenThatIsThereIsSentUntouched() {
+            // The guard on the guard: naming the absent case must not cost the present one. A token
+            // is sent verbatim, with no marker and no trimming of anything GitHub might need.
+            List<LookupRequest> calls = new ArrayList<>();
+            PrepProver.prepProver(
+                    new Request(item("file", "a.java", "branch", "", "repo", "o/r"), "ghp_realtoken"),
+                    request -> {
+                        calls.add(request);
+                        return answers(item("default_branch", "main")).get();
+                    });
+            assertEquals("Bearer ghp_realtoken", calls.get(0).headers().get("Authorization"));
         }
     }
 

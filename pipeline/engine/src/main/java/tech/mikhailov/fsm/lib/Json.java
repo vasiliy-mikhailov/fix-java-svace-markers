@@ -209,37 +209,32 @@ public final class Json {
 
     // ---- the coercions the stages depend on ------------------------------------------------------
     //
-    // The routing is written in terms of `(pm.pr_title || '')` and `!!repro.red_reproduced`, and those
-    // two idioms decide whether a marker is retried or retired. Spelled out field by field they would
-    // become a different ad-hoc null check each time, and the one that got it wrong would not crash —
-    // it would silently retire a real defect. They are spelled out once, here, instead.
+    // The routing reads fields off untyped items, and one of those reads decides whether a marker is
+    // retried or retired. Spelled out field by field they would become a different ad-hoc null check
+    // each time, and the one that got it wrong would not crash — it would silently retire a real
+    // defect. They are spelled out once, here, instead.
 
-    /** {@code String(x || '')}: absent, null, false and 0 all read as the empty string. */
+    /** The field as text. ABSENT reads as the empty string, and nothing else does. */
     public static String str(Object container, String key) {
         return str(get(container, key));
     }
 
     /**
-     * {@code String(x || '')} of a VALUE the caller already has.
+     * A VALUE the caller already has, as text.
      *
-     * <p>Split out from the field read for the reason {@link #truthy(Object)} is: a stage that has
-     * parsed its row into typed values still needs this coercion, and writing a second copy of it
-     * inside that stage is precisely the two-places-for-one-value divergence the parse exists to
-     * prevent.
+     * <p>THIS USED TO BE {@code String(x || '')} AND THE {@code || ''} WAS A DEFECT. It swallowed a
+     * legitimate {@code 0} and a legitimate {@code false}: a marker on line 0, a
+     * {@code red_reproduced: false} and a {@code path_prefix: 0} were all indistinguishable from a
+     * field nobody set. Retired on 2026-08-05 with the rest of the JavaScript emulation — see
+     * {@code harness/README.md}, "Re-baselines". Absence is now the only thing that reads as empty,
+     * and it is {@link Values#text} that says so, once, for the whole engine.
      *
-     * <p>IT CAN THROW, and a caller holding a value it might not use should know when. Anything that is
-     * not a String and not falsy is serialised, and {@link #stringify} refuses a non-finite double —
-     * {@code 1e400} is well-formed JSON and parses to one. So a node that defers this coercion to the
-     * branch that actually needs the text keeps a value it never reads from taking the stage down.
+     * <p>Split out from the field read because a stage that has parsed its row into typed values still
+     * needs the coercion, and writing a second copy of it inside that stage is precisely the
+     * two-places-for-one-value divergence the parse exists to prevent.
      */
     public static String str(Object v) {
-        if (v == null || Boolean.FALSE.equals(v)) {
-            return "";
-        }
-        if (v instanceof Number n && n.doubleValue() == 0.0) {
-            return "";
-        }
-        return v instanceof String s ? s : stringify(v);
+        return Values.text(v);
     }
 
     /** JS truthiness: null, false, 0, "" and an absent key are false; everything else is true. */

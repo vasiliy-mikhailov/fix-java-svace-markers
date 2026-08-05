@@ -10,14 +10,14 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * {@link JsText} — the blankness test, which Java and JavaScript disagree about in BOTH directions.
+ * {@link SourceText} — the blankness test, which Java and JavaScript disagree about in BOTH directions.
  *
  * <p>These name the characters, because the divergence is not a matter of taste: it changes the state
  * a marker is recorded in. {@code String.isBlank()} is {@code Character.isWhitespace}, and the two
  * lists below are the exact, complete disagreement over the whole Basic Multilingual Plane — measured
  * against Node 22 rather than reasoned about.
  */
-class JsTextTest {
+class SourceTextTest {
 
     /**
      * JS says blank, Java's {@code isBlank()} says NOT blank.
@@ -33,9 +33,9 @@ class JsTextTest {
     @ValueSource(strings = {"00A0", "2007", "202F", "FEFF"})
     void javaScriptCallsTheseBlankAndJavaDoesNot(String hex) {
         String s = String.valueOf((char) Integer.parseInt(hex, 16));
-        assertTrue(JsText.isBlank(s), "U+" + hex + " is whitespace to JS trim()");
+        assertTrue(SourceText.isBlank(s), "U+" + hex + " is whitespace to JS trim()");
         assertFalse(s.isBlank(), "U+" + hex + " is NOT whitespace to Character.isWhitespace — if this "
-                + "ever starts failing, the JDK has moved and JsText can be reconsidered");
+                + "ever starts failing, the JDK has moved and SourceText can be reconsidered");
     }
 
     /**
@@ -49,16 +49,16 @@ class JsTextTest {
     void javaCallsTheseBlankAndJavaScriptDoesNot(String hex) {
         String s = String.valueOf((char) Integer.parseInt(hex, 16));
         assertTrue(s.isBlank(), "U+" + hex + " is whitespace to Character.isWhitespace");
-        assertFalse(JsText.isBlank(s), "U+" + hex + " is NOT whitespace to JS trim()");
+        assertFalse(SourceText.isBlank(s), "U+" + hex + " is NOT whitespace to JS trim()");
     }
 
     @Test
     void theOrdinaryWhitespaceEveryoneAgreesAbout() {
-        assertTrue(JsText.isBlank(""));
-        assertTrue(JsText.isBlank(null), "an absent field is `(x || '').trim()`, which is blank");
-        assertTrue(JsText.isBlank(" \t\r\n\f"));
-        assertFalse(JsText.isBlank("class B {}"));
-        assertFalse(JsText.isBlank("   x   "), "one non-space character anywhere is content");
+        assertTrue(SourceText.isBlank(""));
+        assertTrue(SourceText.isBlank(null), "an absent field is `(x || '').trim()`, which is blank");
+        assertTrue(SourceText.isBlank(" \t\r\n\f"));
+        assertFalse(SourceText.isBlank("class B {}"));
+        assertFalse(SourceText.isBlank("   x   "), "one non-space character anywhere is content");
     }
 
     @Test
@@ -66,16 +66,16 @@ class JsTextTest {
         // U+200B sits between U+200A (a space) and U+2028 (a line separator) and is NEITHER.
         // A range written as U+200A..U+2028 would swallow it, and a file of zero-width spaces
         // would be reported as a fetch that returned nothing.
-        assertFalse(JsText.isBlank("\u200b"));
-        assertFalse(JsText.isSpace('\u200b'));
+        assertFalse(SourceText.isBlank("\u200b"));
+        assertFalse(SourceText.isSpace('\u200b'));
     }
 
     @Test
     void trimTakesBothEndsAndKeepsTheMiddle() {
-        assertEquals("a b", JsText.trim("\u00a0\n a b \ufeff"));
-        assertEquals("", JsText.trim("\ufeff\u202f"));
-        assertEquals("", JsText.trim(null));
-        assertEquals("x", JsText.trim("x"));
+        assertEquals("a b", SourceText.trim("\u00a0\n a b \ufeff"));
+        assertEquals("", SourceText.trim("\ufeff\u202f"));
+        assertEquals("", SourceText.trim(null));
+        assertEquals("x", SourceText.trim("x"));
     }
 
     @Test
@@ -84,10 +84,10 @@ class JsTextTest {
         // as a predicate (for the trailing `[\s,]+` strip). Two spellings of one set is exactly the
         // kind of thing that drifts, and the drift would be silent: the extractor would strip a
         // trailing character the fence matcher had already eaten, or the other way round.
-        Pattern p = Pattern.compile("[" + JsText.SPACE_CLASS + "]");
+        Pattern p = Pattern.compile("[" + SourceText.SPACE_CLASS + "]");
         for (int i = 0; i <= 0xFFFF; i++) {
             char c = (char) i;
-            assertEquals(p.matcher(String.valueOf(c)).matches(), JsText.isSpace(c),
+            assertEquals(p.matcher(String.valueOf(c)).matches(), SourceText.isSpace(c),
                     () -> String.format("U+%04X", (int) c));
         }
     }
@@ -99,7 +99,7 @@ class JsTextTest {
         // the whole reason it is written out rather than derived.
         int count = 0;
         for (int c = 0; c <= 0xFFFF; c++) {
-            if (JsText.isSpace((char) c)) {
+            if (SourceText.isSpace((char) c)) {
                 count++;
             }
         }

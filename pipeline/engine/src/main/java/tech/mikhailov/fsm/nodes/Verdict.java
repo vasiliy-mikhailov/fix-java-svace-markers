@@ -8,8 +8,8 @@ import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import tech.mikhailov.fsm.lib.CheckerMap;
 import tech.mikhailov.fsm.lib.ExecVerdict;
-import tech.mikhailov.fsm.lib.Js;
-import tech.mikhailov.fsm.lib.JsText;
+import tech.mikhailov.fsm.lib.SourceText;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.JsonExtract;
 import tech.mikhailov.fsm.lib.Llm;
@@ -204,7 +204,7 @@ public final class Verdict {
                     Json.get(body, "run_test_reproduce"), Json.get(body, "build_reproduce_input"),
                     Json.get(body, "pr_maker"), Llm.Endpoint.of(env),
                     Llm.text(env, "SVACE_BASE_URL"), Llm.text(env, "SVACE_TOKEN"),
-                    minAttempts(body), Llm.concat(body, "verdict_stamp"), verdictEnabled(body));
+                    minAttempts(body), Json.str(body, "verdict_stamp"), verdictEnabled(body));
         }
 
         /**
@@ -321,8 +321,8 @@ public final class Verdict {
                        String prBody) {
 
         static Row of(Object rec) {
-            return new Row(Json.get(rec, STATE), Llm.concat(rec, STATE),
-                    Js.orEmptyString(Json.get(rec, INFRA_REASON)), Json.str(rec, INFRA_REASON),
+            return new Row(Json.get(rec, STATE), Llm.presence(rec, STATE),
+                    Values.text(Json.get(rec, INFRA_REASON)), Json.str(rec, INFRA_REASON),
                     new Attempts(Json.num(rec, "attempts")),
                     Json.str(rec, "test_path"), Json.str(rec, "jdk"),
                     Json.str(rec, "pr_title"), Json.str(rec, "pr_body"));
@@ -361,12 +361,14 @@ public final class Verdict {
             Object markerId = Json.get(j, "marker_id");
             Object checker = Json.get(j, "svace_checker");
             return new VerdictMarker(
-                    Llm.concat(j, "suspicion_key"), Llm.concat(j, "repo"), Llm.concat(j, "file"),
-                    or(checker, ""), Js.string(or(checker, "?")),
-                    Js.string(or(Json.get(j, "svace_severity"), "?")),
-                    Js.string(or(Json.get(j, "svace_line"), "?")),
-                    Js.orEmptyString(Json.get(j, "description")),
-                    Js.truthy(markerId), Js.string(markerId),
+                    Llm.orMissing(Json.get(j, "suspicion_key"), "suspicion key"),
+                    Llm.orMissing(Json.get(j, "repo"), "repository"),
+                    Llm.orMissing(Json.get(j, "file"), "file"),
+                    or(checker, ""), Values.text(or(checker, "?")),
+                    Values.text(or(Json.get(j, "svace_severity"), "?")),
+                    Values.text(or(Json.get(j, "svace_line"), "?")),
+                    Values.text(Json.get(j, "description")),
+                    !Values.text(markerId).isEmpty(), Values.text(markerId),
                     CheckerMap.SettleBy.of(or(Json.get(j, "settle_by"),
                             CheckerMap.SettleBy.TEST.wire())) == CheckerMap.SettleBy.ARGUE);
         }
@@ -388,10 +390,10 @@ public final class Verdict {
             Object status = Json.get(bri, "anchor_status");
             Object methodText = Json.get(bri, "method_text");
             return new Source(or(Json.get(bri, "anchor"), ""), or(status, ""),
-                    Js.string(or(status, "?")),
-                    Js.orEmptyString(Json.get(bri, "anchor_note")),
-                    Js.truthy(methodText), Js.string(methodText),
-                    Js.orEmptyString(Json.get(bri, "src")));
+                    Values.text(or(status, "?")),
+                    Values.text(Json.get(bri, "anchor_note")),
+                    !Values.text(methodText).isEmpty(), Values.text(methodText),
+                    Values.text(Json.get(bri, "src")));
         }
     }
 
@@ -409,7 +411,7 @@ public final class Verdict {
 
         static VerdictReproRun of(Object repro) {
             return new VerdictReproRun(Json.truthy(Json.get(repro, "red_summary"), "test_executed"),
-                    Js.string(or(Json.get(repro, "red_output"), "(no build output captured)")));
+                    Values.text(or(Json.get(repro, "red_output"), "(no build output captured)")));
         }
     }
 
@@ -434,7 +436,7 @@ public final class Verdict {
 
         static VerdictTestReply of(Object parseTest) {
             return new VerdictTestReply(Json.truthy(parseTest, "can_prove"),
-                    Js.string(or(Json.get(parseTest, "repro_root_cause"), "(none given)")),
+                    Values.text(or(Json.get(parseTest, "repro_root_cause"), "(none given)")),
                     Json.get(parseTest, "test_score"), Json.str(parseTest, "test_realness"));
         }
     }
@@ -450,7 +452,7 @@ public final class Verdict {
                     Json.str(req.parseFix(), "fix_root_cause"),
                     // the PR curator's repo-specific reasoning, needed to explain a
                     // proven-but-not-proposed outcome
-                    Js.orEmptyString(Json.get(req.prMaker(), "pr_reason")));
+                    Values.text(Json.get(req.prMaker(), "pr_reason")));
         }
     }
 
@@ -673,7 +675,7 @@ public final class Verdict {
             if (!exhaustedBuild && !marker.argueOnly() && attemptNo < req.minAttempts()) {
                 retry = true;
                 log.accept("[verdict] " + marker.suspicionKey() + " attempt "
-                        + Js.numberToString(attemptNo) + " — retrying before writing a verdict");
+                        + Values.plain(attemptNo) + " — retrying before writing a verdict");
             // AFTER the retry gate, and that ordering is the whole design of the toggle. The samples a
             // non-reproduction is worth belong to the REPRODUCER, which is the prompt this toggle exists
             // to iterate on; skipping the argument must make a run cheaper, not settle markers a sample
@@ -702,7 +704,7 @@ public final class Verdict {
                     // contains braces (generics, {@code} references), and the naive scan then discards
                     // a perfectly good verdict.
                     Map<String, Object> jj = JsonExtract.extractJson(Llm.replyText(r), REPLY_KEYS);
-                    kind = ArguedKind.of(Js.orEmptyString(Json.get(jj, "kind")));
+                    kind = ArguedKind.of(Values.text(Json.get(jj, "kind")));
                     if (kind == null) {
                         // A word the model made up falls back rather than inventing a fourth kind.
                         kind = ArguedKind.FALSE_POSITIVE;
@@ -715,8 +717,8 @@ public final class Verdict {
                         kind = ArguedKind.UNPROVABLE;
                     }
                     verdictKind = kind.wire();
-                    verdictText = Js.orEmptyString(Json.get(jj, "verdict"));
-                    verdictConfidence = Js.orEmptyString(Json.get(jj, "confidence"));
+                    verdictText = Values.text(Json.get(jj, "verdict"));
+                    verdictConfidence = Values.text(Json.get(jj, "confidence"));
                 } catch (Exception e) {
                     kind = null;
                     verdictText = "";
@@ -725,7 +727,7 @@ public final class Verdict {
                     callFailure = Llm.failureText(e, ERROR_CUT, "verdict call failed");
                     verdictConfidence = "error: " + callFailure;
                 }
-                if (!JsText.isBlank(verdictText)) {
+                if (!SourceText.isBlank(verdictText)) {
                     // NOTE: the state follows the VERDICT, not the trigger that led here. The three stay
                     // distinct because they mean different things to a reviewer: `false_positive` = we
                     // tested it and the claim does not hold; `by_design` = the claim holds but the code
@@ -803,7 +805,7 @@ public final class Verdict {
         // judgement, on a marker nothing judged, which a `SELECT verdict_kind, COUNT(*)` counts as one.
         // The same row with any OTHER infra reason gets the full "NOT SETTLED" text. Compose it here
         // too, so the hatch can only ever ADD an argument, never subtract the fallback.
-        if (exhaustedBuild && JsText.isBlank(verdictText)) {
+        if (exhaustedBuild && SourceText.isBlank(verdictText)) {
             ExecVerdict.Verdict vi = stuck(row, attemptNo);
             verdictKind = vi.kind().wire();
             verdictText = vi.text();
@@ -859,7 +861,7 @@ public final class Verdict {
             // The note is the entire audit trail for a row that goes back on the queue: which attempt,
             // and why.
             suspicionNote = "[prover] infra failure (attempt "
-                    + Js.numberToString(recordedAttempts) + "/" + MAX_ATTEMPTS + "): "
+                    + Values.plain(recordedAttempts) + "/" + MAX_ATTEMPTS + "): "
                     + row.infraText();
             // THE EXHAUSTED-BUILD HATCH, WITH THE ARGUMENT OFF. This row would have been argued and
             // downgraded to `unprovable`; instead it parks `infra_stuck` carrying the composed fallback,
@@ -872,7 +874,7 @@ public final class Verdict {
         } else if (argued.retry()) {
             suspicionStatus = SuspicionStatus.NEW;
             suspicionNote = "[prover] did not reproduce on attempt "
-                    + Js.numberToString(recordedAttempts) + "; retrying before a verdict is written";
+                    + Values.plain(recordedAttempts) + "; retrying before a verdict is written";
         // SETTLED BY THE ARTIFACT'S STATE. `settledBy` is an exhaustive switch over MarkerState with no
         // default arm, and null there means "this state does not settle the row on its own" — the four
         // that route through the branches below rather than here.
@@ -1070,7 +1072,7 @@ public final class Verdict {
         String rootCause = in.test().rootCause();
         String whatHappened;
         if (exhaustedBuild) {
-            whatHappened = "The reproducer wrote a test " + Js.numberToString(attempts)
+            whatHappened = "The reproducer wrote a test " + Values.plain(attempts)
                     + " times and NOT ONCE did it compile, so the claim was never actually exercised. "
                     + "This is a limitation of the tooling, NOT evidence that the marker is wrong — do "
                     + "not clear the marker on this basis. The last compiler output was:\n"
@@ -1093,8 +1095,8 @@ public final class Verdict {
                         + "argue from the code)."
                 : "SVACE DETAIL: " + detail.message() + "\nSVACE TRACE: " + detail.trace();
 
-        return req.promptTemplate().formatted(Llm.concat(req.verdictStamp()),
-                Js.numberToString(attempts),
+        return req.promptTemplate().formatted(Llm.orMissing(req.verdictStamp(), "stamp"),
+                Values.plain(attempts),
                 marker.repo(), marker.file(), marker.svaceCheckerText(), marker.svaceSeverity(),
                 marker.svaceLine(), marker.description(),
                 source.anchorStatusText(), source.anchorNote(),
@@ -1164,7 +1166,7 @@ public final class Verdict {
      */
     private static Detail svaceDetail(Request req, Llm.Http http, VerdictMarker marker) {
         // .trim(): a variable set to a stray space would otherwise be fetched as if it were a host.
-        String base = JsText.trim(Js.orEmptyString(req.svaceBaseUrl()));
+        String base = SourceText.trim(Values.text(req.svaceBaseUrl()));
         if (base.isEmpty() || !marker.markerIdGiven()) {
             return null;
         }
@@ -1172,9 +1174,9 @@ public final class Verdict {
             Map<String, Object> headers = new LinkedHashMap<>();
             headers.put("Accept", "application/json");
             headers.put("Connection", "close");
-            if (Js.truthy(req.svaceToken())) {
+            if (!Values.text(req.svaceToken()).isEmpty()) {
                 // Left off entirely when there is no token, rather than sent as "Bearer undefined".
-                headers.put("Authorization", "Bearer " + Llm.concat(req.svaceToken()));
+                headers.put("Authorization", "Bearer " + Values.text(req.svaceToken()));
             }
             Map<String, Object> options = new LinkedHashMap<>();
             // A base URL is pasted into config with trailing slashes constantly, and '//markers/m1' is
@@ -1186,17 +1188,21 @@ public final class Verdict {
             options.put("timeout", 60_000L);
 
             Object r = http.request(options);
-            if (!Js.truthy(r)) {
-                // An endpoint answering 200 with nothing must read as "unavailable"; a blank SVACE
-                // DETAIL line would let the model argue against a claim it was never shown.
-                return null;
-            }
             // `msg` is the other spelling in the wild, and an absent trace is an empty one — never a
             // literal. The taint path is the checker's actual reasoning; arguing without it is arguing
             // blind.
-            return new Detail(
-                    Js.orEmptyString(or(Json.get(r, "message"), Json.get(r, "msg"))),
-                    Json.stringify(or(Json.get(r, "trace"),
+            String message = Values.text(or(Json.get(r, "message"), Json.get(r, "msg")));
+            // AN ENDPOINT ANSWERING 200 WITH NOTHING MUST READ AS "unavailable", and the test is the
+            // MESSAGE rather than the reply object. A null reply is only one of the shapes "nothing"
+            // arrives in: the endpoint also answers 200 with an empty body, and it answers with a
+            // well-formed object carrying a trace and no message. Both of those are non-null, and
+            // both would render `SVACE DETAIL: ` with nothing after it — which is the failure this
+            // branch exists to prevent, because the model then argues against a claim it was never
+            // shown and calls the marker a false positive on the strength of a blank line.
+            if (SourceText.isBlank(message)) {
+                return null;
+            }
+            return new Detail(message, Json.stringify(or(Json.get(r, "trace"),
                             or(Json.get(r, "path"), List.of()))));
         } catch (Exception e) {
             return null;

@@ -3,7 +3,7 @@ package tech.mikhailov.fsm.orch.model;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import tech.mikhailov.fsm.lib.Json;
-import tech.mikhailov.fsm.lib.JsValue;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.nodes.ParseMarkers;
 import tech.mikhailov.fsm.orch.domain.Marker;
 import tech.mikhailov.fsm.orch.domain.MarkerId;
@@ -20,7 +20,7 @@ import tech.mikhailov.fsm.orch.domain.MarkerSnapshot;
  * rather than writing a null into a column three hours into a run.
  *
  * <p>WHY {@code line} AND {@code svaceLine} ARE DOUBLES. The engine holds them as JavaScript Numbers
- * and the difference is observable at the extremes ({@code Js.parseInt10}). Narrowing them to
+ * and the difference is observable at the extremes ({@code Values.leadingInt}). Narrowing them to
  * {@code int} here would make the round-trip through the database lossy in exactly the cases the
  * re-anchoring is least sure about. {@link tech.mikhailov.fsm.lib.Js#string} renders an integral
  * double as {@code 7} and not {@code 7.0}, so nothing downstream ever sees a decimal point.
@@ -75,7 +75,8 @@ public record Suspicion(String dedupKey, String markerId, String repo, String br
      *
      * <p>Keys are the wire column names and the numbers stay numbers, because {@code PrepProver} reads
      * {@code svace_line} through {@link Json#num} and {@code prove_attempts} through
-     * {@link JsValue#numberOrZero}: handing those two over as strings would work by coercion today and
+     * {@link tech.mikhailov.fsm.lib.Values#numberOr}: handing those two over as strings would work by
+     * coercion today and
      * change meaning the moment one of them is blank.
      *
      * <p>Nulls are written as nulls rather than omitted. A key that is absent and a key holding null

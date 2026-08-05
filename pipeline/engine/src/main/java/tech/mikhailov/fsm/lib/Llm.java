@@ -91,39 +91,75 @@ public final class Llm {
      */
     public static String text(Object container, String key) {
         Object v = Json.get(container, key);
-        return v == null ? null : Js.string(v);
+        return v == null ? null : Values.text(v);
     }
 
     /**
-     * JS string concatenation of a value with NO {@code || ''} in front of it.
+     * A field spliced INTO A PROMPT, with an absent one named rather than left blank.
      *
-     * <p>Java has one absent value where JS has two, and it shows up only here: {@code '' + undefined}
-     * is {@code "undefined"} and {@code '' + null} is {@code "null"}. Every raw concatenation in these
-     * three stages — the version stamp, the repo, the file, the state in the routing-gap note — is raw
-     * ON PURPOSE, so that a field the caller failed to pass is loud in the transcript instead of
-     * silently blank. That field arrives as {@code undefined}; nothing upstream writes an explicit null
-     * into those positions. So an absent value prints {@code undefined} here, and the differential
-     * harness catalogues the one input shape where that is visible (a literal JSON null).
+     * <p>THIS REPLACED {@code Llm.concat}, WHICH WROTE THE WORD "undefined" INTO A PROMPT SENT TO THE
+     * MODEL. That was JavaScript's {@code '' + undefined} showing through a Java port, and it told the
+     * model that a field's value was the six characters "undefined" — a claim about the marker that
+     * nobody made. Retired on 2026-08-05 with the rest of the JS emulation; see
+     * {@code harness/README.md}, "Re-baselines".
+     *
+     * <p>WHY NOT SIMPLY EMPTY, which is the other obvious answer. Because the prompts were read before
+     * choosing, and a bare label is worse than an explicit absence in every one of them. PrMaker's
+     * template says <i>"You are the PR curator for open-source contributions to %s."</i> — empty makes
+     * that "contributions to ." , a broken sentence a model will fill in for itself, and the whole
+     * decision it is being asked for is repo-specific. {@code FILE: %s} with nothing after it reads as a
+     * truncated prompt. This module already knew the principle and applied it one field over: the fix
+     * edits are rendered {@code "[]"} rather than {@code ""} precisely because "a blank line after the
+     * heading reads as a truncated prompt and the model answers 'unknown' instead of judging".
+     *
+     * <p>So an absent field says what it is: {@code (repository not recorded)}. The model can act on
+     * that — it can decline for want of the thing — and a human reading the transcript learns which
+     * field the caller failed to pass, which is what the old "undefined" was reaching for and only
+     * half achieved.
      */
-    public static String concat(Object v) {
-        return v == null ? "undefined" : Js.string(v);
+    public static String orMissing(Object v, String label) {
+        String s = Values.text(v);
+        return s.isEmpty() ? "(" + label + " not recorded)" : s;
     }
 
     /**
-     * The same concatenation, done AT THE READ, where the two absences can still be told apart.
+     * The endpoint's base URL, with an unset one spelled so the failure names the variable.
      *
-     * <p>A key that is not in the item is {@code undefined}; a key that is there holding a JSON null is
-     * {@code null}. Both happen: an item omits a field no stage ever wrote, and a stored cell with no
-     * value round-trips as an explicit null. The two print differently —
-     * {@code [gap] retired as `null`} and {@code [gap] retired as `undefined`} are different diagnoses
-     * of a routing gap, and the row is the only thing the next reader gets.
+     * <p>NOT A PROMPT, and it needed its own answer. {@code Llm.concat} used to render an unset
+     * {@code QWEN_BASE_URL} as the word {@code undefined}, giving
+     * {@code undefined/chat/completions} — greppable, which was the argument for it, but only if you
+     * already know that "undefined" is how this codebase spells "missing". Rendering it EMPTY is
+     * worse: {@code /chat/completions} looks like a relative-path bug somewhere else entirely, which
+     * is a maintainer's afternoon.
+     *
+     * <p>So the marker names the environment variable. The request still fails — there is no host to
+     * send it to and there never was — but it fails with {@code QWEN_BASE_URL} in the text, which is
+     * both the diagnosis and the fix. The shells catch it and write it into the row.
      */
-    public static String concat(Object container, String key) {
+    public static String baseUrl(String configured) {
+        return configured == null || configured.isEmpty() ? "(QWEN_BASE_URL is not set)" : configured;
+    }
+
+    /**
+     * A field for a DIAGNOSTIC line, where "the key was missing" and "the key held null" are two
+     * different findings and the row is the only thing the next reader gets.
+     *
+     * <p>{@code [gap] retired as `null`} says a stage wrote a state and it was empty;
+     * {@code [gap] retired as `(absent)`} says no stage ever wrote one. Both happen — an item omits a
+     * field nothing set, and a stored cell with no value round-trips as an explicit null — and they
+     * point at different bugs. The distinction survives because {@code Json.parse} keeps an explicit
+     * null as a PRESENT key, so {@code containsKey} can still see what {@code get} cannot.
+     *
+     * <p>The absent spelling used to be the JS word {@code undefined}. It is now {@code (absent)}: the
+     * same distinction, in a word that describes itself and that no reader will mistake for a value the
+     * pipeline actually stored.
+     */
+    public static String presence(Object container, String key) {
         Object v = Json.get(container, key);
         if (v != null) {
-            return Js.string(v);
+            return Values.text(v);
         }
-        return container instanceof Map<?, ?> m && m.containsKey(key) ? "null" : "undefined";
+        return container instanceof Map<?, ?> m && m.containsKey(key) ? "null" : "(absent)";
     }
 
     /**
@@ -155,7 +191,7 @@ public final class Llm {
      */
     public static Map<String, Object> chat(Endpoint llm, String prompt, double temperature) {
         Map<String, Object> headers = new LinkedHashMap<>();
-        headers.put("Authorization", "Bearer " + concat(llm.apiKey()));
+        headers.put("Authorization", "Bearer " + Values.text(llm.apiKey()));
         headers.put("Content-Type", "application/json");
         // Without it a client holds sockets open and the model's front end runs out of them mid-run.
         headers.put("Connection", "close");
@@ -172,7 +208,7 @@ public final class Llm {
 
         Map<String, Object> options = new LinkedHashMap<>();
         options.put("method", "POST");
-        options.put("url", concat(llm.baseUrl()) + "/chat/completions");
+        options.put("url", baseUrl(llm.baseUrl()) + "/chat/completions");
         options.put("headers", headers);
         options.put("body", body);
         options.put("json", Boolean.TRUE);
@@ -202,7 +238,8 @@ public final class Llm {
         Object first = choices instanceof List<?> list && !list.isEmpty() ? list.get(0) : null;
         Object message = Json.get(first, "message");
         Object content = Json.get(message, "content");
-        return Js.orEmptyString(Js.truthy(content) ? content : Json.get(message, "reasoning_content"));
+        String answer = Values.text(content);
+        return !answer.isEmpty() ? answer : Values.text(Json.get(message, "reasoning_content"));
     }
 
     /**

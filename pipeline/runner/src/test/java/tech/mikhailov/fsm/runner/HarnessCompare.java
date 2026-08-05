@@ -14,8 +14,8 @@ import java.util.Map;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
-import tech.mikhailov.fsm.lib.Js;
-import tech.mikhailov.fsm.lib.JsText;
+import tech.mikhailov.fsm.lib.Values;
+import tech.mikhailov.fsm.lib.SourceText;
 import tech.mikhailov.fsm.lib.Json;
 
 /**
@@ -401,7 +401,7 @@ final class HarnessCompare {
         String cur = Json.str(c, "cur");
         String old = Json.str(c, "old");
         int exact = occurrences(cur, old);
-        String needle = JsText.trim(norm(old));
+        String needle = SourceText.trim(norm(old));
         int hits = occurrences(norm(cur), needle);
         // I2 — more than one exact match is REFUSED, never applied to the first.
         if (exact > 1) {
@@ -455,10 +455,10 @@ final class HarnessCompare {
         Object body = Json.get(c, "body");
         Object branch = Json.get(body, "branch");
         String key = sha1(interpolate(body, "repo") + "@"
-                + (Js.truthy(branch) ? Js.string(branch) : "main")).substring(0, 12);
+                + Values.orIfBlank(branch, "main")).substring(0, 12);
         Path base = Path.of(Json.str(c, "cache"), "fs", key);
         Object asked = Json.get(body, "path");
-        String rel = asked == null ? "" : Js.string(asked);
+        String rel = asked == null ? "" : Values.text(asked);
         while (rel.startsWith("/")) {
             rel = rel.substring(1);
         }
@@ -473,13 +473,22 @@ final class HarnessCompare {
         }
     }
 
-    /** {@code `${container.key}`}: absent is the word "undefined", explicit null is "null". */
+    /**
+     * The interpolation the cache key is built from — {@link Text#field}, and deliberately not a
+     * second copy of it.
+     *
+     * <p>IT USED TO BE A COPY, spelling an absent field the way the reference did (the word
+     * {@code undefined}). That was already only half a model: the branch beside it is coerced by THIS
+     * module's rule, so the key computed here matched neither side exactly. Since 2026-08-05 the two
+     * spellings genuinely differ — see {@code harness/README.md} — and one function cannot be both.
+     *
+     * <p>It models the JAVA side, because that is the side whose containment this can still be wrong
+     * about: the reference's answers are frozen, and where its key differed from this module's the
+     * case serves no file at all, so {@link #readFileRule} returns before the key is used. A future
+     * fixture that did serve one would need this to know which side it is checking.
+     */
     private static String interpolate(Object container, String key) {
-        if (!(container instanceof Map<?, ?> m) || !m.containsKey(key)) {
-            return "undefined";
-        }
-        Object v = m.get(key);
-        return v == null ? "null" : Js.string(v);
+        return Text.field(container, key);
     }
 
     private static String sha1(String s) {
@@ -507,7 +516,7 @@ final class HarnessCompare {
         boolean inRun = false;
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
-            if (JsText.isSpace(c)) {
+            if (SourceText.isSpace(c)) {
                 if (!inRun) {
                     out.append(' ');
                     inRun = true;

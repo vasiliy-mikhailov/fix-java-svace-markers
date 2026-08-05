@@ -10,7 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import tech.mikhailov.fsm.lib.JsValue;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.nodes.BuildReproduceInput.Outcome;
 import tech.mikhailov.fsm.nodes.BuildReproduceInput.Request;
 
@@ -66,7 +66,7 @@ class BuildReproduceInputTest {
 
     private static Outcome build(Map<String, Object> j, Object content) {
         Map<String, Object> file = new LinkedHashMap<>();
-        if (content != JsValue.UNDEFINED) {
+        if (content != null) {
             file.put("content", content);
         }
         return BuildReproduceInput.buildReproduceInput(new Request(j, file));
@@ -533,7 +533,7 @@ class BuildReproduceInputTest {
         // quoted-line block is omitted entirely. An (int) cast here would quote line 2 while the
         // prompt claimed line 2.5, which is a location the model cannot check.
         Outcome r = build(marker("svace_line", 2.5), b64(SIMPLE));
-        assertEquals(JsValue.UNDEFINED, r.lineText());
+        assertEquals(null, r.lineText());
         assertFalse(r.agentInput().contains("as it reads in the checked-out tree"));
         assertTrue(r.anchorNote().contains("line 2.5 "), "and the note says 2.5, not 2");
     }
@@ -544,15 +544,34 @@ class BuildReproduceInputTest {
         j.put("file", "a/B.java");
         j.put("class_name", "B");
         j.put("svace_line", 5L);
-        Outcome r = build(j, JsValue.UNDEFINED);
+        Outcome r = build(j, null);
         assertEquals("", r.src());
         assertTrue(r.anchorNote().contains("could not be fetched"));
         assertEquals("unresolved", r.anchorStatus());
-        // With nothing to quote, neither the line block nor the method block may appear — an empty
-        // fenced java block reads to a model as "the line is blank", which is a different claim from
-        // "unknown".
-        assertFalse(r.agentInput().contains("as it reads in the checked-out tree"));
+        // With nothing to quote, neither the line block nor the method block may appear. An empty
+        // fenced java block under "Line 5 as it reads in the checked-out tree" reads to a model as
+        // "line 5 is blank", which is a specific claim about a file nobody managed to fetch, where
+        // the honest report is that the line is unknown.
+        //
+        // WHY THIS IS THE ASSERTION THE JS REMOVAL NEEDED. The old guard was `Js.truthy(lineText)`
+        // and the new one is `!Values.text(lineText).isEmpty()`. A NULL check would have passed both
+        // of them — `lineText` is "" and not null whenever no line was resolved — so it would have
+        // emitted the blank fence on every unfetched source. The guard has to ask whether there is a
+        // line TO quote, and this is what says so. See BuildReproduceInput.
+        assertFalse(r.agentInput().contains("as it reads in the checked-out tree"),
+                "an unfetched file has no line to quote, and a blank fence is a claim that it does");
         assertTrue(r.agentInput().contains("No enclosing method could be resolved"));
+        // AND THE FENCE COUNT, because the heading is not the only way to ship a blank quote. Exactly
+        // one ```java block survives, and it is the whole-file one. That one IS empty, and it is
+        // allowed to be: the line directly above it says in words that there was no file, which is
+        // the sentence a model reads before it reaches the fence. This pairing is the assertion —
+        // an empty fence is honest only while the caption that explains it is there, so if the
+        // caption is ever dropped, or a second fence appears, this fails.
+        assertEquals(1, r.agentInput().split("```java", -1).length - 1,
+                "only the whole-file fence may be left, and it is empty because the file is missing");
+        assertTrue(r.agentInput().contains(
+                        "LOCATION CONFIDENCE: unresolved — source file could not be fetched"),
+                "the empty whole-file fence is captioned, in words, as a file that never arrived");
     }
 
     @Test

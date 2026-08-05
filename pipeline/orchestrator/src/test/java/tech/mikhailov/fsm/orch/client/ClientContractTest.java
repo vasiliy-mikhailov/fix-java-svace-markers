@@ -20,6 +20,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.Llm;
+import tech.mikhailov.fsm.nodes.PrepProver;
 import tech.mikhailov.fsm.orch.LogLines;
 import tech.mikhailov.fsm.orch.Secrets;
 
@@ -679,8 +680,15 @@ class ClientContractTest {
      * second one: a copy of it in this package registered a rival bean definition named
      * {@code secrets} and the application refused to start. It is asserted here because the two
      * boundaries below belong to these clients — an unset {@code QWEN_BASE_URL} is what makes
-     * {@link HttpTransport} reject {@code undefined/chat/completions} as a failed CALL, and an unset
+     * {@link HttpTransport} reject the assembled URL as a failed CALL, and an unset
      * {@code GITHUB_TOKEN} is what {@link SourceClient#fetch} documents as an unauthenticated request.
+     *
+     * <p>WHY NULL AND NOT "": this class must not flatten an absence, because the two things
+     * downstream of it read the absence differently and both of them are right. {@code Llm.baseUrl}
+     * NAMES the variable, so a run with no endpoint fails with its own diagnosis in the text;
+     * {@code PrepProver.authorization} NAMES the variable too, because an empty {@code Bearer} is the
+     * one rendering GitHub does not reject. Neither can make that choice if this reader has already
+     * turned the missing variable into an empty string.
      */
     @Test
     void anUnsetVariableStaysUnsetRatherThanBecomingAnEmptyString() {
@@ -691,14 +699,35 @@ class ClientContractTest {
 
         assertThat(secrets.qwen().baseUrl()).isEqualTo("http://inference-vllm:8000/v1");
         assertThat(secrets.qwen().model()).isEqualTo("qwen-3.6-27b-fp8");
-        // Null, not "": Llm.Endpoint passes it through so a missing key produces the greppable
-        // `undefined/chat/completions` rather than a relative path that looks like another bug.
+        assertThat(Llm.baseUrl(secrets.qwen().baseUrl()))
+                .as("a variable that IS set is passed through untouched")
+                .isEqualTo("http://inference-vllm:8000/v1");
+
+        // The three that are not set in this environment come back null rather than "".
         assertThat(secrets.qwen().apiKey()).isNull();
-        assertThat(Llm.concat(secrets.qwen().apiKey())).isEqualTo("undefined");
-        // Null for the client, which sends `Bearer undefined` and gets a visible 401 — never a
-        // blank Bearer, which reads as a request nobody meant to authenticate.
         assertThat(secrets.gitToken()).isNull();
         assertThat(secrets.svaceBaseUrl()).isNull();
+
+        // AND HERE IS WHAT THE NULL BUYS. An unset endpoint NAMES ITS VARIABLE instead of collapsing
+        // to "/chat/completions", which looks like a relative-path bug in somebody else's code; an
+        // unset GitHub token does the same, because a `Bearer ` with nothing after it is not refused
+        // by GitHub — it is accepted onto the 60-per-hour anonymous quota, and the run then fails an
+        // hour later on whichever marker crossed it. Both used to render the JavaScript word
+        // "undefined"; retired 2026-08-05, see harness/README.md, "Re-baselines".
+        assertThat(Llm.baseUrl(new Secrets(name -> null).qwen().baseUrl()))
+                .isEqualTo("(QWEN_BASE_URL is not set)");
+        assertThat(PrepProver.authorization(secrets.gitToken()))
+                .isEqualTo("Bearer (GITHUB_TOKEN is not set)");
+
+        // THE ONE THAT IS DELIBERATELY NOT NAMED, so that the difference is a decision on the record
+        // rather than an oversight: the model endpoint's own key is sent as an empty Bearer. The
+        // hazard that makes GitHub's case dangerous does not exist here — an inference gateway has no
+        // anonymous tier to be silently demoted onto, so it either ignores the header or answers 401
+        // on the FIRST call. Naming the variable there would mean sending a credential nobody
+        // configured to a host that might log it.
+        assertThat(Json.get(Llm.chat(Llm.Endpoint.of(Map.of("QWEN_BASE_URL", "http://vllm")),
+                        "hi", 0).get("headers"), "Authorization"))
+                .isEqualTo("Bearer ");
     }
 
     // ---- the transports --------------------------------------------------------------------------

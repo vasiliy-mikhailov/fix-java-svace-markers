@@ -3,7 +3,7 @@ package tech.mikhailov.fsm.nodes;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import tech.mikhailov.fsm.lib.Js;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.Llm;
 import tech.mikhailov.fsm.lib.SkepticVerdict;
@@ -146,7 +146,7 @@ public final class FixSkeptic {
         public static Request of(Object body) {
             return new Request(Json.get(body, "prep_prover"), Json.get(body, "parse_test"),
                     Json.get(body, "parse_fix"), Json.get(body, "item"),
-                    Llm.Endpoint.of(Json.get(body, "env")), Llm.concat(body, "skeptic_stamp"));
+                    Llm.Endpoint.of(Json.get(body, "env")), Json.str(body, "skeptic_stamp"));
         }
     }
 
@@ -160,7 +160,7 @@ public final class FixSkeptic {
      * pull request.
      */
     static String cut(Object x) {
-        String t = Js.orEmptyString(x);                  // a number here used to throw on .length
+        String t = Values.text(x);                  // a number here used to throw on .length
         return t.length() <= SKEPTIC_CUT ? t
                 : t.substring(0, SKEPTIC_CUT) + "\n…[TRUNCATED " + (t.length() - SKEPTIC_CUT)
                         + " chars — reply verdict 'unknown' if you cannot judge the whole change]";
@@ -183,8 +183,8 @@ public final class FixSkeptic {
         // '[]' rather than '' for an absent edit list: '[]' is a JSON array the model reads as "no
         // edits", where a blank line after the heading reads as a truncated prompt and the model
         // answers 'unknown' instead of judging.
-        return template.formatted(Llm.concat(in.stamp()), Js.orEmptyString(in.title()),
-                Js.orEmptyString(in.description()), cut(in.testCode()),
+        return template.formatted(Llm.orMissing(in.stamp(), "stamp"), Values.text(in.title()),
+                Values.text(in.description()), cut(in.testCode()),
                 cut(or(in.fixEditsJson(), "[]")));
     }
 
@@ -212,7 +212,7 @@ public final class FixSkeptic {
         int b = t.lastIndexOf('}');
         if (a >= 0 && b > a) {
             Object jj = Json.parse(t.substring(a, b + 1));
-            String v = Js.orEmptyString(Json.get(jj, "verdict"));
+            String v = Values.text(Json.get(jj, "verdict"));
             // THE WHITELIST, AND IT IS THE ENUM'S. `of` recognises all five spellings — including the
             // two the STAGE writes — and ANSWERS is the three the PROMPT asked for, so a model that
             // replies 'not-run' or 'unknown' is treated as having said something unrecognised rather
@@ -220,7 +220,7 @@ public final class FixSkeptic {
             SkepticVerdict said = SkepticVerdict.of(v);
             boolean known = said != null && SkepticVerdict.ANSWERS.contains(said);
             verdict = known ? said : SkepticVerdict.UNKNOWN;
-            String given = Js.orEmptyString(Json.get(jj, "reason"));
+            String given = Values.text(Json.get(jj, "reason"));
             // A recognised verdict with no reason is NOT an unrecognised verdict: "unrecognised
             // verdict: sound" in the row sends a reviewer hunting a parser bug that does not exist,
             // and hides the real gap (the model gave no reason).

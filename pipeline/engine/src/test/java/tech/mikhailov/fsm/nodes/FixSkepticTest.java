@@ -113,11 +113,35 @@ class FixSkepticTest {
     }
 
     @Test
-    void theStampIsConcatenatedRawSoAMissingOneIsVisibleRatherThanSilentlyBlank() {
-        // A caller always passes one; there is no `|| ''` on purpose. A prompt that opens with the
-        // literal 'undefined' is a bug someone reads in the transcript, a blank first line is not.
+    void aMissingStampIsNamedInThePromptRatherThanLeavingABlankFirstLine() {
+        // WHAT THIS TEST USED TO SAY. It was
+        // `theStampIsConcatenatedRawSoAMissingOneIsVisibleRatherThanSilentlyBlank` and it demanded the
+        // literal word `undefined` as the first line — JavaScript's `'' + undefined` showing through a
+        // port. The word went on 2026-08-05 with the rest of the emulation.
+        //
+        // THE CONCERN IS UNCHANGED AND IS STILL THE RIGHT ONE: a caller always passes a stamp, the
+        // stamp is the prompt version the outcome row is attributed to, and a stamp that went missing
+        // must be VISIBLE. A blank first line is not visible — it is a prompt that looks slightly
+        // shorter, nobody notices, and every row of that run is attributed to a version nobody can
+        // name afterwards.
+        //
+        // WHAT CHANGED IS THE MARKER, AND WHY THIS ONE. `undefined` was greppable only by a reader who
+        // already knew that this codebase spelled "missing" that way; to the MODEL it read as a real
+        // value, i.e. as a claim that the prompt version is literally the six characters "undefined".
+        // `(stamp not recorded)` says the thing itself. Both a human scanning a transcript and a model
+        // reading the first line learn the same true fact from it. Same rule, same reason, in
+        // Llm.orMissing — the engine has one spelling for this now, not one per node.
         assertTrue(FixSkeptic.skepticPrompt(new PromptInput(null, TITLE, DESCRIPTION, TEST_CODE,
-                FIX_EDITS)).startsWith("undefined\n"));
+                FIX_EDITS)).startsWith("(stamp not recorded)\n"),
+                "an absent stamp names itself on the line the stamp belongs on");
+        // The empty string is the same absence and must not be allowed to be the quiet one: it is what
+        // an unset n8n expression evaluates to, which is the way this actually happens in production.
+        assertTrue(FixSkeptic.skepticPrompt(new PromptInput("", TITLE, DESCRIPTION, TEST_CODE,
+                FIX_EDITS)).startsWith("(stamp not recorded)\n"),
+                "an empty stamp is a missing stamp, not a stamp");
+        // …and a stamp that IS there is still spliced verbatim and costs nothing.
+        assertTrue(FixSkeptic.skepticPrompt(new PromptInput(STAMP, TITLE, DESCRIPTION, TEST_CODE,
+                FIX_EDITS)).startsWith(STAMP + "\n"));
     }
 
     @Test
@@ -572,8 +596,13 @@ class FixSkepticTest {
         assertEquals(Boolean.TRUE, Json.get(req.item(), "proven"));
         assertEquals(new Llm.Endpoint("http://llm", "k", "m"), req.llm());
         assertEquals("[stage sk5]", req.skepticStamp());
-        // An absent stamp is the word `undefined`, not a blank line — see FixSkeptic.PromptInput.
-        assertEquals("undefined", Request.of(Json.parse("{}")).skepticStamp());
+        // AN ABSENT STAMP READS AS EMPTY *HERE*, and that is deliberate rather than a loosening. The
+        // request is a data structure, not a prompt: "" is the honest value for a key the caller did
+        // not send, and inventing a marker at the read would put text into a field that a later
+        // `isEmpty()` could no longer recognise as absent. The naming happens once, at the point where
+        // the value is spliced into the prompt a human and a model will read — see
+        // `aMissingStampIsNamedInThePromptRatherThanLeavingABlankFirstLine`, which pins that end.
+        assertEquals("", Request.of(Json.parse("{}")).skepticStamp());
     }
 
     /** The prompt the shell actually sent. */

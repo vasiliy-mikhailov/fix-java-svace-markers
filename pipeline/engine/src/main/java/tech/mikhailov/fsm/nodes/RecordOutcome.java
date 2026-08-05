@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import tech.mikhailov.fsm.lib.JsText;
+import tech.mikhailov.fsm.lib.SourceText;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.MarkerState;
 import tech.mikhailov.fsm.lib.PrDecision;
@@ -484,11 +484,11 @@ public final class RecordOutcome {
         Object bri = req.buildReproduceInput();
 
         return new Signals(marker, test, fix, repro, run, judges,
-                // JsText.isBlank, NOT String.isBlank: they disagree about four characters in each
+                // SourceText.isBlank, NOT String.isBlank: they disagree about four characters in each
                 // direction, and a source file that is nothing but a byte-order mark is one of them. To
-                // JsText that file is empty — infra_error, retried. To String.isBlank it has content,
-                // and the marker would be adjudicated against a file with no code in it. See JsText.
-                JsText.isBlank(Json.str(bri, "src")), Json.truthy(bri, "src_truncated"),
+                // SourceText that file is empty — infra_error, retried. To String.isBlank it has content,
+                // and the marker would be adjudicated against a file with no code in it. See SourceText.
+                SourceText.isBlank(Json.str(bri, "src")), Json.truthy(bri, "src_truncated"),
                 repro.reproduced() && run.proven(),          // re-verifies red AND green
                 or(run.jdk(), repro.jdk()));
     }

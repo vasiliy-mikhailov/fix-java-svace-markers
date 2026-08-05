@@ -237,7 +237,7 @@ public class HttpLlmClient implements LlmClient {
 
     /** Where the call went, for the reason line. The API key is never part of this. */
     private static String endpointOf(Llm.Endpoint endpoint) {
-        return Llm.concat(endpoint == null ? null : endpoint.baseUrl()) + "/chat/completions";
+        return Llm.baseUrl(endpoint == null ? null : endpoint.baseUrl()) + "/chat/completions";
     }
 
     /** Leave room for the prefix, so the clip in {@link InfraFailure} never eats the subsystem name. */

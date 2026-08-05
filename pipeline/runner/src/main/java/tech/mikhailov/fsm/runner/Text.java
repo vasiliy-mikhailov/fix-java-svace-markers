@@ -5,7 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
-import tech.mikhailov.fsm.lib.Js;
+import tech.mikhailov.fsm.lib.Values;
 
 /**
  * The string and file operations this module performs on its way to and from disk, where Java's
@@ -56,17 +56,22 @@ final class Text {
      * String interpolation's coercion for a value that is not a field read: what {@code `${v}`} produces
      * for something already in hand.
      *
-     * <p>A Java {@code null} reads as "undefined" here because the only way to hold one is to have read
-     * a key that was not there. When the CONTAINER is available, use {@link #field} instead — it can
-     * tell a missing key from a null one, and they are two different words in JavaScript.
+     * <p>A Java {@code null} reads as {@code (absent)} here because the only way to hold one is to have
+     * read a key that was not there. When the CONTAINER is available, use {@link #field} instead — it
+     * can tell a missing key from a null one, and they stay two different words.
+     *
+     * <p>THE WORD USED TO BE {@code undefined}, until 2026-08-05. It came from the JavaScript
+     * implementation this service replaced and it named the language rather than the situation; a
+     * reader who did not already know that had no way to tell it from a value some caller had really
+     * sent. {@code (absent)} says what happened, and the parentheses say it is this service talking.
      */
     static String string(Object v) {
-        return v == null ? "undefined" : Js.string(v);
+        return v == null ? "(absent)" : Values.text(v);
     }
 
     /**
-     * {@code `${body[key]}`} — "undefined" for a MISSING key and "null" for one that is present and
-     * null.
+     * {@code `${body[key]}`} — {@code (absent)} for a MISSING key and {@code null} for one that is
+     * present and null.
      *
      * <p>THE DIFFERENCE NAMES A DIRECTORY, which is why it is worth the extra call. {@code Workspace}
      * hashes {@code `${repo}@${branch}`} into the cache directory name, so a request carrying an
@@ -75,30 +80,31 @@ final class Text {
      * {@code keyForCoerced} compares the KEY and not just the message, for exactly this reason.
      *
      * <p>It is expressible because {@link tech.mikhailov.fsm.lib.Json#parse} stores an explicit null as
-     * a present key with a null value, the way {@code JSON.parse} does, so {@code containsKey} is the
-     * distinction {@code get} cannot make. A body that is not an object at all has no properties, and
-     * every field of one is {@code undefined}.
+     * a present key with a null value, so {@code containsKey} is the distinction {@code get} cannot
+     * make. A body that is not an object at all has no properties, and every field of one is absent.
      */
     static String field(Object container, String key) {
         String present = fieldOrAbsent(container, key);
-        return present == null ? "undefined" : present;
+        return present == null ? "(absent)" : present;
     }
 
     /**
-     * {@code key in container ? String(container[key]) : undefined} — {@link #field} for a value that is
-     * USED rather than printed, with an absent key answered as a Java {@code null}.
+     * {@link #field} for a value that is USED rather than printed, with an absent key answered as a
+     * Java {@code null} instead of being spelled at all.
      *
-     * <p>WHY {@code field} IS NOT ENOUGH, and it is not a style point. "undefined" is the right word to
-     * print, and it is also nine characters a Java source file contains for entirely ordinary reasons — a
-     * comment, a string literal, an identifier. Once the absence has been spelled, nothing downstream can
-     * tell it from a request that really carried that word, and {@code Prove} handed the result to
+     * <p>WHY {@code field} IS NOT ENOUGH, and it is not a style point. {@code (absent)} is the right
+     * thing to PRINT, and it is still just characters that a Java source file can contain. Once the
+     * absence has been spelled, nothing downstream can
+     * tell it from a request that really carried that text, and {@code Prove} handed the result to
      * {@link Edit#applyEdit} as a SEARCH NEEDLE: a {@code fix_edit} with no {@code old_str} went looking
-     * for the text "undefined" in the file, and where it appeared exactly once the edit applied silently
-     * somewhere nobody aimed it. An absent value must therefore stay absent all the way down, rather
-     * than being spelled into a string anywhere on the way.
+     * for the spelled-out absence in the file, and where it appeared exactly once the edit applied
+     * silently somewhere nobody aimed it. Renaming the word does not fix that — {@code (absent)} is
+     * rarer in Java source than {@code undefined} was, which makes the same bug harder to catch, not
+     * less real. An absent value must stay absent all the way down rather than being spelled into a
+     * string anywhere on the way.
      *
      * <p>So: {@code null} means ABSENT and nothing else. An explicit {@code "old_str": null} is PRESENT
-     * and still comes back as the word "null", which is what {@code cur.split(null)} searched for; the
+     * and still comes back as the word "null", which is the needle that request really asked for; the
      * caller that needs the difference is the one that must be able to see it, and this is the only place
      * it is still visible.
      */
@@ -106,12 +112,23 @@ final class Text {
         if (!(container instanceof Map<?, ?> m) || !m.containsKey(key)) {
             return null;
         }
-        return Js.string(m.get(key));
+        // An explicit null is PRESENT and still spells itself, which is what cur.split(null)
+        // searched for; only an absent key comes back as a Java null, above.
+        return m.get(key) == null ? "null" : Values.text(m.get(key));
     }
 
-    /** {@code String(v || fallback)} — the {@code body.branch || 'main'} idiom, coerced. */
+    /**
+     * The {@code body.branch || 'main'} idiom: the value's text, or the fallback when there is
+     * NOTHING TO READ.
+     *
+     * <p>Absent, empty and whitespace-only all take the fallback, because all three are a request that
+     * carries the field and not a value — and the third is one {@code ||} never caught. A present
+     * {@code 0} or {@code false} is now kept and rendered, where {@code ||} discarded it: a branch
+     * literally named {@code 0} is legal in git, and a caller that means "use the default" says so by
+     * omitting the field.
+     */
     static String orDefault(Object v, String fallback) {
-        return Js.truthy(v) ? Js.string(v) : fallback;
+        return Values.orIfBlank(v, fallback);
     }
 
     /**

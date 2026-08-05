@@ -100,11 +100,23 @@ class PrMakerTest {
     }
 
     @Test
-    void theStampLeadsThePromptAndAnAbsentOneCostsOnlyItsLine() {
+    void theStampLeadsThePromptAndAnAbsentOneIsNamedRatherThanDropped() {
         // The stamp is the prompt version the outcome row is attributed to; it is prepended verbatim.
         assertTrue(prompt(PREP, TEST, FIX).startsWith("[fsm pr v3]\nYou are the PR curator"));
+
+        // WHAT THIS TEST USED TO SAY, AND WHY THE ANSWER CHANGED. It was
+        // `…AnAbsentOneCostsOnlyItsLine` and it asserted that a missing stamp leaves a bare newline —
+        // that it is FREE. It is not free, and calling it free was the mistake: every row that run
+        // writes is attributed to a prompt version nobody can name afterwards, and the only trace is
+        // one blank line at the top of a transcript nobody re-reads. The stamp is the one field in
+        // this prompt whose absence cannot be reconstructed later from anything else in the row.
+        //
+        // It now costs exactly what it should: a line saying the stamp is missing. Same rule as
+        // FixSkeptic's and Verdict's, in Llm.orMissing — one spelling for the whole engine, so a
+        // reader who has met it once knows it everywhere.
         assertTrue(PrMaker.buildPrPrompt(new PromptInput("", PREP, TEST, FIX))
-                .startsWith("\nYou are the PR curator"));
+                .startsWith("(stamp not recorded)\nYou are the PR curator"),
+                "an absent stamp is a fact about the run, and facts belong in the transcript");
     }
 
     @Test
@@ -162,10 +174,16 @@ class PrMakerTest {
                 () -> prompt(PREP, TEST, item("fix_edits_json", 7L)));
         assertThrows(PrMaker.NotSliceable.class,
                 () -> prompt(PREP, item("test_code", 42L), FIX));
-        // …and an ARRAY is sliced as an array, then rendered by the concatenation: it renders the
-        // result by joining with commas, and the curator sees a diff rather than a crash.
+        // …and an ARRAY is sliced as an array and then RENDERED AS JSON, so the curator sees a diff
+        // rather than a crash. This assertion used to demand "a,b" — `String(["a","b"])`, the comma
+        // join — and the JSON is the better answer for a reason this very section already relies on:
+        // the empty case one test down is rendered `[]`, deliberately, "because '[]' is a JSON array
+        // the model can read as 'no edits'". An edit list that IS there has to be the same kind of
+        // thing as the empty one. "a,b" is not a JSON array, is not distinguishable from a single
+        // edit containing a comma, and asks the model to read a format that appears nowhere else in
+        // the prompt.
         assertTrue(prompt(PREP, TEST, item("fix_edits_json", List.of("a", "b")))
-                .contains("FIX EDITS:\na,b\n\nTEST:"));
+                .contains("FIX EDITS:\n[\"a\",\"b\"]\n\nTEST:"));
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -237,12 +255,23 @@ class PrMakerTest {
     @Test
     void nonStringFieldsAreCoercedSoDownstreamNeverGetsANumberWhereAStringGoes() {
         // The outcome row and the GitHub API both expect strings. A raw 7 in pr_decision compares equal
-        // to nothing the pipeline tests for, and the row silently falls through every branch.
+        // to nothing the pipeline tests for, and the row silently falls through every branch. That is
+        // the concern, and it is unchanged.
         Curation r = parse(reply("{\"decision\":7,\"reason\":false,\"pr_title\":42,\"pr_body\":true}"));
         assertEquals("7", r.decision());
-        assertEquals("", r.reason());
         assertEquals("42", r.title());
         assertEquals("true", r.body());
+
+        // THE ONE THAT MOVED: `reason` was asserted to come back "" for a `false`, because
+        // `String(x || '')` threw the value away. `pr_reason` is the sentence a human reads next to a
+        // rejected fix. A model that answered `"reason": false` said something WRONG, and the two
+        // renderings tell that human two different stories: "false" says the curator replied with
+        // nonsense and the reply is the bug, while "" says the curator gave no reason at all — which
+        // sends the reader to the prompt, or to the endpoint, or to the parser, for a fault that is in
+        // none of them. Keeping what arrived is what makes the row diagnosable.
+        assertEquals("false", r.reason(),
+                "a reason the model actually sent, however bad, is evidence; \"\" is a claim that it "
+                + "sent nothing");
     }
 
     @Test

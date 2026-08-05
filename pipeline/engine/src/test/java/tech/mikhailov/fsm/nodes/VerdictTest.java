@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,7 +17,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
-import tech.mikhailov.fsm.lib.JsText;
+import tech.mikhailov.fsm.lib.SourceText;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.Llm;
 
@@ -154,8 +155,14 @@ class VerdictTest {
             return this;
         }
 
+        /**
+         * {@code Arrays.asList}, not {@code List.of}: a scripted answer of {@code null} is a real
+         * shape an endpoint produces — a 200 with an unparseable or empty body — and it is one of the
+         * cases {@code aReplyWithNoMessageInItIsNoDetailAtAll} enumerates. {@code List.of} throws on
+         * it, which would make the harness, not the node, decide which shapes may be tested.
+         */
         Marker answers(Object... script) {
-            http.addAll(List.of(script));
+            http.addAll(Arrays.asList(script));
             return this;
         }
 
@@ -308,7 +315,7 @@ class VerdictTest {
         Map<String, Object> out = marker().answers(nonAnswer).run();
         // the premise. Blank, not empty: what the model sent is kept verbatim on the row, so a reply of
         // nothing but spaces reaches verdict_text as those spaces — it is still not an argument.
-        assertTrue(JsText.isBlank(String.valueOf(out.get("verdict_text"))),
+        assertTrue(SourceText.isBlank(String.valueOf(out.get("verdict_text"))),
                 () -> what + ": the premise is that nothing was argued, but verdict_text has content: "
                         + out.get("verdict_text"));
         assertEquals("", out.get("verdict_kind"), what + ": nothing was argued, so nothing is filed");
@@ -618,14 +625,32 @@ class VerdictTest {
 
     @Test
     void anAbsentStateAndAnExplicitNullStateAreDifferentDiagnoses() {
-        // Java has one absent value where JS has two, and this is the one place it reaches a human: a
-        // row with no state at all and a row whose state came back NULL are different bugs upstream,
-        // and the note is all the next reader gets.
+        // THE DISTINCTION IS THE POINT AND IT SURVIVES INTACT: a row with no `state` key at all and a
+        // row whose `state` came back NULL are different bugs upstream — the first is a stage that
+        // never wrote the field, the second is a stored cell that round-tripped with no value — and
+        // this note is all the next reader gets. Json.parse keeps an explicit null as a PRESENT key,
+        // so `containsKey` can still see what `get` cannot, and that is what makes the two tellable
+        // apart in Java at all.
+        //
+        // WHAT MOVED IS ONE WORD. The absent spelling was `undefined`, borrowed from a language this
+        // pipeline no longer emulates, and it is now `(absent)`. The gain is that it describes itself:
+        // a reader who has never seen this codebase cannot mistake `(absent)` for a state the pipeline
+        // stored, whereas `undefined` reads exactly like a value some stage wrote. The `null` spelling
+        // is unchanged, because `null` IS what the cell holds and naming it anything else would be the
+        // same mistake in the other direction.
         Map<String, Object> withoutState = markerWithout("state").run();
-        assertTrue(String.valueOf(withoutState.get("suspicion_note")).contains("retired as `undefined`"));
+        assertTrue(String.valueOf(withoutState.get("suspicion_note")).contains("retired as `(absent)`"),
+                withoutState.get("suspicion_note") + "");
 
         Map<String, Object> explicitNull = marker().rec("state", null).run();
-        assertTrue(String.valueOf(explicitNull.get("suspicion_note")).contains("retired as `null`"));
+        assertTrue(String.valueOf(explicitNull.get("suspicion_note")).contains("retired as `null`"),
+                explicitNull.get("suspicion_note") + "");
+
+        // …and the two must not have quietly converged on one spelling, which is the way this
+        // distinction dies: a later simplification renders both as "" and nobody notices, because each
+        // assertion above still describes a note that exists.
+        assertNotEquals(withoutState.get("suspicion_note"), explicitNull.get("suspicion_note"),
+                "two different upstream bugs must not produce the same note");
     }
 
     /** A marker whose Record-outcome row is missing a key entirely, rather than holding null. */
@@ -770,12 +795,29 @@ class VerdictTest {
     }
 
     @Test
-    void anEmptyBodyIsNoDetailAtAll() {
-        // an endpoint answering 200 with nothing must read as "unavailable"; a blank SVACE DETAIL line
-        // would let the model argue against a claim it was never shown
-        Marker m = marker().env("SVACE_BASE_URL", "http://svace").answers("", reply("false-positive"));
-        m.run();
-        assertTrue(m.prompt(1).contains("SVACE DETAIL: unavailable"));
+    void aReplyWithNoMessageInItIsNoDetailAtAll() {
+        // AN ENDPOINT ANSWERING 200 WITH NOTHING MUST READ AS "unavailable". A blank SVACE DETAIL line
+        // is worse than no line: the model is being asked whether a checker's claim holds, and shown
+        // an empty claim it will report the marker as a false positive — a settled, written,
+        // human-facing verdict, produced from a blank.
+        //
+        // THIS TEST NOW ASKS THE QUESTION AT THE RIGHT LEVEL, and the JS removal is what showed that
+        // it was not. It used to send an empty-string body and rely on `Js.truthy(reply)` being false;
+        // when that became a `reply == null` check the empty body sailed through and rendered
+        // `SVACE DETAIL: ` with nothing after it, and the only reason the suite noticed is that this
+        // test existed. But "the reply object is null" was never the condition worth testing — a null
+        // reply is just ONE of the shapes "nothing" arrives in. The condition is that there is no
+        // MESSAGE to show, and each shape below reaches it a different way.
+        for (Object nothing : new Object[] {"", null, item(), item("trace", List.of("a")),
+                                            item("message", ""), item("message", "   ")}) {
+            Marker m = marker().env("SVACE_BASE_URL", "http://svace")
+                    .answers(nothing, reply("false-positive"));
+            m.run();
+            assertTrue(m.prompt(1).contains("SVACE DETAIL: unavailable"),
+                    "a reply of " + nothing + " carries no claim to argue against");
+            assertFalse(m.prompt(1).contains("SVACE DETAIL: \n"),
+                    "and specifically never a blank claim: " + nothing);
+        }
     }
 
     @Test
@@ -819,7 +861,11 @@ class VerdictTest {
                 "suspicion_status", "suspicion_note", "anchor", "anchor_status", "svace_checker"),
                 new ArrayList<>(out.keySet()));
         assertEquals("rejected", out.get("suspicion_status"));
-        assertTrue(String.valueOf(out.get("suspicion_note")).contains("retired as `undefined`"),
+        // `(absent)` rather than the old JS word `undefined` — see
+        // anAbsentStateAndAnExplicitNullStateAreDifferentDiagnoses for why the marker changed. What
+        // matters here is that a non-object item routes to the SAME diagnosis as a missing key, which
+        // is honest: merging nothing and having nothing to merge are the same situation.
+        assertTrue(String.valueOf(out.get("suspicion_note")).contains("retired as `(absent)`"),
                 "a row with no state at all is a routing gap, and it says which state it was");
     }
 

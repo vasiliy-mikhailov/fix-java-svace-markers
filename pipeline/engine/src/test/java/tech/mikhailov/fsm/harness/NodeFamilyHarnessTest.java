@@ -16,10 +16,17 @@ import org.junit.jupiter.api.Test;
  * hostile items.
  *
  * <h2>The numbers, as of the last re-baseline</h2>
- * 3 357 cases, <b>2 013 identical, 1 344 divergent, 78 classes</b>. Per node: {@code verdict}
- * 1 682/2 848 identical, {@code skeptic} 0/171, {@code prmaker} 331/338.
+ * 3 357 cases, <b>1 991 identical, 1 366 divergent, 138 classes</b>. Per node: {@code verdict}
+ * 1 682/2 848 identical, {@code skeptic} 0/171, {@code prmaker} 309/338.
  *
- * <p><b>973 of the 1 344 are one deliberate re-baseline</b>, dated 2026-08-05: the verdict sampling
+ * <p><b>THIS IS NO LONGER A FIDELITY MEASUREMENT, AND THE FIRST NUMBER TO READ IS NOT THE TOTAL.</b>
+ * The reference was a JavaScript implementation and this module used to reproduce its VALUE SEMANTICS
+ * on purpose; that emulation was DELETED on 2026-08-05 and cannot be restored, so what the catalogue
+ * pins now is intended Java behaviour rather than agreement with a program that could be run. See
+ * {@code engine/harness/README.md}, the 2026-08-05 entry, which states what was retired and what is
+ * left.
+ *
+ * <p><b>1 076 of the 1 366 are one deliberate re-baseline</b>, dated 2026-08-05: the verdict sampling
  * temperature was dropped from 0.2 to 0, because {@code kind} is a certification and was varying about
  * 2 of 20 times on identical input (a small sample: the direction is the point, not the rate). It
  * shows up as a single class of 1 076 instances at
@@ -29,6 +36,19 @@ import org.junit.jupiter.api.Test;
  * byte-identical across it. The reasoning, the arithmetic and the control group are in
  * {@code engine/harness/README.md}; the rule itself is enforced by
  * {@code ACertificationDoesNotVaryRunToRunTest}.
+ *
+ * <p><b>A further 241 instances in 65 classes are the JS removal itself</b>, and every one was
+ * attributed before the catalogue was re-recorded: 179 in 15 classes are the word {@code undefined}
+ * being replaced in human-facing text by a placeholder that names the field
+ * ({@code (absent)}, {@code (repository not recorded)}, {@code (file not recorded)},
+ * {@code (stamp not recorded)}, {@code (QWEN_BASE_URL is not set)}); 56 in 47 classes are prompt
+ * strings whose only RECORDED difference is the {@code …(length)} marker, because the renderer keeps
+ * 220 characters and the changed text is past them — they were re-measured in full, and each is one of
+ * the same placeholder renamings, a container serialising as JSON, or a present {@code 0}/{@code false}
+ * surviving; and 6 in 3 classes are a present {@code 0} or {@code false} reaching {@code pr_body} and
+ * {@code pr_reason}. <b>Verdict ROUTING did not move</b>: no class at {@code out.state},
+ * {@code out.suspicion_status} or {@code out.verdict_kind} changed, and 73 of the 78 pre-existing
+ * classes are byte-identical over 1 734 cases.
  *
  * <h2>What this baseline is, and what it is NOT</h2>
  * It is <b>not</b> an adjudicated baseline, and it must not be read as one. The other two
@@ -58,11 +78,11 @@ import org.junit.jupiter.api.Test;
  *       {@code undefined}, and the encoder was deliberately not taught to pretend otherwise.</li>
  * </ul>
  *
- * <p>So what this test enforces is a CHARACTERIZATION: this module's behaviour, pinned against a fixed
- * reference, class by class. A change to verdict routing moves the catalogue and goes red — which is
- * the value, and it is real. But a reviewer looking at that diff cannot ask the reference who was
- * right, and for this family, unlike the other two, nobody ever did. Treat a red here as "something
- * in these three nodes changed", not as "this module broke".
+ * <p>So what this test enforces is a CHARACTERIZATION: this module's behaviour, pinned class by class
+ * against a fixed set of frozen answers. A change to verdict routing moves the catalogue and goes red —
+ * which is the value, and it is real. But a reviewer looking at that diff cannot ask the reference who
+ * was right — it is gone permanently — and for this family, unlike the other two, nobody ever did.
+ * Treat a red here as "something in these three nodes changed", not as "this module broke".
  */
 class NodeFamilyHarnessTest {
 

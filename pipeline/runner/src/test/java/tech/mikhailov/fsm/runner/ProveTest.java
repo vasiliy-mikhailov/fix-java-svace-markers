@@ -481,14 +481,18 @@ class ProveTest {
         }
 
         @Test
-        void anAbsentNewStrStillSplicesInTheWordUndefinedTheWayTheJsDid() throws IOException {
+        void anAbsentNewStrSplicesTheSpelledAbsenceInAndTheBuildRefusesIt() throws IOException {
             // ASYMMETRIC ON PURPOSE, so that nobody "fixes" this one by symmetry with old_str above.
-            // `cur.replace(old, undefined)` coerces the REPLACEMENT to the string "undefined" and writes
-            // it into the file, which is what the live service has always done. It is safe to keep for the
-            // reason the old_str case is not: the word is INSERTED rather than SEARCHED for, so it lands
-            // exactly where the edit aimed, and `undefined` is not a Java expression — the green build
-            // fails to compile and the run reports green_passed: false. A loud wrong patch, in the diff,
-            // where the old_str coercion was a quiet one.
+            // A missing REPLACEMENT is coerced and written into the file, which is what the live service
+            // has always done. It is safe to keep for the reason the old_str case is not: the text is
+            // INSERTED rather than SEARCHED for, so it lands exactly where the edit aimed, and it does
+            // not compile — the green build fails and the run reports green_passed: false. A loud wrong
+            // patch, in the diff, where the old_str coercion was a quiet one.
+            //
+            // THE SPELLING MOVED AND THE ARGUMENT DID NOT. `(absent)` parses as a parenthesised
+            // identifier, so javac rejects it with "cannot find symbol" exactly as it rejected
+            // `undefined`: same stage, same loudness, same green_passed: false. What is asserted is
+            // that the absence reaches the file VISIBLY, not which word it is spelled with.
             builds.add(FakeExec.failed(RED_LOG));
             Map<String, Object> noNewStr = new LinkedHashMap<>();
             noNewStr.put("path", "A.java");
@@ -500,7 +504,7 @@ class ProveTest {
 
             assertEquals(List.of(), strings(r, "edit_errors"));
             assertEquals(List.of("A.java"), strings(r, "applied_files"));
-            assertTrue(Files.readString(workspace().resolve("A.java")).contains("return undefined;"),
+            assertTrue(Files.readString(workspace().resolve("A.java")).contains("return (absent);"),
                     Files.readString(workspace().resolve("A.java")));
         }
 
@@ -552,14 +556,20 @@ class ProveTest {
 
         @Test
         void anAbsentTestClassIsRefusedRatherThanRunningTheWholeSuite() {
-            // THE DANGEROUS COERCION. `-Dtest=undefined` would match nothing; the natural Java
-            // coercion is an empty -Dtest=, which runs EVERY test in the repository — and a project with
-            // failing tests of its own would then report red_reproduced for a marker nobody tested.
+            // THE DANGEROUS COERCION, WHICH IS THE EMPTY ONE AND ALWAYS WAS. A `-Dtest=` with nothing
+            // after it runs EVERY test in the repository, and a project with failing tests of its own
+            // then reports red_reproduced for a marker nobody tested. Any spelled-out absence —
+            // `-Dtest=undefined` yesterday, `-Dtest=(absent)` today — merely matches nothing, which is
+            // the harmless failure; the refusal below is what keeps either from being reached.
+            //
+            // So the assertion is on the REFUSAL and on the field it names, and the message is quoted
+            // only closely enough to prove it says WHICH field. It moved from "undefined" to "(absent)"
+            // on 2026-08-05 with the rest of the JS emulation; see harness/README.md.
             Map<String, Object> body = request();
             body.remove("test_class");
             IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                     () -> prove.runTest(body));
-            assertTrue(e.getMessage().contains("test_class must be a string, not undefined"),
+            assertTrue(e.getMessage().contains("test_class must be a string, not (absent)"),
                     e.getMessage());
             assertEquals(List.of(), exec.commands());
         }

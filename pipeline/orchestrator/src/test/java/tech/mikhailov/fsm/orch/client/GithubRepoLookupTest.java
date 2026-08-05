@@ -8,7 +8,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import tech.mikhailov.fsm.lib.JsValue;
 import tech.mikhailov.fsm.lib.Llm;
 import tech.mikhailov.fsm.nodes.PrepProver;
 
@@ -97,7 +96,20 @@ class GithubRepoLookupTest {
     }
 
     @Test
-    void anUnsetTokenIsSentAsTheWordUndefinedSoTheFourOhOneNamesItsOwnCause() {
+    void anUnsetTokenIsSentAsANamedMarkerSoTheFourOhOneNamesItsOwnCause() {
+        // WHAT THE FOUR-OH-ONE IS FOR, and it has not changed: the header must carry SOMETHING, so
+        // that GitHub refuses the call immediately and deterministically. An empty `Bearer ` is not a
+        // refusal — GitHub reads it as a request nobody meant to authenticate, drops the run onto the
+        // 60-per-hour anonymous quota and serves no private repository at all, so the failure arrives
+        // an hour in, on whichever marker crossed the quota, from a header that looks ordinary in a
+        // log.
+        //
+        // WHAT CHANGED IS THE MARKER. It used to be the JavaScript word `undefined`, which is a
+        // diagnosis only for a reader who already knows this codebase spelled "missing" that way. It
+        // now names the variable, so the 401 carries its own cause and its own fix; retired with the
+        // rest of the emulation on 2026-08-05, see harness/README.md. The engine owns the spelling —
+        // PrepProver.authorization — and this asserts that the ORCHESTRATOR'S transport really sends
+        // it, which is the half a unit test of the engine cannot see.
         Transport transport = new Transport();
         transport.answer = Map.of("default_branch", "main");
         Map<String, Object> row = new LinkedHashMap<>();
@@ -105,11 +117,14 @@ class GithubRepoLookupTest {
         row.put("file", "src/main/java/A.java");
         row.put("branch", "");
 
-        PrepProver.prepProver(new PrepProver.Request(row, JsValue.UNDEFINED),
+        PrepProver.prepProver(new PrepProver.Request(row, null),
                 new GithubRepoLookup(transport, "https://api.github.com"));
 
         assertThat(headers(transport.calls.get(0)))
-                .containsEntry("Authorization", "Bearer undefined");
+                .containsEntry("Authorization", "Bearer (GITHUB_TOKEN is not set)");
+        assertThat(headers(transport.calls.get(0)).get("Authorization"))
+                .as("the empty Bearer is the one rendering GitHub does not refuse")
+                .isNotEqualTo("Bearer ");
     }
 
     @Test

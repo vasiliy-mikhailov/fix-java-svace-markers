@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import tech.mikhailov.fsm.lib.Js;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.Llm;
 import tech.mikhailov.fsm.nodes.FixSkeptic;
@@ -130,7 +130,7 @@ final class Diff {
             case null -> "z";
             case String s -> "s:" + s;
             case Boolean b -> "b:" + b;
-            case Number n -> "n:" + Js.numberToString(n.doubleValue());
+            case Number n -> "n:" + Values.plain(n.doubleValue());
             case List<?> l -> {
                 List<Object> out = new ArrayList<>();
                 out.add("a");

@@ -270,10 +270,18 @@ class JsonTest {
     // ---- the coercions the routing is written in terms of ----------------------------------------
 
     @Test
-    void strMirrorsTheJsOrEmptyStringIdiom() {
-        // The routing is written in terms of `(pm.pr_title || '')`. Spelled out field by field this
-        // becomes a different ad-hoc null check each time, and the one that gets it wrong does not
-        // crash — it writes an empty PR title onto a row that reads as a considered outcome.
+    void onlyAnAbsentFieldReadsAsEmptyAndAPresentFalsyOneReadsAsItself() {
+        // WHAT THIS TEST USED TO SAY, AND WHY IT CHANGED. It was `strMirrorsTheJsOrEmptyStringIdiom`
+        // and it asserted that `false` and `0` both read as "". That was `String(x || '')`, and the
+        // `|| ''` was a DEFECT, not a convention: it made a marker on line 0, a `red_reproduced: false`
+        // and a `path_prefix: 0` indistinguishable from a field nobody set. Retired 2026-08-05 with the
+        // rest of the JS emulation — harness/README.md, "Re-baselines".
+        //
+        // The question the original author was asking is unchanged and is asked again below: reading
+        // one field must not become a different ad-hoc null check at every call site, because the one
+        // that gets it wrong does not crash — it writes an empty PR title onto a row that reads as a
+        // considered outcome. What changed is the ANSWER: absence is the only thing that reads as
+        // empty, so there is exactly one rule to get wrong instead of four.
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("title", "Fix the leak");
         m.put("empty", "");
@@ -281,13 +289,21 @@ class JsonTest {
         m.put("zero", 0L);
         m.put("nil", null);
         assertEquals("Fix the leak", Json.str(m, "title"));
-        assertEquals("", Json.str(m, "empty"));
-        assertEquals("", Json.str(m, "no"));
-        assertEquals("", Json.str(m, "zero"));
-        assertEquals("", Json.str(m, "nil"));
-        assertEquals("", Json.str(m, "absent"));
+        assertEquals("", Json.str(m, "absent"), "a key nobody wrote");
+        assertEquals("", Json.str(m, "nil"), "and an explicit null, which is the same absence");
+        assertEquals("", Json.str(m, "empty"), "an empty string is already empty; nothing to decide");
+
+        // THE TWO THAT MOVED, and they moved because keeping them was losing information a caller had
+        // taken the trouble to send. A stage that means "off" says so by omitting the field — which is
+        // what omission already meant everywhere else in this engine.
+        assertEquals("false", Json.str(m, "no"),
+                "a caller that wrote `false` said something, and \"\" is not what it said");
+        assertEquals("0", Json.str(m, "zero"),
+                "line 0 and no line at all are different markers, and `|| ''` could not tell them "
+                + "apart");
+
         assertEquals("", Json.str("not an object", "title"),
-                "$('Parse fix').item.json may be anything, so a non-object must not throw");
+                "an upstream item may be anything, so a non-object must not throw");
     }
 
     @Test

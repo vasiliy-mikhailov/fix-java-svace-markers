@@ -671,11 +671,14 @@ class WorkspaceTest {
         }
 
         @Test
-        void aPathThatIsExplicitlyNullIsNamedNullAndNotUndefined(@TempDir Path cache) {
-            // FOUND BY harness/run.sh. `${null}` is "null" and `${undefined}` is "undefined"; Json.parse
-            // maps a missing key and an explicit null to the same Java null, so the spelling has to come
-            // from the BODY rather than from the value. The dashboard prints this line verbatim under
-            // "source unavailable", and the same coercion one field over names the cache directory.
+        void aPathThatIsExplicitlyNullIsNamedNullAndAnAbsentOneIsNamedAbsent(@TempDir Path cache) {
+            // FOUND BY harness/run.sh. A present-but-null path and a path nobody sent are two different
+            // requests and get two different words; Json.parse maps both to the same Java null, so the
+            // spelling has to come from the BODY rather than from the value. The dashboard prints this
+            // line verbatim under "source unavailable", and the same coercion one field over names the
+            // cache directory. The absent spelling stopped being the JavaScript word `undefined` on
+            // 2026-08-05 — see harness/README.md — and the DISTINCTION, which is what this test is
+            // about, is untouched by that.
             Map<String, Object> b = new LinkedHashMap<>();
             b.put("repo", "o/r");
             b.put("path", null);
@@ -683,7 +686,7 @@ class WorkspaceTest {
                     withFile(cache, "A.java", "class A {}\n").readFile(b).get("error"));
 
             b.remove("path");
-            assertEquals("file not found: undefined",
+            assertEquals("file not found: (absent)",
                     withFile(cache, "A.java", "class A {}\n").readFile(b).get("error"),
                     "…and an absent path is still the other word");
         }

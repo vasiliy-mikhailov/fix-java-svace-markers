@@ -93,9 +93,22 @@ class BuildFixInputTest {
         // traffic.
         String p = build(marker("svace_severity", "", "svace_checker", "", "svace_line", 0L), red())
                 .agentInput();
-        assertTrue(p.contains("SVACE MARKER  [?]  ?  at src/main/java/a/B.java:?"),
-                "an unknown field must read as unknown; \"[]  \" invites the fixer to invent the "
-                + "missing severity");
+        // SEVERITY AND CHECKER read as `?`, and that half is unchanged: an empty cell has nothing to
+        // say, and "[]  " with nothing between the brackets invites the fixer to invent the missing
+        // severity.
+        assertTrue(p.contains("SVACE MARKER  [?]  ?  at src/main/java/a/B.java:0"),
+                "an unknown severity and checker must read as unknown: " + p.substring(0, 200));
+
+        // THE LINE IS THE ONE THAT MOVED, AND IT MOVED THE RIGHT WAY. This assertion used to demand
+        // `:?` for `svace_line: 0`, because `0 || '?'` discarded the zero — the marker's line was
+        // erased by the same idiom that erased its empty severity, and the fixer was told the location
+        // was unknown when the pipeline knew exactly what it was. Line 0 is a real value with a real
+        // meaning here: it is what `Prep prover` writes when neither `svace_line` nor `line` resolved,
+        // and BuildReproduceInput reports it as "past the end of the file". Printing it lets a reader
+        // see that; printing `?` hid it. Only an ABSENT line reads as unknown now, which is the next
+        // test.
+        assertTrue(p.contains("at src/main/java/a/B.java:0"),
+                "a line the pipeline actually holds is shown, not erased into `?`");
     }
 
     @Test
@@ -182,15 +195,43 @@ class BuildFixInputTest {
     }
 
     @Test
-    void redReproducedIsReadForTruthinessNotForEquality() {
-        // The verdict arrives from a JSON reply, so the flag has been seen as the string "true" and
-        // as 1. `!!x` accepts both; an `== Boolean.TRUE` check would call a reproduced bug
-        // unreproduced and hand the fixer the licence to decline.
-        assertTrue(build(marker(), item("red_reproduced", "yes")).redReproduced());
-        assertTrue(build(marker(), item("red_reproduced", 1L)).redReproduced());
-        assertFalse(build(marker(), item("red_reproduced", 0L)).redReproduced());
-        assertFalse(build(marker(), item("red_reproduced", "")).redReproduced());
-        assertFalse(build(marker(), item()).redReproduced());
+    void everyStageThatReadsRedReproducedGetsTheSameAnswerOutOfIt() {
+        // WHAT THIS TEST USED TO SAY. It was `redReproducedIsReadForTruthinessNotForEquality` and it
+        // named `!!x` — a JavaScript operator — as the rule. The rule is no longer written in
+        // JavaScript, but the QUESTION the original author was asking survives the change intact and
+        // is a bigger question than the operator: `red_reproduced` is the flag that licences a patch,
+        // and a stage that reads it differently from its neighbours hands the fixer a licence the rest
+        // of the pipeline does not think it has.
+        //
+        // WHY IT IS ASKED THIS WAY NOW. There are THREE readers of this one field — this node, which
+        // turns it into the fixer's instruction; `PrMaker`, where it is half of `proven`; and
+        // `RecordOutcome`, where it becomes the `red_verified` column a reviewer reads. Asserting a
+        // list of literals here would pin only this node, and this node is not where the damage is: a
+        // disagreement BETWEEN them is silent. Nothing throws. The fixer is told "the bug was not
+        // reproduced, return can_fix:false" about the very item PrMaker is about to call
+        // execution-proven, and a real defect retires with a row that looks considered.
+        //
+        // So the assertion is the agreement itself, driven through both real nodes. It cannot be
+        // satisfied by weakening one side, and it fails the moment somebody tightens or loosens one
+        // reader without the other two.
+        for (Object flag : new Object[] {true, false, "true", "false", "yes", 1L, 0L, "", null}) {
+            Map<String, Object> repro = item("red_reproduced", flag);
+            boolean fixerWasLicensed = build(marker(), repro).redReproduced();
+            boolean rowSaysVerified = RecordOutcome.recordOutcome(RecordOutcome.Request.of(
+                    item("prep_prover", marker(), "run_test_reproduce", repro))).redVerified();
+            assertEquals(rowSaysVerified, fixerWasLicensed,
+                    "red_reproduced=" + flag + ": the fixer's licence and the row's red_verified "
+                    + "column are the same fact and must not disagree");
+        }
+
+        // …and the shapes themselves, so that "they agree" cannot be satisfied by both being wrong.
+        // A verdict that never arrived at all is NOT a reproduction — that is the direction which
+        // costs nothing when it is wrong, and licensing a patch for a bug nobody reproduced is the
+        // direction that costs a stranger's repository.
+        assertTrue(build(marker(), item("red_reproduced", true)).redReproduced());
+        assertFalse(build(marker(), item("red_reproduced", false)).redReproduced());
+        assertFalse(build(marker(), item()).redReproduced(), "an absent flag is not a reproduction");
+        assertFalse(build(marker(), null).redReproduced(), "and neither is a missing verdict");
     }
 
     @Test

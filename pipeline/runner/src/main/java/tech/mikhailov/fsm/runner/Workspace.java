@@ -18,7 +18,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 import java.util.stream.Stream;
-import tech.mikhailov.fsm.lib.Js;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Json;
 
 /**
@@ -406,12 +406,12 @@ final class Workspace {
         // edit path. Without it the reviewer is told "source unavailable — file not found" about a file
         // that is in the checkout, and the cause (a runner process with no UTF-8 locale) is nowhere in
         // the answer. Unreachable when the encoding is UTF-8.
-        if (!PathEncoding.spells(Js.orEmptyString(requested))) {
+        if (!PathEncoding.spells(Values.text(requested))) {
             return error(PathEncoding.refusal("path"));
         }
         Path full;
         try {
-            full = root.resolve(stripLeadingSlashes(Js.orEmptyString(requested))).normalize();
+            full = root.resolve(stripLeadingSlashes(Values.text(requested))).normalize();
         } catch (InvalidPathException notAFilename) {
             // A NUL in the name: `Path.of` refuses it, `path.resolve` did not, and `existsSync` then
             // simply said no. Answering the same {"error": "file not found: …"} keeps the promise this
@@ -480,7 +480,7 @@ final class Workspace {
      * file that is perfectly readable.
      */
     private static int capFor(Object requested) {
-        double asked = Js.parseInt10(Js.orEmptyString(requested).trim());
+        double asked = Values.leadingInt(Values.text(requested).trim());
         if (Double.isNaN(asked) || asked <= 0) {
             return MAX_CONTENT;
         }

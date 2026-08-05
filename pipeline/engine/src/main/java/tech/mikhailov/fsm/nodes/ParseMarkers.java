@@ -12,12 +12,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.regex.Pattern;
 import tech.mikhailov.fsm.lib.AnchorStatus;
 import tech.mikhailov.fsm.lib.CheckerMap;
 import tech.mikhailov.fsm.lib.Csv;
-import tech.mikhailov.fsm.lib.Js;
-import tech.mikhailov.fsm.lib.JsText;
+import tech.mikhailov.fsm.lib.SourceText;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.Severity;
 import tech.mikhailov.fsm.lib.SuspicionStatus;
@@ -231,9 +232,9 @@ public final class ParseMarkers {
             m.put("branch", branch);
             m.put("ingested", ingested);
             m.put("csv_rows", csvRows);
-            m.put("by_severity", Js.propertyOrder(bySeverity));
+            m.put("by_severity", new TreeMap<>(bySeverity));
             m.put("skipped", skipped.toMap());
-            m.put("unmapped_checkers", Js.propertyOrder(unmappedCheckers));
+            m.put("unmapped_checkers", new TreeMap<>(unmappedCheckers));
             return m;
         }
 
@@ -305,20 +306,20 @@ public final class ParseMarkers {
                 // report has no such findings".
                 onlyCheckers = new LinkedHashSet<>();
                 for (Object o : l) {
-                    onlyCheckers.add(JsText.trim(Js.string(o)));
+                    onlyCheckers.add(SourceText.trim(Values.text(o)));
                 }
             }
             Object path = Json.get(b, "csv_path");
             return new Body(
-                    JsText.trim(Js.orEmptyString(Json.get(b, "repo"))),
-                    JsText.trim(Js.orEmptyString(Json.get(b, "branch"))),
+                    SourceText.trim(Values.text(Json.get(b, "repo"))),
+                    SourceText.trim(Values.text(Json.get(b, "branch"))),
                     Boolean.TRUE.equals(Json.get(b, "include_tests")),
                     has(b, "path_prefix")
-                            ? Js.orEmptyString(Json.get(b, "path_prefix")) : DEFAULT_PATH_PREFIX,
+                            ? Values.text(Json.get(b, "path_prefix")) : DEFAULT_PATH_PREFIX,
                     onlyCheckers,
-                    Severity.rankOf(Js.orEmptyString(Json.get(b, "min_severity"))),
-                    Js.orEmptyString(Json.get(b, "csv_text")),
-                    Js.truthy(path) ? Js.string(path) : DEFAULT_CSV_PATH);
+                    Severity.rankOf(Values.text(Json.get(b, "min_severity"))),
+                    Values.text(Json.get(b, "csv_text")),
+                    Values.orIfBlank(path, DEFAULT_CSV_PATH));
         }
     }
 
@@ -351,7 +352,7 @@ public final class ParseMarkers {
             // Locale.ROOT via toLowerCase(char-wise Unicode default): NOT the default locale. Under a
             // Turkish locale "SEVERITY".toLowerCase() is "severıty" with a dotless i, the column is
             // not found, and every ingest on that host dies on a report every other host reads.
-            head.add(JsText.trim(h).toLowerCase(Locale.ROOT));
+            head.add(SourceText.trim(h).toLowerCase(Locale.ROOT));
         }
         // Evaluated in this order, so the FIRST missing column is the one reported.
         int iSev = column(head, "severity");
@@ -370,10 +371,10 @@ public final class ParseMarkers {
 
         for (int r = 1; r < rows.size(); r++) {
             List<String> row = rows.get(r);
-            String checker = JsText.trim(cell(row, iChk));
-            String rawFile = JsText.trim(cell(row, iFile));
-            double line = Js.parseInt10(JsText.trim(cell(row, iLine)));
-            String sev = JsText.trim(cell(row, iSev));
+            String checker = SourceText.trim(cell(row, iChk));
+            String rawFile = SourceText.trim(cell(row, iFile));
+            double line = Values.leadingInt(SourceText.trim(cell(row, iLine)));
+            String sev = SourceText.trim(cell(row, iSev));
 
             // A row missing any of checker/file/line would become a marker the prover cannot act on:
             // nothing to prove, nothing to open, or nowhere to look.
@@ -410,7 +411,7 @@ public final class ParseMarkers {
                     : m.meaning();
             String prove = m == null ? CheckerMap.SettleBy.TEST.wire() : m.settleBy().wire();
 
-            String lineText = Js.numberToString(line);
+            String lineText = Values.plain(line);
             String base = repo + "|" + file + "|" + lineText + "|" + checker;
             long occurrence = seen.merge(base, 1L, Long::sum);
             String suffix = occurrence > 1 ? "#" + occurrence : "";

@@ -64,6 +64,11 @@ were children of one shell.
 causes below, and each is a decision somebody wrote down. A divergence that does not reduce to one of
 them is a regression, whatever the totals say.**
 
+> **THE CURRENT TOTAL IS 833 IN 29 KINDS.** All 14 kinds below are still there at their original
+> counts; the extra 88 cases in 15 new kinds are the 2026-08-05 deletion of the JavaScript emulation,
+> itemised under [Re-baselines](#re-baselines--every-deliberate-move-of-the-catalogue-dated). This
+> section is the measurement against the reference and is left as it was measured.
+
 > **23 401, where 23 851 were originally recorded.** A 450-case `lease` family went with the lease
 > routes: mutual exclusion here is structural rather than advisory (Spring Batch single-flight plus one
 > FIFO build thread), so there is no code left for those cases to be answered by. They were 450/450
@@ -176,4 +181,94 @@ git diff harness/fixtures/expected.json
 ```
 
 Every line of that diff is a behaviour this module was proven against. Re-recording without reading
-it is how a differential harness becomes a rubber stamp.
+it is how a differential harness becomes a rubber stamp — **so every re-record gets an entry below,
+and a re-record without one is indistinguishable from somebody quietly making a failing test pass.**
+
+---
+
+## Re-baselines — every deliberate move of the catalogue, dated
+
+### 2026-08-05 — the JavaScript emulation was deleted
+
+**WHAT MOVED.** `CASES 23401 IDENTICAL 22656 DIVERGENT 745` in 14 kinds became
+`CASES 23401 IDENTICAL 22568 DIVERGENT 833` in 29 kinds. The corpus is untouched, as it must be — 23 401
+is still hardcoded in the test.
+
+**WHAT CHANGED IN THE CODE.** `lib/Js.java` and `lib/JsValue.java` were deleted from the engine, which
+this module reads its coercions from; see `engine/harness/README.md`, same date, for the whole change
+and its two defect fixes. Three things reach this module:
+
+- `Text.string` and `Text.field` spell an absence `(absent)` instead of the JavaScript word
+  `undefined`. Same distinction — an ABSENT key and a key holding null are still two different words,
+  which is the thing `WorkspaceTest` and the `coerce` family exist to pin — different spelling.
+- `Text.orDefault` is `Values.orIfBlank`, not `x || fallback`. Absent, empty and whitespace-only take
+  the fallback; a present `0` or `false` is now kept.
+- A container renders as JSON rather than as `[object Object]` / `a,b`.
+
+**WHAT MOVED, KIND BY KIND, AND ALL 88 CASES ARE ACCOUNTED FOR.** All 14 pre-existing kinds are still
+there with their original counts; nothing that was catalogued stopped diverging. The 15 new kinds, by
+family — `cases` is cases that changed side, `fields` is the field-difference count the catalogue
+records, and a case that differs at three fields contributes one and three:
+
+| family | new kinds | cases | fields | why |
+| --- | ---: | ---: | ---: | --- |
+| `keyForCoerced` | 3 | 68 | 152 | the cache key, below |
+| `coerce` | 3 | 13 | 25 | the probe family: it exists to measure exactly these coercions |
+| `readFile` | 8 | 6 | 12 | the spelled absence, a serialised container, and the key |
+| `applyEditCoerced` | 1 | 1 | 1 | `(absent)` spliced into a file instead of `undefined` |
+| **total** | **15** | **88** | **190** | 745 + 88 = 833; `distinctValuePairs` 438 → 538 |
+
+**One invariant's APPLICABILITY moved with them, and it is the honest reading of it that matters.**
+`a file that was served is inside the repository` went from 16 applicable cases to 13, with 0
+violations in both. Nothing weakened: the 3 cases stopped being applicable because they stopped
+SERVING A FILE — 2 now throw and 1 answers `{"error": …}` — so there is no served path left to check
+containment on. An invariant whose applicable count falls is worth looking at every time, because "0
+violations out of 0 applicable" is the shape a silently-disabled check has.
+
+**THE ONE WORTH READING: 68 CACHE KEYS MOVED, AND WHICH 68 IS THE WHOLE POINT.** `Workspace` hashes
+`` `${repo}@${branch}` `` into the clone DIRECTORY NAME, so a coercion change here is a re-clone and a
+cold cache — the same shape of hazard as the engine's `dedup_key`. The corpus separates the two cases
+and the answer is clean:
+
+- **`keyFor` — 15/15 identical, unchanged.** That is the well-typed family: a string repo and a string
+  branch. **Every request the deployment makes is in this family, and not one key moved.**
+- **`keyForCoerced` — 40/108 identical, was 108/108.** That is the hostile-typed family: a branch of
+  `0` or `false`, a repo that is an array or an object, an absent repo. Those keys moved because the
+  coercion was the thing being changed.
+
+Two of those cases now report `threw: IllegalStateException` on the java side, and it is not a defect
+in `Workspace`: a `branch: 0` used to be coerced to `"main"` by `||` and served out of the fixture's
+populated cache directory, and it now resolves to the branch the caller actually named, whose
+directory the fixture does not contain — so `prepareFs` reaches for the clone and the harness's
+deliberate no-spawn guard fires. **The reference silently served the wrong branch's file; this
+refuses.** That is the intended direction, and the guard doing its job is why anyone can see it.
+
+**THE SEARCH NEEDLE DID NOT MOVE, WHICH IS THE OTHER THING THAT COULD HAVE.** `Text.fieldOrAbsent`
+carries the distinction `Edit` searches on — an ABSENT `old_str` comes back as a Java `null` and is
+refused, an explicit `"old_str": null` comes back as the word `"null"` and is searched for — and it
+still does: the rewrite made it `m.get(key) == null ? "null" : Values.text(...)`, so present-and-null
+is spelled and absent is not spelled at all. The evidence is the corpus: `applyEdit`, 17 524 cases,
+is **16 943/17 524 identical before and after, case for case**, and `applyEditCoerced` moved exactly
+one case — `out.text`, where a `new_str` that is absent is spliced in as `(absent)` where it used to
+be spliced in as `undefined`. That case is the standing argument for never spelling an absence at all;
+renaming the word makes the bug rarer and therefore harder to find, which `Text.fieldOrAbsent`'s
+javadoc now says in as many words.
+
+`HarnessCompare.interpolate` was also collapsed into `Text.field` rather than kept as a second copy —
+it had been half a model of each side since the branch beside it started using this module's rule.
+Recording before and after the collapse produced byte-identical catalogues, so it changed nothing;
+**re-checked 2026-08-05 by restoring the old body and re-running `DifferentialHarnessTest` against the
+committed catalogue, which passed** — that is the check that matters, because a harness-side edit is
+exactly the kind that can hide a real divergence. It is noted because the file now says which side it
+models and why the other cannot be reached.
+
+**AND THE POINT A FUTURE READER NEEDS.** For the coercions in the `coerce`, `keyForCoerced` and
+`readFile` kinds, *"matches the recording"* is no longer the goal and must not be restored — the
+reference is retired PERMANENTLY and there is nothing to regenerate these fixtures FROM, so the frozen
+values are a record of what a deleted program did, not a specification. This file stopped being a
+DIFFERENTIAL proof on 2026-08-05 and became a GOLDEN MASTER of intended behaviour: it detects change,
+it no longer demonstrates that this module is a faithful replacement for anything. That is a weaker
+instrument, and the weakness is specific — a difference that appears here can be shown to be NEW, and
+can no longer be shown to be WRONG by asking the other side. Everything else in this catalogue still
+means what it always meant, and the 745 that were measured against the reference are all still there,
+in their original kinds, at their original counts.

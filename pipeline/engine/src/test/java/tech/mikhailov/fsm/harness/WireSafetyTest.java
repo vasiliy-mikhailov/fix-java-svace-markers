@@ -23,7 +23,7 @@ import tech.mikhailov.fsm.feedback.MarkerFeedback;
 import tech.mikhailov.fsm.feedback.StageTrace;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.JsonExtract;
-import tech.mikhailov.fsm.lib.JsValue;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Llm;
 import tech.mikhailov.fsm.nodes.BuildFixInput;
 import tech.mikhailov.fsm.nodes.BuildReproduceInput;
@@ -97,7 +97,7 @@ import tech.mikhailov.fsm.nodes.Verdict;
  *   <li><b>three put the enum into an emitted map</b> ({@code RecordOutcome:142},
  *       {@code Verdict:485}, {@code Verdict:582}) — this guard fails on all three;</li>
  *   <li><b>two stringify it into prose first</b> ({@code BuildReproduceInput:239} concatenates it into
- *       the reproducer's prompt, {@code PrMaker:227} passes it through {@code Js.string}) and one more
+ *       the reproducer's prompt, {@code PrMaker:227} passes it through {@code Values.text}) and one more
  *       into a message ({@code ExecVerdict:184}). NO WIRE-TYPE GUARD CAN SEE THESE: by the time the
  *       value reaches the map it IS a String, correctly typed and wrongly spelled. They are caught
  *       today by {@code BuildReproduceInputTest}, {@code PrMakerTest}, {@code ExecVerdictTest} and two
@@ -124,25 +124,34 @@ class WireSafetyTest {
     private static final long VALUES_FLOOR = 600_000L;
 
     /**
-     * THE TWO KEYS A NUMBER JSON CANNOT WRITE ALREADY REACHES, and why they are pinned rather than
-     * failed.
+     * NO KEY, ANYWHERE IN THIS ENGINE, EMITS A NUMBER JSON CANNOT WRITE. Empty on purpose, and it was
+     * not always.
      *
-     * <p>{@code Json.stringify} refuses {@code Infinity} on purpose — see its comment: a non-finite
+     * <p>{@code Json.stringify} refuses {@code Infinity} deliberately — see its comment: a non-finite
      * score reaching a reviewer's table is an upstream bug that must not be softened into {@code null}
      * the way {@code JSON.stringify} does. So a stage that emits one has produced a row the encoder
-     * will reject.
+     * will reject, i.e. an outage on that marker.
      *
-     * <p>BOTH OF THESE ARE PASS-THROUGHS, NOT COMPUTATIONS. The input-family corpus contains cases
-     * that put {@code 1e400} — well-formed JSON, parses to {@code Infinity} — in the suspicion's
-     * {@code prove_attempts} and {@code svace_line}, and {@code Prep prover} echoes those columns
-     * through untouched. Nothing in this module decided the value. Changing that is a behaviour
-     * change, pinned by the input-family catalogue, and it is not what this guard is for.
+     * <p>UNTIL 2026-08-05 THIS SET HELD TWO ENTRIES — {@code prep-prover $.prove_attempts} and
+     * {@code prep-prover $.svace_line} — and the note here argued they were tolerable because they were
+     * PASS-THROUGHS rather than computations: the input-family corpus feeds {@code 1e400} (well-formed
+     * JSON, parses to {@code Infinity}) into those two columns and {@code Prep prover} echoed them
+     * untouched. That argument was true about WHERE the value came from and wrong about what it cost.
+     * The row still could not be written. The marker still failed, and failed as a 500 rather than as a
+     * finding. "Nothing in this module decided the value" is not a defence available to the only module
+     * that could have refused it.
      *
-     * <p>What the assertion buys: a THIRD key, or a new stage, appearing here is a stage that started
-     * computing a non-finite number — which is the case worth waking up for.
+     * <p>{@code Values.numberOr} now refuses a non-finite number at the READ — it is not a usable count
+     * and not a usable line, so both fall back to the default, which is the same branch an absent
+     * column already took. The set is empty because there is nothing left in it, and it stays a SET
+     * rather than becoming an {@code isEmpty} assertion so that a regression names the key and the
+     * stage instead of only saying that one exists.
+     *
+     * <p>What the assertion buys now: ANY key appearing here is a stage emitting a value the wire
+     * cannot carry, whether it computed it or merely failed to refuse it. There is no longer a
+     * tolerated case, so there is no longer a list to be quietly added to.
      */
-    private static final Set<String> UNWRITABLE_TODAY =
-            Set.of("prep-prover $.prove_attempts", "prep-prover $.svace_line");
+    private static final Set<String> UNWRITABLE_TODAY = Set.of();
 
     private static WireSafe guard;
 
@@ -164,13 +173,16 @@ class WireSafetyTest {
     }
 
     @Test
-    @DisplayName("the only numbers JSON cannot write are the two the corpus feeds in")
-    void nothingComputesANumberJsonCannotWrite() {
+    @DisplayName("no stage emits a number JSON cannot write, not even one it was handed")
+    void nothingEmitsANumberJsonCannotWrite() {
         assertEquals(new TreeSet<>(UNWRITABLE_TODAY), new TreeSet<>(guard.nonFiniteKeys()),
-                "A stage emitted a non-finite number at a key where it was not doing so.\n"
-                + "Read the note on UNWRITABLE_TODAY: the two known ones are columns Prep prover "
-                + "ECHOES,\nwith Infinity arriving in the request. A new one is a stage that "
-                + "COMPUTED one.\n\n" + guard.nonFiniteDetail());
+                "A stage emitted a non-finite number, which Json.stringify refuses — so this is a\n"
+                + "marker that fails as a 500 instead of producing a finding.\n\n"
+                + "Read the note on UNWRITABLE_TODAY. This set used to hold two tolerated entries and\n"
+                + "is now EMPTY: the corpus still feeds Infinity into prove_attempts and svace_line,\n"
+                + "and the stages now refuse it at the read rather than echoing it into a row that\n"
+                + "cannot be written. If a key is back, something stopped refusing.\n\n"
+                + guard.nonFiniteDetail());
     }
 
     @Test
@@ -270,7 +282,7 @@ class WireSafetyTest {
             switch (Json.str(c, "node")) {
                 case "prep prover" -> attempt(g, "prep-prover", id, () -> PrepProver.prepProver(
                         new PrepProver.Request(Json.get(in, "suspicion"),
-                                JsValue.prop(in, "github_token")), lookup(in)).toMap());
+                                Json.get(in, "github_token")), lookup(in)).toMap());
                 case "build reproduce input" -> attempt(g, "build-reproduce-input", id,
                         () -> BuildReproduceInput.buildReproduceInput(new BuildReproduceInput.Request(
                                 Json.get(in, "prep_prover"), Json.get(in, "github_file"))).toMap());
@@ -407,7 +419,7 @@ class WireSafetyTest {
             }
             throw new PrepProver.LookupFailed("error".equals(Json.str(spec, "kind"))
                     ? new RuntimeException(Json.str(spec, "message"))
-                    : JsValue.prop(spec, "value"));
+                    : Json.get(spec, "value"));
         };
     }
 

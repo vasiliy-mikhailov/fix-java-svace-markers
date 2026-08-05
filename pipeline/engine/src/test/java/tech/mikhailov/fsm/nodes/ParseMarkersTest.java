@@ -17,8 +17,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import tech.mikhailov.fsm.lib.Js;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.nodes.ParseMarkers.Result;
 import tech.mikhailov.fsm.nodes.ParseMarkers.Skipped;
@@ -276,6 +277,123 @@ class ParseMarkersTest {
         assertEquals("HANDLE_LEAK@src/main/java/A.java:7", rows.get(0).markerId());
         assertEquals("x/y|src/main/java/A.java|7|HANDLE_LEAK#2", rows.get(1).dedupKey());
         assertEquals("HANDLE_LEAK@src/main/java/A.java:7#2", rows.get(1).markerId());
+    }
+
+    /**
+     * THE LINE NUMBER INSIDE THE KEY, pinned as digits — the one thing in this file that a LIVE
+     * DEPLOYMENT would notice within a minute.
+     *
+     * <p>WHAT IS AT STAKE. {@code dedup_key} is the marker's identity and nothing else joins on
+     * anything else: the bugs table is keyed on it, a re-ingest of the same report finds the row by
+     * it, every human comment hangs off it and {@code prove_attempts} counts against it. It is built
+     * as {@code repo|file|LINE|checker}, and the LINE segment is the only part of it produced by a
+     * NUMBER FORMATTER rather than copied. Re-spell that formatter and every key in the deployment
+     * changes at once: 282 markers re-ingest as new work, re-prove from scratch against a model that
+     * charges per token, and every comment a human left orphans onto a key nothing points at any
+     * more. Nothing goes red — the pipeline works perfectly, on a backlog it has never seen before.
+     *
+     * <p>WHY IT NEEDS A TEST NOW. The formatter changed hands on 2026-08-05: {@code Js.numberToString}
+     * (ECMA-262's Number::toString) became {@link Values#plain}. The keys were checked by hand at the
+     * time and none of the 282 moved — but "checked by hand once" is not a property of the build, and
+     * the next person to touch {@link Values#plain} gets no warning at all. The obvious Java spellings
+     * are both wrong and both look right in a code review: {@code String.valueOf(44.0)} is
+     * {@code "44.0"} and {@code Double.toString(1e7)} is {@code "1.0E7"}. {@code svace_line} is
+     * carried as a {@code double} the whole way, so the first of those is one keystroke away.
+     *
+     * <p>The report behind {@code full()} IS the deployed backlog — the same 356-row WebGoat scan
+     * whose 282 surviving rows are the live ones — so these are not representative keys, they are the
+     * keys.
+     */
+    @Nested
+    class TheDedupKeyIsAMarkersIdentityAndMayNotBeReSpelled {
+
+        /** {@code repo|file|line|checker}, with the line segment isolated. */
+        private String line(String dedupKey) {
+            String[] parts = dedupKey.split("\\|");
+            assertEquals(4, parts.length, "the key's shape is repo|file|line|checker: " + dedupKey);
+            return parts[2];
+        }
+
+        @Test
+        void everyOneOfThe282LiveKeysCarriesItsLineAsPlainDigits() {
+            List<Suspicion> rows = ingest(full());
+            assertEquals(282, rows.size(), "the live backlog, and every key below is a live key");
+            for (Suspicion s : rows) {
+                String line = line(s.dedupKey());
+                // Digits only. Not "44.0", not "1.0E7", not "+44" — each of which is a DIFFERENT key
+                // for the same marker, and the row it used to join to stays behind under the old one.
+                assertTrue(line.matches("\\d+"),
+                        "line segment is not plain digits, so this marker re-keys: " + s.dedupKey());
+                assertEquals(Values.plain(s.svaceLine()), line,
+                        "…and it is the same rendering the row itself carries");
+            }
+        }
+
+        @Test
+        void theTwoEndsOfTheRangeTheLiveRowsOccupyAreSpelledOutInFull() {
+            // 13 and 376 are the smallest and largest line numbers in the deployed backlog, so these
+            // two keys bracket every join the deployment currently makes. They are written out in
+            // full rather than computed, because a computed expectation would change in step with the
+            // code it is meant to be checking.
+            Set<String> keys = new HashSet<>(map(ingest(full()), Suspicion::dedupKey));
+            assertTrue(keys.contains("WebGoat/WebGoat|src/main/java/org/owasp/webgoat/container/"
+                            + "lessons/Lesson.java|13|FB.EI_EXPOSE_REP2"),
+                    "the lowest-numbered live marker");
+            assertTrue(keys.contains("WebGoat/WebGoat|src/main/java/org/owasp/webgoat/lessons/"
+                            + "challenges/challenge7/MD5.java|376|FB.DM_DEFAULT_ENCODING"),
+                    "the highest-numbered live marker");
+            assertTrue(keys.contains("WebGoat/WebGoat|src/main/java/org/owasp/webgoat/lessons/"
+                            + "challenges/challenge5/Assignment5.java|44|TAINTED_PTR"),
+                    "and one from the middle, which is the marker every other test here uses");
+        }
+
+        @Test
+        void aLineIsKeyedAsDigitsWhateverTheCsvCellLooksLikeAndPastTheLiveRange() {
+            // PAST THE RANGE ON PURPOSE. The live rows stop at 376 and a source file can be longer
+            // than that; the two renderings that would break the key both start behaving badly well
+            // above where anyone has looked. 10 000 000 is exactly where Double.toString gives up on
+            // digits, and it is a plausible line number for a generated file.
+            assertEquals("x/y|src/main/java/A.java|10000000|HANDLE_LEAK",
+                    ingest(body("repo", "x/y", "csv_text",
+                            "Severity,Checker,File,Line\n"
+                            + "\"Major\",\"HANDLE_LEAK\",\"src/main/java/A.java\",\"10000000\"\n"))
+                            .get(0).dedupKey());
+            // The free-text Line column really does read "7 (col 3)", and the key must be the same
+            // one that row got when it was spelled "7" — a scanner that starts emitting the column
+            // offset must not re-key the whole backlog.
+            assertEquals("x/y|src/main/java/A.java|7|HANDLE_LEAK",
+                    ingest(body("repo", "x/y", "csv_text",
+                            "Severity,Checker,File,Line\n"
+                            + "\"Major\",\"HANDLE_LEAK\",\"src/main/java/A.java\",\"7 (col 3)\"\n"))
+                            .get(0).dedupKey());
+        }
+
+        @Test
+        void aZeroAndANegativeLineStillKeyAsThemselvesRatherThanCollidingOnOne() {
+            // NEITHER IS A REAL LINE NUMBER, and that is exactly why they are here: they arrive from
+            // a corrupt or unfamiliar report, and whatever they key as, they must key as the SAME
+            // thing on the next ingest, and not as each other. `0` in particular is the value the old
+            // `||` idiom produced for "no line at all", so it is the one a regression lands on.
+            assertEquals("x/y|src/main/java/A.java|0|HANDLE_LEAK",
+                    ingest(body("repo", "x/y", "csv_text",
+                            "Severity,Checker,File,Line\n"
+                            + "\"Major\",\"HANDLE_LEAK\",\"src/main/java/A.java\",\"0\"\n"))
+                            .get(0).dedupKey());
+            assertEquals("x/y|src/main/java/A.java|-3|HANDLE_LEAK",
+                    ingest(body("repo", "x/y", "csv_text",
+                            "Severity,Checker,File,Line\n"
+                            + "\"Major\",\"HANDLE_LEAK\",\"src/main/java/A.java\",\"-3\"\n"))
+                            .get(0).dedupKey());
+        }
+
+        @Test
+        void reIngestingTheSameReportProducesTheSameKeysInTheSameOrder() {
+            // The property the deployment actually depends on, stated once and directly: ingest is a
+            // FUNCTION of the report. If this ever fails, the 282 rows in the bugs table have been
+            // orphaned by whatever changed, and no other test in this file would say so.
+            assertEquals(map(ingest(full()), Suspicion::dedupKey),
+                    map(ingest(full()), Suspicion::dedupKey));
+        }
     }
 
     // ---- the queue order -----------------------------------------------------------------------
@@ -663,10 +781,16 @@ class ParseMarkersTest {
     }
 
     @Test
-    void aLargeLineNumberIsSplicedIntoTheKeyTheWayJsSplicesIt() {
-        // dedup_key is built by concatenating the number. Double.toString would write "1.0E20" where
-        // JS writes the digits out, so the same report ingested by the two implementations would
-        // disagree about the marker's identity and the backlog would double.
+    void aLargeLineNumberIsSplicedIntoTheKeyAsDigitsAndNotAsAnExponent() {
+        // WHAT THIS USED TO SAY: "the way JS splices it", justified by the two implementations having
+        // to agree. There is no second implementation to agree with any more — but the requirement it
+        // was standing in for is stronger than that agreement ever was, and is now stated directly.
+        //
+        // dedup_key is built by concatenating this number, and it is a marker's IDENTITY. A rendering
+        // that reaches for an exponent re-keys the marker, so the row it used to join to stays behind
+        // under the old key and its human comments orphan; a key of "1.0E20" is also one nobody can
+        // grep for from the report they are holding. See the nested class above for the whole
+        // obligation and the live range it is pinned against.
         List<Suspicion> r = ingest(body("repo", "x/y", "csv_text",
                 "Severity,Checker,File,Line\n"
                 + "\"Major\",\"HANDLE_LEAK\",\"/b/src/main/java/A.java\",\"100000000000000000000\"\n"));
@@ -792,8 +916,10 @@ class ParseMarkersTest {
         // KNOWN DIVERGENCE, pinned rather than hidden. The recorded reference
         // writes "line":100000000000000000000; Json.stringify writes "line":1.0E20. Both are valid JSON and
         // the same NUMBER, so nothing downstream misreads it — but the two are not byte-identical, and
-        // an audit that diffs two rows ingested at different times would see it.
-        // The fix belongs in Json.writeDouble, which should use Js.numberToString rather than
+        // an audit that diffs two rows ingested at different times would see it. It stayed a divergence
+        // when the reference was retired: this is about what the WIRE carries, and rows written by the
+        // deployed pipeline before 2026-08-05 are still in the table to be diffed against.
+        // The fix belongs in Json.writeDouble, which should use Values.plain rather than
         // Double.toString; that is a change to a class three other ports already depend on, so it gets
         // its own differential run. Reachable only for |line| >= 2^63 — below that the value reaches
         // the wire as a long and the two agree exactly.
@@ -818,8 +944,12 @@ class ParseMarkersTest {
                 + "\"Major\",\"HANDLE_LEAK\",\"/b/src/main/java/A.java\",\"9223372036854775808\"\n"))
                 .items().get(0);
         assertEquals(9.223372036854776E18, atTheEdge.get("line"));
-        assertEquals("9223372036854776000", Js.numberToString((Double) atTheEdge.get("line")),
-                "and the key still spells it the way JS does");
+        // AND THE KEY IS STILL DIGITS even where the wire is not. This is the point at which the two
+        // renderings visibly part company — `line` reaches the row as 9.223372036854776E18 and the
+        // dedup_key segment beside it reads 9223372036854776000 — which is exactly why the identity
+        // is pinned separately from the wire format: fixing Json.writeDouble later must not be read
+        // as licence to make the key match it.
+        assertEquals("9223372036854776000", Values.plain((Double) atTheEdge.get("line")));
     }
 
     @Test
@@ -917,20 +1047,47 @@ class ParseMarkersTest {
     }
 
     @Test
-    void theSummaryKeysAreOrderedTheWayJavascriptOrdersObjectKeys() {
-        // by_severity and unmapped_checkers are keyed by values taken from the REPORT, and the summary
-        // is serialised and carried downstream as a string. JS enumerates integer-like keys first in
-        // ascending numeric order whatever order they arrived in, so a scanner profile that grades
-        // findings "1".."4" produces {"1":..,"2":..,"10":..} there and insertion order here — a diff
-        // in an audit record that nothing else would explain.
-        Result r = run(body("repo", "x/y", "csv_text",
-                "Severity,Checker,File,Line\n"
+    void theSummaryKeysAreInAFIXEDOrderThatDoesNotDependOnTheReportsRowOrder() {
+        // WHAT THIS TEST USED TO SAY. It was `theSummaryKeysAreOrderedTheWayJavascriptOrdersObjectKeys`
+        // and it asserted V8's rule: integer-like keys first, in ascending NUMERIC order, then the
+        // rest in insertion order — {"0","2","10","x"}. That rule went with the emulation.
+        //
+        // THE CONCERN IS NOT THE RULE, IT IS THAT THERE IS ONE. This summary is serialised into
+        // `__summary` and kept as an AUDIT RECORD of an ingest. Two ingests of the same report must
+        // produce the same bytes, or a reviewer diffing two runs is shown a change that means nothing
+        // and has to prove it means nothing. Left to insertion order the key order follows the order
+        // rows happened to appear in the CSV, so re-exporting the same findings in a different order
+        // rewrites the audit record without a single finding having changed.
+        //
+        // THE JAVA ANSWER IS A SORTED MAP, and it is a better answer than the one it replaced.
+        // TreeMap's order is LEXICOGRAPHIC, which puts "10" before "2" where V8 put it after — but it
+        // is total, it is stable, it needs no special case for the keys that look like integers and
+        // none for the ones that do not, and it is a property of the container rather than a fact
+        // about a JavaScript engine that has to be re-derived by every reader. The severity keys are
+        // free text off the report ("Major", "x", "10"); no numeric ordering was ever going to be
+        // meaningful across that set, and the previous rule only appeared to give one.
+        String csv = "Severity,Checker,File,Line\n"
                 + "\"10\",\"HANDLE_LEAK\",\"/b/src/main/java/A.java\",\"1\"\n"
                 + "\"2\",\"HANDLE_LEAK\",\"/b/src/main/java/B.java\",\"2\"\n"
                 + "\"x\",\"HANDLE_LEAK\",\"/b/src/main/java/C.java\",\"3\"\n"
-                + "\"0\",\"HANDLE_LEAK\",\"/b/src/main/java/D.java\",\"4\"\n"));
-        assertTrue(r.summary().json().contains("\"by_severity\":{\"0\":1,\"2\":1,\"10\":1,\"x\":1}"),
+                + "\"0\",\"HANDLE_LEAK\",\"/b/src/main/java/D.java\",\"4\"\n";
+        Result r = run(body("repo", "x/y", "csv_text", csv));
+        assertTrue(r.summary().json().contains("\"by_severity\":{\"0\":1,\"10\":1,\"2\":1,\"x\":1}"),
                 r.summary().json());
+
+        // THE PROPERTY THE ORDER EXISTS FOR, asserted directly rather than implied: the same findings
+        // presented in a different row order produce a BYTE-IDENTICAL summary. This is the assertion a
+        // future change to the container has to keep, and it is the one that would have failed under
+        // plain insertion order.
+        String reordered = "Severity,Checker,File,Line\n"
+                + "\"0\",\"HANDLE_LEAK\",\"/b/src/main/java/D.java\",\"4\"\n"
+                + "\"x\",\"HANDLE_LEAK\",\"/b/src/main/java/C.java\",\"3\"\n"
+                + "\"10\",\"HANDLE_LEAK\",\"/b/src/main/java/A.java\",\"1\"\n"
+                + "\"2\",\"HANDLE_LEAK\",\"/b/src/main/java/B.java\",\"2\"\n";
+        assertEquals(r.summary().json(), run(body("repo", "x/y", "csv_text", reordered))
+                        .summary().json(),
+                "the same findings in a different row order are the same ingest, and an audit record "
+                + "that changes anyway is an audit record nobody can diff");
     }
 
     @Test
@@ -945,14 +1102,34 @@ class ParseMarkersTest {
     }
 
     @Test
-    void aWronglyTypedRepoIsCoercedTheWayJsCoercesItRatherThanSerialised() {
-        // `(b.repo || '').toString()`, not JSON.stringify: a list joins with commas and a map becomes
-        // "[object Object]". Both are garbage as a repo name, but dedup_key is built out of it — so a
-        // port that serialised instead would re-key the backlog the first time somebody sent a list.
-        assertEquals("1,2|src/main/java/A.java|7|HANDLE_LEAK",
+    void aWronglyTypedRepoIsSerialisedSoTheGarbageInTheKeyCanBeReadBack() {
+        // WHAT THIS TEST USED TO SAY. It was `aWronglyTypedRepoIsCoercedTheWayJsCoercesItRatherThan
+        // Serialised` and it demanded `String(x)`: a list joined with commas ("1,2") and a map
+        // rendered "[object Object]". The stated reason was the right reason — dedup_key is built out
+        // of this value, and re-keying the backlog orphans every human comment joined to it.
+        //
+        // SO THE FIRST HALF OF THIS TEST IS THE RE-KEYING QUESTION, ASKED PROPERLY. The thing that
+        // must not move is the key of a marker that actually exists, and every marker that exists has
+        // a STRING repo: the column is `owner/name`, the ingest endpoint takes it as text, and all 282
+        // live rows carry one. A string is returned unchanged by both renderings, so no live key moves
+        // — which is asserted below rather than assumed, because it is the whole of the risk.
+        assertEquals("o/r|src/main/java/A.java|7|HANDLE_LEAK",
+                ingest(body("repo", "o/r", "csv_text", csv("/b/src/main/java/A.java")))
+                        .get(0).dedupKey(),
+                "a well-typed repo is the only shape a live row has, and it renders identically "
+                + "under both the old coercion and the new one: nothing in the backlog re-keys");
+
+        // THE SECOND HALF IS THE WRONGLY-TYPED CASE, WHERE THE ANSWER DELIBERATELY MOVED. Both
+        // renderings produce a key nobody wanted; the difference is whether a human can work out what
+        // arrived. "[object Object]" is the same six words for every object ever sent and destroys the
+        // evidence — two different malformed callers produce the SAME dedup_key and their markers
+        // collide. The JSON says which object, so the row names its own cause and the keys stay
+        // distinct.
+        assertEquals("[1,2]|src/main/java/A.java|7|HANDLE_LEAK",
                 ingest(body("repo", List.of(1L, 2L), "csv_text", csv("/b/src/main/java/A.java")))
                         .get(0).dedupKey());
-        assertEquals("[object Object]", ingest(body("repo", body("a", 1L),
-                "csv_text", csv("/b/src/main/java/A.java"))).get(0).repo());
+        assertEquals("{\"a\":1}", ingest(body("repo", body("a", 1L),
+                "csv_text", csv("/b/src/main/java/A.java"))).get(0).repo(),
+                "which object, not merely that it was one");
     }
 }

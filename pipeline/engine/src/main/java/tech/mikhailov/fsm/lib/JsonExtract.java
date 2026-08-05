@@ -60,7 +60,7 @@ public final class JsonExtract {
      * the prose after it and a second fence into one unparseable candidate.
      */
     private static final Pattern FENCE = Pattern.compile(
-            "```(?:json)?[" + JsText.SPACE_CLASS + "]*([\\s\\S]*?)```", Pattern.CASE_INSENSITIVE);
+            "```(?:json)?[" + SourceText.SPACE_CLASS + "]*([\\s\\S]*?)```", Pattern.CASE_INSENSITIVE);
 
     /**
      * Pull the answer out of a model reply.
@@ -75,7 +75,7 @@ public final class JsonExtract {
      */
     public static Map<String, Object> extractJson(String text, List<String> keys) {
         String t = text == null ? "" : text;
-        if (JsText.isBlank(t)) {
+        if (SourceText.isBlank(t)) {
             return null;
         }
 
@@ -86,7 +86,7 @@ public final class JsonExtract {
             fences.add(fence.group(1));
         }
         for (int i = fences.size() - 1; i >= 0; i--) {
-            String body = JsText.trim(fences.get(i));
+            String body = SourceText.trim(fences.get(i));
             Object o = Json.parseOrNull(body);
             if (!Json.truthy(o)) {                       // `tryParse(x) || repair(x)`
                 o = repair(body);
@@ -106,8 +106,8 @@ public final class JsonExtract {
         // 2. THE OBJECT THAT OPENS WITH ONE OF OUR KEYS. This is what makes the answer findable
         // however much prose surrounds it, and it beats position in both directions: a reply that is
         // answered first and illustrated afterwards, and one illustrated first and answered after.
-        Pattern keyRe = Pattern.compile("^[" + JsText.SPACE_CLASS + "]*\"("
-                + String.join("|", keys) + ")\"[" + JsText.SPACE_CLASS + "]*:");
+        Pattern keyRe = Pattern.compile("^[" + SourceText.SPACE_CLASS + "]*\"("
+                + String.join("|", keys) + ")\"[" + SourceText.SPACE_CLASS + "]*:");
         for (int p : starts) {
             // find() on a ^-anchored pattern tests the prefix; matches() would demand the whole tail.
             if (keyRe.matcher(t.substring(p + 1)).find()) {
@@ -269,9 +269,9 @@ public final class JsonExtract {
         }
         // Trailing whitespace and commas go together, and as a RUN: a pretty-printed reply cut after
         // a member trails ",\n  ", and dropping only the last character would leave "{...,}", which
-        // does not parse. JavaScript's \s here, not Java's — see JsText.
+        // does not parse. JavaScript's \s here, not Java's — see SourceText.
         int end = out.length();
-        while (end > 0 && (JsText.isSpace(out.charAt(end - 1)) || out.charAt(end - 1) == ',')) {
+        while (end > 0 && (SourceText.isSpace(out.charAt(end - 1)) || out.charAt(end - 1) == ',')) {
             end--;
         }
         out.setLength(end);

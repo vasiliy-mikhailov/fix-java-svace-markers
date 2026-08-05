@@ -5,8 +5,8 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import tech.mikhailov.fsm.lib.CheckerMap;
-import tech.mikhailov.fsm.lib.JsText;
-import tech.mikhailov.fsm.lib.JsValue;
+import tech.mikhailov.fsm.lib.SourceText;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Json;
 
 /**
@@ -55,11 +55,11 @@ public final class PrepProver {
      * <p>The evidence blob is free-form prose the ingester assembles, so demanding a space would
      * downgrade every {@code argue} marker to {@code test} — and a dead store, which nothing
      * observable at runtime can exhibit, would then burn a second prove attempt on a JUnit test that
-     * can only ever fail to reproduce. {@code \s} is JavaScript's, not Java's; see
-     * {@link JsValue#SPACE_CLASS}.
+     * can only ever fail to reproduce. {@code \s} is the WIDER whitespace set, not Java's; see
+     * {@link SourceText#SPACE_CLASS}.
      */
     private static final Pattern SETTLE_BY =
-            Pattern.compile("Settle-by:[" + JsValue.SPACE_CLASS + "]*(\\w+)");
+            Pattern.compile("Settle-by:[" + SourceText.SPACE_CLASS + "]*(\\w+)");
 
     /** How much of a lookup failure survives into the row; see {@link #describe}. */
     private static final int ERROR_CHARS = 200;
@@ -129,7 +129,7 @@ public final class PrepProver {
 
         /** Read the request out of a posted body. */
         public static Request of(Object body) {
-            return new Request(Json.get(body, "suspicion"), JsValue.prop(body, "github_token"));
+            return new Request(Json.get(body, "suspicion"), Json.get(body, "github_token"));
         }
     }
 
@@ -198,7 +198,7 @@ public final class PrepProver {
          * read as the words "null" and "undefined".
          */
         private static void put(Map<String, Object> m, String key, Object value) {
-            if (value != JsValue.UNDEFINED) {
+            if (value != null) {
                 m.put(key, value);
             }
         }
@@ -211,21 +211,21 @@ public final class PrepProver {
         // The suspector already analysed a specific branch — reuse it, which also avoids one API call
         // per suspicion. Trimmed because the column arrives from SQLite/CSV and is routinely padded:
         // untrimmed it goes straight into the raw.githubusercontent URL, which 404s.
-        Object branch = JsText.trim(JsValue.orEmpty(JsValue.prop(s, "branch")));
+        Object branch = SourceText.trim(Values.text(Json.get(s, "branch")));
         String branchError = "";
-        if (!JsValue.truthy(branch)) {
+        if (SourceText.isBlank(Values.text(branch))) {
             try {
                 Object info = lookup.fetch(lookupRequest(s, req.githubToken()));
-                branch = JsValue.or(JsValue.prop(info, "default_branch"), "");
+                branch = Values.orIfAbsent(Json.get(info, "default_branch"), "");
             } catch (LookupFailed e) {
                 branchError = describe(e.rejection());
             }
         }
-        if (!JsValue.truthy(branch) && branchError.isEmpty()) {
+        if (SourceText.isBlank(Values.text(branch)) && branchError.isEmpty()) {
             branchError = "no default_branch returned";
         }
 
-        String file = JsValue.orEmpty(JsValue.prop(s, "file"));
+        String file = Values.text(Json.get(s, "file"));
         int at = file.indexOf(MARK);
         // at == 0 is a single-module repo: the path STARTS at src/main/java, so there is no module.
         // Only the trailing separator is dropped, never an interior one — collapsing the first '/'
@@ -238,37 +238,64 @@ public final class PrepProver {
         String pkgdir = rest.indexOf('/') >= 0 ? rest.substring(0, rest.lastIndexOf('/')) : "";
         String pkg = pkgdir.replace('/', '.');
 
-        String[] segments = JsValue.split(file, "/");
-        String fallbackName = JsValue.replaceFirst(segments[segments.length - 1], ".java", "");
+        String[] segments = file.split("/", -1);
+        String last = segments[segments.length - 1];
+        String fallbackName = last.endsWith(".java")
+                ? last.substring(0, last.length() - ".java".length()) : last;
         String cls = NOT_IDENTIFIER.matcher(
-                JsValue.string(JsValue.or(JsValue.prop(s, "class_name"), fallbackName))).replaceAll("");
+                Values.orIfBlank(Json.get(s, "class_name"), fallbackName)).replaceAll("");
         String testClass = cls + "FsmProofTest";
         String testPath = (module.isEmpty() ? "" : module + "/") + "src/test/java/"
                 + (pkgdir.isEmpty() ? "" : pkgdir + "/") + testClass + ".java";
 
-        String evidence = JsValue.orEmpty(JsValue.prop(s, "evidence"));
+        String evidence = Values.text(Json.get(s, "evidence"));
         Matcher settle = SETTLE_BY.matcher(evidence);
 
-        double svaceLine = JsValue.numberOrZero(JsValue.prop(s, "svace_line"));
+        double svaceLine = Values.numberOr(Json.get(s, "svace_line"), 0);
         if (svaceLine == 0) {
-            svaceLine = JsValue.numberOrZero(JsValue.prop(s, "line"));
+            svaceLine = Values.numberOr(Json.get(s, "line"), 0);
         }
 
         return new Outcome(
-                JsValue.prop(s, "dedup_key"), JsValue.prop(s, "repo"), branch,
-                JsValue.truthy(branch), branchError,
-                JsValue.numberOrZero(JsValue.prop(s, "prove_attempts")),
-                file, module, pkg, cls, JsValue.prop(s, "method"), testClass, testPath,
-                JsValue.prop(s, "category"), JsValue.prop(s, "severity"), JsValue.prop(s, "title"),
-                JsValue.prop(s, "description"), evidence,
-                JsValue.or(JsValue.prop(s, "marker_id"), ""),
-                JsValue.or(JsValue.prop(s, "svace_checker"), ""),
-                JsValue.or(JsValue.prop(s, "svace_severity"), ""),
+                Json.get(s, "dedup_key"), Json.get(s, "repo"), branch,
+                !SourceText.isBlank(Values.text(branch)), branchError,
+                Values.numberOr(Json.get(s, "prove_attempts"), 0),
+                file, module, pkg, cls, Json.get(s, "method"), testClass, testPath,
+                Json.get(s, "category"), Json.get(s, "severity"), Json.get(s, "title"),
+                Json.get(s, "description"), evidence,
+                Values.orIfAbsent(Json.get(s, "marker_id"), ""),
+                Values.orIfAbsent(Json.get(s, "svace_checker"), ""),
+                Values.orIfAbsent(Json.get(s, "svace_severity"), ""),
                 // The DEFAULT, off the enum that owns the vocabulary: a marker whose evidence carries
                 // no Settle-by hint at all is treated as one a test can settle. The literal used to
                 // sit here while `ParseMarkers` wrote the same word out of CheckerMap.SettleBy and
                 // `Verdict` compared against its sibling — three copies of a two-word vocabulary.
                 svaceLine, settle.find() ? settle.group(1) : CheckerMap.SettleBy.TEST.wire());
+    }
+
+    /**
+     * The {@code Authorization} header, with an UNSET TOKEN SPELLED OUT rather than left blank.
+     *
+     * <p>WHY THIS IS NOT {@code "Bearer " + Values.text(token)}. An empty Bearer is the one rendering
+     * that hides the fault. GitHub does not read it as "no credential" and refuse — it reads it as a
+     * request nobody meant to authenticate, drops the caller onto the 60-per-hour ANONYMOUS quota and
+     * serves no private repository at all. The run then fails INTERMITTENTLY, an hour in, on whichever
+     * marker happened to cross the quota, and the header that caused it looks perfectly ordinary in a
+     * log. The old code avoided that by writing the JavaScript word {@code undefined} into the header;
+     * the word was retired on 2026-08-05 with the rest of the emulation, and it was the wrong marker
+     * anyway — greppable only if you already know that this codebase spells "missing" that way.
+     *
+     * <p>So the header NAMES THE VARIABLE, exactly as {@link tech.mikhailov.fsm.lib.Llm#baseUrl} does
+     * for {@code QWEN_BASE_URL} and for the same reason. GitHub rejects it with 401 immediately — a
+     * loud, first-request, deterministic failure instead of a slow quota leak — and the 401 carries its
+     * own diagnosis and its own fix in the text.
+     *
+     * <p>Shared with {@code GithubSourceClient}, which sends the identical header on the source fetch.
+     * It used to hold its own copy with a comment claiming they matched; they had already drifted apart
+     * by the time anyone read it, so there is now one of them.
+     */
+    public static String authorization(Object token) {
+        return "Bearer " + Values.orIfBlank(token, "(GITHUB_TOKEN is not set)");
     }
 
     /** The lookup, spelled out: every header here is the fix for a way the call has failed before. */
@@ -284,12 +311,12 @@ public final class PrepProver {
         // See harness/README.md, "Re-baselines".
         headers.put("User-Agent", "svace-marker-fixer");
         headers.put("Accept", "application/vnd.github+json");
-        headers.put("Authorization", "Bearer " + JsValue.string(token));
+        headers.put("Authorization", authorization(token));
         // One short-lived call per suspicion; a pooled connection to api.github.com outlives the run
         // and holds a socket open for nothing.
         headers.put("Connection", "close");
         return new LookupRequest(
-                "https://api.github.com/repos/" + JsValue.string(JsValue.prop(suspicion, "repo")),
+                "https://api.github.com/repos/" + Values.text(Json.get(suspicion, "repo")),
                 headers, true, LOOKUP_TIMEOUT_MS);
     }
 
@@ -305,11 +332,11 @@ public final class PrepProver {
      * missing one.
      */
     private static String describe(Object rejection) {
-        Object chosen = JsValue.or(errorMessage(rejection), errorDescription(rejection));
-        if (!JsValue.truthy(chosen)) {
+        String text = Values.orIfBlank(errorMessage(rejection),
+                Values.orIfBlank(errorDescription(rejection), ""));
+        if (text.isEmpty()) {
             return "repo lookup failed";
         }
-        String text = JsValue.string(chosen);
         return text.substring(0, Math.min(text.length(), ERROR_CHARS));
     }
 
@@ -323,11 +350,11 @@ public final class PrepProver {
         if (rejection instanceof Throwable t) {
             return t.getMessage();
         }
-        return JsValue.prop(rejection, "message");
+        return Json.get(rejection, "message");
     }
 
     /** {@code e.description} — the field an HTTP-level failure carries and no Java exception does. */
     private static Object errorDescription(Object rejection) {
-        return JsValue.prop(rejection, "description");
+        return Json.get(rejection, "description");
     }
 }

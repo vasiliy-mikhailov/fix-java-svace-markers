@@ -1,12 +1,12 @@
 {
   "cases": 3357,
-  "identical": 2013,
-  "divergent": 1344,
-  "divergenceClasses": 78,
+  "identical": 1991,
+  "divergent": 1366,
+  "divergenceClasses": 138,
   "byNode_totalThenIdentical": {
     "verdict": [2848,1682],
     "skeptic": [171,0],
-    "prmaker": [338,331]
+    "prmaker": [338,309]
   },
   "classes": [
     {
@@ -34,6 +34,12 @@
       "java": "z"
     },
     {
+      "cases": 85,
+      "at": "out.suspicion_note",
+      "js": "s:[gap] retired as `undefined` with no verdict written — this marker was never argued; the verdict stage does not route this state",
+      "java": "s:[gap] retired as `(absent)` with no verdict written — this marker was never argued; the verdict stage does not route this state"
+    },
+    {
       "cases": 73,
       "at": "out.skeptic_answered",
       "js": "(missing)",
@@ -44,6 +50,12 @@
       "at": "out.verdict_kind",
       "js": "s:false-positive",
       "java": "s:"
+    },
+    {
+      "cases": 15,
+      "at": "out.verdict_text",
+      "js": "s:Settled as `undefined`, which the verdict stage has no specific wording for. ",
+      "java": "s:Settled as `(absent)`, which the verdict stage has no specific wording for. "
     },
     {
       "cases": 14,
@@ -68,6 +80,48 @@
       "at": "out.verdict_kind",
       "js": "s:unprovable",
       "java": "s:undetermined"
+    },
+    {
+      "cases": 10,
+      "at": "out.verdict_text",
+      "js": "s:Settled as `undefined`, which the verdict stage has no specific wording for. reproducer test never executed (build failed, jdk 25): BUILD FAILURE",
+      "java": "s:Settled as `(absent)`, which the verdict stage has no specific wording for. reproducer test never executed (build failed, jdk 25): BUILD FAILURE"
+    },
+    {
+      "cases": 10,
+      "at": "out.verdict_text",
+      "js": "s:Settled as `undefined`, which the verdict stage has no specific wording for. reproducer test never executed (build failed, jdk 25): BUILD FAILURE and source fetch returned nothing",
+      "java": "s:Settled as `(absent)`, which the verdict stage has no specific wording for. reproducer test never executed (build failed, jdk 25): BUILD FAILURE and source fetch returned nothing"
+    },
+    {
+      "cases": 10,
+      "at": "out.verdict_text",
+      "js": "s:Settled as `undefined`, which the verdict stage has no specific wording for. branch unresolved: 404",
+      "java": "s:Settled as `(absent)`, which the verdict stage has no specific wording for. branch unresolved: 404"
+    },
+    {
+      "cases": 10,
+      "at": "out.verdict_text",
+      "js": "s:Settled as `undefined`, which the verdict stage has no specific wording for. reproducer reply was not parseable JSON",
+      "java": "s:Settled as `(absent)`, which the verdict stage has no specific wording for. reproducer reply was not parseable JSON"
+    },
+    {
+      "cases": 10,
+      "at": "out.verdict_text",
+      "js": "s:Settled as `undefined`, which the verdict stage has no specific wording for. run_test errored: connection reset",
+      "java": "s:Settled as `(absent)`, which the verdict stage has no specific wording for. run_test errored: connection reset"
+    },
+    {
+      "cases": 10,
+      "at": "out.verdict_text",
+      "js": "s:Settled as `undefined`, which the verdict stage has no specific wording for. source file exceeded 300000 chars and was truncated — a verdict on it is not trustworthy",
+      "java": "s:Settled as `(absent)`, which the verdict stage has no specific wording for. source file exceeded 300000 chars and was truncated — a verdict on it is not trustworthy"
+    },
+    {
+      "cases": 10,
+      "at": "out.verdict_text",
+      "js": "s:Settled as `undefined`, which the verdict stage has no specific wording for. test never executed (build failed, jdk 25)",
+      "java": "s:Settled as `(absent)`, which the verdict stage has no specific wording for. test never executed (build failed, jdk 25)"
     },
     {
       "cases": 9,
@@ -106,6 +160,12 @@
       "java": "s:undetermined"
     },
     {
+      "cases": 5,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(1980)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2006)"
+    },
+    {
       "cases": 4,
       "at": "logs[i]",
       "js": "s:[verdict] k — verdict call produced no text; left not_reproduced",
@@ -122,6 +182,18 @@
       "at": "out.suspicion_note",
       "js": "s:[gap] retired as `not_reproduced` with no verdict written — this marker was never argued; the verdict stage does not route this state",
       "java": "s:[verdict] the verdict call FAILED, so `not_reproduced` was retired with no argument: svace down"
+    },
+    {
+      "cases": 4,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(1955)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2026)"
+    },
+    {
+      "cases": 4,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to undefined. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to actually …(996)",
+      "java": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to (repository not recorded). A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whet…(1022)"
     },
     {
       "cases": 3,
@@ -193,13 +265,13 @@
       "cases": 2,
       "at": "out",
       "js": "z",
-      "java": "[\"o\",[\"state\",\"z\"],[\"retry\",\"b:false\"],[\"verdict_text\",\"s:Settled as `undefined`, which the verdict stage has no specific wording for. \"],[\"verdict_kind\",\"s:undetermined\"],[\"verdict_confidence\",\"s:\"],[\"suspicion_status\",…(472)"
+      "java": "[\"o\",[\"state\",\"z\"],[\"retry\",\"b:false\"],[\"verdict_text\",\"s:Settled as `(absent)`, which the verdict stage has no specific wording for. \"],[\"verdict_kind\",\"s:undetermined\"],[\"verdict_confidence\",\"s:\"],[\"suspicion_status\",\"…(470)"
     },
     {
       "cases": 2,
       "at": "calls[i]",
       "js": "(missing)",
-      "java": "[\"o\",[\"method\",\"s:POST\"],[\"url\",\"s:http://llm/chat/completions\"],[\"headers\",[\"o\",[\"Authorization\",\"s:Bearer k\"],[\"Content-Type\",\"s:application/json\"],[\"Connection\",\"s:close\"]]],[\"body\",[\"o\",[\"model\",\"s:m\"],[\"messages\",[\"…(2371)"
+      "java": "[\"o\",[\"method\",\"s:POST\"],[\"url\",\"s:http://llm/chat/completions\"],[\"headers\",[\"o\",[\"Authorization\",\"s:Bearer k\"],[\"Content-Type\",\"s:application/json\"],[\"Connection\",\"s:close\"]]],[\"body\",[\"o\",[\"model\",\"s:m\"],[\"messages\",[\"…(2397)"
     },
     {
       "cases": 2,
@@ -234,6 +306,12 @@
     {
       "cases": 2,
       "at": "out.pr_reason",
+      "js": "s:",
+      "java": "s:false"
+    },
+    {
+      "cases": 2,
+      "at": "out.pr_reason",
       "js": "s:(pr maker unavailable — defaulting to draft): Unexpected token 'm', \"{\"decision\": make}\" is not valid JSON",
       "java": "s:(pr maker unavailable — defaulting to draft): not a number at offset 13"
     },
@@ -241,13 +319,157 @@
       "cases": 2,
       "at": "calls[i]",
       "js": "(missing)",
-      "java": "[\"o\",[\"method\",\"s:POST\"],[\"url\",\"s:http://vllm:8000/v1/chat/completions\"],[\"headers\",[\"o\",[\"Authorization\",\"s:Bearer k-123\"],[\"Content-Type\",\"s:application/json\"],[\"Connection\",\"s:close\"]]],[\"body\",[\"o\",[\"model\",\"s:qwen-…(1409)"
+      "java": "[\"o\",[\"method\",\"s:POST\"],[\"url\",\"s:http://vllm:8000/v1/chat/completions\"],[\"headers\",[\"o\",[\"Authorization\",\"s:Bearer k-123\"],[\"Content-Type\",\"s:application/json\"],[\"Connection\",\"s:close\"]]],[\"body\",[\"o\",[\"model\",\"s:qwen-…(1435)"
     },
     {
       "cases": 2,
       "at": "out",
       "js": "z",
       "java": "[\"o\",[\"proven\",\"b:true\"],[\"skeptic_verdict\",\"s:sound\"],[\"pr_decision\",\"s:make\"],[\"pr_reason\",\"s:production code\"],[\"pr_curated\",\"b:true\"],[\"pr_title\",\"s:Ti\"],[\"pr_body\",\"s:Bo\"]]"
+    },
+    {
+      "cases": 2,
+      "at": "out.pr_body",
+      "js": "s:",
+      "java": "s:0"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2023)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2048)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2099)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2124)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2027)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2048)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2103)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2124)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2032)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2048)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2108)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2124)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2004)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2023)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2080)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2099)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2008)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2023)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2084)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2099)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2013)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2023)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2089)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2099)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2017)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2009)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2093)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2085)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2004)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2021)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2080)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2097)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2027)",
+      "java": "s:[stage vd1]\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enoug…(2033)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enough to accept…(2015)",
+      "java": "s:(stamp not recorded)\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be speci…(2035)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enough to accept…(2091)",
+      "java": "s:(stamp not recorded)\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be speci…(2111)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:null\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enough to ac…(2019)",
+      "java": "s:(stamp not recorded)\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be speci…(2035)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:null\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enough to ac…(2095)",
+      "java": "s:(stamp not recorded)\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be speci…(2111)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:undefined\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enough …(2024)",
+      "java": "s:(stamp not recorded)\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 2 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be speci…(2035)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:undefined\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be specific enough …(2100)",
+      "java": "s:(stamp not recorded)\nYou are adjudicating ONE static-analysis marker that could not be demonstrated by an executable test, after 3 attempt(s). Write the verdict a reviewer will read INSTEAD of a patch. It must be speci…(2111)"
     },
     {
       "cases": 1,
@@ -409,13 +631,67 @@
       "cases": 1,
       "at": "calls[i]",
       "js": "(missing)",
-      "java": "[\"o\",[\"method\",\"s:POST\"],[\"url\",\"s:undefined/chat/completions\"],[\"headers\",[\"o\",[\"Authorization\",\"s:Bearer undefined\"],[\"Content-Type\",\"s:application/json\"],[\"Connection\",\"s:close\"]]],[\"body\",[\"o\",[\"model\",\"z\"],[\"message…(2422)"
+      "java": "[\"o\",[\"method\",\"s:POST\"],[\"url\",\"s:(QWEN_BASE_URL is not set)/chat/completions\"],[\"headers\",[\"o\",[\"Authorization\",\"s:Bearer \"],[\"Content-Type\",\"s:application/json\"],[\"Connection\",\"s:close\"]]],[\"body\",[\"o\",[\"model\",\"z\"],[…(2430)"
     },
     {
       "cases": 1,
       "at": "out",
       "js": "z",
       "java": "[\"o\",[\"state\",\"s:false_positive\"],[\"attempts\",\"n:2\"],[\"infra_reason\",\"s:\"],[\"retry\",\"b:false\"],[\"verdict_text\",\"s:because the guard on line 12 rejects it\"],[\"verdict_kind\",\"s:false-positive\"],[\"verdict_confidence\",\"s:hig…(438)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:\nA bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER-FIT — makes THIS one test pass without truly fixing…(680)",
+      "java": "s:(stamp not recorded)\nA bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER-FIT — makes THIS one test pass …(700)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:null\nA bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER-FIT — makes THIS one test pass without truly fi…(684)",
+      "java": "s:(stamp not recorded)\nA bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER-FIT — makes THIS one test pass …(700)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:undefined\nA bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER-FIT — makes THIS one test pass without tru…(689)",
+      "java": "s:(stamp not recorded)\nA bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER-FIT — makes THIS one test pass …(700)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[pipeline S1 (2026-07-27)]  [stage sk5 (2026-07-22)]\nA bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER…(706)",
+      "java": "s:[pipeline S1 (2026-07-27)]  [stage sk5 (2026-07-22)]\nA bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER…(707)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[pipeline S1 (2026-07-27)]  [stage sk5 (2026-07-22)]\nA bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER…(706)",
+      "java": "s:[pipeline S1 (2026-07-27)]  [stage sk5 (2026-07-22)]\nA bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER…(711)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[pipeline S1 (2026-07-27)]  [stage sk5 (2026-07-22)]\nA bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER…(721)",
+      "java": "s:[pipeline S1 (2026-07-27)]  [stage sk5 (2026-07-22)]\nA bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER…(713)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[pipeline S1 (2026-07-27)]  [stage sk5 (2026-07-22)]\nA bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER…(709)",
+      "java": "s:[pipeline S1 (2026-07-27)]  [stage sk5 (2026-07-22)]\nA bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER…(715)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[pipeline S1 (2026-07-27)]  [stage sk5 (2026-07-22)]\nA bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER…(644)",
+      "java": "s:[pipeline S1 (2026-07-27)]  [stage sk5 (2026-07-22)]\nA bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER…(649)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[pipeline S1 (2026-07-27)]  [stage sk5 (2026-07-22)]\nA bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER…(682)",
+      "java": "s:[pipeline S1 (2026-07-27)]  [stage sk5 (2026-07-22)]\nA bug fix passed its regression test (the test FAILED before the fix and PASSES after). Judge whether the FIX is a genuine, general correction, or whether it is OVER…(684)"
     },
     {
       "cases": 1,
@@ -445,7 +721,7 @@
       "cases": 1,
       "at": "calls[i]",
       "js": "(missing)",
-      "java": "[\"o\",[\"method\",\"s:POST\"],[\"url\",\"s:undefined/chat/completions\"],[\"headers\",[\"o\",[\"Authorization\",\"s:Bearer undefined\"],[\"Content-Type\",\"s:application/json\"],[\"Connection\",\"s:close\"]]],[\"body\",[\"o\",[\"model\",\"z\"],[\"message…(1128)"
+      "java": "[\"o\",[\"method\",\"s:POST\"],[\"url\",\"s:(QWEN_BASE_URL is not set)/chat/completions\"],[\"headers\",[\"o\",[\"Authorization\",\"s:Bearer \"],[\"Content-Type\",\"s:application/json\"],[\"Connection\",\"s:close\"]]],[\"body\",[\"o\",[\"model\",\"z\"],[…(1136)"
     },
     {
       "cases": 1,
@@ -458,6 +734,90 @@
       "at": "out.skeptic_reason",
       "js": "s:skeptic call failed: Cannot read properties of undefined (reading 'QWEN_BASE_URL')",
       "java": "s:r"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to actually OPEN …(1035)",
+      "java": "s:(stamp not recorded)\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide wheth…(1055)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:null\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to actually O…(1039)",
+      "java": "s:(stamp not recorded)\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide wheth…(1055)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:undefined\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to actua…(1044)",
+      "java": "s:(stamp not recorded)\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide wheth…(1055)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to . A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to actually OPEN A PU…(1031)",
+      "java": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to (repository not recorded). A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whet…(1056)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to null. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to actually OPEN …(1035)",
+      "java": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to (repository not recorded). A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whet…(1056)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to undefined. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to actually …(1040)",
+      "java": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to (repository not recorded). A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whet…(1056)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to act…(1024)",
+      "java": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to act…(1043)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to act…(1028)",
+      "java": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to act…(1043)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to act…(1033)",
+      "java": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to act…(1043)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to act…(1034)",
+      "java": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to act…(1035)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to act…(1049)",
+      "java": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to act…(1041)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to act…(1027)",
+      "java": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to act…(1032)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to act…(1035)",
+      "java": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to act…(1041)"
+    },
+    {
+      "cases": 1,
+      "at": "calls[i].body.messages[i].content",
+      "js": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to act…(1024)",
+      "java": "s:[fsm pr v3]\nYou are the PR curator for open-source contributions to WebGoat/WebGoat. A defect has a regression test that FAILS before and PASSES after a minimal source-only fix (execution-proven). Decide whether to act…(1028)"
     },
     {
       "cases": 1,

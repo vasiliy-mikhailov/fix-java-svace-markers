@@ -124,7 +124,7 @@ class CsvTest {
 
     @Test
     void aByteOrderMarkIsJustACharacterHereAndIsTrimmedLater() {
-        // The parser does not strip it; Js.trim does, when the header cell is normalised. Pinning it
+        // The parser does not strip it; SourceText.trim does, when the header cell is normalised. Pinning it
         // at this level says WHERE the responsibility lives.
         char bom = 0xFEFF;
         assertEquals(List.of(List.of(bom + "Severity", "Checker")), parse(bom + "Severity,Checker"));

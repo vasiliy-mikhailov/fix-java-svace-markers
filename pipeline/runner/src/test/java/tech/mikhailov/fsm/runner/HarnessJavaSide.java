@@ -9,7 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import tech.mikhailov.fsm.lib.Js;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Json;
 
 /**
@@ -197,10 +197,10 @@ final class HarnessJavaSide {
      */
     private static Map<String, Object> editOf(Object c) {
         Map<String, Object> edit = new LinkedHashMap<>();
-        if (Js.truthy(Json.get(c, "oldGiven"))) {
+        if (Boolean.TRUE.equals(Json.get(c, "oldGiven"))) {
             edit.put("old_str", Json.get(c, "old"));
         }
-        if (Js.truthy(Json.get(c, "newGiven"))) {
+        if (Boolean.TRUE.equals(Json.get(c, "newGiven"))) {
             edit.put("new_str", Json.get(c, "new"));
         }
         return edit;
@@ -257,8 +257,8 @@ final class HarnessJavaSide {
         Object v = Json.get(body, "v");
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("interpolated", Text.field(body, "v"));   // `${body.v}`
-        m.put("orEmpty", Js.orEmptyString(v));          // String(body.v || '')
-        m.put("truthy", Js.truthy(v));                  // !!body.v
+        m.put("orEmpty", Values.text(v));          // String(body.v || '')
+        m.put("truthy", !Values.text(v).isEmpty());   // "is there text to use"
         return m;
     }
 
@@ -365,7 +365,7 @@ final class HarnessJavaSide {
             case Boolean b -> "b:" + b;
             case Long l -> "n:" + l;
             case Integer i -> "n:" + i;
-            case Number n -> "n:" + Js.numberToString(n.doubleValue());
+            case Number n -> "n:" + Values.plain(n.doubleValue());
             case List<?> l -> {
                 List<Object> out = new ArrayList<>();
                 out.add("a");

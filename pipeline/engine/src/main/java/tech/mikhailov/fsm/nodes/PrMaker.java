@@ -4,7 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import tech.mikhailov.fsm.lib.Js;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.Llm;
 import tech.mikhailov.fsm.lib.PrDecision;
@@ -158,7 +158,7 @@ public final class PrMaker {
             return new Request(Json.get(body, "prep_prover"), Json.get(body, "parse_test"),
                     Json.get(body, "parse_fix"), Json.get(body, "run_test_reproduce"),
                     Json.get(body, "item"), Llm.Endpoint.of(Json.get(body, "env")),
-                    Llm.concat(body, "pr_stamp"));
+                    Json.str(body, "pr_stamp"));
         }
     }
 
@@ -177,10 +177,11 @@ public final class PrMaker {
     public static String buildPrPrompt(PromptInput in, String template) {
         Object j = in.prepProver();
         Object parseFix = in.parseFix();
-        return template.formatted(Llm.concat(in.prStamp()), Llm.concat(j, "repo"),
-                Llm.concat(j, "file"), Js.orEmptyString(Json.get(j, "title")),
-                Js.orEmptyString(Json.get(j, "description")),
-                Js.orEmptyString(Json.get(parseFix, "fix_root_cause")),
+        return template.formatted(Llm.orMissing(in.prStamp(), "stamp"),
+                Llm.orMissing(Json.get(j, "repo"), "repository"),
+                Llm.orMissing(Json.get(j, "file"), "file"), Values.text(Json.get(j, "title")),
+                Values.text(Json.get(j, "description")),
+                Values.text(Json.get(parseFix, "fix_root_cause")),
                 // '[]' keeps the FIX EDITS section well-formed. An empty string there produces two
                 // blank lines where a diff belongs, and the model reads that as "the diff was
                 // withheld" rather than as "there were no edits".
@@ -224,14 +225,14 @@ public final class PrMaker {
             // It replied with an object, so it DID curate; 'make' matches the stage's bias toward not
             // discarding an execution-proven fix, and the receipt stays true because a machine
             // judgement really was made here — unlike on the catch path.
-            decision = Js.string(or(Json.get(jj, "decision"), PrDecision.MAKE.wire()));
-            reason = Js.orEmptyString(Json.get(jj, "reason"));
+            decision = Values.text(or(Json.get(jj, "decision"), PrDecision.MAKE.wire()));
+            reason = Values.text(Json.get(jj, "reason"));
             curated = true;
-            if (Js.truthy(Json.get(jj, "pr_title"))) {
-                title = Js.string(Json.get(jj, "pr_title"));
+            if (!Json.str(jj, "pr_title").isEmpty()) {
+                title = Values.text(Json.get(jj, "pr_title"));
             }
-            if (Js.truthy(Json.get(jj, "pr_body"))) {
-                body = Js.string(Json.get(jj, "pr_body"));
+            if (!Json.str(jj, "pr_body").isEmpty()) {
+                body = Values.text(Json.get(jj, "pr_body"));
             }
         }
         return new Curation(decision, reason, curated, title, body);
@@ -269,8 +270,8 @@ public final class PrMaker {
         boolean curated = false;
         // A PR with no title is rejected by the API outright, so the marker's own title is better than
         // nothing even when the curator never ran to write a crisp one.
-        String title = Js.orEmptyString(or(Json.get(parseFix, "pr_title"), Json.get(j, "title")));
-        String body = Js.orEmptyString(Json.get(parseFix, "pr_body"));
+        String title = Values.text(or(Json.get(parseFix, "pr_title"), Json.get(j, "title")));
+        String body = Values.text(Json.get(parseFix, "pr_body"));
 
         if (proven && skepticSound) {
             // Built OUTSIDE the try on purpose: see NotSliceable.
@@ -308,7 +309,7 @@ public final class PrMaker {
     private static String cut(Object value, int n) {
         return switch (value) {
             case String s -> s.length() <= n ? s : s.substring(0, n);
-            case List<?> l -> Js.string(l.subList(0, Math.min(n, l.size())));
+            case List<?> l -> Values.text(l.subList(0, Math.min(n, l.size())));
             default -> throw new NotSliceable(value);
         };
     }

@@ -212,7 +212,7 @@ class RecordOutcomeTest {
                 // The blankness divergence, one case per character JS calls whitespace and
                 // Character.isWhitespace does not. Written as String.isBlank() every one of these
                 // reads as a source file WITH CONTENT, and the marker is adjudicated against a file
-                // that has no code in it — a verdict, written down, about nothing. See JsText.
+                // that has no code in it — a verdict, written down, about nothing. See SourceText.
                 infra("a source file that is only a byte-order mark",
                         m -> m.buildInput("src", "\ufeff"),
                         "source fetch returned nothing"),
@@ -869,21 +869,27 @@ class RecordOutcomeTest {
      *
      * <p>{@code suspicion_key}, {@code repo} and {@code file} are read off {@code Prep prover} here
      * and off the same item by {@link Verdict}, and the two stages read them through DIFFERENT
-     * coercions on purpose. This node uses {@code Json.str} — {@code String(x || '')} — because these
-     * become STORED COLUMNS: a cell holding the literal text {@code undefined} is a bug in the
-     * artifact, and a dashboard grouping by {@code repo} would grow a repository by that name. Verdict
-     * uses {@code Llm.concat}, which renders an absent key as {@code undefined} and an explicit null
-     * as {@code null}, because ITS copies go into a prompt and a log line where the two absences are
-     * different diagnoses and have to stay legible.
+     * coercions on purpose. This node uses {@code Json.str}, because these become STORED COLUMNS: a
+     * cell holding a human-readable marker for absence is a bug in the artifact, and a dashboard
+     * grouping by {@code repo} would grow a repository named after it. Verdict uses
+     * {@code Llm.orMissing} and {@code Llm.presence}, which name an absent value, because ITS copies
+     * go into a prompt and a log line where a reader needs to be told what is missing.
      *
      * <p>NOTHING ELSE CATCHES THIS. Verdict's side is pinned by the node-family catalogue, which goes
      * red on thirteen cases if that coercion is swapped; this side was reachable by no test at all —
      * every fixture above sends these three keys as present, non-empty strings, so the whole suite
-     * stayed green with {@code Llm.concat} substituted here and rows would have started carrying
+     * stayed green with the prompt coercion substituted here and rows would have started carrying
      * {@code undefined}. That is what this test exists for, so keep the empty spellings exact.
+     *
+     * <p>THE 2026-08-05 REWRITE. The word this guards against used to be the literal {@code undefined}
+     * and is now {@code (repository not recorded)} and its siblings — the change replaced the marker,
+     * not the rule, and this test guards the rule. The FALSY NON-NULL block below is the part that
+     * moved: it used to assert that {@code 0} and {@code false} also collapse to {@code ""}, which was
+     * {@code String(x || '')} destroying values these columns are supposed to preserve. See
+     * {@code harness/README.md}, "Re-baselines".
      */
     @Test
-    void theIdentityColumnsAreEmptyStringsAndNeverTheWordUndefined() {
+    void theIdentityColumnsAreEmptyStringsAndNeverAWordDescribingTheirAbsence() {
         Map<String, Object> src = item("src", "class B {}");
 
         // ABSENT: no key at all, the shape a row written before a column existed arrives in.
@@ -905,13 +911,22 @@ class RecordOutcomeTest {
         assertEquals("", nulls.repo());
         assertEquals("", nulls.file());
 
-        // FALSY NON-NULLS, which `String(x || '')` also collapses and a bare toString would not.
+        // FALSY NON-NULLS, WHICH ARE NOW KEPT. This block used to assert all three came back "",
+        // because `String(x || '')` collapsed them — and on THESE columns that was the most expensive
+        // place the idiom could have been applied. `suspicion_key` is the marker's identity: the
+        // column every human comment and every re-ingest joins on. A key of `0` silently becoming ""
+        // does not produce a wrong row, it produces an ORPHANED one, joined to nothing, invisible to
+        // the query that would have found it. There is no reading under which discarding an identity
+        // its owner sent is the safe direction.
+        //
+        // The empty string still reads as empty, because it already was; only the two values that
+        // carried information changed.
         Outcome falsy = RecordOutcome.recordOutcome(Request.of(item(
                 "prep_prover", item("suspicion_key", 0, "repo", false, "file", ""),
                 "build_reproduce_input", src)));
-        assertEquals("", falsy.suspicionKey());
-        assertEquals("", falsy.repo());
-        assertEquals("", falsy.file());
+        assertEquals("0", falsy.suspicionKey(), "an identity of `0` is an identity, and it joins");
+        assertEquals("false", falsy.repo(), "a repo nobody can name is still not the same as none");
+        assertEquals("", falsy.file(), "…while an empty cell was empty before the read and after it");
 
         // AND A WRONG-TYPED CELL IS SERIALISED, not rendered as `[object Object]`: the column keeps
         // what arrived in a form the next reader can parse back.

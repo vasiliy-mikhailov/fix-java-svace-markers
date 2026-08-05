@@ -5,9 +5,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
-import tech.mikhailov.fsm.lib.Js;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Json;
-import tech.mikhailov.fsm.lib.JsText;
+import tech.mikhailov.fsm.lib.SourceText;
 import tech.mikhailov.fsm.lib.JsonExtract;
 
 /**
@@ -107,9 +107,9 @@ public final class ParseFix {
     /** Parse the fixer's reply and apply the independence guard. */
     public static Result parseFix(Request req) {
         Object j = req.prepProver();
-        String text = Js.orEmptyString(Json.get(req.fixer(), "output"));
+        String text = Values.text(Json.get(req.fixer(), "output"));
 
-        Map<String, Object> r = JsText.isBlank(text) ? null : JsonExtract.extractJson(text, KEYS);
+        Map<String, Object> r = SourceText.isBlank(text) ? null : JsonExtract.extractJson(text, KEYS);
         boolean parseFailed = r == null;
         // A missing verdict must not be read as a considered refusal: a refusal is a real answer that
         // settles the marker, and a crash is a pipeline failure that has to be retried.
@@ -117,12 +117,12 @@ public final class ParseFix {
             parseFailed = true;
         }
 
-        String testCode = Js.orEmptyString(Json.get(req.parseTest(), "test_code"));
-        String testPath = Js.orEmptyString(Json.get(j, "test_path"));
+        String testCode = Values.text(Json.get(req.parseTest(), "test_code"));
+        String testPath = Values.text(Json.get(j, "test_path"));
         // `(jdk || '21') + ''`, spelled out: the fallback is chosen on TRUTHINESS and only then
         // stringified, so a reproduce run that reported jdk 0 asks for 21 rather than for "0".
         Object resolvedJdk = Json.get(req.runTestReproduce(), "jdk");
-        String jdk = Js.string(Js.truthy(resolvedJdk) ? resolvedJdk : JDK_FALLBACK);
+        String jdk = Values.orIfBlank(resolvedJdk, JDK_FALLBACK);
 
         // THE GUARD.
         String srcfile = norm(Json.get(j, "file"));
@@ -141,7 +141,7 @@ public final class ParseFix {
             Object claimedPath = Json.get(e, "path");
             String p = norm(Json.truthy(claimedPath) ? claimedPath : Json.get(j, "file"));
             if (!p.equals(srcfile)) {
-                rejected.add(Js.orEmptyString(Json.get(e, "path")));
+                rejected.add(Values.text(Json.get(e, "path")));
                 continue;
             }
             Map<String, Object> edit = new LinkedHashMap<>();
@@ -165,8 +165,8 @@ public final class ParseFix {
         body.put("fix_edits", edits);
 
         return new Result(j, canFix, parseFailed, testCode, Json.stringify(edits),
-                String.join(",", rejected), Js.orEmptyString(Json.get(r, "root_cause")),
-                Js.orEmptyString(Json.get(r, "pr_title")), Js.orEmptyString(Json.get(r, "pr_body")),
+                String.join(",", rejected), Values.text(Json.get(r, "root_cause")),
+                Values.text(Json.get(r, "pr_title")), Values.text(Json.get(r, "pr_body")),
                 body);
     }
 
@@ -178,7 +178,7 @@ public final class ParseFix {
      * value renders as, the suspected file renders the same way.
      */
     private static String norm(Object v) {
-        String s = v == null ? "" : Js.string(v);
+        String s = v == null ? "" : Values.text(v);
         return LEADING_SLASH.matcher(s).replaceFirst("");
     }
 

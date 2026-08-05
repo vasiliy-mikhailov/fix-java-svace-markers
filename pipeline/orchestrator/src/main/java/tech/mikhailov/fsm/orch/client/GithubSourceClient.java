@@ -9,7 +9,7 @@ import java.util.LinkedHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tech.mikhailov.fsm.lib.Json;
-import tech.mikhailov.fsm.lib.JsValue;
+import tech.mikhailov.fsm.nodes.PrepProver;
 import tech.mikhailov.fsm.runner.CloneUrl;
 
 /**
@@ -150,10 +150,12 @@ public class GithubSourceClient implements SourceClient {
                 .timeout(timeout)
                 .header("User-Agent", USER_AGENT)
                 .header("Accept", "application/vnd.github+json")
-                // JsValue.string, matching PrepProver's identical header: an absent token becomes the
-                // word "undefined" rather than an empty Bearer, so the 401 that follows names its own
-                // cause in the log instead of looking like a revoked credential.
-                .header("Authorization", "Bearer " + JsValue.string(token))
+                // PrepProver's, CALLED rather than copied: this header and the branch lookup's must
+                // agree, and the two previously-separate copies had already drifted — this one still
+                // carried a comment describing behaviour it no longer had. An absent token names the
+                // environment variable, so the 401 that follows says its own cause instead of looking
+                // like a revoked credential. See PrepProver.authorization for why not an empty Bearer.
+                .header("Authorization", PrepProver.authorization(token))
                 .GET()
                 .build();
 

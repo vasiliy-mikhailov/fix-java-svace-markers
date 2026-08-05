@@ -8,7 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import tech.mikhailov.fsm.lib.Js;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Json;
 
 /**
@@ -68,8 +68,8 @@ final class Prove {
         String repo = Text.field(body, "repo");
         String branch = Text.orDefault(Json.get(body, "branch"), "main");
         String jdk = Text.orDefault(Json.get(body, "jdk"), "17");
-        String module = Js.truthy(Json.get(body, "module"))
-                ? Js.string(Json.get(body, "module")) : null;
+        String module = !Json.str(body, "module").isEmpty()
+                ? Values.text(Json.get(body, "module")) : null;
         String buildTool = Text.orDefault(Json.get(body, "build"), "auto");
         String testClass = requiredName(body, "test_class");
         String testPath = requiredName(body, "test_path");
@@ -204,10 +204,11 @@ final class Prove {
      */
     private void applyOne(Path ws, String testPath, Object edit, List<String> applied,
                           List<String> editErrors) throws IOException {
-        String path = Js.orEmptyString(Json.get(edit, "path"));
-        // The MESSAGE uses interpolation's coercion and the LOOKUP uses `p || ''` — two different
-        // coercions on adjacent lines, deliberately: an edit with no path is REPORTED as "undefined"
-        // and RESOLVED as "", so the error names what was missing instead of a plausible path.
+        String path = Values.text(Json.get(edit, "path"));
+        // Two different readings of one field on adjacent lines, deliberately. The LOOKUP takes the
+        // value's text, which for an absent path is "" — a path that resolves to nothing rather than
+        // to something plausible. The MESSAGE takes Text.field, which names the absence "(absent)",
+        // so the error says what was missing instead of quoting an empty string at the reader.
         String reported = Text.field(edit, "path");
 
         Edit.Target target = Edit.fixTarget(ws, path, testPath);
@@ -246,16 +247,21 @@ final class Prove {
     }
 
     /**
-     * {@code body.fix_edits || []}.
+     * The edits, or none when the request carries no {@code fix_edits} at all.
      *
-     * <p>A truthy non-array is REFUSED rather than ignored, and the prove ends as {@code ok: false}.
+     * <p>ANY non-array is REFUSED rather than ignored, and the prove ends as {@code ok: false}.
      * Treating it as "no edits" would instead run a GREEN build on
      * unpatched code and report {@code green_passed: false}, which is a verdict on the fix rather than a
      * complaint about the request.
+     *
+     * <p>It used to be {@code body.fix_edits || []}, which refused only the TRUTHY non-arrays and let
+     * {@code 0}, {@code false} and {@code ""} through as "no edits" — the exact silent-green-build the
+     * paragraph above exists to prevent, reachable from three more values. Absence is now the only
+     * thing that means none.
      */
     private static List<?> editsOf(Object body) {
         Object edits = Json.get(body, "fix_edits");
-        if (!Js.truthy(edits)) {
+        if (edits == null) {
             return List.of();
         }
         if (edits instanceof List<?> list) {

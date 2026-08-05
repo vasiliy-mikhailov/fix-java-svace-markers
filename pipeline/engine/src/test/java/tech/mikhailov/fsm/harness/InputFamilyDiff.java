@@ -4,9 +4,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import tech.mikhailov.fsm.lib.Js;
-import tech.mikhailov.fsm.lib.JsValue;
 import tech.mikhailov.fsm.lib.Json;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.nodes.BuildFixInput;
 import tech.mikhailov.fsm.nodes.BuildReproduceInput;
 import tech.mikhailov.fsm.nodes.PrepProver;
@@ -22,7 +21,11 @@ import tech.mikhailov.fsm.nodes.PrepProver;
  *
  * <p>Every value is tagged with its type on the way out, because "" and 0 and null and absent are four
  * different results and a report that could not tell them apart would prove nothing. {@code 'u'} is
- * JS {@code undefined} and {@code 'z'} is {@code null} — the two the reference side also keeps apart.
+ * JS {@code undefined} and {@code 'z'} is {@code null} — the two the reference side keeps apart and
+ * Java does not. Since 2026-08-05 the encoder no longer pretends it can: it tags every Java null
+ * {@code 'z'}, the same as the node family's encoder, and the only {@code 'u'}s it writes are the two
+ * slots in {@link #answers} where the REFERENCE left a variable unassigned. Where that costs a
+ * divergence, the divergence is the honest report of a distinction this module no longer has.
  */
 final class InputFamilyDiff {
 
@@ -37,20 +40,28 @@ final class InputFamilyDiff {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("id", Json.str(c, "id"));
             Object produced = null;
-            // UNDEFINED, not null: "nothing was thrown" has to tag as 'u' to line up with the reference
-            // side, where the variable is simply never assigned.
-            Object threw = JsValue.UNDEFINED;
+            Object threw = null;
+            boolean thrown = false;
             try {
                 produced = run(Json.str(c, "node"), Json.get(c, "input"), calls);
             } catch (RuntimeException e) {
                 // A throw is a RESULT. The JS throws when an upstream item is null, and the report
                 // has to say whether this module reproduced that or consciously diverged from it.
+                thrown = true;
                 threw = e.getClass().getSimpleName();
             }
             row.put("calls", tag(calls));
             row.put("logs", tag(List.of()));           // this family makes no log calls
-            row.put("out", tag(produced));
-            row.put("threw", tag(threw));
+            // NOT ASSIGNED IS NOT THE SAME AS NULL, and after the JS removal only the caller can still
+            // tell them apart. The reference left exactly one of these two variables unassigned per
+            // case — `out` when the body threw, `threw` when it did not — and an unassigned variable
+            // encodes 'u'. Java has ONE absent value, so an encoder handed a null cannot know which of
+            // the reference's two it is standing in for; guessing 'u' there is a forgiveness the
+            // README does not grant, and it made `case null -> "z"` unreachable. The two slots that
+            // really do mean "never assigned" say so HERE, and {@link #tag} keeps 'z' for a null VALUE
+            // exactly as the node family's encoder does.
+            row.put("out", thrown ? "u" : tag(produced));
+            row.put("threw", thrown ? tag(threw) : "u");
             results.add(row);
         }
         return results;
@@ -69,10 +80,10 @@ final class InputFamilyDiff {
                     // bare thrown value carries neither.
                     throw new PrepProver.LookupFailed("error".equals(Json.str(spec, "kind"))
                             ? new RuntimeException(Json.str(spec, "message"))
-                            : JsValue.prop(spec, "value"));
+                            : Json.get(spec, "value"));
                 };
                 return PrepProver.prepProver(new PrepProver.Request(Json.get(input, "suspicion"),
-                        JsValue.prop(input, "github_token")), lookup).toMap();
+                        Json.get(input, "github_token")), lookup).toMap();
             }
             case "build reproduce input" -> {
                 return BuildReproduceInput.buildReproduceInput(new BuildReproduceInput.Request(
@@ -98,14 +109,11 @@ final class InputFamilyDiff {
     }
 
     private static Object tag(Object v) {
-        if (v == JsValue.UNDEFINED) {
-            return "u";
-        }
         return switch (v) {
             case null -> "z";
             case String s -> "s:" + s;
             case Boolean b -> "b:" + b;
-            case Number n -> "n:" + Js.numberToString(n.doubleValue());
+            case Number n -> "n:" + Values.plain(n.doubleValue());
             case List<?> l -> {
                 List<Object> out = new ArrayList<>();
                 out.add("a");

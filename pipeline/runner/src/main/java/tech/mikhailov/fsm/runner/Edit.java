@@ -4,7 +4,7 @@ import java.io.File;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.Locale;
-import tech.mikhailov.fsm.lib.JsText;
+import tech.mikhailov.fsm.lib.SourceText;
 
 /**
  * Applying the fixer's search/replace edits, and refusing the ones that would game the proof —
@@ -70,11 +70,13 @@ final class Edit {
     /**
      * Collapse every whitespace run to one space, remembering where each character came from.
      *
-     * <p>WHITESPACE MEANS JAVASCRIPT'S {@code \s}, via {@link JsText#isSpace}, and not Java's. That
-     * set includes U+00A0 and the BOM; Java's {@code \s} is
+     * <p>WHITESPACE MEANS {@link SourceText#isSpace} AND NOT JAVA'S {@code \s}. That set includes
+     * U+00A0 and the BOM; Java's {@code \s} is
      * {@code [ \t\n\x0B\f\r]} and would leave a no-break space standing as a normal character. A model
      * that indents with one — or a file saved by an editor that did — would then fail to match at all,
-     * which is the one outcome this whole fallback exists to prevent.
+     * which is the one outcome this whole fallback exists to prevent. ({@link SourceText} was called
+     * {@code JsText} until 2026-08-05 and this sentence used to justify the set as "JavaScript's".
+     * The set is the same and the reason is not: see that class.)
      */
     static Normalized wsNorm(String s) {
         StringBuilder out = new StringBuilder(s.length());
@@ -82,7 +84,7 @@ final class Edit {
         boolean previousWasSpace = false;
         for (int i = 0; i < s.length(); i++) {
             char ch = s.charAt(i);
-            if (JsText.isSpace(ch)) {
+            if (SourceText.isSpace(ch)) {
                 if (!previousWasSpace) {
                     index[out.length()] = i;
                     out.append(' ');
@@ -143,7 +145,7 @@ final class Edit {
         }
 
         Normalized current = wsNorm(cur);
-        String needle = JsText.trim(wsNorm(old).norm());
+        String needle = SourceText.trim(wsNorm(old).norm());
         if (needle.isEmpty()) {
             return Applied.failed("old_str is empty");
         }
@@ -159,9 +161,9 @@ final class Edit {
         int start = current.index()[at];
         int end = current.index()[at + needle.length() - 1] + 1;
         // The span starts at the first non-whitespace character — `needle` is trimmed — so the file's
-        // own indentation survives and the replacement is trimmed to suit. Trimmed with JavaScript's
-        // whitespace set (JsText), because String.strip() would also eat U+001C..U+001F, which are data.
-        return Applied.replaced(cur.substring(0, start) + JsText.trim(replacement) + cur.substring(end),
+        // own indentation survives and the replacement is trimmed to suit. Trimmed with SourceText's
+        // set, because String.strip() would also eat U+001C..U+001F, which are data.
+        return Applied.replaced(cur.substring(0, start) + SourceText.trim(replacement) + cur.substring(end),
                 "matched ignoring whitespace/line-wrapping");
     }
 

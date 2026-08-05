@@ -15,7 +15,7 @@ import java.util.Map;
  * would buy nothing, because no rule in this package branches on any of them.
  *
  * <p>NUMBERS STAY NUMBERS. {@code PrepProver} reads {@code svace_line} through {@code Json.num} and
- * {@code prove_attempts} through {@code JsValue.numberOrZero}; handing either over as a string works by
+ * {@code prove_attempts} through {@code Values.numberOr}; handing either over as a string works by
  * coercion today and changes meaning the moment one of them is blank. Nulls stay present as nulls, for
  * the reason {@code Suspicion.toMap} states: an absent key and a key holding null are different values
  * to the engine, and a column read back from SQL is the second one.
