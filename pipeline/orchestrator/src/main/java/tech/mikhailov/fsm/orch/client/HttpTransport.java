@@ -41,6 +41,18 @@ public class HttpTransport implements Llm.Http, AutoCloseable {
      * The cap on a REPLY. A model endpoint or a proxy that answers with a gigabyte would otherwise be
      * an out-of-memory error in the prover thread rather than a failed call the caller can decide
      * about.
+     *
+     * <p>THIS IS NOT {@code Http.MAX_BODY_BYTES}, AND IT IS NOT A COPY OF IT, though it holds the same
+     * number and a review has already read it as one. That one caps what a server will ACCEPT FROM A
+     * CALLER and raises {@code Http.BodyTooLarge} so a handler can answer 413; this caps what a client
+     * will accept BACK FROM A DOWNSTREAM and raises a plain IOException the prover turns into an infra
+     * failure. Opposite directions, different exceptions, different audiences — a bound on what we
+     * publish an error to, versus a bound on what we are willing to believe.
+     *
+     * <p>So do not "deduplicate" these into one constant. They agree today by coincidence, and
+     * coupling them would mean that letting a client post a bigger report also silently raises how
+     * much a compromised or broken model endpoint can push into the prover's heap. If one should
+     * move, it should be able to move alone.
      */
     public static final int MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 

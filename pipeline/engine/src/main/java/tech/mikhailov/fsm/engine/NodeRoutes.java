@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import tech.mikhailov.fsm.http.Http;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.Llm;
 import tech.mikhailov.fsm.nodes.BuildFixInput;
@@ -250,7 +251,7 @@ final class NodeRoutes {
         try {
             if (!"POST".equals(exchange.getRequestMethod())) {
                 exchange.getResponseHeaders().set("Allow", "POST");
-                Http.sendError(exchange, 405, "method_not_allowed",
+                Api.sendError(exchange, 405, "method_not_allowed",
                         "POST " + path + " — this endpoint takes a JSON body and nothing else "
                         + "(got " + exchange.getRequestMethod() + ")");
                 return;
@@ -263,7 +264,7 @@ final class NodeRoutes {
                 // connection, and both of these refusals are a deploy-time mistake that is fixed once
                 // rather than a per-item cost. Reading it could also raise BodyTooLarge, which would
                 // escape as a dropped connection instead of this answer.
-                Http.sendError(exchange, 404, "no_such_endpoint",
+                Api.sendError(exchange, 404, "no_such_endpoint",
                         "no endpoint at " + exchange.getRequestURI().getPath() + "; did you mean "
                         + path + "?");
                 return;
@@ -271,18 +272,18 @@ final class NodeRoutes {
 
             Object body;
             try {
-                body = Http.readJson(exchange);
+                body = Api.readJson(exchange);
             } catch (Http.BodyTooLarge tooLarge) {
-                Http.sendError(exchange, 413, "body_too_large", tooLarge.getMessage());
+                Api.sendError(exchange, 413, "body_too_large", tooLarge.getMessage());
                 return;
-            } catch (Http.BadRequest bad) {
-                Http.sendError(exchange, 400, "bad_request", "POST " + path + ": " + bad.getMessage());
+            } catch (Api.BadRequest bad) {
+                Api.sendError(exchange, 400, "bad_request", "POST " + path + ": " + bad.getMessage());
                 return;
             }
 
             String problems = problems(body, route.required());
             if (problems != null) {
-                Http.sendError(exchange, 400, "bad_request", "POST " + path + ": " + problems);
+                Api.sendError(exchange, 400, "bad_request", "POST " + path + ": " + problems);
                 return;
             }
 
@@ -290,12 +291,12 @@ final class NodeRoutes {
             try {
                 answer = route.node().invoke(body);
             } catch (ParseMarkers.IngestFailed refused) {
-                Http.sendError(exchange, 422, "ingest_failed", refused.getMessage());
+                Api.sendError(exchange, 422, "ingest_failed", refused.getMessage());
                 return;
             } catch (PrMaker.NotSliceable refused) {
                 // Refused rather than coerced: fix_edits_json arrived as something other than a
                 // string, which is an upstream bug and not a decision about this marker.
-                Http.sendError(exchange, 422, "not_sliceable",
+                Api.sendError(exchange, 422, "not_sliceable",
                         "POST " + path + ": " + refused.getMessage()
                         + " — `parse_fix.fix_edits_json` must be a string");
                 return;
@@ -318,7 +319,7 @@ final class NodeRoutes {
             // reportable ("IllegalArgumentException: not representable in JSON: Infinity" names both
             // the fault and the value); a stack would fill the row the caller writes it into.
             if (exchange.getResponseCode() == -1) {
-                Http.sendError(exchange, 500, "engine_error",
+                Api.sendError(exchange, 500, "engine_error",
                         "POST " + path + " failed inside the engine: "
                         + e.getClass().getSimpleName() + ": " + e.getMessage());
             }
@@ -341,10 +342,10 @@ final class NodeRoutes {
             if (!present) {
                 issues.add("`" + r.key() + "` is missing — " + r.hint());
             } else if (r.kind() == Kind.ITEM && !(value instanceof Map)) {
-                issues.add("`" + r.key() + "` must be a JSON object, not " + Http.typeName(value)
+                issues.add("`" + r.key() + "` must be a JSON object, not " + Api.typeName(value)
                         + " — " + r.hint());
             } else if (r.kind() == Kind.NUMBER && !(value instanceof Number)) {
-                issues.add("`" + r.key() + "` must be a number, not " + Http.typeName(value)
+                issues.add("`" + r.key() + "` must be a number, not " + Api.typeName(value)
                         + " — " + r.hint());
             }
         }

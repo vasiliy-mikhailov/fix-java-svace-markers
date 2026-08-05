@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
+import tech.mikhailov.fsm.http.Http;
 import tech.mikhailov.fsm.lib.Llm;
 import tech.mikhailov.fsm.nodes.PrepProver;
 
@@ -160,13 +161,13 @@ public final class EngineServer implements AutoCloseable {
             if (!"POST".equals(method) && !"GET".equals(method)) {
                 // Naming the allowed methods is what turns a 405 in a log into a fixable mistake.
                 exchange.getResponseHeaders().set("Allow", "GET, POST");
-                Http.sendError(exchange, 405, "method_not_allowed", "method not allowed: " + method);
+                Api.sendError(exchange, 405, "method_not_allowed", "method not allowed: " + method);
                 return;
             }
             try {
                 Http.readBody(exchange);                 // drained so the connection can be reused
             } catch (Http.BodyTooLarge tooLarge) {
-                Http.sendError(exchange, 413, "body_too_large", tooLarge.getMessage());
+                Api.sendError(exchange, 413, "body_too_large", tooLarge.getMessage());
                 return;
             }
 
@@ -188,7 +189,7 @@ public final class EngineServer implements AutoCloseable {
             // getResponseCode() is -1 until the status line goes out; sending twice would itself throw
             // and lose the original failure.
             if (exchange.getResponseCode() == -1) {
-                Http.sendError(exchange, 500, "engine_error", String.valueOf(e.getMessage()));
+                Api.sendError(exchange, 500, "engine_error", String.valueOf(e.getMessage()));
             }
         } finally {
             exchange.close();

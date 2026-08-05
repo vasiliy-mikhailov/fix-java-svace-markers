@@ -3,6 +3,7 @@ package tech.mikhailov.fsm.orch.web;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -104,8 +105,24 @@ class IngestSizeLimitTest {
         assertThat(filter().maxRequestBytes()).isEqualTo(REPORT_LIMIT + IngestSizeLimit.ENVELOPE);
     }
 
+    /**
+     * A filter with a bound of 1000 and A MAPPER THAT IS NOT THE ONE PRODUCTION INJECTS.
+     *
+     * <p>Deliberate, and worth naming so nobody reads the assertions above as covering more than they
+     * do. Every case in this class is about WHEN the filter refuses — a declared length, a chunked body,
+     * another endpoint, the arithmetic of the bound — and none of them is about what the refusal SAYS.
+     * They are unit cases and they stay one, with no Spring context between the question and the answer.
+     *
+     * <p>WHAT THAT LEAVES OUT is the document itself, and the {@code contains(…)} calls above are not
+     * the ones covering it: they pass under any key order, any added field, and any difference between
+     * this mapper and the {@code ObjectMapper} bean the container actually injects — which is precisely
+     * the axis that appeared when this filter stopped hand-writing its JSON. That is pinned, byte for
+     * byte and against the wired bean, in
+     * {@link TheFilterAndTheControllerRefuseInOneDocumentTest}, together with the check that the 413 and
+     * the controller's 400 are still the same shape.
+     */
     private static IngestSizeLimit filter() {
-        return new IngestSizeLimit(new CsvSpool(REPORT_LIMIT, null));
+        return new IngestSizeLimit(new CsvSpool(REPORT_LIMIT, null), new ObjectMapper());
     }
 
     private static MockHttpServletRequest ingest(byte[] body) {

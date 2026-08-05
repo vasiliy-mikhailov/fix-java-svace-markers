@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import tech.mikhailov.fsm.http.Http;
 import tech.mikhailov.fsm.lib.Json;
 
 /**
@@ -123,21 +124,21 @@ final class RunnerServer implements AutoCloseable {
         try {
             String path = exchange.getRequestURI().getPath();
             if ("GET".equals(exchange.getRequestMethod())) {
-                Http.sendJson(exchange, "/health".equals(path) ? 200 : 404,
+                Api.sendJson(exchange, "/health".equals(path) ? 200 : 404,
                         "/health".equals(path) ? health() : notFound());
                 return;
             }
 
             Object body;
             try {
-                body = Http.readJson(exchange);
+                body = Api.readJson(exchange);
             } catch (Http.BodyTooLarge tooLarge) {
-                Http.sendJson(exchange, 413, Prove.failure(tooLarge.getMessage()));
+                Api.sendJson(exchange, 413, Prove.failure(tooLarge.getMessage()));
                 return;
             } catch (Json.JsonException notJson) {
                 // The wording is this parser's; the shape, the status and the "bad json: " prefix are
                 // the contract, and the prefix is what an operator greps for.
-                Http.sendJson(exchange, 400, Prove.failure("bad json: " + notJson.getMessage()));
+                Api.sendJson(exchange, 400, Prove.failure("bad json: " + notJson.getMessage()));
                 return;
             }
 
@@ -149,12 +150,12 @@ final class RunnerServer implements AutoCloseable {
                 case "/run_test" -> runner.runTest(body);
                 default -> null;
             };
-            Http.sendJson(exchange, reply == null ? 404 : 200, reply == null ? notFound() : reply);
+            Api.sendJson(exchange, reply == null ? 404 : 200, reply == null ? notFound() : reply);
         } catch (RuntimeException e) {
             // 200, not 500 — see the class comment. getResponseCode() is -1 until the status line goes
             // out; answering twice would throw and lose the original failure.
             if (exchange.getResponseCode() == -1) {
-                Http.sendJson(exchange, 200, Prove.failure(LocalRunner.stack(e)));
+                Api.sendJson(exchange, 200, Prove.failure(LocalRunner.stack(e)));
             }
         } finally {
             exchange.close();

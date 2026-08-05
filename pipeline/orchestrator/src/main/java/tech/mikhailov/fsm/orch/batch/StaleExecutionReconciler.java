@@ -29,9 +29,12 @@ import org.springframework.stereotype.Component;
  * {@code END_TIME}. H2 is a file on a mounted volume, so that row outlived its process and every
  * process after it inherited the claim.
  *
- * <p>{@link JobLaunches#isRunning} answers "is a prove in flight?" out of that table
- * ({@code START_TIME IS NOT NULL AND END_TIME IS NULL} is the whole of Spring Batch's definition of
- * running), so it answered YES for ever. Every 60-second tick and every {@code POST /api/prove} was
+ * <p>{@link JobLaunches#isRunning} answers "is a prove in flight?" out of that table, and it answers it
+ * from the STATUS column alone: it calls {@link JobExplorer#findRunningJobExecutions(String)}, whose
+ * query in spring-batch-core 5.2.6 is the job name plus
+ * {@code STATUS IN ('STARTING', 'STARTED', 'STOPPING')} — the three values {@link BatchStatus#isRunning}
+ * returns true for, and no time column anywhere in it. The orphaned row said {@code STARTED}, so it
+ * answered YES for ever. Every 60-second tick and every {@code POST /api/prove} was
  * refused with "a prove is already running" while no thread in the process was doing anything, and the
  * deployment was bricked permanently — a restart could not clear it, because the restart is what
  * created it.
@@ -144,13 +147,29 @@ public class StaleExecutionReconciler {
     /**
      * End every job execution the run history still believes is running.
      *
-     * <p>Found by SQL rather than by {@link JobExplorer#findRunningJobExecutions(String)} for two
-     * reasons. That method needs a job NAME, so it can only ever clear executions of jobs this build
-     * still defines — a job renamed between two deploys would leave a row that blocks nothing today
-     * but is a permanent lie in the run history. And its query requires {@code START_TIME IS NOT
-     * NULL}, so it cannot see an execution killed in the window between {@code createJobExecution}
-     * and the launcher's first update, which is a real row in a real status ({@code STARTING}) that
-     * nothing else will ever end.
+     * <p>Found by SQL rather than by {@link JobExplorer#findRunningJobExecutions(String)} because that
+     * method takes a job NAME and this pass has none to give: it wants every open row, whatever job it
+     * belongs to. Reaching them through it means enumerating the names first —
+     * {@link JobExplorer#getJobNames()}, which is {@code SELECT DISTINCT JOB_NAME FROM
+     * %PREFIX%JOB_INSTANCE}, so it does see a job this build no longer defines — and then one query
+     * per name, merging unordered {@code Set}s. One scan of one table answers the same question
+     * directly, in the id order this method's contract promises. That is a difference of query count
+     * and ordering, and it is now the WHOLE of the argument.
+     *
+     * <p>WHAT THIS COMMENT USED TO CLAIM, AND WHY IT NO LONGER DOES. It said Spring's query "requires
+     * {@code START_TIME IS NOT NULL}", and therefore could not see an execution killed in the window
+     * between {@code createJobExecution} and the launcher's first update. THAT PREDICATE DOES NOT
+     * EXIST. In spring-batch-core 5.2.6 {@code GET_RUNNING_EXECUTIONS} is {@code … WHERE
+     * E.JOB_INSTANCE_ID = I.JOB_INSTANCE_ID AND I.JOB_NAME = ? AND E.STATUS IN ('STARTING', 'STARTED',
+     * 'STOPPING')} — the same three statuses {@link #OPEN_STATUSES} names, and no time column at all.
+     * An execution killed in that window sits in {@code STARTING} and is visible to BOTH queries. The
+     * two reach the same rows; only the shape of the call differs, which is why the reason above is
+     * about convenience and is stated as such rather than as a capability.
+     *
+     * <p>This class's own query also asks for {@code END_TIME IS NULL}, which Spring's does not. It
+     * excludes nothing this deployment can produce — Spring stamps the end time in the same update
+     * that moves an execution out of those three statuses — and it is kept because it states the
+     * invariant the repair depends on instead of assuming it.
      *
      * <p>Exceptions are NOT swallowed. A pipeline whose prover cannot be unblocked has to fail
      * loudly on the way up; the failure this repairs was invisible for a day and a half precisely

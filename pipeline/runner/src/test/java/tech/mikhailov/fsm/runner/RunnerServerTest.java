@@ -12,6 +12,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import tech.mikhailov.fsm.http.Http;
 import tech.mikhailov.fsm.lib.Json;
 
 /**
@@ -336,6 +338,25 @@ class RunnerServerTest {
             HttpResponse<String> res = send("POST", "/nope", "{}");
             assertEquals(404, res.statusCode());
             assertEquals("not found", json(res).get("error"));
+        }
+
+        @Test
+        void aHeadGetsTheLengthTheGetWouldHaveReturnedAndNoBody() throws Exception {
+            // THE ONE THING THIS SERVICE ADDS to the shared JSON writer, asserted where it is visible:
+            // a HEAD is answered with the headers and the length, and no body. Node suppressed the body
+            // itself; the JDK does not, and a handler that writes one is a protocol violation — which
+            // com.sun.net.httpserver covers up by dropping the body AND the Content-Length and logging
+            // a warning nobody reads. So the presence of the length is the assertion that can tell the
+            // two apart: get the seam wrong and this header disappears.
+            HttpResponse<String> head = send("HEAD", "/nope", null);
+            HttpResponse<String> get = send("POST", "/nope", "{}");
+
+            assertEquals(404, head.statusCode(), "the same answer a GET of this path gets");
+            assertEquals("", head.body(), "a HEAD reply carries no body");
+            assertEquals(String.valueOf(get.body().getBytes(StandardCharsets.UTF_8).length),
+                    head.headers().firstValue("content-length").orElse(null),
+                    "…and states the length the caller would have received, which is the only reason "
+                    + "to ask a HEAD at all");
         }
 
         @Test

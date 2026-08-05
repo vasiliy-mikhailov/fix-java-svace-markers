@@ -2,18 +2,27 @@ package tech.mikhailov.fsm.engine;
 
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import tech.mikhailov.fsm.http.Http;
 import tech.mikhailov.fsm.lib.Json;
 
-/** Request/response plumbing shared by every handler. Nothing here decides anything. */
-final class Http {
+/**
+ * THE SHAPE THIS SERVICE ANSWERS IN — what a request body has to be, and what a failure looks like.
+ * Nothing here decides anything.
+ *
+ * <p>The parts that are NOT about this service's shape live in {@link Http}: the body cap,
+ * {@code BodyTooLarge}, the capped reader, and the write itself — stringify, UTF-8, the content type,
+ * the status line. The runner enforces the same cap and writes the same way on the same JDK server,
+ * and two copies of any of it is how two surfaces of one deployment drift apart.
+ *
+ * <p>What stays here is the only thing that is genuinely this service's: the {@code {"error", "code"}}
+ * taxonomy below, which the runner deliberately does not share.
+ */
+final class Api {
 
-    private Http() {
+    private Api() {
     }
 
     /**
@@ -34,52 +43,6 @@ final class Http {
     }
 
     /**
-     * Cap on a request body. {@link tech.mikhailov.fsm.nodes.RecordOutcome} already treats a source
-     * file over 300 000 chars as an infra failure ("a verdict on it is not trustworthy"), and a marker
-     * item carries that file plus the test, the fix and the model's reply. 16 MiB is far above any
-     * legitimate item and far below what would let one malformed request exhaust the heap, which
-     * matters because the whole body is held in memory.
-     */
-    static final int MAX_BODY_BYTES = 16 * 1024 * 1024;
-
-    /** Distinct from a transport failure so a handler can answer 413 instead of 500. */
-    static final class BodyTooLarge extends IOException {
-        private static final long serialVersionUID = 1L;
-
-        BodyTooLarge(int max) {
-            super("request body exceeds " + max + " bytes");
-        }
-    }
-
-    /**
-     * Read the body, refusing anything past the cap.
-     *
-     * <p>The body is read even when a handler does not want it. com.sun.net.httpserver only reuses a
-     * keep-alive connection when the request body has been consumed; leaving it unread makes the
-     * server close the socket, and the caller then reconnects for every single item of a 356-marker
-     * run.
-     */
-    static String readBody(HttpExchange exchange) throws IOException {
-        try (InputStream in = exchange.getRequestBody()) {
-            return readCapped(in, MAX_BODY_BYTES);
-        }
-    }
-
-    /**
-     * Split out from {@link #readBody} so the cap is testable without standing up an exchange.
-     *
-     * <p>Reads one byte past the limit rather than trusting Content-Length: the header is supplied by
-     * the caller, and a chunked request does not carry one at all.
-     */
-    static String readCapped(InputStream in, int max) throws IOException {
-        byte[] bytes = in.readNBytes(max + 1);
-        if (bytes.length > max) {
-            throw new BodyTooLarge(max);
-        }
-        return new String(bytes, StandardCharsets.UTF_8);
-    }
-
-    /**
      * Read the body and insist it is the JSON OBJECT every node endpoint takes.
      *
      * <p>The three refusals are separate messages on purpose. "not valid JSON" sends the caller to how
@@ -88,7 +51,7 @@ final class Http {
      * same dead end.
      */
     static Object readJson(HttpExchange exchange) throws IOException {
-        String text = readBody(exchange);
+        String text = Http.readBody(exchange);
         if (text.isBlank()) {
             throw new BadRequest("the request body is empty — POST the JSON object this endpoint "
                     + "documents (set `body` and `json: true` on helpers.httpRequest)");
@@ -130,23 +93,16 @@ final class Http {
      * stable token a caller can branch on, because the sentences will be reworded and the codes will
      * not. A successful row is NEVER this shape — see {@link NodeRoutes} for why the rows travel
      * inside {@code items}.
+     *
+     * <p>The MECHANICS of putting that map on the wire are {@link Http#sendJson}'s, shared with the
+     * runner; this method is only the shape. A successful reply goes through the same writer directly,
+     * because there is nothing this service adds to it.
      */
     static void sendError(HttpExchange exchange, int status, String code, String message)
             throws IOException {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("error", message);
         body.put("code", code);
-        sendJson(exchange, status, body);
-    }
-
-    /** Write a JSON tree with an explicit charset, because the verdicts are full of em dashes. */
-    static void sendJson(HttpExchange exchange, int status, Map<String, Object> body)
-            throws IOException {
-        byte[] out = Json.stringify(body).getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-        exchange.sendResponseHeaders(status, out.length);
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(out);
-        }
+        Http.sendJson(exchange, status, body);
     }
 }

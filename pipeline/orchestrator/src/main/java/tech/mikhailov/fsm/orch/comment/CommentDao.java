@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
@@ -65,10 +67,39 @@ public class CommentDao {
     /** @see #AND_NOT_RETRACTED */
     private static final String WHERE_NOT_RETRACTED = " WHERE retracted_at IS NULL";
 
+    /**
+     * THE PANEL'S QUERY, AS ONE CONSTANT, because both of its filters are OPTIONAL and neither is a
+     * reason to assemble a statement.
+     *
+     * <p>It was three {@code StringBuilder.append}s onto {@code WHERE 1 = 1} and two different
+     * {@code jdbc.query} calls with two different argument lists — the shape where the next optional
+     * filter is one {@code if} away from being appended in the wrong order or bound to the wrong
+     * {@code ?}. Spring already ships the answer to "an optional predicate": a NAMED parameter, which
+     * can be supplied whether or not the SQL mentions it, so the two flags become two predicates that
+     * are always present and are switched off BY THEIR OWN VALUE.
+     *
+     * <p>{@code :stage = ''} is the same test the Java did ({@code stage == null || stage.isEmpty()}),
+     * and {@code :includeRetracted = TRUE} the same test as the {@code if}. Neither reads a column
+     * when it is off, so the rows are the rows this returned before, in the same order.
+     *
+     * <p>The other thing it buys is a check nobody has to remember to run:
+     * {@code NoQueryIsBuiltFromANonConstantTest} reads {@code +} chains and states plainly that "SQL
+     * assembled through a StringBuilder … is invisible to it". This query is now one of the ones it
+     * can see.
+     */
+    private static final String RECENT = SELECT
+            + " WHERE (:includeRetracted = TRUE OR c.retracted_at IS NULL)"
+            + " AND (:stage = '' OR c.stage = :stage)"
+            + NEWEST_FIRST + " LIMIT :limit";
+
     private final JdbcTemplate jdbc;
+
+    /** {@link #RECENT} only — every other read here binds positionally and has no optional clause. */
+    private final NamedParameterJdbcTemplate named;
 
     public CommentDao(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        this.named = new NamedParameterJdbcTemplate(jdbc);
     }
 
     private static final RowMapper<MarkerComment> MAPPER = CommentDao::read;
@@ -157,17 +188,10 @@ public class CommentDao {
      * @param stage  {@code ""} for every stage, otherwise only that one
      */
     public List<MarkerComment> recent(int limit, String stage, boolean includeRetracted) {
-        StringBuilder sql = new StringBuilder(SELECT).append(" WHERE 1 = 1");
-        if (!includeRetracted) {
-            sql.append(AND_NOT_RETRACTED);
-        }
-        if (stage != null && !stage.isEmpty()) {
-            sql.append(" AND c.stage = ?");
-            sql.append(NEWEST_FIRST).append(" LIMIT ?");
-            return jdbc.query(sql.toString(), MAPPER, stage, limit);
-        }
-        sql.append(NEWEST_FIRST).append(" LIMIT ?");
-        return jdbc.query(sql.toString(), MAPPER, limit);
+        return named.query(RECENT, new MapSqlParameterSource()
+                .addValue("includeRetracted", includeRetracted)
+                .addValue("stage", stage == null ? "" : stage)
+                .addValue("limit", limit), MAPPER);
     }
 
     /**

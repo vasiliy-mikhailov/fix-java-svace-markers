@@ -37,6 +37,7 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import tech.mikhailov.fsm.http.Http;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.Llm;
 import tech.mikhailov.fsm.nodes.PrepProver;

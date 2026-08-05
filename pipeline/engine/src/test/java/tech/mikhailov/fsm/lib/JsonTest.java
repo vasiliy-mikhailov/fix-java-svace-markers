@@ -458,7 +458,7 @@ class JsonTest {
     void anEmptyContainerIsAsUsableAsAFullOne() {
         // The empty case must not be a DIFFERENT KIND of container from the general case, because no
         // caller can tell which one it got. The engine's whole shape is "read a few fields off the
-        // item, add a few, hand it on", and runner/Http.readJson manufactures `Json.parse("{}")` for
+        // item, add a few, hand it on", and runner/Api.readJson manufactures `Json.parse("{}")` for
         // a body-less POST and passes that straight to the lease handlers. A shared immutable empty
         // map would turn the documented "curl with no body releases the default lease" into a 500.
         Map<String, Object> item = (Map<String, Object>) Json.parse("{}");
@@ -572,7 +572,7 @@ class JsonTest {
 
     // ---- what the 400 says -----------------------------------------------------------------------
     //
-    // These pin the MESSAGE, which is unusual and deliberate. Http.readJson answers
+    // These pin the MESSAGE, which is unusual and deliberate. Api.readJson answers
     // `400 the request body is not valid JSON: <message>` and RunnerServer answers
     // `400 bad json: <message>`, and NEITHER echoes the body back — by design, because the body may
     // be a 300 000-character source file and quoting it would push the complaint off the screen.

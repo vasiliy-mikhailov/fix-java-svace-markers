@@ -1,5 +1,6 @@
 package tech.mikhailov.fsm.orch.web;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ReadListener;
 import jakarta.servlet.ServletException;
@@ -12,7 +13,6 @@ import java.nio.charset.StandardCharsets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.filter.OncePerRequestFilter;
-import tech.mikhailov.fsm.orch.batch.BatchConfig;
 import tech.mikhailov.fsm.orch.batch.CsvSpool;
 
 /**
@@ -51,24 +51,26 @@ public class IngestSizeLimit extends OncePerRequestFilter {
     /** Room for the JSON envelope and its escaping. @see IngestSizeLimit */
     public static final long ENVELOPE = 1L << 20;
 
-    /**
-     * The answer, in the shape every other refusal from this endpoint has.
-     *
-     * <p>Written by hand rather than through Jackson: this runs in a filter, outside the
-     * {@code @ExceptionHandler} machinery, and a caller parsing 413s should not have to handle a
-     * different document from the one {@code JobsController} produces.
-     */
-    private static final String TOO_LARGE_TEMPLATE = """
-            {"started":false,"job":"%s","reason":"the request is larger than %d bytes. A Svace report \
-            may be up to %d bytes (fsm.ingest.max-csv-bytes, FSM_INGEST_MAX_CSV_BYTES), plus room for \
-            the request that carries it. Filter the report, or raise the limit."}""";
-
     private final long maxCsvBytes;
     private final long maxRequestBytes;
+    private final ObjectMapper json;
 
-    public IngestSizeLimit(CsvSpool spool) {
+    /**
+     * @param json the same {@link ObjectMapper} every controller answers through. This document is
+     *             built by {@link JobsPresenter} and written by Jackson for one reason: so that "does
+     *             the filter's 413 still look like the controller's 409?" is answered by the code
+     *             rather than by a person comparing two documents by eye. It USED to be a text block
+     *             interpolated with {@code String.formatted} — the only hand-written JSON in this
+     *             module — defended on the grounds that a filter runs outside the
+     *             {@code @ExceptionHandler} machinery. That argues the SHAPE has to match
+     *             {@code JobsController}'s, which is exactly what sharing the presenter guarantees;
+     *             it never argued that Jackson was unreachable, and a bean injects into a
+     *             {@link OncePerRequestFilter} like it does into anything else.
+     */
+    public IngestSizeLimit(CsvSpool spool, ObjectMapper json) {
         this.maxCsvBytes = spool.maxBytes();
         this.maxRequestBytes = maxCsvBytes + ENVELOPE;
+        this.json = json;
     }
 
     /** The bound in force, so a test can prove the configured number reached this object. */
@@ -108,8 +110,11 @@ public class IngestSizeLimit extends OncePerRequestFilter {
         // act on, because "the request" is not a thing anybody measures — the report is. The advice does
         // NOT say "send it as multipart": this filter runs for every content type, and telling somebody
         // who just sent a multipart upload to send a multipart upload is worse than saying nothing.
-        response.getWriter().write(
-                TOO_LARGE_TEMPLATE.formatted(BatchConfig.INGEST_JOB, maxRequestBytes, maxCsvBytes));
+        response.getWriter().write(json.writeValueAsString(JobsPresenter.refused(
+                "the request is larger than " + maxRequestBytes + " bytes. A Svace report may be up "
+                + "to " + maxCsvBytes + " bytes (fsm.ingest.max-csv-bytes, "
+                + "FSM_INGEST_MAX_CSV_BYTES), plus room for the request that carries it. Filter the "
+                + "report, or raise the limit.")));
     }
 
     /**
