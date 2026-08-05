@@ -1,14 +1,20 @@
 {
   "cases": 3357,
-  "identical": 2986,
-  "divergent": 371,
-  "divergenceClasses": 77,
+  "identical": 2013,
+  "divergent": 1344,
+  "divergenceClasses": 78,
   "byNode_totalThenIdentical": {
-    "verdict": [2848,2655],
+    "verdict": [2848,1682],
     "skeptic": [171,0],
     "prmaker": [338,331]
   },
   "classes": [
+    {
+      "cases": 1076,
+      "at": "calls[i].body.temperature",
+      "js": "n:0.2",
+      "java": "n:0"
+    },
     {
       "cases": 155,
       "at": "out (keys)",
@@ -193,7 +199,7 @@
       "cases": 2,
       "at": "calls[i]",
       "js": "(missing)",
-      "java": "[\"o\",[\"method\",\"s:POST\"],[\"url\",\"s:http://llm/chat/completions\"],[\"headers\",[\"o\",[\"Authorization\",\"s:Bearer k\"],[\"Content-Type\",\"s:application/json\"],[\"Connection\",\"s:close\"]]],[\"body\",[\"o\",[\"model\",\"s:m\"],[\"messages\",[\"…(2373)"
+      "java": "[\"o\",[\"method\",\"s:POST\"],[\"url\",\"s:http://llm/chat/completions\"],[\"headers\",[\"o\",[\"Authorization\",\"s:Bearer k\"],[\"Content-Type\",\"s:application/json\"],[\"Connection\",\"s:close\"]]],[\"body\",[\"o\",[\"model\",\"s:m\"],[\"messages\",[\"…(2371)"
     },
     {
       "cases": 2,
@@ -403,7 +409,7 @@
       "cases": 1,
       "at": "calls[i]",
       "js": "(missing)",
-      "java": "[\"o\",[\"method\",\"s:POST\"],[\"url\",\"s:undefined/chat/completions\"],[\"headers\",[\"o\",[\"Authorization\",\"s:Bearer undefined\"],[\"Content-Type\",\"s:application/json\"],[\"Connection\",\"s:close\"]]],[\"body\",[\"o\",[\"model\",\"z\"],[\"message…(2424)"
+      "java": "[\"o\",[\"method\",\"s:POST\"],[\"url\",\"s:undefined/chat/completions\"],[\"headers\",[\"o\",[\"Authorization\",\"s:Bearer undefined\"],[\"Content-Type\",\"s:application/json\"],[\"Connection\",\"s:close\"]]],[\"body\",[\"o\",[\"model\",\"z\"],[\"message…(2422)"
     },
     {
       "cases": 1,

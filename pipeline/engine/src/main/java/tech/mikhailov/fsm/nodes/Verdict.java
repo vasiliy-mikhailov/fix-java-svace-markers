@@ -694,7 +694,10 @@ public final class Verdict {
                 // typed ArguedKind on the very next statement.
                 ArguedKind kind = null;
                 try {
-                    Object r = http.request(Llm.chat(req.llm(), prompt, 0.2));
+                    // temperature 0: `kind` is a certification, not prose. It is copied verbatim into
+                    // verdict_kind and picks the marker's SuspicionStatus, so it must not vary run to
+                    // run — see ACertificationDoesNotVaryRunToRunTest for the 2026-08-04 measurement.
+                    Object r = http.request(Llm.chat(req.llm(), prompt, 0));
                     // The robust extractor, not indexOf('{')..lastIndexOf('}'): verdict prose routinely
                     // contains braces (generics, {@code} references), and the naive scan then discards
                     // a perfectly good verdict.

@@ -134,8 +134,24 @@ public final class Llm {
      * string it cannot navigate. Both come back through the shell's catch as "the model was
      * unavailable", which is a silent downgrade rather than a visible failure.
      *
-     * @param temperature 0 for the skeptic (a certification should not vary run to run) and 0.2 for
-     *                    the two that write prose
+     * @param temperature 0 for every reply that is BRANCHED ON — the skeptic and the verdict — because
+     *                    a certification should not vary run to run, and 0.2 only for a reply that
+     *                    nothing routes off. The test of "prose" is not whether the call returns any,
+     *                    it is whether anything in the reply is read by code afterwards. This javadoc
+     *                    used to say "0.2 for the two that write prose" and count {@code Verdict}
+     *                    among them; {@code Verdict} produces {@code kind}, which lands in the
+     *                    {@code verdict_kind} column and picks the marker's {@code SuspicionStatus},
+     *                    and re-proving 20 settled markers against an unrestarted container moved 2 of
+     *                    them. One site is still 0.2 — {@code PrMaker}, whose single call writes prose
+     *                    AND returns a branched-on {@code decision}; that is a known defect whose
+     *                    repair is splitting the call. ENFORCED, not advisory:
+     *                    {@code ACertificationDoesNotVaryRunToRunTest} pins all three, and fails if a
+     *                    fourth appears IN THE ENGINE'S {@code nodes} PACKAGE — which is the only
+     *                    place this repo chooses a temperature for a judging call. That scope is the
+     *                    whole of the guarantee: {@code HttpLlmClient} in the orchestrator also calls
+     *                    this method, and is deliberately outside the census because it PASSES a
+     *                    temperature through rather than choosing one. A stage that chose its own
+     *                    temperature elsewhere would not be caught.
      */
     public static Map<String, Object> chat(Endpoint llm, String prompt, double temperature) {
         Map<String, Object> headers = new LinkedHashMap<>();

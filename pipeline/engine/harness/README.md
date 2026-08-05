@@ -18,12 +18,16 @@ sh harness/run.sh        # …and unpack + print all three long reports
 
 | test | classes it pins | cases | identical | divergent | classes |
 | --- | --- | ---: | ---: | ---: | ---: |
-| `NodeFamilyHarnessTest` | `Verdict`, `FixSkeptic`, `PrMaker` | 3 357 | 2 986 | **371** | 77 |
+| `NodeFamilyHarnessTest` | `Verdict`, `FixSkeptic`, `PrMaker` | 3 357 | 2 013 | **1 344** ‡ | 78 |
 | `InputFamilyHarnessTest` | `PrepProver`, `BuildReproduceInput`, `BuildFixInput` | 2 199 | 1 808 | **391** † | 26 |
 | `JsonFamilyHarnessTest` | `JsonExtract`, `ParseTest`, `ParseFix` (via `TestRealness`) | 1 354 | 1 272 | **82** | 11 |
 
 † 377 of those 391 are ONE deliberate re-baseline — the GitHub User-Agent, renamed on 2026-08-02. The
 14 that were measured against the reference are still the 14. See [Re-baselines](#re-baselines--every-deliberate-move-of-a-catalogue-dated).
+
+‡ 973 of those 1 344 are ONE deliberate re-baseline — the verdict sampling temperature, dropped from
+0.2 to 0 on 2026-08-05. The 371 that were there before are still the 371, unchanged and in the same
+classes. See [Re-baselines](#re-baselines--every-deliberate-move-of-a-catalogue-dated).
 
 Each asserts a CATALOGUE — `harness/fixtures/<family>-expected.json` — rather than a single total.
 "371 became 370" says only that something moved; a catalogue names the class that moved, so the review
@@ -68,10 +72,15 @@ Its reference was **alive until 2026-07-31**. It was run one last time that day,
 
 ### `NodeFamilyHarnessTest` — READ THIS BEFORE TRUSTING THE NUMBER
 
-371 divergences, and **that number has never been adjudicated.** The other two families were frozen
-with a catalogue somebody had gone through cause by cause. This one was not: its reference was deleted
-before the harness was frozen, its last run was never written down anywhere in the repository, and this
-implementation has since gained behaviour the reference never had. Most of the 371 are that:
+1 344 divergences, of which **973 are the 2026-08-05 temperature re-baseline** and are a decision
+rather than a discovery — one field of the outbound request body, adjudicated in
+[Re-baselines](#re-baselines--every-deliberate-move-of-a-catalogue-dated) below.
+
+The other 371 are the original measurement, and **that number has never been adjudicated.** The other
+two families were frozen with a catalogue somebody had gone through cause by cause. This one was not:
+its reference was deleted before the harness was frozen, its last run was never written down anywhere in
+the repository, and this implementation has since gained behaviour the reference never had. Most of the
+371 are that:
 
 - **171 of them are the entire skeptic family** — every case — and they are one field:
   `skeptic_answered`, added after the reference was retired so that "the skeptic said no" could be told
@@ -123,6 +132,82 @@ it should. Only a person can say that, and this is where they say it.
 ---
 
 ## Re-baselines — every deliberate move of a catalogue, dated
+
+### 2026-08-05 — the verdict sampling temperature: `0.2` → `0`
+
+**WHAT MOVED.** `harness/fixtures/node-family-expected.json`, and nothing else. One new divergence
+class, 1 076 instances:
+
+```
+[1] 1076 case(s) at calls[i].body.temperature
+    first: verdict: route state=not_reproduced attempts=2 infra=
+    JS   : n:0.2
+    JAVA : n:0
+```
+
+plus the truncated rendering of two `calls[i]` classes — the 3 cases where the reference made no call
+at all, so the comparison stops at the whole call object and never descends to the field. Their
+rendered java value carries the temperature inside it, so the trailing length marker moved and nothing
+else did: `…(2373)` → `…(2371)` on the 2-case class and `…(2424)` → `…(2422)` on the 1-case class. The
+220-character prefix that precedes the marker is byte-identical in both.
+
+Totals: identical 2 986 → 2 013, divergent 371 → 1 344, classes 77 → 78. Per node,
+`verdict` 2 655/2 848 → 1 682/2 848 identical; **`skeptic` 0/171 and `prmaker` 331/338 unchanged.**
+
+**HOW IT WAS CHECKED THAT NOTHING ELSE MOVED.** Not by reading the catalogue diff — by comparing the
+answers underneath it. This build's raw node-family answers were dumped over the frozen corpus at 0.2
+and again at 0, and the two dumps were walked against each other case by case and path by path with the
+same traversal `TaggedDiff` uses. Over all 3 357 cases there is **exactly one distinct `(path, from,
+to)` triple in the entire delta**: `calls[i].body.temperature`, `n:0.2` → `n:0`, in 1 079 cases, every
+one of them a verdict case. Zero differences at any other path; zero skeptic cases and zero prmaker
+cases changed at all, byte for byte — which is what makes them a control group and not just two rows
+that happened to hold still.
+
+The arithmetic closes exactly, in both directions:
+
+- 1 079 answers changed; 1 076 of them show up as a temperature divergence against the reference. The
+  missing 3 are the cases where the reference made **no call**, so the diff stops at `calls[0]` as a
+  whole-object difference — the same 3 that moved the two length markers above. 1 076 + 3 = 1 079.
+- 973 cases went from identical to divergent and **0 went the other way**. Every one of those 973 has
+  the temperature as its *only* divergence from the reference. The remaining 1 076 − 973 = 103 were
+  already divergent for an unrelated, still-catalogued reason and now carry this field as well.
+- 2 986 − 973 = 2 013 identical, and 371 + 973 = 1 344 divergent. Both match the recorded catalogue.
+- 75 of the 77 pre-existing classes are byte-identical — same count, same `first:` case, same values.
+  The 2 that are not are the two length markers, and no class was removed.
+
+The other two families were run unchanged and stayed green, so the edit did not reach them.
+
+**WHY, AND WHY THIS IS NOT A REGRESSION.** `lib/Llm.java` already stated the rule — *0 for the skeptic
+(a certification should not vary run to run) and 0.2 for the two that write prose* — and then filed
+`Verdict` under "the two that write prose". Verdict does not write prose. It produces `kind`, which is
+copied verbatim into the `verdict_kind` column and picks the marker's `SuspicionStatus`:
+`false-positive` asserts we tested the claim and it does not hold, `by-design` concedes the claim and
+calls the code deliberate, `unprovable` says we never managed to test it. Those are three different
+findings about somebody else's source code.
+
+Measured on 2026-08-04: 20 already-settled markers were re-proved through `POST /api/prove/marker`
+against a container that was **never restarted** — byte-identical code, same image, same prompts, same
+model — and 3 came back with a different verdict. One of the three was an `unprovable` that became
+`infra_stuck`, an infrastructure failure rather than a disagreement, so the true verdict churn on
+identical input is 2 in 20 — **a direction, not a rate**: at n=20 the interval is wide, and no test in
+this repo can re-measure it because it needed a live container. A column that is read as a finding moved on
+time on input that did not move.
+
+**AND THE POINT A FUTURE READER NEEDS.** For this ONE field, *"matches the recording"* is no longer the
+goal and must not be restored. The reference is retired — see *The cost of freezing* above, there is
+nothing to regenerate these fixtures FROM — so the frozen `0.2` is a record of what a deleted program
+sent, not a specification of what this one should send. The catalogue now pins the DECISION: if that
+1 076 ever changes shape, someone has changed a sampling temperature, and they should be sent here.
+Every other line of this file still means what it always meant, and the 371 divergences that were
+measured against the reference are all still there, in their original classes, at their original counts.
+
+Changed in `Verdict.java` (the adjudication call) and in the `Llm.chat` javadoc that misclassified it;
+enforced by `ACertificationDoesNotVaryRunToRunTest`, which pins all three call sites by driving the real
+node entry points and reading the temperature back out of the request each one built, and which fails if
+a fourth call site appears without being classified. **One site is deliberately still 0.2** — `PrMaker`,
+whose single call writes prose *and* returns a branched-on `decision`. That is a known defect the
+constant alone cannot fix (the repair is splitting the call) and it is pinned at its current value so it
+cannot drift silently; it is also why `prmaker` was available as a control group here.
 
 ### 2026-08-02 — the GitHub User-Agent: `n8n-fsm` → `svace-marker-fixer`
 

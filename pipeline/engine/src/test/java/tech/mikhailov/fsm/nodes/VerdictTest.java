@@ -847,7 +847,11 @@ class VerdictTest {
         assertEquals(Boolean.TRUE, c.get("json"),
                 "the reply is parsed here, not left as a string for the extractor");
         assertEquals("m", Json.get(c.get("body"), "model"));
-        assertEquals(0.2, Json.get(c.get("body"), "temperature"));
+        assertEquals(0.0, Json.get(c.get("body"), "temperature"),
+                "the verdict is a CERTIFICATION, not prose: `kind` lands in verdict_kind and picks "
+                + "the marker's SuspicionStatus, so it is sampled at 0. Changed from 0.2 on "
+                + "2026-08-05 — see ACertificationDoesNotVaryRunToRunTest for the measurement and "
+                + "engine/harness/README.md for the catalogue re-baseline it caused.");
         assertEquals(32_000L, Json.get(c.get("body"), "max_tokens"));
         assertEquals(3_600_000L, c.get("timeout"));
     }
