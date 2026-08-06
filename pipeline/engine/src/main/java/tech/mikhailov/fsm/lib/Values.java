@@ -5,17 +5,15 @@ import java.math.BigDecimal;
 /**
  * Reading a loosely-typed item into the two things this pipeline stores: TEXT and NUMBERS.
  *
- * <p>WHAT THIS REPLACED. Until 2026-08-05 the same job was done by {@code lib/Js.java} and
- * {@code lib/JsValue.java}, which reproduced JavaScript's value semantics because the pipeline had been
- * ported from an n8n JavaScript implementation and four differential catalogues froze the match. That
- * implementation is deleted and the port was validated end to end, so the catalogues stopped being
- * evidence about a live requirement. The emulation was not neutral: it wrote the literal word
- * {@code "undefined"} into prompts sent to a model, and {@code x || ''} swallowed a legitimate
- * {@code 0} and a legitimate {@code false}. Both are defects the freeze was protecting. See
- * {@code harness/README.md}, "Re-baselines", 2026-08-05.
- *
- * <p>THE RULE NOW, and it is the whole class in one line: <b>absent is the only thing that reads as
+ * <p>THE RULE, and it is the whole class in one line: <b>absent is the only thing that reads as
  * empty.</b> A value that is present reads as itself, whatever its type.
+ *
+ * <p>DO NOT REINTRODUCE JAVASCRIPT VALUE SEMANTICS HERE, however the four differential catalogues in
+ * {@code harness/} read: they are recorded from an implementation that no longer exists, not evidence
+ * about a live requirement, and the semantics they froze are two defects. {@code '' + undefined}
+ * writes the literal word {@code "undefined"} into a prompt sent to a model, and {@code x || ''}
+ * swallows a legitimate {@code 0} and a legitimate {@code false}. See {@code harness/README.md},
+ * "Re-baselines", 2026-08-05.
  */
 public final class Values {
 
@@ -58,10 +56,9 @@ public final class Values {
     /**
      * The value, or a fallback when the field was NOT SET.
      *
-     * <p>One of the two honest readings of the JS {@code x || fallback} this replaced, and the split
-     * between them is a judgement made per call site rather than a rename. This one is for a field whose
-     * every present value is usable, so only absence can send it to the fallback: an explicit
-     * {@code 0} or {@code false} is now kept, where {@code ||} discarded it.
+     * <p>One of two, and choosing between them is a judgement made per call site — see
+     * {@link #orIfBlank}. This one is for a field whose every present value is usable, so only absence
+     * can send it to the fallback: an explicit {@code 0} or {@code false} is kept.
      */
     public static Object orIfAbsent(Object v, Object fallback) {
         return v != null ? v : fallback;
@@ -70,12 +67,11 @@ public final class Values {
     /**
      * The value's text, or a fallback when there is NOTHING TO READ — absent, or present but all space.
      *
-     * <p>The other honest reading of {@code x || fallback}. It is the right one wherever the fallback
-     * exists because a human has to read the result: a {@code class_name} of {@code ""} has to fall back
-     * to the file name exactly as an absent one does, and a severity of {@code " "} has to print as
-     * unknown rather than as a blank the model will fill in for itself. {@code ||} happened to get these
-     * right for the empty string and wrong for {@code 0}; this gets both right and also covers the
-     * whitespace-only cell that {@code ||} never did.
+     * <p>The other of the two. It is the right one wherever the fallback exists because a human has to
+     * read the result: a {@code class_name} of {@code ""} has to fall back to the file name exactly as
+     * an absent one does, and a severity of {@code " "} has to print as unknown rather than as a blank
+     * the model will fill in for itself. Note that it covers the whitespace-only cell, which is the
+     * case a plain emptiness test misses.
      */
     public static String orIfBlank(Object v, String fallback) {
         String s = text(v);
@@ -85,11 +81,10 @@ public final class Values {
     /**
      * A number as DIGITS — never in exponent form.
      *
-     * <p>WHAT THIS REPLACED, AND THE DECISION IT CARRIES. {@code Js.numberToString} implemented
-     * ECMA-262's Number::toString, which switches to exponent notation at 1e21 ({@code "1e+21"}) and
-     * which the JDK has no equivalent of — {@code Double.toString} gives {@code "1.0E21"} and
-     * {@code "1.0"} where the wire had always carried {@code "1"}. Neither is what a stored column or a
-     * prompt should contain.
+     * <p>NEITHER STOCK SPELLING WILL DO, which is why this method exists. {@code Double.toString}
+     * gives {@code "1.0E21"} and {@code "1.0"} where the wire carries {@code "1"}; ECMA-262's
+     * Number::toString switches to exponent notation at 1e21 ({@code "1e+21"}). Neither belongs in a
+     * stored column or a prompt.
      *
      * <p>Every value that reaches this method is a LINE NUMBER or an ATTEMPT COUNT. Both are integers,
      * both are read by a human triaging a row and by a model told where to look, and for both the only
@@ -213,14 +208,13 @@ public final class Values {
      * not be fetched", i.e. into an infra failure that is retried and eventually gives up, for a file
      * GitHub actually returned.
      *
-     * <p>{@code Base64.getMimeDecoder()} was tried and is NOT the JDK equivalent. It skips characters
-     * outside the alphabet, which is the easy half, but it still throws on a truncated final group —
-     * and the contents API's payload is truncated by this pipeline's own {@code SRC_MAX} cut before it
-     * ever gets here. Swapping it in cost four cases of engine coverage in
-     * {@code WireSafetyTest.theGuardStillReachesTheWholeEngine}, which is what caught it: four inputs
-     * that used to decode began failing instead. Decoding as much as is there and returning it is what
-     * a reader of a truncated source file wants, and the truncation is already announced to the model
-     * separately.
+     * <p>DO NOT SWAP IN {@code Base64.getMimeDecoder()}. It skips characters outside the alphabet,
+     * which is the easy half, but it still throws on a truncated final group — and the contents API's
+     * payload is truncated by this pipeline's own {@code SRC_MAX} cut before it ever gets here, so
+     * four inputs stop decoding and are reported as unfetchable files.
+     * {@code WireSafetyTest.theGuardStillReachesTheWholeEngine} measures exactly those four. Decoding
+     * as much as is there and returning it is what a reader of a truncated source file wants, and the
+     * truncation is already announced to the model separately.
      *
      * <p>Node's tolerances, all of them deliberate here: characters outside the alphabet are SKIPPED,
      * {@code -} and {@code _} are accepted alongside {@code +} and {@code /}, the first {@code =}

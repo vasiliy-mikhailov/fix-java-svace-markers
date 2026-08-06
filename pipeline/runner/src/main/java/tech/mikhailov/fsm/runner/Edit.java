@@ -74,9 +74,8 @@ final class Edit {
      * U+00A0 and the BOM; Java's {@code \s} is
      * {@code [ \t\n\x0B\f\r]} and would leave a no-break space standing as a normal character. A model
      * that indents with one — or a file saved by an editor that did — would then fail to match at all,
-     * which is the one outcome this whole fallback exists to prevent. ({@link SourceText} was called
-     * {@code JsText} until 2026-08-05 and this sentence used to justify the set as "JavaScript's".
-     * The set is the same and the reason is not: see that class.)
+     * which is the one outcome this whole fallback exists to prevent. (The set is not "JavaScript's" —
+     * {@link SourceText} states the reason it actually has.)
      */
     static Normalized wsNorm(String s) {
         StringBuilder out = new StringBuilder(s.length());

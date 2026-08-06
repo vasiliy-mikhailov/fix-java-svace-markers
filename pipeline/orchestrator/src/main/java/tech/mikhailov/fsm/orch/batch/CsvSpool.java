@@ -135,10 +135,9 @@ public class CsvSpool {
      * duplicate is worth its line — Jackson has already materialised the whole string by the time this
      * is called, so refusing it here saves creating and deleting a temp file for a body already known
      * to be over, and it is the encoded length that makes the 413 quote a number the sender can act
-     * on. (It said "in CHARACTERS before it is encoded" until 2026-08-06, which mattered: characters
-     * and bytes differ by up to 4× on a UTF-8 report, so a reader trusting that sentence would have
-     * believed a 32 MiB cap could refuse an 8 MiB file.) The write check is what makes the bound real
-     * for the multipart path that shares it.
+     * on. Do not describe this cap as being in CHARACTERS: characters and bytes differ by up to 4× on
+     * a UTF-8 report, so a reader who believes that expects a 32 MiB cap to refuse an 8 MiB file. The
+     * write check is what makes the bound real for the multipart path that shares it.
      */
     public Path spool(String text) throws TooLarge, IOException {
         byte[] bytes = text.getBytes(StandardCharsets.UTF_8);

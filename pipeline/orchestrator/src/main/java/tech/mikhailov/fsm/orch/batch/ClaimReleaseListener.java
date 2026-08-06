@@ -41,8 +41,8 @@ import tech.mikhailov.fsm.orch.usecase.ReleasePresenter;
  *
  * <p>WHAT IT DOES NOT DECIDE: WHICH RELEASE. {@link ProveMarker} already decided that, one circle in,
  * and {@link ProveProcessor} sends the decision here on the throwable — see {@link #requeueOf} and
- * {@link RequeuedClaim}. This class used to derive its own from the persisted row and the exception,
- * which meant the use case named a release beside the one that ran instead of the one that ran.
+ * {@link RequeuedClaim}. Do not derive one here from the persisted row and the exception: the use case
+ * then names a release beside the one that ran, instead of the one that ran.
  *
  * <p>WHY A {@link SkipListener} AND NOT A {@code catch} IN THE PROCESSOR. The step declares
  * {@code noRollback(InfraFailure.class)}, so this method runs INSIDE the chunk transaction that took

@@ -87,19 +87,16 @@ public final class ExecVerdict {
         /**
          * Read the evidence out of an item, applying the coercions {@link Json} spells out.
          *
-         * <p>{@code test_score} USED TO HAVE ITS OWN READER HERE, {@code scoreText}, whose javadoc said
-         * it was "pointedly NOT {@link Json#str} — that helper implements {@code x || ''}, which turns
-         * a measured score of 0 into 'not measured'". That stopped being true when the {@code || ''}
-         * went (2026-08-05): {@code Json.str} delegates to {@link Values#text}, which renders a
-         * measured {@code 0} as {@code "0"} and only ABSENCE as {@code ""} — the exact property the
-         * private reader existed to protect, now held for every field at once. What it did still do was
-         * render through {@link Json#stringify}, which REFUSES a non-finite double: a well-formed
-         * {@code {"test_score": 1e400}} threw out of this method and out of {@code Verdict}, which
-         * composes evidence outside every try. Deleted 2026-08-06, and with it the reason
-         * {@code Verdict} assembled these ten values into a Map to hand back — it calls the constructor
-         * now. Two rendering moves came with the deletion, both toward {@code Values.plain}'s "no
-         * exponent, ever": a non-finite score prints its word, and |d| ≥ 1e15 prints digits rather than
-         * {@code "1.0E21"}. Both are pinned in {@code ExecVerdictTest}.
+         * <p>{@code test_score} IS READ BY {@link Json#str} LIKE EVERY OTHER FIELD, and must stay that
+         * way. Two properties are load-bearing and {@code Json.str} — which is {@link Values#text} —
+         * holds both: a measured {@code 0} renders as {@code "0"} while only ABSENCE renders as
+         * {@code ""}, and a non-finite double renders its word rather than throwing. Do not give this
+         * field a private reader over {@link Json#stringify}: that one REFUSES a non-finite double, so
+         * a well-formed {@code {"test_score": 1e400}} throws out of this method and out of
+         * {@code Verdict}, which composes evidence outside every try.
+         *
+         * <p>The rendering that goes with it is {@code Values.plain}'s "no exponent, ever": |d| ≥ 1e15
+         * prints digits rather than {@code "1.0E21"}. Pinned in {@code ExecVerdictTest}.
          */
         public static Evidence of(Object item) {
             return new Evidence(

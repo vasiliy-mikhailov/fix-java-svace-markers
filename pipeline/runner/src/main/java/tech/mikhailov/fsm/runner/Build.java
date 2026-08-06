@@ -218,11 +218,10 @@ final class Build {
                 s.build(), s.compileError(), "console");
     }
 
-    // A five-argument buildCmd(ws, jdk, module, build, testClass) defaulting `settings` to null stood
-    // here until 2026-08-06. No production caller used it — Prove passes the file both times — and it
-    // was a hole: a new caller could omit `-s` and get a Maven that resolves from Central, which is
-    // the outcome LocalRunnerTest#aConfiguredMirrorReachesEveryMavenCommand exists to forbid. The
-    // test sites that wanted the default now pass `null` and say so at the call.
+    // NO OVERLOAD THAT DEFAULTS `settings` TO null. It is a hole: a caller that omits `-s` gets a
+    // Maven resolving from Central, which is what
+    // LocalRunnerTest#aConfiguredMirrorReachesEveryMavenCommand exists to forbid. A test site that
+    // wants no settings file passes `null` and says so at the call.
 
     /**
      * …and with the Maven settings file this deployment's mirror was written to.

@@ -23,7 +23,10 @@ import java.time.Duration;
  */
 final class Failures {
 
-    /** What a socket failure reads as when it carries no message of its own. */
+    /**
+     * What a socket failure reads as when it carries no message of its own — because a throw with
+     * nothing quotable still has to say something a human can act on.
+     */
     static final String NOTHING_TO_SAY = "the call failed with no message";
 
     private Failures() {
@@ -36,7 +39,7 @@ final class Failures {
      * {@code getMessage()} on a {@code ConnectException} is {@code "Connection refused"} with nothing
      * saying to what or of what kind, and half the failures on this path — connect timeouts, resets,
      * TLS handshakes — are distinguished only by their type. A null or blank message is the shape that
-     * used to write an empty reason onto a marker, which reads as a marker nobody could explain.
+     * writes an empty reason onto a marker, which reads as a marker nobody could explain.
      */
     static String cause(Throwable t) {
         String message = t.getMessage();

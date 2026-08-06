@@ -102,13 +102,13 @@ public class CommentService {
      * @param reason  the sentence a person reads. Names the limit and the value where there is one.
      * @param comment what was stored (or retracted); null on a refusal.
      * @param journal what the durable copy did, and NULL ON A REFUSAL — nothing was offered to the
-     *                journal, so there is nothing true to say about it. It was
-     *                {@link CommentJournal.Outcome#OFF} until 2026-08-06, which is a STATEMENT: it says
-     *                the durable journal is switched off. Nothing reads it on that path today
-     *                ({@code CommentPresenter.refusal} asks the journal itself), so it cost nothing —
-     *                but the day somebody adds a {@code stored} block to a refusal body, every 400
-     *                would have told the caller their comments are not being kept. Null makes that
-     *                reader decide instead of inherit. @see CommentJournal
+     *                journal, so there is nothing true to say about it. Do not put
+     *                {@link CommentJournal.Outcome#OFF} there: that is a STATEMENT, and it says the
+     *                durable journal is switched off. Nothing reads it on that path today
+     *                ({@code CommentPresenter.refusal} asks the journal itself), so it would cost
+     *                nothing — until somebody adds a {@code stored} block to a refusal body, at which
+     *                point every 400 tells the caller their comments are not being kept. Null makes
+     *                that reader decide instead of inherit. @see CommentJournal
      */
     public record Written(String error, String reason, MarkerComment comment,
                           CommentJournal.Outcome journal) {

@@ -70,10 +70,10 @@ public final class RecordOutcome {
      * What the prover appends to a log when it KILLED the build at its 20-minute timeout — the
      * runner module's {@code Proc.TIMEOUT_MARKER}. The two spellings must stay identical.
      *
-     * <p>Nothing anywhere used to read it. A killed build and a build that failed on its own are the
-     * same row otherwise, and {@code green_output} is not persisted at all — the bugs table has no
-     * column for it — so unless the reason quotes this, the single fact that the build was cut off
-     * mid-flight is discarded.
+     * <p>SOMETHING HAS TO READ IT. A killed build and a build that failed on its own are the same row
+     * otherwise, and {@code green_output} is not persisted at all — the bugs table has no column for
+     * it — so unless the reason quotes this, the single fact that the build was cut off mid-flight is
+     * discarded.
      */
     private static final String TIMEOUT_MARKER = "[TIMEOUT]";
 
@@ -335,7 +335,7 @@ public final class RecordOutcome {
      * <p>Both vocabularies are TYPED here and nowhere else in this node: {@link SkepticVerdict} and
      * {@link PrDecision} own the spellings, and the three questions this node asks of them —
      * {@link #certified()}, {@link #skepticNeverAnswered()}, {@link #curatorNeverDecided()} — are
-     * asked once each instead of at the seven sites that used to compare against a literal.
+     * asked once each here rather than compared against a literal at each of the seven call sites.
      *
      * @param skepticText     the word AS IT ARRIVED, with its {@code || 'unknown'} fallback. Kept
      *                        beside the typed verdict because the banner quotes it back: a word this

@@ -44,11 +44,12 @@ import tech.mikhailov.fsm.orch.feedback.RecordSink;
  *   <li>AND THAT DIRECTION IS REPORTED, NOT SWALLOWED. {@link FeedbackStore#append} never throws; that
  *       rule exists so a diagnostic cannot strand a marker, and it is the wrong rule in front of a
  *       person who was just told their comment was saved. {@link FeedbackStore#append} therefore
- *       ANSWERS PER CALL, and {@link #write} returns {@link Outcome#FAILED} on a false. It used to read
- *       the store's shared failure COUNTER either side of the call, which is not per-call at all: two
- *       concurrent comments, one failing, each read the other's increment and swapped answers, so the
- *       person whose comment was LOST got the tick. A green tick over a silently lost guarantee is the
- *       feedback panel's off/waiting/clean distinction was built to prevent, one layer down.</li>
+ *       ANSWERS PER CALL, and {@link #write} returns {@link Outcome#FAILED} on a false. Do not derive
+ *       that answer from the store's shared failure COUNTER either side of the call, which is not
+ *       per-call at all: two concurrent comments, one failing, each read the other's increment and
+ *       swap answers, so the person whose comment was LOST gets the tick. A green tick over a silently
+ *       lost guarantee is what the feedback panel's off/waiting/clean distinction exists to prevent,
+ *       one layer down.</li>
  * </ul>
  *
  * <h2>A SIBLING FILE, NOT THE HARVESTER'S OWN</h2>

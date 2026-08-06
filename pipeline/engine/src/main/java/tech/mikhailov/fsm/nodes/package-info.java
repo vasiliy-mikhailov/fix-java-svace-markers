@@ -22,8 +22,8 @@
  * They are where a wrong branch is most expensive, and neither fails loudly. Third is
  * {@link tech.mikhailov.fsm.nodes.ParseMarkers}, which fails differently again: it corrupts the
  * BACKLOG rather than the run. Each of the three says so in its own class comment, at the length the
- * argument needs; a table here restating them was a second copy that had already gone stale once (it
- * linked {@code lib.Js}, deleted 2026-08-05) and is gone as of 2026-08-06.
+ * argument needs, so do not add a table here restating them: it is a second copy, it goes stale
+ * against the classes it links, and javadoc already generates the class list.
  *
  * <p>THE THREE STAGES THAT CALL A MODEL are three pieces on purpose: a PURE prompt builder, a PURE
  * reply parser, and a thin shell that makes the call and glues the two together, with the endpoint

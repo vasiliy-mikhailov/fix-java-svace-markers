@@ -22,12 +22,12 @@ import tech.mikhailov.fsm.orch.model.Suspicion;
  *
  * <h2>RE-INGESTING IS SAFE, AND THAT IS THE WHOLE OF THIS CLASS</h2>
  *
- * <p>This step used to begin by DELETING {@code suspicions} and {@code bugs} and rewriting them from
- * the report — the log read "[ingest] cleared 282 suspicion(s) and 240 bug(s); wrote 282
- * suspicion(s)". A drain is 6 to 26 hours across 282 markers and the container is redeployed, rebooted
- * and crash-looped inside that window, so re-running the first command in every runbook — which is the
- * ingest — is the most natural thing an operator does after a restart. It threw away every settled
- * verdict, every drafted PR body and every proof, with no confirmation and no way back.
+ * <p>THIS STEP MUST NOT BEGIN BY DELETING {@code suspicions} AND {@code bugs} and rewriting them from
+ * the report. A drain is 6 to 26 hours across hundreds of markers and the container is redeployed,
+ * rebooted and crash-looped inside that window, so re-running the first command in every runbook —
+ * which is the ingest — is the most natural thing an operator does after a restart. A clearing ingest
+ * throws away every settled verdict, every drafted PR body and every proof, with no confirmation and
+ * no way back.
  *
  * <p>So the default is ADDITIVE and it is IDEMPOTENT: a marker the report raises that the backlog
  * already holds is left completely alone — same status, same verdict, same note, same anchor, same

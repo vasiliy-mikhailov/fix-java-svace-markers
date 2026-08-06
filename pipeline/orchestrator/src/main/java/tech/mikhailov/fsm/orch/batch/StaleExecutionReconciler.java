@@ -19,15 +19,14 @@ import org.springframework.stereotype.Component;
  * The other half of restart safety: Spring Batch's OWN execution metadata, left behind by a JVM that
  * no longer exists.
  *
- * <h2>THE OUTAGE</h2>
+ * <h2>THE FAULT THIS REPAIRS</h2>
  *
- * <p>On 2026-07-29 the container was recreated while a prove was running. The marker side reconciled
- * itself perfectly — {@link tech.mikhailov.fsm.orch.StartupReconciler} logged "no markers were
- * mid-prove; nothing to requeue", which was true, because the chunk transaction that held the claim
- * was rolled back by H2 on recovery. What did NOT roll back is the row Spring Batch commits outside
- * that transaction: {@code BATCH_JOB_EXECUTION} still said {@code STARTED} with a null
- * {@code END_TIME}. H2 is a file on a mounted volume, so that row outlived its process and every
- * process after it inherited the claim.
+ * <p>Recreate the container while a prove is running and the marker side reconciles itself perfectly —
+ * {@link tech.mikhailov.fsm.orch.StartupReconciler} logs "no markers were mid-prove; nothing to
+ * requeue", and it is true, because the chunk transaction that held the claim is rolled back by H2 on
+ * recovery. What does NOT roll back is the row Spring Batch commits outside that transaction:
+ * {@code BATCH_JOB_EXECUTION} still says {@code STARTED} with a null {@code END_TIME}. H2 is a file on
+ * a mounted volume, so that row outlives its process and every process after it inherits the claim.
  *
  * <p>{@link JobLaunches#isRunning} answers "is a prove in flight?" out of that table, and it answers it
  * from the STATUS column alone: it calls {@link JobExplorer#findRunningJobExecutions(String)}, whose
@@ -154,17 +153,15 @@ public class StaleExecutionReconciler {
      * %PREFIX%JOB_INSTANCE}, so it does see a job this build no longer defines — and then one query
      * per name, merging unordered {@code Set}s. One scan of one table answers the same question
      * directly, in the id order this method's contract promises. That is a difference of query count
-     * and ordering, and it is now the WHOLE of the argument.
+     * and ordering, and it is the WHOLE of the argument.
      *
-     * <p>WHAT THIS COMMENT USED TO CLAIM, AND WHY IT NO LONGER DOES. It said Spring's query "requires
-     * {@code START_TIME IS NOT NULL}", and therefore could not see an execution killed in the window
-     * between {@code createJobExecution} and the launcher's first update. THAT PREDICATE DOES NOT
-     * EXIST. In spring-batch-core 5.2.6 {@code GET_RUNNING_EXECUTIONS} is {@code … WHERE
-     * E.JOB_INSTANCE_ID = I.JOB_INSTANCE_ID AND I.JOB_NAME = ? AND E.STATUS IN ('STARTING', 'STARTED',
-     * 'STOPPING')} — the same three statuses {@link #OPEN_STATUSES} names, and no time column at all.
-     * An execution killed in that window sits in {@code STARTING} and is visible to BOTH queries. The
-     * two reach the same rows; only the shape of the call differs, which is why the reason above is
-     * about convenience and is stated as such rather than as a capability.
+     * <p>DO NOT UPGRADE THAT INTO A CLAIM THAT THIS QUERY SEES ROWS SPRING'S CANNOT. Spring's has no
+     * {@code START_TIME IS NOT NULL} predicate: in spring-batch-core 5.2.6
+     * {@code GET_RUNNING_EXECUTIONS} is {@code … WHERE E.JOB_INSTANCE_ID = I.JOB_INSTANCE_ID AND
+     * I.JOB_NAME = ? AND E.STATUS IN ('STARTING', 'STARTED', 'STOPPING')} — the same three statuses
+     * {@link #OPEN_STATUSES} names, and no time column at all. An execution killed between
+     * {@code createJobExecution} and the launcher's first update sits in {@code STARTING} and is
+     * visible to BOTH queries. The two reach the same rows; only the shape of the call differs.
      *
      * <p>This class's own query also asks for {@code END_TIME IS NULL}, which Spring's does not. It
      * excludes nothing this deployment can produce — Spring stamps the end time in the same update

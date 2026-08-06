@@ -267,9 +267,10 @@ public final class PrepProver {
                 Values.orIfAbsent(Json.get(s, "svace_checker"), ""),
                 Values.orIfAbsent(Json.get(s, "svace_severity"), ""),
                 // The DEFAULT, off the enum that owns the vocabulary: a marker whose evidence carries
-                // no Settle-by hint at all is treated as one a test can settle. The literal used to
-                // sit here while `ParseMarkers` wrote the same word out of CheckerMap.SettleBy and
-                // `Verdict` compared against its sibling — three copies of a two-word vocabulary.
+                // no Settle-by hint at all is treated as one a test can settle. Do not spell the word
+                // out here — `ParseMarkers` writes it out of CheckerMap.SettleBy and `Verdict`
+                // compares against its sibling, and a literal here is a third copy of a two-word
+                // vocabulary.
                 svaceLine, settle.find() ? settle.group(1) : CheckerMap.SettleBy.TEST.wire());
     }
 
@@ -281,9 +282,8 @@ public final class PrepProver {
      * request nobody meant to authenticate, drops the caller onto the 60-per-hour ANONYMOUS quota and
      * serves no private repository at all. The run then fails INTERMITTENTLY, an hour in, on whichever
      * marker happened to cross the quota, and the header that caused it looks perfectly ordinary in a
-     * log. The old code avoided that by writing the JavaScript word {@code undefined} into the header;
-     * the word was retired on 2026-08-05 with the rest of the emulation, and it was the wrong marker
-     * anyway — greppable only if you already know that this codebase spells "missing" that way.
+     * log. A fixed marker word in place of the token is no better: it is greppable only by a reader
+     * who already knows how this codebase spells "missing".
      *
      * <p>So the header NAMES THE VARIABLE, exactly as {@link tech.mikhailov.fsm.lib.Llm#baseUrl} does
      * for {@code QWEN_BASE_URL} and for the same reason. GitHub rejects it with 401 immediately — a
@@ -291,8 +291,8 @@ public final class PrepProver {
      * own diagnosis and its own fix in the text.
      *
      * <p>Shared with {@code GithubSourceClient}, which sends the identical header on the source fetch.
-     * It used to hold its own copy with a comment claiming they matched; they had already drifted apart
-     * by the time anyone read it, so there is now one of them.
+     * ONE of them, called from both: a second copy with a comment claiming the two match drifts, and
+     * the comment is what a reader trusts instead of comparing them.
      */
     public static String authorization(Object token) {
         return "Bearer " + Values.orIfBlank(token, "(GITHUB_TOKEN is not set)");

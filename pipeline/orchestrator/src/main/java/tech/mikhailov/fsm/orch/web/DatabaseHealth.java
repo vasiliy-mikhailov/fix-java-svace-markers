@@ -8,10 +8,10 @@ import org.springframework.stereotype.Component;
 /**
  * Is the database open and answering? Asked by running a query, because there is no other way to know.
  *
- * <p>ORIGIN (2026-07-29). {@code /healthz} returned a hardcoded 200 {@code ok}. It answered {@code ok}
- * on every request through a run in which every prove was failing on a refused connection, so a restart
- * policy or a Caddy check wired to it could never have fired — and its existence was the reason nobody
- * added a real one. A probe that cannot fail is a constant with a URL.
+ * <p>A PROBE THAT CANNOT FAIL IS A CONSTANT WITH A URL. A {@code /healthz} that returns a hardcoded
+ * 200 {@code ok} answers {@code ok} on every request through a run in which every prove is failing on
+ * a refused connection, so a restart policy or a Caddy check wired to it can never fire — and its
+ * existence is the reason nobody adds a real one.
  *
  * <p>WHY THE MARKER TABLE AND NOT {@code SELECT 1}. This process is a queue, a schedule and a durable
  * marker table; a {@code SELECT 1} proves the pool can hand out a connection and nothing else. The

@@ -247,10 +247,9 @@ public class CommentDao {
         return n == null ? 0L : n;
     }
 
-    // markerCount() — "how many distinct markers have been commented on" — was deleted on 2026-08-06.
-    // It had no caller in src/main or src/test, and its job had already been taken by countsByMarker
-    // above, whose keys ARE the distinct markers. Its neighbour count() looks equally unused and is
-    // not: it is asserted on from the tests.
+    // NO markerCount() — "how many distinct markers have been commented on" is countsByMarker above,
+    // whose keys ARE the distinct markers. count() looks equally redundant and is not: the tests
+    // assert on it.
 
     /**
      * EVERY COMMENT, GONE — and nothing in the application calls this.

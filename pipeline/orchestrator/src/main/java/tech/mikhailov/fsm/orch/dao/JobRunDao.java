@@ -112,14 +112,13 @@ public class JobRunDao {
      * Every run that has STARTED, whether or not it has stopped, in start order. The whole history,
      * deliberately unpaged.
      *
-     * <p>THIS USED TO BE {@code findFinished()}, WITH {@code AND e.END_TIME IS NOT NULL}, AND THAT WAS
-     * A DEFECT WITH A SIX-TO-TWENTY-SIX-HOUR BLAST RADIUS. The prove job is ONE execution that runs for
-     * the length of the run, so while a run is in flight the entire history of it is a single row with
-     * a null {@code END_TIME} — and the dashboard's machine-time total was therefore zero for exactly
-     * as long as anybody was watching. {@code fte}, {@code fteSettledOnly} and {@code etaSec} are all
-     * derived from it and all rendered as em dashes; the deployment showed "MACHINE TIME 0.0h / HUMAN
-     * FTE EQUIVALENT –" over a run that had been proving for six hours, and then became correct the
-     * moment it ended and nobody needed it.
+     * <p>DO NOT ADD {@code AND e.END_TIME IS NOT NULL} — it is a defect with a six-to-twenty-six-hour
+     * blast radius. The prove job is ONE execution that runs for the length of the run, so while a run
+     * is in flight the entire history of it is a single row with a null {@code END_TIME}, and that
+     * predicate makes the dashboard's machine-time total zero for exactly as long as anybody is
+     * watching. {@code fte}, {@code fteSettledOnly} and {@code etaSec} are all derived from it and all
+     * render as em dashes: "MACHINE TIME 0.0h / HUMAN FTE EQUIVALENT –" over a run that has been
+     * proving for six hours, becoming correct the moment it ends and nobody needs it.
      *
      * <p>An execution with a start and no end is charged UP TO NOW by {@link
      * tech.mikhailov.fsm.orch.web.WorkModel.Exec#of}, and it is safe to treat it as live rather than
@@ -137,12 +136,12 @@ public class JobRunDao {
     /**
      * The most recent runs, newest first — the activity panel and nothing else.
      *
-     * <p>THE CAP IS BOUND, NOT WRITTEN IN. It used to be {@code "… LIMIT " + limit}, and the honest
-     * account of that is narrow: {@code limit} is an {@code int}, the only caller passes
+     * <p>THE CAP IS BOUND, NOT WRITTEN IN. Be honest about how narrow the danger is: {@code limit} is
+     * an {@code int}, the only caller passes
      * {@link tech.mikhailov.fsm.orch.web.DashboardService#ACTIVITY_LIMIT}, and an {@code int} cannot
-     * carry a quote or a semicolon — so nothing was reachable and nothing is being repaired here. What
-     * it was, was the exact shape of finding this repository exists to triage, sitting in the source
-     * of the thing doing the triaging. It binds in one character, so it binds.
+     * carry a quote or a semicolon, so {@code "… LIMIT " + limit} would be unreachable rather than
+     * exploitable. It is still the exact shape of finding this repository exists to triage, sitting in
+     * the source of the thing doing the triaging. It binds in one character, so it binds.
      */
     public List<JobRun> findRecent(int limit) {
         return query(select() + groupBy()

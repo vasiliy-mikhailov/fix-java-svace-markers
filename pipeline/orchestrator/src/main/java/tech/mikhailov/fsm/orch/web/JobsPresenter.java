@@ -70,8 +70,8 @@ final class JobsPresenter {
      * because that is what they are: a photograph of the backlog at the moment the request was made.
      * What the run then DID is {@link #lastIngest}.
      *
-     * <p>ZERO IS THE HEADLINE on the additive path. The message this replaced read the same whether it
-     * had destroyed a day of model and Maven time or nothing at all.
+     * <p>ZERO IS THE HEADLINE on the additive path. A message that reads the same whether it destroyed
+     * a day of model and Maven time or nothing at all tells the operator nothing.
      */
     static Map<String, Object> ingestStarting(JobLaunches.Launch launch, boolean resets,
                                               ResetPolicy.Census census) {

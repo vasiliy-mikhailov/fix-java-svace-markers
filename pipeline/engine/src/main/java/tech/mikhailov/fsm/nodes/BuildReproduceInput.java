@@ -282,14 +282,11 @@ public final class BuildReproduceInput {
     /**
      * Decode the GitHub contents payload, or report nothing at all.
      *
-     * <p>THE WHITESPACE STRIP THAT USED TO BE HERE WAS A NO-OP AND IS GONE (2026-08-06). It was
-     * written when the decoder was Node's {@code Buffer.from(text, 'base64')} and its comment claimed
-     * the newlines "have to come out before the decode or what reaches the model is whatever the
-     * decoder made of the padding". {@link Values#base64ToUtf8} SKIPS every character outside the
-     * base64 alphabet itself ({@code Values.java:225-227} says so), so the contents API's 60-column
-     * wrapping decodes identically with or without the strip — including the case the old comment
-     * named as its reason, a padding group split across a newline. What it did cost was one full copy
-     * of a string up to {@code SRC_MAX} per source fetch. Pinned by
+     * <p>DO NOT STRIP THE WHITESPACE FIRST — it is a no-op that costs one full copy of a string up to
+     * {@code SRC_MAX} per source fetch. {@link Values#base64ToUtf8} SKIPS every character outside the
+     * base64 alphabet itself, so the contents API's 60-column wrapping decodes identically either way,
+     * including a padding group split across a newline, which is the case that looks as though it
+     * needs the strip. Pinned by
      * {@code BuildReproduceInputTest.aWrapThatFallsInsideThePaddingStillDecodesTheWholeFile}.
      *
      * <p>A non-string {@code content} — the whole contents object, which is what arrives when the path

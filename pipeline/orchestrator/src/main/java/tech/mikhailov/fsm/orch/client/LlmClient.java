@@ -28,8 +28,8 @@ public interface LlmClient {
      * The reproducer and the fixer, which write whole Java files that are then COMPILED AND RUN — so
      * the compiler and the test are the check on this output, not a re-run of the same prompt.
      *
-     * <p>DO NOT READ THIS AS "the prose stages". That is what it used to say, and it was the same
-     * misclassification that put {@code Verdict} at 0.2 for months: a reply that is BRANCHED ON is a
+     * <p>DO NOT READ THIS AS "the prose stages". That name is the misclassification that puts a stage
+     * like {@code Verdict} at 0.2: a reply that is BRANCHED ON is a
      * certification and belongs at {@link #TEMPERATURE_CERTIFY}, whatever else the same call writes.
      * Since 2026-08-05 the engine's only remaining 0.2 is {@code PrMaker}, and that is a known defect
      * rather than a category — one call there writes prose AND returns a branched-on decision.

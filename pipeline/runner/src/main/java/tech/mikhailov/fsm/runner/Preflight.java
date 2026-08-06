@@ -164,15 +164,15 @@ final class Preflight {
     /**
      * CAN THIS UID WRITE A BYTE INTO THE CACHE AT ALL?
      *
-     * <p>THIS USED TO BE THREE mkdirs AND NO PROBE. {@code Files.createDirectories} SUCCEEDS on a
-     * directory that already exists whoever owns it — the mkdir is a no-op and the permission bits are
-     * never consulted — so the two extra calls on the way up (a {@code LocalRunner.ensureCache} in
-     * {@code Runner.main} and another in {@code LocalRunner.open}) proved nothing this one does not,
-     * and were deleted on 2026-08-06. The only thing that touched the volume afterwards was
-     * {@link MavenSettings#configure}, and it writes a file ONLY when {@code MAVEN_MIRROR_URL} is set;
-     * unset — the shipped default — it calls {@code deleteIfExists} on a file that is not there, which
-     * answers false without touching the permission bits either. So the deployment that HAS a Nexus was
-     * protected by accident and the deployment that has not was not protected at all.
+     * <p>DO NOT REPLACE THIS WITH A MKDIR — A MKDIR IS NOT A PERMISSION CHECK.
+     * {@code Files.createDirectories} SUCCEEDS on a directory that already exists whoever owns it: the
+     * mkdir is a no-op and the permission bits are never consulted, so no number of them on the way up
+     * says anything about whether this uid can write. Nothing else touches the volume before the first
+     * clone either — {@link MavenSettings#configure} writes a file ONLY when {@code MAVEN_MIRROR_URL}
+     * is set, and unset (the shipped default) it calls {@code deleteIfExists} on a file that is not
+     * there, which answers false without touching the permission bits. Take this probe out and the
+     * deployment WITHOUT a Nexus is not protected at all: every source fetch on an inherited volume
+     * fails one marker at a time, hours in, while {@code /healthz} answers {@code ok}.
      *
      * <p>A REAL WRITE, not {@code Files.isWritable}: the interesting cases are a read-only mount and a
      * uid mismatch, and {@code isWritable} answers from the permission bits as this process sees them.

@@ -28,8 +28,8 @@ import tech.mikhailov.fsm.orch.usecase.ProveOutcome;
  * <ol>
  *   <li>it MAPS the framework's item, a {@code suspicions} row, onto the entity the use case works
  *       with;</li>
- *   <li>it PRESENTS — the one line a settled marker writes to the run log used to be inline in the
- *       chain, and being inline is what forced the policy to depend on SLF4J;</li>
+ *   <li>it PRESENTS — the one line a settled marker writes to the run log is written HERE, because a
+ *       log call inline in the chain is what makes the policy depend on SLF4J;</li>
  *   <li>it TRANSLATES the use case's outcome back into the framework's vocabulary, which for a requeue
  *       means throwing the failure the prove died on WITH the release the use case decided on riding
  *       along — the throwable being the only thing the framework carries from here to the hook that
@@ -64,12 +64,10 @@ public class ProveProcessor
     private final Duration runTestTimeout;
     private final boolean verdictEnabled;
 
-    // An 8-argument constructor lived here until 2026-08-06, defaulting verdictEnabled to true and
-    // building a throwaway `new FeedbackStore(false, DEFAULT_FILE_NAME)`. It had no caller: both sites
-    // that construct this class — BatchConfig and TheArgumentOffChangesNothingButTheArgumentTest —
-    // pass all ten, because both of the arguments it defaulted are deployment facts that a test has to
-    // be able to vary. It was also the only place in the codebase that built a FeedbackStore nobody
-    // configured, which is a second store pointing at the deployment's own default file name.
+    // NO CONSTRUCTOR HERE DEFAULTS `verdictEnabled` OR BUILDS ITS OWN FeedbackStore. Both are
+    // deployment facts a test has to be able to vary, and a `new FeedbackStore(false, …)` built here
+    // is a second store pointing at the deployment's own default file name. Both sites that construct
+    // this class — BatchConfig and TheArgumentOffChangesNothingButTheArgumentTest — pass all ten.
 
     /**
      * @param prompts        the five stage prompts, already resolved and validated by
@@ -171,10 +169,10 @@ public class ProveProcessor
      * <p>THE DECISION TRAVELS, NOT JUST THE FAILURE, and that is the whole point of this method. The
      * release cannot happen here — it has to commit inside the chunk transaction that took the claim,
      * so it happens in the skip listener — and the framework hands that listener the item and the
-     * throwable and nothing else. Dropping {@link ProveOutcome.Requeued#requeue()} at this line is what
-     * previously forced {@link ClaimReleaseListener} to read the decision a SECOND time, off the
-     * persisted row and the exception, so that {@link tech.mikhailov.fsm.orch.usecase.ProveMarker} was
-     * describing a release the system did not perform. See {@link RequeuedClaim}.
+     * throwable and nothing else. Drop {@link ProveOutcome.Requeued#requeue()} at this line and
+     * {@link ClaimReleaseListener} has to read the decision a SECOND time, off the persisted row and
+     * the exception — at which point {@link tech.mikhailov.fsm.orch.usecase.ProveMarker} describes a
+     * release the system does not perform. See {@link RequeuedClaim}.
      *
      * <p>Nothing about the step moves: the classifier matches {@code InfraFailure} by assignability and
      * {@link InfraFailure#reason()} is inherited from the failure this prove died on. That failure is

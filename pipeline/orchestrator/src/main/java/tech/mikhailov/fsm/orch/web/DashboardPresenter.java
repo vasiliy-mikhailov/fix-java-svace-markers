@@ -8,9 +8,9 @@ import java.util.Map;
  * THE SHAPE OF THE READ-PATH RESPONSES THE CONTROLLERS ASSEMBLE, IN ONE PLACE — and deliberately NOT
  * a second column list.
  *
- * <p>IT SAID "EVERY READ-PATH RESPONSE" UNTIL 2026-08-06 and that was not true, in a heading a reader
- * uses to decide they have seen the whole wire. Two files outside every controller name read-path keys
- * of their own and {@code NoControllerAssemblesItsOwnResponseTest} cannot reach either, because it
+ * <p>DO NOT WIDEN THAT HEADING TO "EVERY READ-PATH RESPONSE". It is not true, and it is the heading a
+ * reader uses to decide they have seen the whole wire. Two files outside every controller name
+ * read-path keys of their own and {@code NoControllerAssemblesItsOwnResponseTest} cannot reach either, because it
  * finds its subjects by controller annotation: {@link SourceWindowService} (a {@code @Service}, 7 keys,
  * the {@code /api/source} body) and {@code feedback.CritiqueIndex} (no annotation, 30-odd keys, the
  * {@code /api/feedback} bodies). Bringing those here is the remaining work and it moves the read path,

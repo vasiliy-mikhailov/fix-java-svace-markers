@@ -54,11 +54,9 @@ final class RunnerServer implements AutoCloseable {
         this.ownsRunner = ownsRunner;
     }
 
-    // A four-argument start(host, port, cache, token) stood here until 2026-08-06, opening a
-    // LocalRunner of its own and reading MAVEN_MIRROR_URL on the way. Nothing called it: Runner.main
-    // builds the LocalRunner itself (it also needs the git host) and passes it to the overload below,
-    // and both test sites use the six-argument one. The mirror wiring is NOT dead with it —
-    // Runner.main reads MAVEN_MIRROR_URL live and hands it to LocalRunner.open.
+    // NO OVERLOAD HERE OPENS A LocalRunner OF ITS OWN. Runner.main builds it — it also needs the git
+    // host — reads MAVEN_MIRROR_URL live, and passes the result in; a start() that opened a second one
+    // would give the server a runner wired from a different reading of the environment.
 
     /**
      * The seams, injectable — so the suite can prove the routes, the reply shapes and the build

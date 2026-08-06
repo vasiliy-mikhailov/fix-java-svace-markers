@@ -125,9 +125,8 @@ final class Workspace {
     /**
      * Where a bare {@code owner/name} lives — {@link CloneUrl#DEFAULT_HOST} unless a deployment moved it.
      *
-     * <p>A FIELD and not a constant, which is the second gap in one word: the host used to be spelled
-     * into the clone URL, so a Guild with gitlab.company.internal could not point this pipeline at their
-     * code with any setting at all.
+     * <p>A FIELD and not a constant. Spell the host into the clone URL instead and a Guild with
+     * gitlab.company.internal cannot point this pipeline at their code with any setting at all.
      */
     private final String gitHost;
 
@@ -191,8 +190,8 @@ final class Workspace {
      * URL is the one place it must not be. {@link CloneUrl} refuses a URL that carries one, so that
      * property cannot be undone from the outside either.
      *
-     * <p>It used to be {@code "https://github.com/" + repo + ".git"}, one line, and that line was the
-     * whole reason this pipeline could analyse GitHub and nothing else.
+     * <p>NOT {@code "https://github.com/" + repo + ".git"}. One line like that is the whole difference
+     * between a pipeline that analyses any git host and one that analyses GitHub and nothing else.
      */
     CloneUrl.Resolved cloneUrl(String repo) {
         return CloneUrl.of(repo, gitHost);

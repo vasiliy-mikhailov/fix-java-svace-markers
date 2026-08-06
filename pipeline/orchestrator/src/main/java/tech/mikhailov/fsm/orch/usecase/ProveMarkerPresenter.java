@@ -6,10 +6,10 @@ import tech.mikhailov.fsm.orch.domain.MarkerId;
 /**
  * THE OUTPUT BOUNDARY of {@link ProveMarker} — declared here, implemented outside.
  *
- * <p>It exists so the use case has no logger. Every {@code log.info} the prove chain used to end with
- * is a decision about how a run REPORTS itself, which is a delivery concern; leaving them inline is
- * what forced the policy to import SLF4J, and an interactor that can only be exercised with a logging
- * framework configured is one nobody writes a table test for.
+ * <p>It exists so the use case has no logger. Every {@code log.info} a prove chain would end with is a
+ * decision about how a run REPORTS itself, which is a delivery concern; inline, they make the policy
+ * import SLF4J, and an interactor that can only be exercised with a logging framework configured is
+ * one nobody writes a table test for.
  */
 public interface ProveMarkerPresenter {
 

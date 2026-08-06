@@ -3,10 +3,9 @@ package tech.mikhailov.fsm.lib;
 /**
  * Whitespace, for deciding whether a fetched SOURCE FILE has anything in it.
  *
- * <p>THIS CLASS USED TO BE CALLED {@code JsText} AND ITS COMMENT USED TO SAY "JavaScript's idea of
- * whitespace". That justification was retired on 2026-08-05 along with the rest of the JS emulation,
- * and the set survived the retirement — but for a reason that has nothing to do with JavaScript, and
- * the old name asserted the wrong one. What follows is the reason it actually has.
+ * <p>THE SET IS NOT "JavaScript's idea of whitespace" AND MUST NOT BE JUSTIFIED AS SUCH — nothing
+ * here emulates JavaScript, and a set defended by a language this repository does not use is a set
+ * the next reader deletes. Its reason is below.
  *
  * <p>THE REQUIREMENT. {@link tech.mikhailov.fsm.nodes.RecordOutcome} asks whether the fetched source is
  * blank and answers "source fetch returned nothing" when it is. {@code String.isBlank()} reads almost
@@ -102,10 +101,9 @@ public final class SourceText {
         return s.substring(from, to);
     }
 
-    // stripSpace() lived here until 2026-08-06 to unwrap the GitHub contents API's 60-column base64.
-    // Its one caller — BuildReproduceInput.decode — did not need it: Values.base64ToUtf8 skips every
-    // character outside the alphabet on its own, so the unwrap was a full copy of a source file for no
-    // change in the decoded bytes. Deleted with the call. If a caller ever does need "every space
-    // character removed", write it against isSpace() there and say what it is for; a general-purpose
-    // stripper in lib is what let this one outlive its reason.
+    // NO GENERAL-PURPOSE "remove every space character" HELPER BELONGS HERE. Nothing needs one:
+    // Values.base64ToUtf8 skips every character outside the alphabet on its own, so unwrapping the
+    // GitHub contents API's 60-column base64 before decoding it copies a whole source file for no
+    // change in the decoded bytes. A caller that really does need it writes it against isSpace() at
+    // its own site and says what it is for — that is what stops the next one outliving its reason.
 }

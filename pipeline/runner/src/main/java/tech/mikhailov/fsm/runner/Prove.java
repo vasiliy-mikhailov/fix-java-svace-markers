@@ -80,9 +80,9 @@ final class Prove {
         }
         // EVERY VALUE THAT LEAVES THIS JVM AS BYTES, checked once and before the clone.
         //
-        // `test_path` is the sharp one: `ws.resolve(testPath)` used to throw InvalidPathException
-        // straight out of runTest, RunnerServer's catch-all turned the stack trace into {"ok": false},
-        // and RecordOutcome recorded an infra_error and RETRIED — forever, because the retry resolves
+        // `test_path` is the sharp one: unchecked, `ws.resolve(testPath)` throws InvalidPathException
+        // straight out of runTest, RunnerServer's catch-all turns the stack trace into {"ok": false},
+        // and RecordOutcome records an infra_error and RETRIES — forever, because the retry resolves
         // the same path in the same JVM.
         //
         // The other four are worse in a quieter way. A command line is encoded with the SAME charset and
@@ -254,10 +254,10 @@ final class Prove {
      * unpatched code and report {@code green_passed: false}, which is a verdict on the fix rather than a
      * complaint about the request.
      *
-     * <p>It used to be {@code body.fix_edits || []}, which refused only the TRUTHY non-arrays and let
-     * {@code 0}, {@code false} and {@code ""} through as "no edits" — the exact silent-green-build the
-     * paragraph above exists to prevent, reachable from three more values. Absence is now the only
-     * thing that means none.
+     * <p>ABSENCE IS THE ONLY THING THAT MEANS NONE. Do not write this as
+     * {@code body.fix_edits || []}: that refuses only the TRUTHY non-arrays and lets {@code 0},
+     * {@code false} and {@code ""} through as "no edits" — the silent green build the paragraph above
+     * exists to prevent, reachable from three more values.
      */
     private static List<?> editsOf(Object body) {
         Object edits = Json.get(body, "fix_edits");

@@ -32,12 +32,12 @@ import tech.mikhailov.fsm.lib.SuspicionStatus;
  * marker somebody is currently looking at has not been settled by anyone — charging it 45 minutes of
  * human-equivalent work would inflate exactly the figure this file exists to keep honest.
  *
- * <p>WHICH OUTCOMES COST WHAT IS NOT DECIDED HERE ANY MORE, and that is the only structural change to
- * a file whose whole claim is that it is a port. The three sets used to be eleven raw string literals —
+ * <p>WHICH OUTCOMES COST WHAT IS NOT DECIDED HERE, and that is the only structural departure in a file
+ * whose whole claim is that it is a port. Do not write the three sets out as raw string literals —
  * {@code Set.of("pr_ready", "pr_rejected", "needs_review", "fix_failed")} and two more — three modules
- * away from the enum that defines those spellings, so a ninth {@code MarkerState} was a state no set
- * contained: counted as SETTLED, charged the baseline, and quietly inflating the FTE multiple the
- * project is judged on. The judgement now lives on the state ({@link MarkerState.Work},
+ * away from the enum that defines those spellings: a ninth {@code MarkerState} is then a state no set
+ * contains, counted as SETTLED, charged the baseline, and quietly inflating the FTE multiple the
+ * project is judged on. The judgement lives on the state ({@link MarkerState.Work},
  * {@link SuspicionStatus.Work}) where the compiler makes a new constant declare it, and this file reads
  * the derived {@link java.util.EnumSet}s. The MINUTES stay here, because they are the arguable part.
  *
@@ -298,9 +298,8 @@ public final class WorkModel {
             // `proving` is the orchestrator's claim token — see SuspicionDao.STATUS_PROVING, which is
             // explicit that it is not an outcome and is erased on every restart. Charging it would also
             // move the ETA, which divides observed machine time by the settled count. Read straight off
-            // the enum: there was a `WorkModel.UNSETTLED` re-export of this exact object here until
-            // 2026-08-06, whose own javadoc's defence — "a Set that is re-exported rather than
-            // re-spelled cannot drift" — is equally true of not re-exporting it.
+            // the enum, with no `WorkModel.UNSETTLED` re-export in between: "a Set that is re-exported
+            // rather than re-spelled cannot drift" is equally true of not re-exporting it.
             } else if (SuspicionStatus.UNSETTLED.contains(queued)) {
                 continue;
             }

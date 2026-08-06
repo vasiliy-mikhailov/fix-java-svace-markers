@@ -14,15 +14,15 @@ import org.springframework.core.env.MutablePropertySources;
 /**
  * The one rule about H2's TCP server: it is never an open, unauthenticated write port.
  *
- * <p>ORIGIN (2026-07-29). {@code application.yml} shipped {@code AUTO_SERVER=TRUE} on the default
- * datasource URL. H2 implements that setting by starting a TCP server with {@code -tcpAllowOthers}
- * (see {@code Database.startServer}), which binds the WILDCARD address: {@code lsof} showed the
- * orchestrator listening on {@code *:50159}, IPv6 wildcard and not loopback-bound, and
- * {@code data/fsm.lock.db} advertised the port to anything that could read the directory. The
- * credentials were {@code sa} with an empty password and the access was read AND write, in front of 282
- * markers, their evidence and their drafted PR bodies.
+ * <p>WHAT {@code AUTO_SERVER=TRUE} ON THE DATASOURCE URL ACTUALLY DOES. H2 implements it by starting
+ * a TCP server with {@code -tcpAllowOthers} (see {@code Database.startServer}), which binds the
+ * WILDCARD address — {@code lsof} shows the orchestrator listening on {@code *:5xxxx}, IPv6 wildcard
+ * and not loopback-bound — and {@code data/fsm.lock.db} advertises the port to anything that can read
+ * the directory. The credentials are {@code sa} with an empty password and the access is read AND
+ * write, in front of every marker, its evidence and its drafted PR bodies. Never ship that setting on
+ * the default URL.
  *
- * <p>THE REASON IT WAS THERE IS ALSO REAL, so this is not a deletion. Without AUTO_SERVER, H2 takes an
+ * <p>THE REASON TO WANT IT IS ALSO REAL, so this is not a ban. Without AUTO_SERVER, H2 takes an
  * exclusive lock on the file and the only way to read the table of a running 26-hour prove is to stop
  * it. Three things together keep the route and close the port:
  * <ol>
@@ -48,9 +48,9 @@ import org.springframework.core.env.MutablePropertySources;
  * And a refusal has to land before {@code spring.sql.init} has opened the file, or the guard is
  * reporting a port that is already listening.
  *
- * <p>IT READS THE RESOLVED URL, not only its own flag. The line that caused the outage was
- * {@code AUTO_SERVER=TRUE} typed into the YAML by hand; a guard that only knew about
- * {@code FSM_DB_AUTO_SERVER} would have let exactly that through again.
+ * <p>IT READS THE RESOLVED URL, not only its own flag. The dangerous form is {@code AUTO_SERVER=TRUE}
+ * typed into the YAML by hand; a guard that only knew about {@code FSM_DB_AUTO_SERVER} would let
+ * exactly that through.
  */
 public class H2Exposure implements EnvironmentPostProcessor, Ordered {
 

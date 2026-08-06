@@ -313,10 +313,10 @@ public class DashboardService {
      *
      * <p>A SUBSTRING RULE, so that this class does not carry a second copy of {@code BatchConfig}'s job
      * names: {@code prove}, {@code proveJob} and {@code markerProver} all light the prover panel.
-     * {@code "prover"} was spelled out beside {@code "prove"} until 2026-08-06 to say that both
-     * spellings count — but every string containing {@code prover} contains {@code prove}, so the
-     * second test could never run. Both spellings still classify; the rule that makes them is the
-     * shorter one, and it is pinned by name in
+     * Do not spell {@code "prover"} out beside {@code "prove"} to say that both spellings count: every
+     * string containing {@code prover} contains {@code prove}, so the second test can never run and it
+     * reads as a rule that is doing work. Both spellings classify off the shorter one, which is pinned
+     * by name in
      * {@code ABadReadMustNotBlankThePageTest.theFlowIsRecognisedBySubstringAndNotByEcho}.
      */
     static String flowOf(String jobName) {

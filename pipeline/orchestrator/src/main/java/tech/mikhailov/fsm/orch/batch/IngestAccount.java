@@ -94,13 +94,12 @@ public record IngestAccount(String mode, long added, long kept, long absent, Lis
     /**
      * The same account as JSON-shaped values, for the endpoint that serves it.
      *
-     * <p>{@code written} IS NOT A FIELD OF THIS RECORD AND IS STILL A KEY HERE. It was a component
-     * until 2026-08-06, documented in its own {@code @param} as "rows inserted, which equals
-     * {@code added}" — and {@code IngestTasklet} did pass {@code added} for both, so it was one number
-     * carried twice, in a record whose whole job is to be believed at 3 a.m. The COMPONENT is gone;
-     * the KEY stays, because it is on an answer this service already gives and dropping it would break
-     * a reader for a tidiness nobody outside this file can see. If a day ever comes when an insert can
-     * fail without lowering {@code added}, this is the line that has to learn the difference.
+     * <p>{@code written} IS NOT A FIELD OF THIS RECORD AND IS STILL A KEY HERE. Do not make it a
+     * component again: it would be "rows inserted, which equals {@code added}", one number carried
+     * twice in a record whose whole job is to be believed at 3 a.m. The KEY stays, because it is on an
+     * answer this service already gives and dropping it breaks a reader for a tidiness nobody outside
+     * this file can see. If a day ever comes when an insert can fail without lowering {@code added},
+     * this is the line that has to learn the difference.
      */
     public Map<String, Object> toMap() {
         Map<String, Object> m = new LinkedHashMap<>();

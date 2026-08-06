@@ -306,8 +306,9 @@ public final class CritiqueIndex {
     /**
      * THE SENTENCE, and there is a different one for every state.
      *
-     * <p>This method is the feature. "Off" and "empty" produce different words here, and a browser test
-     * asserts that they do — see {@code FeedbackOffAndFeedbackCleanNeverLookAlikeTest}.
+     * <p>This method is the feature. Every state produces different words here, and
+     * {@code CritiqueIndexTest.everyStateSaysSomethingDifferent} fails when any two of them collide —
+     * OFF is "you have no evidence" and CLEAN is "you have evidence and it is good news".
      */
     public String headline() {
         refreshIfDue();
@@ -580,10 +581,10 @@ public final class CritiqueIndex {
                     }
                 }
             }
-            // END OF FILE INSIDE AN OVER-LONG LINE, which is the case that used to cost everything: no
-            // newline ever arrives, so `offset` never moves and the whole file is read again on the
-            // next poll, and the one after that. An unterminated line this long is not an append in
-            // flight — the store writes one record under one lock — so it is stepped over.
+            // END OF FILE INSIDE AN OVER-LONG LINE, which is the case that costs everything if it is
+            // not handled: no newline ever arrives, so `offset` never moves and the whole file is read
+            // again on the next poll, and the one after that. An unterminated line this long is not an
+            // append in flight — the store writes one record under one lock — so it is stepped over.
             //
             // `!budgetSpent` is what makes this END OF FILE rather than "the loop stopped". Breaking
             // for budget leaves the same line open on purpose, and running this block on that exit
@@ -596,9 +597,9 @@ public final class CritiqueIndex {
         }
         oversized += skipped;
         // COMPLETE MEANS THE PROJECTION REFLECTS THE WHOLE FILE. A pass that spent its budget has more
-        // to do; a pass that threw a record away is missing one. `consumed < BUDGET_BYTES` used to
-        // stand in for "reached the end", which is true right up until a pass consumes NOTHING — and
-        // then it reported a full total over a file it had not folded a record of.
+        // to do; a pass that threw a record away is missing one. Do not stand `consumed < BUDGET_BYTES`
+        // in for "reached the end": it is true right up until a pass consumes NOTHING, and then it
+        // reports a full total over a file it has not folded a record of.
         return !budgetSpent && skipped == 0;
     }
 

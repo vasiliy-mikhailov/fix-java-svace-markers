@@ -15,7 +15,7 @@ import java.util.Map;
  *   <li>{@link #kind()} — a short, stable, machine-comparable slug. It is what a later processor groups
  *       by, so it must NOT contain a class name, a file, a count or anything else that varies per
  *       marker. {@code excessive_mocking} is a kind; {@code 9 stub/mock setups in WidgetFsmProofTest}
- *       is not.</li>
+ *       — naming a proof test this pipeline generated in the repository under test — is not.</li>
  *   <li>{@link #text()} — the sentence a human reads, verbatim from whatever produced it. It is what
  *       makes the count believable: a kind with no quotable evidence under it is a number nobody will
  *       act on.</li>

@@ -99,14 +99,11 @@ public final class Llm {
     /**
      * A field spliced INTO A PROMPT, with an absent one named rather than left blank.
      *
-     * <p>THIS REPLACED {@code Llm.concat}, WHICH WROTE THE WORD "undefined" INTO A PROMPT SENT TO THE
-     * MODEL. That was JavaScript's {@code '' + undefined} showing through a Java port, and it told the
-     * model that a field's value was the six characters "undefined" — a claim about the marker that
-     * nobody made. Retired on 2026-08-05 with the rest of the JS emulation; see
-     * {@code harness/README.md}, "Re-baselines".
+     * <p>NEVER SPLICE IN A BARE {@code ""}, AND NEVER A WORD THAT COULD BE READ AS THE VALUE. A prompt
+     * that says a field's value is some marker word makes a claim about the marker that nobody made.
      *
-     * <p>WHY NOT SIMPLY EMPTY, which is the other obvious answer. Because the prompts were read before
-     * choosing, and a bare label is worse than an explicit absence in every one of them. PrMaker's
+     * <p>WHY NOT SIMPLY EMPTY, which is the other obvious answer. A bare label is worse than an
+     * explicit absence in every one of these prompts. PrMaker's
      * template says <i>"You are the PR curator for open-source contributions to %s."</i> — empty makes
      * that "contributions to ." , a broken sentence a model will fill in for itself, and the whole
      * decision it is being asked for is repo-specific. {@code FILE: %s} with nothing after it reads as a
@@ -116,8 +113,7 @@ public final class Llm {
      *
      * <p>So an absent field says what it is: {@code (repository not recorded)}. The model can act on
      * that — it can decline for want of the thing — and a human reading the transcript learns which
-     * field the caller failed to pass, which is what the old "undefined" was reaching for and only
-     * half achieved.
+     * field the caller failed to pass.
      */
     public static String orMissing(Object v, String label) {
         String s = Values.text(v);
@@ -127,15 +123,13 @@ public final class Llm {
     /**
      * The endpoint's base URL, with an unset one spelled so the failure names the variable.
      *
-     * <p>NOT A PROMPT, and it needed its own answer. {@code Llm.concat} used to render an unset
-     * {@code QWEN_BASE_URL} as the word {@code undefined}, giving
-     * {@code undefined/chat/completions} — greppable, which was the argument for it, but only if you
-     * already know that "undefined" is how this codebase spells "missing". Rendering it EMPTY is
-     * worse: {@code /chat/completions} looks like a relative-path bug somewhere else entirely, which
-     * is a maintainer's afternoon.
+     * <p>NOT A PROMPT, and it needs its own answer. Do not render an unset one EMPTY:
+     * {@code /chat/completions} looks like a relative-path bug somewhere else entirely, which is a
+     * maintainer's afternoon. Do not render it as a bare marker word either — that only helps a reader
+     * who already knows how this codebase spells "missing".
      *
      * <p>So the marker names the environment variable. The request still fails — there is no host to
-     * send it to and there never was — but it fails with {@code QWEN_BASE_URL} in the text, which is
+     * send it to — but it fails with {@code QWEN_BASE_URL} in the text, which is
      * both the diagnosis and the fix. The shells catch it and write it into the row.
      */
     public static String baseUrl(String configured) {
@@ -152,9 +146,8 @@ public final class Llm {
      * point at different bugs. The distinction survives because {@code Json.parse} keeps an explicit
      * null as a PRESENT key, so {@code containsKey} can still see what {@code get} cannot.
      *
-     * <p>The absent spelling used to be the JS word {@code undefined}. It is now {@code (absent)}: the
-     * same distinction, in a word that describes itself and that no reader will mistake for a value the
-     * pipeline actually stored.
+     * <p>The absent spelling is {@code (absent)}: a word that describes itself, and that no reader will
+     * mistake for a value the pipeline actually stored. Keep the parentheses.
      */
     public static String presence(Object container, String key) {
         Object v = Json.get(container, key);
@@ -175,12 +168,11 @@ public final class Llm {
      * @param temperature 0 for every reply that is BRANCHED ON — the skeptic and the verdict — because
      *                    a certification should not vary run to run, and 0.2 only for a reply that
      *                    nothing routes off. The test of "prose" is not whether the call returns any,
-     *                    it is whether anything in the reply is read by code afterwards. This javadoc
-     *                    used to say "0.2 for the two that write prose" and count {@code Verdict}
-     *                    among them; {@code Verdict} produces {@code kind}, which lands in the
+     *                    it is whether anything in the reply is read by code afterwards. Do not count
+     *                    {@code Verdict} as prose: it produces {@code kind}, which lands in the
      *                    {@code verdict_kind} column and picks the marker's {@code SuspicionStatus},
-     *                    and re-proving 20 settled markers against an unrestarted container moved 2 of
-     *                    them. One site is still 0.2 — {@code PrMaker}, whose single call writes prose
+     *                    and sampling it moves real verdicts on re-proves of unchanged input. One site
+     *                    is still 0.2 — {@code PrMaker}, whose single call writes prose
      *                    AND returns a branched-on {@code decision}; that is a known defect whose
      *                    repair is splitting the call. ENFORCED, not advisory:
      *                    {@code ACertificationDoesNotVaryRunToRunTest} pins all three, and fails if a

@@ -5,15 +5,15 @@ import tech.mikhailov.fsm.lib.SuspicionStatus;
 /**
  * THE TWO GUARDED MOVES A MARKER'S ROW CAN MAKE, and the one place either of them is written down.
  *
- * <p>WHY THIS TYPE EXISTS. Both of these rules used to be string constants typed into a WHERE clause in
+ * <p>WHY THIS TYPE EXISTS. Do not leave these rules as string constants typed into a WHERE clause in
  * {@code SuspicionDao} — {@code AND status = 'proving'} on a release, {@code AND status = 'new'} on a
- * park — and nowhere else. That is a rule, not a lookup, and it was invisible from the port
- * ({@code MarkerRepository}) that promises it. The cost was measured rather than theorised: two
- * use-case tests injected hand-written doubles through that port, neither double held a status, so both
- * performed a release on an already-settled marker and reported success. The database refuses it. The
- * caller BRANCHES on the difference — a zero from a release means "something else settled this marker,
- * so this failure says nothing about it" — so the doubles were green over a branch the running system
- * never takes. See {@code MarkerRepositoryContract}, which now holds both implementations to this enum.
+ * park — and nowhere else. That is a rule, not a lookup, and there it is invisible from the port
+ * ({@code MarkerRepository}) that promises it. The cost is measurable: a hand-written double injected
+ * through that port holds no status, so it performs a release on an already-settled marker and reports
+ * success where the database refuses it. The caller BRANCHES on the difference — a zero from a release
+ * means "something else settled this marker, so this failure says nothing about it" — so the double is
+ * green over a branch the running system never takes. See {@code MarkerRepositoryContract}, which holds
+ * both implementations to this enum.
  *
  * <p>WHAT IT DOES NOT DO: adjudicate. {@link #permits} answers "is this move legal from that status",
  * which is a rule and is the same answer everywhere. WHETHER a given row is in that status at the

@@ -10,9 +10,9 @@ package tech.mikhailov.fsm.orch.client;
  *       read-only clone the prove already makes. It needs no host-specific API, spends no rate limit,
  *       and is the whole reason this pipeline can analyse a GitLab, a Gitea or a plain git server.</li>
  *   <li>{@link GithubSourceClient} ({@code github}) makes ONE request to the GitHub contents API and
- *       nothing more. THE REQUEST IS WRITTEN OUT IN THAT CLASS, once — it used to be copied here as
- *       well, and the two copies had already drifted apart on the credential and on how the retry
- *       budget is spelled, which is the whole argument against a second copy of a wire format. It is
+ *       nothing more. THE REQUEST IS WRITTEN OUT IN THAT CLASS, once, and must not be restated here:
+ *       a second copy of a wire format drifts on exactly the details nobody re-checks — the
+ *       credential, and how the retry budget is spelled. It is
  *       addressed as {@code owner/name} and REFUSES anything else, loudly — a GitLab answers that URL
  *       with a 404, and a 404 here is a fact about the marker, so it would be recorded as "the file
  *       has moved or gone" about a repository where nothing moved.</li>
@@ -26,12 +26,11 @@ package tech.mikhailov.fsm.orch.client;
  * that node already handles every awkward shape: a {@code content} that is not a string, a path that
  * resolved to a directory and came back as an array, an empty file.
  *
- * <p>THERE IS NO {@code Connection: close} ON THESE CALLS ANY MORE, and this paragraph used to say
- * there was — "not decoration: a client that keeps them alive runs the shared model front end and this
- * one out of sockets". The stages still SET the header; {@link HttpTransport} skips it, because
- * {@code java.net.http} refuses to send the connection-management headers it owns, and one pooled
- * client does not create the socket exhaustion the header was fixing. The reason survives as a rule
- * about clients, not as a header: do not open a second pool at the model front end.
+ * <p>NO {@code Connection: close} GOES OUT ON THESE CALLS. The stages still SET the header;
+ * {@link HttpTransport} skips it, because {@code java.net.http} refuses to send the
+ * connection-management headers it owns, and one pooled client does not create the socket exhaustion
+ * that header answers. The rule it stood for is about clients rather than headers, and it still
+ * holds: do not open a second pool at the model front end.
  */
 public interface SourceClient {
 
@@ -74,9 +73,9 @@ public interface SourceClient {
      *   <li>a 200 whose body is not JSON.</li>
      * </ul>
      *
-     * <p>RETRY IS AN IMPLEMENTATION CHOICE, and the two implementations make it differently. This
-     * paragraph used to state a budget — "implementations own the retry budget (3 attempts, 3s apart)"
-     * — as though it were part of the contract, and the DEFAULT implementation has none:
+     * <p>RETRY IS AN IMPLEMENTATION CHOICE, and the two implementations make it differently. Do not
+     * state a budget here as though it were part of the contract — the DEFAULT implementation has
+     * none:
      * {@link GithubSourceClient} retries transport failures, 429 and 5xx (see its own javadoc for the
      * numbers, which are configuration), while {@link CheckoutSourceClient} makes ONE call to its
      * reader and maps the answer. That is deliberate for the in-process reader, and it is a genuine

@@ -75,9 +75,9 @@ public class BatchTables {
      * The prefix, known to be an identifier because this object exists.
      *
      * <p>That is the contract the three consumers rely on, and it is why they take this type rather
-     * than the {@code String} they used to take: a constructor that cannot complete on a bad value is
-     * a guarantee the compiler helps carry, where four separate {@code @Value} injections were four
-     * separate chances to skip the check.
+     * than a {@code String}: a constructor that cannot complete on a bad value is a guarantee the
+     * compiler helps carry, where four separate {@code @Value} injections are four separate chances to
+     * skip the check.
      */
     public String prefix() {
         return prefix;

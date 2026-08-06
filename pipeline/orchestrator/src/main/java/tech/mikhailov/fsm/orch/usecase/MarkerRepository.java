@@ -49,7 +49,7 @@ public interface MarkerRepository {
      * @return the streak length INCLUDING this failure. The increment is atomic; the read-back is a
      *         second statement, so two provers striking one marker at the same instant can both see the
      *         higher total — one strike of imprecision on a ceiling, never a lost verdict and never a
-     *         spent attempt. Stated because it was previously claimed to be one statement and is not.
+     *         spent attempt. Stated because it is two statements and reads like one.
      */
     long strike(MarkerId marker, InfraReason reason);
 

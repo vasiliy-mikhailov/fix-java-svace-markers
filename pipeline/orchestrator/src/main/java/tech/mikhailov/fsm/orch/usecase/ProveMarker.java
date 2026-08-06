@@ -41,14 +41,11 @@ public final class ProveMarker {
     /**
      * @param marker the marker this run is holding, already claimed
      *
-     *               <p>A BARE ARGUMENT, not a request record. There was a one-component
-     *               {@code ProveMarkerRequest} here until 2026-08-06, justified by "the boundary is
-     *               where the next thing this use case needs will arrive — a run id, a deadline".
-     *               Nothing had arrived; it wrapped one marker across one production call site and
-     *               three tests, which is the speculative generality this slice argues against
+     *               <p>A BARE ARGUMENT, not a one-component request record. Wrapping one marker for
+     *               one production call site is the speculative generality this slice argues against
      *               everywhere else. Introducing the record on the day a second input DOES arrive is a
-     *               compile error at every driver — the whole benefit it was supposed to buy — and
-     *               costs one commit at the point it is actually needed.
+     *               compile error at every driver — the whole benefit such a record buys — and costs
+     *               one commit at the point it is actually needed.
      */
     public ProveOutcome prove(Marker marker) {
         if (marker == null) {

@@ -74,10 +74,10 @@ public enum MarkerState {
      * WHAT SETTLING THIS MARKER BY HAND WOULD HAVE TAKEN — the judgement the effort model charges
      * against, and it lives HERE because it is a fact about the state.
      *
-     * <p>It used to live three modules away as {@code Set.of("pr_ready", "pr_rejected", ...)} in the
-     * orchestrator's {@code WorkModel}, where a ninth state was simply absent from every set: counted
-     * as settled, charged the baseline, and silently flattering the one number the project is judged
-     * on. As a mandatory constructor argument the same omission is a compile error.
+     * <p>Do not move it back out into sets of state names — {@code Set.of("pr_ready", ...)} — in the
+     * orchestrator or anywhere else. A ninth state is then simply absent from every set: counted as
+     * settled, charged the baseline, silently flattering the one number the project is judged on. As a
+     * mandatory constructor argument here, the same omission is a compile error.
      *
      * <p>The MINUTES are not here and must not come here. What a state cost is arguable and belongs on
      * the panel that prints the arithmetic back to the reader; WHICH KIND of work it was is not

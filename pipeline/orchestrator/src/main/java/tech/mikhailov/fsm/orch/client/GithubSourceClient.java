@@ -30,10 +30,10 @@ import tech.mikhailov.fsm.runner.CloneUrl;
  * empty file. ({@code Connection: close} is one the JDK now manages itself; see
  * {@link HttpTransport} for why the transport drops it rather than throwing on it.)
  *
- * <p>THIS IS THE ONLY COPY OF THAT REQUEST. {@link SourceClient} carried a second one until
- * 2026-08-06 and the two had already drifted: the interface said {@code $GIT_TOKEN}, which is right —
- * {@code Secrets.gitToken} reads {@code GIT_TOKEN} and falls back to {@code GITHUB_TOKEN} — and this
- * copy still named the fallback as though it were the setting.
+ * <p>THIS IS THE ONLY COPY OF THAT REQUEST, and {@link SourceClient} must not carry a second: two
+ * copies drift over exactly the details that are hard to check by eye. The setting is
+ * {@code GIT_TOKEN} — {@code Secrets.gitToken} reads it and falls back to {@code GITHUB_TOKEN} — and a
+ * copy that names the fallback as though it were the setting reads as correct.
  *
  * <p>THE RETRY BUDGET IS THIS CLASS'S, and not a promise the interface makes for every implementation.
  * Three attempts, three seconds apart, both configuration: transport failures, 429 and 5xx are
@@ -163,10 +163,9 @@ public class GithubSourceClient implements SourceClient {
                 .header("User-Agent", USER_AGENT)
                 .header("Accept", "application/vnd.github+json")
                 // PrepProver's, CALLED rather than copied: this header and the branch lookup's must
-                // agree, and the two previously-separate copies had already drifted — this one still
-                // carried a comment describing behaviour it no longer had. An absent token names the
-                // environment variable, so the 401 that follows says its own cause instead of looking
-                // like a revoked credential. See PrepProver.authorization for why not an empty Bearer.
+                // agree, and separate copies drift. An absent token names the environment variable, so
+                // the 401 that follows says its own cause instead of looking like a revoked
+                // credential. See PrepProver.authorization for why not an empty Bearer.
                 .header("Authorization", PrepProver.authorization(token))
                 .GET()
                 .build();

@@ -60,10 +60,9 @@ final class Text {
      * read a key that was not there. When the CONTAINER is available, use {@link #field} instead — it
      * can tell a missing key from a null one, and they stay two different words.
      *
-     * <p>THE WORD USED TO BE {@code undefined}, until 2026-08-05. It came from the JavaScript
-     * implementation this service replaced and it named the language rather than the situation; a
-     * reader who did not already know that had no way to tell it from a value some caller had really
-     * sent. {@code (absent)} says what happened, and the parentheses say it is this service talking.
+     * <p>THE WORD IS {@code (absent)} AND NOT {@code undefined}: a word that names a language rather
+     * than the situation is one a reader cannot tell from a value some caller really sent.
+     * {@code (absent)} says what happened, and the parentheses say it is this service talking.
      */
     static String string(Object v) {
         return v == null ? "(absent)" : Values.text(v);

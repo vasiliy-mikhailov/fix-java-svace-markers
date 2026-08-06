@@ -12,18 +12,20 @@ import tech.mikhailov.fsm.runner.CloneUrl;
 /**
  * The five credentials the pipeline needs, read from the ENVIRONMENT and from nowhere else.
  *
- * <p>{@code QWEN_BASE_URL}, {@code QWEN_API_KEY}, {@code QWEN_MODEL}, {@code GIT_TOKEN} (formerly
+ * <p>{@code QWEN_BASE_URL}, {@code QWEN_API_KEY}, {@code QWEN_MODEL}, {@code GIT_TOKEN} (or
  * {@code GITHUB_TOKEN}, still read), {@code SVACE_BASE_URL} (and {@code SVACE_TOKEN}). None of them is
  * bound from configuration, because a bound property is one that ends up in a committed yaml file. There
  * is ONE source of truth for each of them and this class is it: a second reader anywhere is a second
  * answer to "what does unset mean", and they drift silently.
  *
- * <p>AN UNSET VARIABLE IS PASSED THROUGH, NOT DEFAULTED. That is deliberate and it is the engine's
- * contract: an unset {@code QWEN_BASE_URL} produces a call to {@code undefined/chat/completions}, which
- * an operator can grep for, where a silently empty base URL looks like a relative-path bug somewhere
- * else entirely. An unset git token produces the header {@code Bearer undefined}, which GitHub answers
- * with a visible 401, where {@code Bearer } with nothing after it looks like a request nobody meant to
- * authenticate. See {@link Llm#text} and {@code PrepProver.Request}.
+ * <p>AN UNSET VARIABLE IS PASSED THROUGH AS null, NOT DEFAULTED TO "". That is deliberate and it is
+ * the engine's contract: the engine renders the absence as the NAME of the missing variable — an
+ * unset {@code QWEN_BASE_URL} calls {@code (QWEN_BASE_URL is not set)/chat/completions} and an unset
+ * git token sends {@code Bearer (GITHUB_TOKEN is not set)}, each of which carries its own diagnosis.
+ * Flatten either to empty here and that is lost: {@code /chat/completions} looks like a relative-path
+ * bug somewhere else entirely, and {@code Bearer } with nothing after it is the one rendering GitHub
+ * does NOT refuse — it drops the caller onto the anonymous quota instead. See {@link Llm#baseUrl} and
+ * {@link tech.mikhailov.fsm.nodes.PrepProver#authorization}.
  *
  * <p>THE ONE PLACE THIS CLASS DOES MORE THAN READ is {@link #gitToken()}, which reads two names in
  * order. That is not a second answer to "what does unset mean" — it is one answer over two spellings of
@@ -52,7 +54,7 @@ public class Secrets {
 
     /**
      * Where the model lives, through {@link Llm.Endpoint#of(Object)} — the engine's own reader, so an
-     * unset variable becomes null here exactly as it became {@code undefined} in the Code node.
+     * unset variable arrives here as null and is spelled by the engine, not by this class.
      */
     public Llm.Endpoint qwen() {
         Map<String, Object> env = new LinkedHashMap<>();

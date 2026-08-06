@@ -294,10 +294,9 @@ public final class FeedbackStore implements RecordSink {
      * HOW MANY APPENDS THIS STORE HAS SWALLOWED, ACROSS EVERY CALLER.
      *
      * <p>A TOTAL, AND ONLY EVER A TOTAL. It is the operator's number — "this mount has been refusing
-     * writes for an hour" — and it must not be read as an answer to one call. It used to be:
-     * {@code CommentJournal} took it either side of its own append and reported the difference, which
-     * works for one thread and inverts for two. {@link #append}'s return is the per-call answer now,
-     * and this counter has no other reader.
+     * writes for an hour" — and it must not be read as an answer to one call. Taking it either side of
+     * an append and reporting the difference works for one thread and inverts for two.
+     * {@link #append}'s return is the per-call answer, and this counter has no other reader.
      *
      * <p>The swallow itself stays. {@link #append} never throwing is the rule this class is built
      * around: the harvester is a diagnostic bolted onto a chain whose whole design is that every

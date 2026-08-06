@@ -74,8 +74,6 @@ public final class JudgingCall implements Llm.Http {
     /** @see #SKEPTIC */
     public static final String VERDICT_WRITER = "verdict writer";
 
-    /** A throw with nothing quotable still has to say something a human can act on. */
-
     private final String marker;
     private final String stage;
     private final Llm.Http transport;

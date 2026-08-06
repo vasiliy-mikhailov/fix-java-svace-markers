@@ -53,9 +53,9 @@ import tech.mikhailov.fsm.lib.SuspicionStatus;
  * ARTIFACT became and is what arrives on the row; {@link SuspicionStatus} is where the BACKLOG ROW goes
  * next and is what this stage writes. {@code infra_stuck} belongs to both and means a different thing
  * in each, and {@code not-a-bug} is a state that is never a status — so the two are parsed separately,
- * from the same value, and each question is asked of the type that can answer it. Both used to be 25
- * bare string literals in this file, where an unknown one fell through a 60-line if/else chain and was
- * retired as {@code rejected} with a {@code [gap]} note: a verdict nobody made.
+ * from the same value, and each question is asked of the type that can answer it. Do not merge them
+ * back into one set of string literals: an unknown one then falls through the routing and retires as
+ * {@code rejected} with a {@code [gap]} note, which is a verdict nobody made.
  *
  * <p>STRINGS AT THE BOUNDARY, TYPES INSIDE IT. The item this node returns is compared field by field
  * against catalogues recorded from an implementation that no longer exists, so every value that crosses
@@ -183,15 +183,12 @@ public final class Verdict {
         /**
          * Read the request out of a posted body. The keys are the stage names, snake-cased.
          *
-         * <p>THIS IS WHERE "ABSENT MEANS ON" LIVES, and since 2026-08-06 it is the only place. There
-         * was a third constructor here, twelve arguments, defaulting {@code verdictEnabled} to
-         * {@code true} — on the argument that a new record component is silently {@code false} at every
-         * call site that predates it, and {@code false} here means "argue nothing", so every marker that
-         * failed to reproduce would retire unargued. The argument was sound when the component was
-         * added and had stopped applying: its only caller was the one test asserting that it defaulted
-         * to true, while all three real construction paths ({@link #of}, {@code ProveChain}, and the
-         * thirteen-argument constructor above) state the flag or compute it. The default that matters is
-         * the WIRE one, and it is {@link #verdictEnabled(Object)} below, pinned by three assertions.
+         * <p>THIS IS WHERE "ABSENT MEANS ON" LIVES, and it is the only place. Do not add a constructor
+         * overload that defaults {@code verdictEnabled} to {@code true}: every real construction path
+         * ({@link #of}, {@code ProveChain}, and the thirteen-argument constructor above) states the
+         * flag or computes it, so such an overload has only tests for callers while making it look as
+         * though the default is a Java one. The default that matters is the WIRE one, and it is
+         * {@link #verdictEnabled(Object)} below, pinned by three assertions.
          */
         public static Request of(Object body) {
             Object env = Json.get(body, "env");
@@ -243,18 +240,16 @@ public final class Verdict {
     //
     // WHY THREE OF THESE CARRY A `Verdict` PREFIX AND TWO DO NOT. Every parse record here is named for
     // the STAGE ITS VALUES CAME OFF, and so is every parse record in {@link RecordOutcome} — which
-    // reads four of the same seven items. Three names therefore landed twice in this package, private
-    // and nested each time, so the compiler was content and `grep 'record Marker'` returned two
-    // different shapes with no way to tell which file a reader was looking at. They are NOT merged and
-    // must not be: at the columns they share, the two stages coerce DIFFERENTLY AND HAVE TO. This
-    // stage's `suspicion_key`, `repo` and `file` go into a PROMPT and a LOG through
-    // {@link Llm#concat}, where a missing key has to read `undefined` and an explicit null has to read
-    // `null`, because "[gap] retired as `undefined`" and "[gap] retired as `null`" are different
-    // diagnoses. Record outcome's go into STORED COLUMNS through {@link Json#str}, where both have to
-    // read "" — a row with the literal text `undefined` in its `repo` column is a bug in the artifact.
-    // One record carrying both coercions of every shared column would hand each stage a component it
-    // must never touch. So the prefix marks exactly the three names that are shared, and says whose
-    // view of them this file holds.
+    // reads four of the same seven items. Three names are therefore shared, and the prefix says whose
+    // view of them this file holds: without it `grep 'record Marker'` returns two different shapes
+    // with no way to tell which file a reader is looking at. They are NOT merged and must not be: at
+    // the columns they share, the two stages coerce DIFFERENTLY AND HAVE TO. This stage's
+    // `suspicion_key`, `repo` and `file` go into a PROMPT through {@link Llm#orMissing}, where an
+    // absent field is NAMED — `(repository not recorded)` — so the model can decline for want of it.
+    // Record outcome's go into STORED COLUMNS through {@link Json#str}, where an absent field has to
+    // read "": a row with the literal text `(repository not recorded)` in its `repo` column is a bug
+    // in the artifact. One record carrying both coercions of every shared column would hand each stage
+    // a component it must never touch.
 
     /**
      * THE TWO COLUMNS THIS STAGE READS OFF THE ROW IT WAS HANDED AND WRITES BACK TO THAT SAME ROW.
@@ -282,14 +277,10 @@ public final class Verdict {
      * not the zeroth.
      *
      * <p>NOT THE SAME QUESTION THE STATUS ROUTING ASKS OF THE SAME COLUMN, which wants the count AS
-     * RECORDED ({@code || 0}) because that is what the note reports. The two reads used to sit 152
-     * lines apart in one method under near-identical names, and confusing them swaps a retry for a
-     * permanent retirement. What fixed that was {@link Row#of} reading the column ONCE; this method is
-     * the surviving half — a name for the fallback, so the difference is legible at the call site.
-     *
-     * <p>It was a one-component {@code Attempts} record with a {@code current()} and a {@code recorded()}
-     * until 2026-08-06: sixteen lines to give one double two accessors, one of which returned the
-     * component. The name was the whole value, and a static method carries it for two.
+     * RECORDED ({@code || 0}) because that is what the note reports. Confusing the two swaps a retry
+     * for a permanent retirement, so {@link Row#of} reads the column ONCE and this method names the
+     * fallback, which keeps the difference legible at the call site. Do not re-derive either count
+     * from the raw column at a second site.
      */
     private static double currentAttempt(double recorded) {
         return recorded == 0 ? 1 : recorded;
@@ -302,18 +293,14 @@ public final class Verdict {
      *                  re-emitted verbatim whenever no argument replaces it, and {@link #markerState}
      *                  is a String IDENTITY test — see the note there for why concatenating first
      *                  would be a different function.
-     * @param stateText the same value concatenated AT THE READ, where an absent key and an explicit
-     *                  null can still be told apart. @see Llm#concat(Object, String)
+     * @param stateText the same value rendered AT THE READ, where an absent key and an explicit null
+     *                  can still be told apart. @see Llm#presence(Object, String)
      * @param infraText the reason as text — what the two regexes, the notes AND the evidence map read.
-     *                  THERE USED TO BE A SECOND COMPONENT HERE, {@code infraJson}, read with
-     *                  {@link Json#str} instead of {@link Values#text} and documented as the same key
-     *                  under a second coercion: the divergence it described ({@code 1,2} and
-     *                  {@code [object Object]} against JSON) belonged to the retired {@code Js}
-     *                  renderer. {@code Json.str} delegates to {@code Values.text}, so the two had
-     *                  rendered identically for every shape since 2026-08-05 — null, String, Long,
-     *                  Boolean, List, Map, NaN and Infinity all measured — and the pair was a standing
-     *                  invitation to "fix" a divergence that no longer exists. Collapsed 2026-08-06;
-     *                  {@link #stuck} and {@link #evidence} both read this one.
+     *                  ONE COMPONENT, NOT TWO: {@link #stuck} and {@link #evidence} both read this
+     *                  one. Do not add a second under {@link Json#str} for the same key. It renders
+     *                  identically — {@code Json.str} delegates to {@link Values#text} for null,
+     *                  String, Long, Boolean, List, Map, NaN and Infinity alike — so the pair would be
+     *                  a standing invitation to "fix" a divergence that does not exist.
      */
     private record Row(Object state, String stateText, String infraText,
                        double attempts, String testPath, String jdk, String prTitle,
@@ -338,15 +325,11 @@ public final class Verdict {
      *
      * @param svaceChecker     the raw value, because it is copied into the returned item.
      * @param svaceCheckerText the same value as the prompt prints it, with the {@code ?} fallback.
-     * @param markerId         the id as the fetch spells it, and the ONLY component about it. There
-     *                         used to be a {@code markerIdGiven} boolean beside it, defended by the
-     *                         two JS coercions disagreeing about an empty array —
-     *                         {@code Boolean([])} true, {@code String([])} {@code ""}. That argument
-     *                         refuted itself once the coercion became {@link Values#text}, which
-     *                         renders the empty array as {@code "[]"}: the two agree on exactly the
-     *                         shape the split existed for, and the boolean was
-     *                         {@code !Values.text(markerId).isEmpty()} — the field beside it, negated.
-     *                         Collapsed 2026-08-06; {@link #svaceDetail} asks the text directly.
+     * @param markerId         the id as the fetch spells it, and the ONLY component about it. Do not
+     *                         add a {@code markerIdGiven} boolean beside it: under {@link Values#text}
+     *                         it is {@code !Values.text(markerId).isEmpty()}, this field negated, for
+     *                         every shape including the empty array (rendered {@code "[]"}).
+     *                         {@link #svaceDetail} asks the text directly.
      * @param argueOnly        {@code settle_by === 'argue'}: a checker that can only be settled by
      *                         ARGUMENT gets no retry, because a second reproducer sample cannot write a
      *                         runtime test for a dead store. Asked of {@link CheckerMap.SettleBy},
@@ -381,11 +364,11 @@ public final class Verdict {
      * @param anchor           raw — copied into the returned item. @see VerdictMarker#svaceChecker
      * @param anchorStatus     raw, and for the same reason.
      * @param anchorStatusText the same value as the prompt prints it.
-     * @param methodText       the quoted method body, or "" when the node quoted none. There used to
-     *                         be a {@code methodGiven} boolean beside it, split for the reason
-     *                         {@link VerdictMarker#markerId} records — and equal to
-     *                         {@code !methodText.isEmpty()} by construction. Collapsed 2026-08-06 with
-     *                         it; {@link #argumentPrompt} asks the text.
+     * @param methodText       the quoted method body, or "" when the node quoted none. Do not add a
+     *                         {@code methodGiven} boolean beside it, for the reason
+     *                         {@link VerdictMarker#markerId} records: it is
+     *                         {@code !methodText.isEmpty()} by construction, and
+     *                         {@link #argumentPrompt} asks the text.
      */
     private record Source(Object anchor, Object anchorStatus, String anchorStatusText,
                           String anchorNote, String methodText, String src) {
@@ -431,11 +414,10 @@ public final class Verdict {
      * @param score the realness score RAW. It is carried untouched because the coercion belongs to
      *              whoever prints it, and what must survive that coercion is the difference between a
      *              measured {@code 0} and a score nobody took — the worst tests the pipeline produces
-     *              are the ones a reviewer most needs to see rated. That used to require a reader
-     *              PRIVATE to {@link ExecVerdict.Evidence#of}, back when {@link Json#str} still meant
-     *              {@code x || ''} and would have turned the 0 into "not measured". It no longer does:
-     *              {@code Json.str} is {@link Values#text}, absence is the only thing that reads as
-     *              empty, and {@link #evidence} applies it here (2026-08-06).
+     *              are the ones a reviewer most needs to see rated. {@link #evidence} applies the
+     *              coercion here, with {@link Json#str} — which is {@link Values#text}, so absence is
+     *              the only thing that reads as empty and a measured {@code 0} survives as "0". Any
+     *              coercion that maps {@code 0} to empty has to stay out of this path.
      */
     private record VerdictTestReply(boolean canProve, String rootCause, Object score,
                                     String realness) {
@@ -500,13 +482,13 @@ public final class Verdict {
      * THE SAME LINE.
      *
      * <p>WHY THE PAIR IS ONE CONSTANT. The kind is the model's own word and is copied verbatim into the
-     * artifact's {@code verdict_kind}; the status is where the suspicion goes next. They used to be a
-     * {@code List.of} of three spellings and, thirty lines later, a nested ternary whose FINAL ARM was
-     * {@code SuspicionStatus.FALSE_POSITIVE} — a default. So a fourth kind added to that list would
-     * have been accepted off the model, written into the column {@code SELECT verdict_kind, COUNT(*)}
-     * counts findings in, and filed as a false positive: the strongest claim in the vocabulary,
-     * invented for a word nobody had mapped. Here the mapping is a constructor argument, so a fourth
-     * kind does not compile until somebody has said where it sends the row.
+     * artifact's {@code verdict_kind}; the status is where the suspicion goes next. Do not split them
+     * into a list of spellings and a ternary that routes them: any such ternary needs a final arm, and
+     * a fourth kind then arrives off the model, lands in the column {@code SELECT verdict_kind,
+     * COUNT(*)} counts findings in, and is filed at whatever that arm says — {@code FALSE_POSITIVE} is
+     * the strongest claim in the vocabulary and the obvious choice for it. Here the mapping is a
+     * constructor argument, so a fourth kind does not compile until somebody has said where it sends
+     * the row.
      */
     private enum ArguedKind {
 
@@ -612,10 +594,9 @@ public final class Verdict {
      * WHAT THE ARGUMENT CAME TO — and the ONLY channel from the first decision to the second.
      *
      * <p>The three verdict columns are the answer; the other four are the facts about HOW the stage
-     * reached it that the status routing needs, and they used to be mutable locals set in one if-chain
-     * and re-read in three arms of another 150 lines below. Nothing writes these after {@link #argue}
-     * returns, so "who set this, and did it run before or after me?" is no longer a question the router
-     * can be got wrong about.
+     * reached it that the status routing needs. Keep them in this record rather than in mutable locals
+     * shared with the router: nothing writes them after {@link #argue} returns, so "who set this, and
+     * did it run before or after me?" is not a question the router can be got wrong about.
      *
      * @param state the state the row settles at: the one it arrived with, unless a verdict replaced it.
      */
@@ -749,9 +730,9 @@ public final class Verdict {
                     // The kind is read out of the reply eight lines above, before anything has looked at
                     // whether there is a verdict under it, and `verdict_kind` is copied straight into the
                     // artifact's bugs.verdict_kind on a row that is written whatever the outcome. So a
-                    // model that named a kind and argued nothing for it used to stamp the row with a
-                    // finding nobody made: `false-positive` asserts we tested this and the claim does not
-                    // hold, `by-design` concedes the claim and calls the code deliberate. Worse for a
+                    // model that named a kind and argued nothing for it would otherwise stamp the row
+                    // with a finding nobody made: `false-positive` asserts we tested this and the claim
+                    // does not hold, `by-design` concedes the claim and calls the code deliberate. Worse for a
                     // reply that is not JSON at all — no kind is found, and the fallback for an
                     // unrecognised kind INVENTS `false-positive`, the strongest claim in the vocabulary,
                     // out of a default.
@@ -1017,9 +998,9 @@ public final class Verdict {
      *
      * <p>ONLY the reason and the count reach it — the eight empty strings are the point, not padding:
      * an {@code infra_stuck} row must not pick up a test path or a PR title from a run that never got
-     * that far. They used to be the ABSENCE of eight keys from a map, which said the same thing and
-     * said it to nobody the compiler could ask; a component added to {@link ExecVerdict.Evidence} now
-     * makes this line stop compiling until somebody decides what a stuck row says about it.
+     * that far. Write them, rather than leaving eight keys out of a map: a component added to
+     * {@link ExecVerdict.Evidence} then makes this line stop compiling until somebody decides what a
+     * stuck row says about it.
      */
     private static ExecVerdict.Verdict stuck(Row row, double attempts) {
         return ExecVerdict.of(MarkerState.INFRA_STUCK.wire(), new ExecVerdict.Evidence(
@@ -1029,15 +1010,10 @@ public final class Verdict {
     /**
      * The evidence {@link ExecVerdict} words the outcome from, gathered off several nodes.
      *
-     * <p>IT USED TO GO THROUGH A MAP, and the reason was real while it lasted: {@code test_score} was
-     * coerced by a reader PRIVATE to {@link ExecVerdict.Evidence#of}, so writing the ten values into
-     * keys and having them read back was how this file avoided owning a second copy of that coercion.
-     * The private reader is gone (2026-08-06 — it was {@code Json.stringify}, which threw on a
-     * non-finite score and took this stage with it), so what remained was ten string keys standing
-     * between ten typed values and a ten-component record: a misspelt key would have silently emptied a
-     * clause instead of failing to compile. Now the constructor is called and the ARGUMENT ORDER is
-     * what has to be right — which the compiler checks for the eight strings' neighbours only by type,
-     * so {@code ExecVerdictTest} asserts each clause by name.
+     * <p>THE CONSTRUCTOR IS CALLED DIRECTLY, not through a map of ten string keys: a misspelt key
+     * silently empties a clause instead of failing to compile. What has to be right instead is the
+     * ARGUMENT ORDER, which the compiler checks for the eight strings' neighbours only by type, so
+     * {@code ExecVerdictTest} asserts each clause by name.
      */
     private static ExecVerdict.Evidence evidence(Inputs in, double attempts) {
         Row row = in.row();

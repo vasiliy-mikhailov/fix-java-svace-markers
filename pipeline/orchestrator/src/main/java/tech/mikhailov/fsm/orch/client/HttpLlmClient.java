@@ -51,8 +51,6 @@ public class HttpLlmClient implements LlmClient {
      */
     static final String REASON = "llm: ";
 
-    /** A throw with nothing quotable still has to say something a human can act on. */
-
     /**
      * How many times ONE completion is attempted, in total.
      *
@@ -126,13 +124,13 @@ public class HttpLlmClient implements LlmClient {
      * {@link Llm.Http} it was handed, so the options map travels to the transport exactly as the stage
      * built it.
      *
-     * <p>WHERE THE LOG LINE WENT. ORIGIN (2026-07-29): a model endpoint that served the two agent calls
-     * and failed the three judging ones left NO LINE IN THE LOG, because those three catch the failure
-     * themselves and fail closed by design. The line was first written here, at the one place all three
-     * calls pass through — but this method takes an options map and genuinely does not know whose marker
-     * or which stage it belongs to, and a warning that can only name the URL says "one of the three
-     * judging calls for one of the 282 markers failed", which is not something an operator can act on.
-     * It is written by {@link #judging(String, String)} instead, one wrapper up, where both are known.
+     * <p>AND THE LOG LINE FOR A FAILED JUDGING CALL DOES NOT BELONG HERE. The three judging stages
+     * catch their own failures and fail closed by design, so without a line somewhere an endpoint that
+     * serves the two agent calls and fails the three judging ones is silent. But this method takes an
+     * options map and genuinely does not know whose marker or which stage it belongs to, and a warning
+     * that can only name the URL says "one of the three judging calls for one of the markers failed",
+     * which is not something an operator can act on. {@link #judging(String, String)} writes it one
+     * wrapper up, where both are known.
      */
     @Override
     public Llm.Http asHttp() {

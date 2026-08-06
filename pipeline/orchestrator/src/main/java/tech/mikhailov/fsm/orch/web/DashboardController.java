@@ -174,10 +174,10 @@ public class DashboardController {
     /**
      * Liveness, and it PROBES SOMETHING.
      *
-     * <p>ORIGIN (2026-07-29): this returned a hardcoded 200 {@code ok}. It answered {@code ok} on every
-     * request through a run in which every prove was failing on a refused connection, so a restart
-     * policy or a Caddy check wired to it could never have fired — and its existence was the reason
-     * nobody added a real one. A probe that cannot fail is a constant with a URL.
+     * <p>NEVER LET THIS RETURN A HARDCODED 200 {@code ok}. It then answers {@code ok} on every request
+     * through a run in which every prove is failing on a refused connection, so a restart policy or a
+     * Caddy check wired to it can never fire — and its existence is the reason nobody adds a real one.
+     * A probe that cannot fail is a constant with a URL.
      *
      * <p>Plain text {@code ok} on the healthy path, because whatever polls this is written against
      * that and a JSON body would need a parser on the other end. 503 and not

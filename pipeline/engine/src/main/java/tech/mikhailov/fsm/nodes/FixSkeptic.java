@@ -160,7 +160,7 @@ public final class FixSkeptic {
      * pull request.
      */
     static String cut(Object x) {
-        String t = Values.text(x);                  // a number here used to throw on .length
+        String t = Values.text(x);                  // x may be a number; text() is what makes .length() safe
         return t.length() <= SKEPTIC_CUT ? t
                 : t.substring(0, SKEPTIC_CUT) + "\n…[TRUNCATED " + (t.length() - SKEPTIC_CUT)
                         + " chars — reply verdict 'unknown' if you cannot judge the whole change]";
@@ -258,11 +258,11 @@ public final class FixSkeptic {
         String verdict = SkepticVerdict.NOT_RUN.wire();
         String reason = "skeptic did not run";
         // THE RECEIPT — true on the one path where the model's own answer was read back, exactly as
-        // PrMaker's `pr_curated` is. ORIGIN (2026-07-30): 'unknown' is returned BOTH for a call that
-        // never answered and for a reply nobody could use, and both route to `needs_review`. Four
-        // markers of a 53-marker run settled there with no way to tell which had happened — the reason
-        // strings differ, but a reason is prose in a banner and nothing downstream can branch on it
-        // without matching on wording. `false` here is the machine-readable half of "never answered".
+        // PrMaker's `pr_curated` is. WHY IT IS NEEDED: 'unknown' is returned BOTH for a call that
+        // never answered and for a reply nobody could use, and both route to `needs_review`, so
+        // without this flag the two are indistinguishable in the backlog — the reason strings differ,
+        // but a reason is prose in a banner and nothing downstream can branch on it without matching
+        // on wording. `false` here is the machine-readable half of "never answered".
         boolean answered = false;
         if (proven && Json.truthy(req.parseFix(), "can_fix")) {
             String prompt = skepticPrompt(new PromptInput(req.skepticStamp(), Json.get(j, "title"),

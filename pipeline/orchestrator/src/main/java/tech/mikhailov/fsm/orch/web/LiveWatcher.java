@@ -203,13 +203,12 @@ public class LiveWatcher {
     /**
      * ONE MARKER'S MOVE, between the scan that noticed it and the push that announces it.
      *
-     * <p>A THREE-FIELD RECORD AND NOT A {@code Map<String, Object>}, which is what it was until
-     * 2026-08-06: the map was built with three keys here and taken apart eleven lines up with a
-     * {@code String.valueOf} and two unchecked {@code (String)} casts, in the one module that types
-     * everything. Its keys also RE-SPELLED three of {@code DashboardPresenter.markerTransition}'s wire
-     * names, in a file the presenter guard does not govern — so a reader had two vocabularies to keep
-     * straight and a compiler that could check neither. This type is internal to the watcher; the wire
-     * names stay where they are owned, in the presenter.
+     * <p>A THREE-FIELD RECORD AND NOT A {@code Map<String, Object>}. A map here is built with three
+     * keys and taken apart eleven lines up with a {@code String.valueOf} and two unchecked
+     * {@code (String)} casts, in the one module that types everything — and its keys RE-SPELL three of
+     * {@code DashboardPresenter.markerTransition}'s wire names, in a file the presenter guard does not
+     * govern, so a reader has two vocabularies to keep straight and a compiler that can check neither.
+     * This type is internal to the watcher; the wire names stay where they are owned, in the presenter.
      *
      * @param from null for a marker seen for the FIRST time — an ingest, not a transition. It is still
      *             stamped: the row appearing IS when this process first knew about it.

@@ -218,13 +218,11 @@ public final class Json {
      * The field as text. ABSENT reads as the empty string, and nothing else does — the rule is
      * {@link Values#text}'s and is stated there.
      *
-     * <p>THE ONE-ARGUMENT FORM IS GONE, as of 2026-08-06, and that is the point of this paragraph.
-     * {@code Json.str(Object)} was {@code return Values.text(v);} under twenty-two lines of javadoc
-     * re-telling the {@code x || ''} defect that {@link Values#text} already tells better. Two public
-     * names for one function is how three separate findings came to describe "{@code Json.str} versus
-     * {@code Values.text}" as though the answer could differ between them. A caller that has already
-     * parsed its row and holds the VALUE calls {@link Values#text} directly; this overload is for the
-     * field read, which is what the container and the key are for.
+     * <p>THERE IS NO ONE-ARGUMENT FORM, and do not add one: it would be {@code Values.text(v)} under
+     * another name, and two public names for one function is how a reader comes to ask
+     * "{@code Json.str} versus {@code Values.text}?" as though the answer could differ between them. A
+     * caller that has already parsed its row and holds the VALUE calls {@link Values#text} directly;
+     * this overload is for the field read, which is what the container and the key are for.
      */
     public static String str(Object container, String key) {
         return Values.text(get(container, key));
@@ -255,13 +253,13 @@ public final class Json {
      * The numeric field read: attempt counters arrive off items that may carry them as a string
      * ("3" out of a stored cell) or not at all.
      *
-     * <p>ONE READER, {@link Values#numberOr}, AND THIS IS THE FIELD-READ SPELLING OF IT. It used to be
-     * a second implementation, and the two disagreed exactly where it was most expensive: this one
-     * called {@link Double#parseDouble} bare, so {@code "1d"}, {@code "0x1p3"} and {@code "Infinity"}
-     * all became numbers, and it let a non-finite double through unchanged. {@code prove_attempts} is
-     * read through the guarded helper at {@code PrepProver} and through this one at
-     * {@code RecordOutcome}, and {@code (long) Infinity + 1} is {@code Long.MIN_VALUE} — so the
-     * attempts ceiling in {@code Verdict} never fired and the marker requeued for ever.
+     * <p>ONE READER, {@link Values#numberOr}, AND THIS IS THE FIELD-READ SPELLING OF IT. Do not give
+     * it a second implementation over a bare {@link Double#parseDouble}, which accepts {@code "1d"},
+     * {@code "0x1p3"} and {@code "Infinity"} and lets a non-finite double through unchanged.
+     * {@code prove_attempts} is read through the guarded helper at {@code PrepProver} and through this
+     * one at {@code RecordOutcome}, and {@code (long) Infinity + 1} is {@code Long.MIN_VALUE} — two
+     * readers that disagree there mean the attempts ceiling in {@code Verdict} never fires and the
+     * marker requeues for ever.
      */
     public static double num(Object container, String key) {
         return Values.numberOr(get(container, key), 0);

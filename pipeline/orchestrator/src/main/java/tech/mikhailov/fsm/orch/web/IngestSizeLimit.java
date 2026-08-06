@@ -59,12 +59,11 @@ public class IngestSizeLimit extends OncePerRequestFilter {
      * @param json the same {@link ObjectMapper} every controller answers through. This document is
      *             built by {@link JobsPresenter} and written by Jackson for one reason: so that "does
      *             the filter's 413 still look like the controller's 409?" is answered by the code
-     *             rather than by a person comparing two documents by eye. It USED to be a text block
-     *             interpolated with {@code String.formatted} — the only hand-written JSON in this
-     *             module — defended on the grounds that a filter runs outside the
-     *             {@code @ExceptionHandler} machinery. That argues the SHAPE has to match
-     *             {@code JobsController}'s, which is exactly what sharing the presenter guarantees;
-     *             it never argued that Jackson was unreachable, and a bean injects into a
+     *             rather than by a person comparing two documents by eye. Do not hand-write this body
+     *             as a text block interpolated with {@code String.formatted}. That a filter runs
+     *             outside the {@code @ExceptionHandler} machinery argues the SHAPE has to match
+     *             {@code JobsController}'s, which is exactly what sharing the presenter guarantees; it
+     *             does not make Jackson unreachable, and a bean injects into a
      *             {@link OncePerRequestFilter} like it does into anything else.
      */
     public IngestSizeLimit(CsvSpool spool, ObjectMapper json) {
