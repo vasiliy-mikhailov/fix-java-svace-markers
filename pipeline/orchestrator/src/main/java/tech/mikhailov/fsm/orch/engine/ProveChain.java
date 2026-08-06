@@ -36,6 +36,7 @@ import tech.mikhailov.fsm.orch.domain.ProveTrace;
 import tech.mikhailov.fsm.orch.model.Bug;
 import tech.mikhailov.fsm.orch.usecase.EngineUnreachable;
 import tech.mikhailov.fsm.orch.usecase.JudgementEngine;
+import tech.mikhailov.fsm.trial.Trial;
 
 /**
  * One marker, proved — the whole chain, in a straight line, behind {@link JudgementEngine}.
@@ -163,9 +164,12 @@ public class ProveChain implements JudgementEngine {
         String key = marker.id().value();
 
         // --- Prep prover: paths, package, branch. Everything downstream is built from this row. ---
-        Map<String, Object> prep = PrepProver.prepProver(
+        // THE OUTCOME IS KEPT, NOT ONLY ITS MAP. The row is what the next stage reads; the record is
+        // what the Trial carries, and it is the same object rather than a second reading of the row.
+        PrepProver.Outcome prepared = PrepProver.prepProver(
                 new PrepProver.Request(marker.snapshot().fields(), secrets.githubTokenValue()),
-                repoLookup).toMap();
+                repoLookup);
+        Map<String, Object> prep = prepared.toMap();
 
         // --- Fetch source. The contents reply travels VERBATIM, base64 and all: the engine decodes
         // it, re-anchors the marker against the real source and labels how far the location can be
@@ -248,9 +252,12 @@ public class ProveChain implements JudgementEngine {
                 new PrMaker.Request(prep, testItem, fixItem, redRun, skeptic, endpoint,
                         Versions.stamp(Versions.PR_MAKER), prompts.text(Stage.PR_MAKER)),
                 prCall);
-        Map<String, Object> recorded = RecordOutcome.recordOutcome(
+        // …and the routing likewise: `Record outcome` returns the typed conclusion, and the archive
+        // takes it from there rather than reading it back out of the row this line flattens it into.
+        RecordOutcome.Outcome routing = RecordOutcome.recordOutcome(
                 new RecordOutcome.Request(prep, testItem, fixItem, redRun, reproduceItem, prMaker,
-                        Versions.versions())).toMap();
+                        Versions.versions()));
+        Map<String, Object> recorded = routing.toMap();
 
         // The verdict sits BETWEEN Record outcome and the writes, so `state` is final before either
         // table is touched: a marker with a written rebuttal is stored as its verdict, and one merely
@@ -280,11 +287,13 @@ public class ProveChain implements JudgementEngine {
         // decision "was this prove worth recording, and when" be stated in one place instead of being a
         // side effect halfway down a chain.
         ProveTrace trace = recording
-                ? new ProveTrace(new MarkerFeedback(key, Instant.now().toString(), prep, reproduceItem,
-                        StageTrace.of(reproducer.prompt(), reproducer.reply()), testItem, redRun,
-                        StageTrace.of(fixer.prompt(), fixer.reply()), fixItem, greenRun,
-                        skepticCall.trace(), skeptic, prCall.trace(), prMaker, recorded,
-                        verdictCall.trace(), verdict, Versions.versions()).toMap())
+                ? new ProveTrace(new MarkerFeedback(Trial.of(key, Instant.now().toString(), prepared,
+                        reproduceInput, StageTrace.of(reproducer.prompt(), reproducer.reply()),
+                        parsedTest, redRun, fixInput.agentInput(),
+                        StageTrace.of(fixer.prompt(), fixer.reply()), parsedFix, greenRun,
+                        skepticCall.trace(), skeptic, prCall.trace(), prMaker, routing,
+                        verdictCall.trace(), verdict, Verdict.callFailure(verdict),
+                        Versions.versions())).toMap())
                 : ProveTrace.EMPTY;
 
         // THE MAP-TO-ENTITY BOUNDARY, and it is the only one in the prove path. Everything above is the

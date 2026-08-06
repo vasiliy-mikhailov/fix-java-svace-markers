@@ -21,6 +21,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import tech.mikhailov.fsm.feedback.MarkerFeedback;
 import tech.mikhailov.fsm.feedback.StageTrace;
+import tech.mikhailov.fsm.trial.Wire;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.JsonExtract;
 import tech.mikhailov.fsm.lib.Values;
@@ -430,12 +431,18 @@ class WireSafetyTest {
      */
     private static MarkerFeedback feedback(Object body, Object recorded, Object verdict) {
         StageTrace trace = StageTrace.of("prompt", "reply");
-        return new MarkerFeedback(Json.str(Json.get(body, "prep_prover"), "suspicion_key"),
+        // THE ROWS GO IN THROUGH THE WIRE READER, which is the only way a recorded corpus can produce
+        // an entity: these cases predate the Trial by a year and were never a chain, they are JSON.
+        // Every hostile shape the corpus carries still reaches the record — the reader coerces where
+        // the old constructor's bags did, and nowhere else. @see Wire
+        return new MarkerFeedback(Wire.trial(
+                Json.str(Json.get(body, "prep_prover"), "suspicion_key"),
                 "2026-01-01T00:00:00.000Z", Json.get(body, "prep_prover"),
                 Json.get(body, "build_reproduce_input"), trace, Json.get(body, "parse_test"),
                 Json.get(body, "run_test_reproduce"), trace, Json.get(body, "parse_fix"),
                 Json.get(body, "run_test_fix"), trace, Json.get(body, "item"), trace,
-                Json.get(body, "pr_maker"), recorded, trace, verdict, Json.get(body, "versions"));
+                Json.get(body, "pr_maker"), recorded, trace, verdict,
+                Json.get(body, "versions")));
     }
 
     /**

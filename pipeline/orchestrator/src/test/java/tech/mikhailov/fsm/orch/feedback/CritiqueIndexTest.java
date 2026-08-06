@@ -17,6 +17,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import tech.mikhailov.fsm.feedback.CritiqueKind;
 import tech.mikhailov.fsm.feedback.MarkerFeedback;
+import tech.mikhailov.fsm.lib.MarkerState;
+import tech.mikhailov.fsm.nodes.BuildReproduceInput;
+import tech.mikhailov.fsm.nodes.ParseFix;
+import tech.mikhailov.fsm.nodes.ParseTest;
+import tech.mikhailov.fsm.nodes.PrepProver;
+import tech.mikhailov.fsm.nodes.RecordOutcome;
+import tech.mikhailov.fsm.trial.Trial;
 import tech.mikhailov.fsm.feedback.StageTrace;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.TestRealness;
@@ -492,13 +499,31 @@ class CritiqueIndexTest {
         parseTest.put("test_realness", "9" + TestRealness.STUB_MOCK_REASON + "; "
                 + TestRealness.INTERACTION_ONLY_REASON);
 
-        return new MarkerFeedback("real-1", "2026-07-31T12:00:00Z", prep,
-                Map.of("src", "class Leak {}"), StageTrace.of("write a test", "{}"), parseTest,
+        // Built as the chain builds one — a Trial, from the typed pieces — because that is what the
+        // store now writes. The two rows this fixture states are the ones the harvest reads.
+        Trial trial = Trial.of("real-1", "2026-07-31T12:00:00Z",
+                new PrepProver.Outcome("real-1", "org/app", "main", true, "", 0d,
+                        "src/main/java/org/app/Leak.java", "", "org.app", "Leak", "leak",
+                        "LeakTest", "src/test/java/org/app/LeakTest.java", "correctness", "high",
+                        "a leak", "the handle escapes", "", "m-1", "HANDLE_LEAK.EX", "Major", 42d,
+                        "test"),
+                new BuildReproduceInput.Outcome(prep, "class Leak {}", false, "WRITE A TEST",
+                        "leak", "exact", "", null, ""),
+                StageTrace.of("write a test", "{}"),
+                new ParseTest.Result(prep, true, false, "class LeakTest { @Test void t() { } }",
+                        false, 2, "9" + TestRealness.STUB_MOCK_REASON + "; "
+                                + TestRealness.INTERACTION_ONLY_REASON,
+                        false, "", "", Map.of(), ""),
                 Map.of("ok", true, "red_summary", Map.of("test_executed", true),
                         "red_reproduced", true),
-                StageTrace.NOT_CALLED, Map.of(), Map.of(), StageTrace.NOT_CALLED, Map.of(),
-                StageTrace.NOT_CALLED, Map.of(), Map.of(), StageTrace.NOT_CALLED, Map.of(),
-                Map.of()).toMap();
+                null, StageTrace.NOT_CALLED,
+                new ParseFix.Result(prep, false, false, "", "", "", "", "", "", Map.of()),
+                Map.of(), StageTrace.NOT_CALLED, Map.of(), StageTrace.NOT_CALLED, Map.of(),
+                new RecordOutcome.Outcome("real-1", "org/app", "src/main/java/org/app/Leak.java",
+                        "a leak", "21", "src/test/java/org/app/LeakTest.java", "", "[]", true,
+                        false, 2d, "", "", "", MarkerState.NEEDS_REVIEW, "", 1L, "main", Map.of()),
+                StageTrace.NOT_CALLED, Map.of(), "", Map.of());
+        return new MarkerFeedback(trial).toMap();
     }
 
     private static Map<String, Object> header() {

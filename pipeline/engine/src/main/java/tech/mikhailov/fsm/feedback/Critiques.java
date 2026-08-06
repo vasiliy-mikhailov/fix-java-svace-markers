@@ -4,11 +4,12 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.SourceText;
 import tech.mikhailov.fsm.lib.PrDecision;
 import tech.mikhailov.fsm.lib.SkepticVerdict;
 import tech.mikhailov.fsm.lib.TestRealness;
+import tech.mikhailov.fsm.trial.Execution;
+import tech.mikhailov.fsm.trial.Trial;
 
 /**
  * HARVEST THE COMPLAINTS THE PIPELINE ALREADY MAKES — do not invent a new judge.
@@ -59,57 +60,66 @@ public final class Critiques {
      */
     static final int QUOTED_LOG_TAIL = 400;
 
-    /** Every complaint that can be read off one settled prove, in the order the chain produced them. */
-    public static List<Critique> harvest(MarkerFeedback trace) {
+    /**
+     * Every complaint that can be read off one settled prove, in the order the chain produced them.
+     *
+     * <p>IT TAKES THE ENTITY, NOT THE ARCHIVE RECORD, and every fact below is read off a typed
+     * component. Do not add a map-shaped overload: a misspelt key here does not fail, it silently
+     * empties a GATE — and a gate that never fires harvests nothing while the file goes on growing,
+     * which is a dashboard reporting no complaints about a pipeline full of them. A caller that holds
+     * only rows is reading a wire and has {@code Wire} for it.
+     */
+    public static List<Critique> harvest(Trial trial) {
         List<Critique> out = new ArrayList<>();
-        reproducer(trace, out);
-        fixer(trace, out);
-        judges(trace, out);
+        reproducer(trial, out);
+        fixer(trial, out);
+        judges(trial, out);
         return List.copyOf(out);
     }
 
     // ---- the reproducer ---------------------------------------------------------------------------
 
-    private static void reproducer(MarkerFeedback t, List<Critique> out) {
-        Object parseTest = t.parseTest();
-        Object redRun = t.redRun();
-        boolean canProve = Json.truthy(parseTest, "can_prove");
-        String testCode = Json.str(parseTest, "test_code");
+    private static void reproducer(Trial t, List<Critique> out) {
+        Trial.Proof proof = t.proof().conclusion();
+        Execution red = t.red();
 
-        if (Json.truthy(parseTest, "parse_failed")) {
+        if (proof.parseFailed()) {
             out.add(new Critique(Critique.REPRODUCER, Critique.SOURCE_PARSER,
                     CritiqueKind.REPLY_UNPARSEABLE,
                     "the reproducer's reply was not the JSON object the stage asked for, so nothing "
                     + "could be read out of it",
-                    context("reply_chars", replyChars(t.reproducer()))));
+                    context("reply_chars", replyChars(t.proof().ask()))));
         }
 
         // ONLY when there is Java to score. A reproducer that DECLINED wrote nothing, and the scorer
         // duly reports "the test never constructs Widget" about an empty string — counting that would
         // bury the store under the one answer the brief explicitly calls legitimate.
-        if (!testCode.isEmpty()) {
+        if (!proof.testCode().isEmpty()) {
             realness(t, out);
         }
 
         // A build that never ANSWERED (ok:false — a failed clone, a Maven that could not be spawned)
         // says nothing about the Java the reproducer wrote. Gated, like every other run_test reading.
-        boolean answered = Json.truthy(redRun, "ok");
-        Object summary = Json.get(redRun, "red_summary");
-        boolean executed = Json.truthy(summary, "test_executed");
-        if (canProve && answered && Boolean.FALSE.equals(Json.get(summary, "test_executed"))) {
+        boolean answered = red.ok();
+        // THE STRICT READING AND THE LENIENT ONE, ASKED OF THE SAME THREE-STATE FLAG. `said(false)` is
+        // "the runner reported that no test ran"; `truthy()` is "a test ran". An ABSENT flag answers no
+        // to both, and it must: inventing a build failure out of a runner that reported nothing would
+        // file a complaint against a prompt on the strength of a missing field. @see Reported
+        if (proof.canProve() && answered && red.red().testExecuted().said(false)) {
             out.add(new Critique(Critique.REPRODUCER, Critique.SOURCE_RUN_TEST,
                     CritiqueKind.TEST_DID_NOT_COMPILE,
                     "the reproducer's test never executed — the RED build failed before any test ran",
-                    context("jdk", Json.str(redRun, "jdk"),
-                            "compile_error", Json.truthy(summary, "compile_error"),
-                            "build_log_tail", tail(Json.str(redRun, "red_output"), QUOTED_LOG_TAIL))));
+                    context("jdk", red.jdk(),
+                            "compile_error", red.red().compileError().truthy(),
+                            "build_log_tail", tail(red.redOutput(), QUOTED_LOG_TAIL))));
         }
-        if (canProve && answered && executed && !Json.truthy(redRun, "red_reproduced")) {
+        if (proof.canProve() && answered && red.red().testExecuted().truthy()
+                && !red.redReproduced()) {
             out.add(new Critique(Critique.REPRODUCER, Critique.SOURCE_RUN_TEST,
                     CritiqueKind.TEST_DID_NOT_REPRODUCE,
                     "the test compiled, RAN against the unpatched code and PASSED, so it does not "
                     + "demonstrate the defect it was written for",
-                    context("build_log_tail", tail(Json.str(redRun, "red_output"), QUOTED_LOG_TAIL))));
+                    context("build_log_tail", tail(red.redOutput(), QUOTED_LOG_TAIL))));
         }
     }
 
@@ -120,12 +130,12 @@ public final class Critiques {
      * {@code no_state_assertion} are different defects with different fixes in the brief, and a marker
      * that has both must count once towards each.
      */
-    private static void realness(MarkerFeedback t, List<Critique> out) {
-        Object parseTest = t.parseTest();
-        Map<String, Object> shared = context("realness_score", Json.num(parseTest, "test_score"),
-                "test_sound", Json.truthy(parseTest, "test_sound"));
+    private static void realness(Trial t, List<Critique> out) {
+        Trial.Proof proof = t.proof().conclusion();
+        Map<String, Object> shared = context("realness_score", (double) proof.score(),
+                "test_sound", proof.sound());
 
-        for (String reason : Json.str(parseTest, "test_realness").split(REASON_SEPARATOR)) {
+        for (String reason : proof.realness().split(REASON_SEPARATOR)) {
             if (reason.startsWith(TestRealness.MOCKS_SUBJECT_REASON)) {
                 out.add(realnessCritique(CritiqueKind.MOCKS_SUBJECT_UNDER_TEST, reason, shared));
             } else if (reason.startsWith(TestRealness.NEVER_TOUCHES_REASON)) {
@@ -150,31 +160,32 @@ public final class Critiques {
 
     // ---- the fixer --------------------------------------------------------------------------------
 
-    private static void fixer(MarkerFeedback t, List<Critique> out) {
-        Object parseFix = t.parseFix();
-        Object greenRun = t.greenRun();
-        boolean canFix = Json.truthy(parseFix, "can_fix");
-        boolean answered = Json.truthy(greenRun, "ok");
-        boolean reproduced = Json.truthy(t.redRun(), "red_reproduced");
+    private static void fixer(Trial t, List<Critique> out) {
+        Trial.Repair repair = t.repair().conclusion();
+        Trial.Certification certification = t.certification().conclusion();
+        Execution green = t.green();
+        boolean canFix = repair.canFix();
+        boolean answered = green.ok();
+        boolean reproduced = t.red().redReproduced();
 
-        if (Json.truthy(parseFix, "fix_parse_failed")) {
+        if (repair.parseFailed()) {
             out.add(new Critique(Critique.FIXER, Critique.SOURCE_PARSER,
                     CritiqueKind.REPLY_UNPARSEABLE,
                     "the fixer's reply was not the JSON object the stage asked for, so no edit could "
                     + "be read out of it",
-                    context("reply_chars", replyChars(t.fixer()))));
+                    context("reply_chars", replyChars(t.repair().ask()))));
         }
-        String rejected = Json.str(parseFix, "fix_rejected");
+        String rejected = repair.rejected();
         if (!rejected.isEmpty()) {
             out.add(new Critique(Critique.FIXER, Critique.SOURCE_PARSER,
                     CritiqueKind.EDITS_OUTSIDE_ALLOWED_FILE,
                     "the fixer edited a file it is not allowed to touch, and the source-only allowlist "
                     + "dropped the edit: " + rejected,
-                    context("rejected", rejected, "allowed_file", Json.str(t.prep(), "file"))));
+                    context("rejected", rejected, "allowed_file", t.marker().file())));
         }
 
-        List<Object> editErrors = list(Json.get(greenRun, "edit_errors"));
-        List<Object> applied = list(Json.get(greenRun, "applied_files"));
+        List<Object> editErrors = green.editErrors();
+        List<Object> applied = green.appliedFiles();
         if (!editErrors.isEmpty()) {
             // ONE entry however many errors there were. The recurrence worth counting is "this
             // marker's fixer could not copy an exact old_str"; a marker with six bad edits must not
@@ -194,32 +205,29 @@ public final class Critiques {
                     context("applied_files", List.of())));
         }
 
-        Object greenSummary = Json.get(greenRun, "green_summary");
-        if (canFix && answered && Json.truthy(greenSummary, "compile_error")) {
+        if (canFix && answered && green.green().compileError().truthy()) {
             out.add(new Critique(Critique.FIXER, Critique.SOURCE_RUN_TEST,
                     CritiqueKind.PATCH_DID_NOT_COMPILE,
                     "the patch did not compile: the GREEN build failed on the fixer's own edits",
-                    context("jdk", Json.str(greenRun, "jdk"),
-                            "build_log_tail",
-                            tail(Json.str(greenRun, "green_output"), QUOTED_LOG_TAIL))));
+                    context("jdk", green.jdk(),
+                            "build_log_tail", tail(green.greenOutput(), QUOTED_LOG_TAIL))));
         }
         // test_executed TRUE is what separates this from a build that was killed at the runner's
         // 20-minute ceiling — the same line RecordOutcome draws, and for the same reason.
-        if (reproduced && canFix && answered && Json.truthy(greenSummary, "test_executed")
-                && !Json.truthy(greenRun, "green_passed")) {
+        if (reproduced && canFix && answered && green.green().testExecuted().truthy()
+                && !green.greenPassed()) {
             out.add(new Critique(Critique.FIXER, Critique.SOURCE_RUN_TEST,
                     CritiqueKind.FIX_DID_NOT_PASS_THE_TEST,
                     "the patch applied and compiled, and the reproducer's test still failed",
-                    context("build_log_tail",
-                            tail(Json.str(greenRun, "green_output"), QUOTED_LOG_TAIL))));
+                    context("build_log_tail", tail(green.greenOutput(), QUOTED_LOG_TAIL))));
         }
 
         // THE SKEPTIC'S OBJECTION, FILED AGAINST THE FIXER. It is the fixer's prompt that would have
         // to change; `source` records that the skeptic is who noticed. Only a verdict the skeptic
         // actually answered counts — see the judges below for why.
-        if (Json.truthy(t.skeptic(), "skeptic_answered")) {
-            String verdict = Json.str(t.skeptic(), "skeptic_verdict");
-            String reason = Json.str(t.skeptic(), "skeptic_reason");
+        if (certification.answered()) {
+            String verdict = certification.verdict();
+            String reason = certification.reason();
             // The word is kept for the context line — a complaint has to quote what was actually said —
             // and the BRANCHES are on the type, which is the one place these spellings are declared.
             SkepticVerdict said = SkepticVerdict.of(verdict);
@@ -236,25 +244,27 @@ public final class Critiques {
 
     // ---- the three judging stages -----------------------------------------------------------------
 
-    private static void judges(MarkerFeedback t, List<Critique> out) {
-        // `skeptic_answered` is the machine-readable half of "the model's own reply was read back".
-        // FALSE means the call never produced one, which is infra: the stage failed CLOSED and
-        // reported success, and no prompt edit fixes a refused connection.
-        if (Json.truthy(t.skeptic(), "skeptic_answered")
-                && SkepticVerdict.of(Json.str(t.skeptic(), "skeptic_verdict"))
-                        == SkepticVerdict.UNKNOWN) {
+    private static void judges(Trial t, List<Critique> out) {
+        Trial.Certification certification = t.certification().conclusion();
+        Trial.Publication publication = t.publication().conclusion();
+
+        // `answered` is the machine-readable half of "the model's own reply was read back". FALSE
+        // means the call never produced one, which is infra: the stage failed CLOSED and reported
+        // success, and no prompt edit fixes a refused connection.
+        if (certification.answered()
+                && SkepticVerdict.of(certification.verdict()) == SkepticVerdict.UNKNOWN) {
             out.add(new Critique(Critique.FIX_SKEPTIC, Critique.SOURCE_PARSER,
-                    CritiqueKind.REPLY_UNPARSEABLE, Json.str(t.skeptic(), "skeptic_reason"),
-                    context("reply_chars", replyChars(t.fixSkeptic()))));
+                    CritiqueKind.REPLY_UNPARSEABLE, certification.reason(),
+                    context("reply_chars", replyChars(t.certification().ask()))));
         }
 
-        // `pr_curated` is the curator's receipt: true on exactly one path, the model's own JSON
-        // parsed. False is either a gated stage or the fail-closed catch, and neither is an answer.
-        if (Json.truthy(t.curated(), "pr_curated")) {
-            String decision = Json.str(t.curated(), "pr_decision");
-            String reason = Json.str(t.curated(), "pr_reason");
-            boolean title = !SourceText.isBlank(Json.str(t.curated(), "pr_title"));
-            boolean body = !SourceText.isBlank(Json.str(t.curated(), "pr_body"));
+        // `curated` is the curator's receipt: true on exactly one path, the model's own JSON parsed.
+        // False is either a gated stage or the fail-closed catch, and neither is an answer.
+        if (publication.curated()) {
+            String decision = publication.decision();
+            String reason = publication.reason();
+            boolean title = !SourceText.isBlank(publication.title());
+            boolean body = !SourceText.isBlank(publication.body());
             // As with the skeptic above: the word is quoted, the branch is on the type. `decided`
             // covers both "a word the curator invented" (null) and the two spellings that report the
             // ABSENCE of a decision — n/a and unknown — which are not decisions either. @see PrDecision
@@ -280,18 +290,18 @@ public final class Critiques {
             }
         }
 
-        // A reply that CAME BACK and argued nothing. A call that FAILED leaves the identical empty
-        // row and is infra — `reply == null` is the only thing that tells them apart, and they send a
-        // reader to opposite places: the prompt, or the endpoint.
-        StageTrace writer = t.verdictWriter();
-        if (writer.called() && writer.reply() != null
-                && SourceText.isBlank(Json.str(t.verdict(), "verdict_text"))) {
+        // A reply that CAME BACK and argued nothing. A call that FAILED leaves the identical empty row
+        // and is infra — the null reply is the only thing that tells them apart, and they send a reader
+        // to opposite places: the prompt, or the endpoint. That question is exactly
+        // {@link Step#answered()}, asked of the step rather than re-derived from two fields here.
+        if (t.argument().answered()
+                && SourceText.isBlank(t.argument().conclusion().text())) {
             out.add(new Critique(Critique.VERDICT, Critique.SOURCE_VERDICT,
                     CritiqueKind.VERDICT_PRODUCED_NO_TEXT,
                     "the verdict writer answered and argued nothing, so the marker was retired with no "
                     + "patch and no rebuttal",
-                    context("state", Json.str(t.verdict(), "state"),
-                            "reply_chars", replyChars(writer))));
+                    context("state", t.settlement().state(),
+                            "reply_chars", replyChars(t.argument().ask()))));
         }
     }
 
@@ -307,7 +317,7 @@ public final class Critiques {
     }
 
     /**
-     * How long the reply was — not the reply itself, which is already in this record's {@code stages}
+     * How long the reply was — not the reply itself, which is already in the archive's {@code stages}
      * object a few lines up and must not be duplicated per critique.
      */
     private static double replyChars(StageTrace stage) {
@@ -321,11 +331,6 @@ public final class Critiques {
             end++;
         }
         return end == 0 ? 0 : Double.parseDouble(reason.substring(0, end));
-    }
-
-    /** Missing is not empty: anything that is not a list counts as "reported nothing". */
-    private static List<Object> list(Object v) {
-        return v instanceof List<?> l ? List.copyOf(l) : List.of();
     }
 
     /** {@code Array.prototype.join('; ')} — a null element renders as "", never as the word "null". */

@@ -1,8 +1,5 @@
 package tech.mikhailov.fsm.feedback;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 /**
  * ONE MODEL CALL, AS IT ACTUALLY HAPPENED: the resolved prompt that went out and the reply that came
  * back.
@@ -40,20 +37,5 @@ public record StageTrace(boolean called, String prompt, String reply) {
     /** A call that went out and failed; the prompt survives, which is the half worth keeping. */
     public static StageTrace failed(String prompt) {
         return new StageTrace(true, prompt, null);
-    }
-
-    /**
-     * The stage's own object in the store, with the parsed result the stage extracted alongside.
-     *
-     * @param parsed what the stage read OUT of {@link #reply()} — passed in rather than derived,
-     *               because only the caller knows which node parsed this reply and which fields it kept
-     */
-    public Map<String, Object> toMap(Map<String, Object> parsed) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("called", called);
-        m.put("prompt", prompt);
-        m.put("reply", reply);
-        m.put("parsed", parsed);
-        return m;
     }
 }

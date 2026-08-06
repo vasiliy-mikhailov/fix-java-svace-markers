@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import tech.mikhailov.fsm.trial.Trial;
+import tech.mikhailov.fsm.trial.Wire;
 
 /**
  * One settled prove, in the shape the chain really produces it — the fixture the feedback tests share.
@@ -49,11 +51,17 @@ final class Traces {
     }
 
     /**
-     * The eighteen components of {@link MarkerFeedback}, each defaulted to the clean prove.
+     * ONE PROVE STATED AS THE ROWS A REVIEWER WOULD SEE, each defaulted to the clean prove.
      *
      * <p>Mutable and fluent rather than eighteen positional arguments repeated in forty tests: a test
      * that has to restate seventeen unrelated items to change one is a test nobody reads, and the
      * restatements are where a fixture stops matching what the pipeline sends.
+     *
+     * <p>IT STAYS WIRE-SHAPED ON PURPOSE, now that {@link MarkerFeedback} carries a {@link Trial}. The
+     * defects these tests are about are stated as ROWS — "the skeptic came back `over-fit`", "the green
+     * summary says no test ran" — and that is how they arrive in the database and how a reader reports
+     * one. {@link Wire#trial} is the single conversion, so a fixture written against the old eighteen
+     * still describes exactly the same prove.
      */
     static final class Builder {
 
@@ -149,13 +157,17 @@ final class Traces {
         }
 
         MarkerFeedback build() {
-            return new MarkerFeedback(KEY, WHEN, prep, reproduceInput, reproducer, parseTest, redRun,
+            return new MarkerFeedback(trial());
+        }
+
+        Trial trial() {
+            return Wire.trial(KEY, WHEN, prep, reproduceInput, reproducer, parseTest, redRun,
                     fixer, parseFix, greenRun, fixSkeptic, skeptic, prMaker, curated, recorded,
                     verdictWriter, verdict, versions());
         }
 
         List<Critique> harvest() {
-            return Critiques.harvest(build());
+            return Critiques.harvest(trial());
         }
     }
 

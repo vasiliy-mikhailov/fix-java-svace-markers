@@ -26,6 +26,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tech.mikhailov.fsm.feedback.Critique;
+import tech.mikhailov.fsm.feedback.MarkerFeedback;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.orch.PromptSource;
 
@@ -169,6 +170,38 @@ public final class CritiqueIndex {
                                  String writtenAt, Map<String, Object> context) {
     }
 
+    /**
+     * THE TWO SHAPES THIS READER CAN READ, AND IT NAMES BOTH RATHER THAN SNIFFING FOR KEYS.
+     *
+     * <p>The file is append-only ACROSS DEPLOYMENTS, so one file holds both shapes. Deciding which is
+     * which by "does this record have a {@code stages.reproducer.input}?" is guessing, and it guesses
+     * wrong the moment a third shape arrives — which is exactly how a panel silently stops counting.
+     *
+     * <p>WHAT A CONVERSION OF THE OLD LINES WOULD COST, so the choice between converting and
+     * recollecting can be made on numbers rather than on nerve:
+     * <ul>
+     *   <li>NOTHING THIS CLASS READS HAS MOVED. {@code dedup_key}, {@code written_at},
+     *       {@code marker.file}, {@code marker.svace_line}, {@code marker.svace_checker} and the whole
+     *       {@code feedback} array are identical in both shapes, which is why both are simply folded
+     *       and why the dashboard's counts span the bump without a converter existing at all.</li>
+     *   <li>TWO SECTIONS DID MOVE, and only a reader of the ARCHIVE (a training pass) sees it:
+     *       {@code stages.*} gained {@code input}, and {@code execution.red|green} is now the runner
+     *       reply as {@code Execution} parses it rather than whatever keys that reply carried.</li>
+     *   <li>WHAT IS UNRECOVERABLE: {@code stages.reproducer.input} AND {@code stages.fixer.input}.
+     *       BOTH assembled briefs were locals that died with their stage. Neither was ever written to
+     *       a line: an old record's {@code reproduceInput} row carries only {@code src},
+     *       {@code src_truncated}, {@code line_text}, {@code method_text}, {@code anchor},
+     *       {@code anchor_status} and {@code anchor_note} — {@code agent_input} was a value of the
+     *       LIVE CHAIN and never of a stored record. So a converter can produce null there and nothing
+     *       else, and a training pass must treat a converted example as having NO SEPARABLE INPUT
+     *       rather than an empty one. That distinction is the whole point: an example with no
+     *       separable input cannot teach about a template, because template and input cannot be told
+     *       apart in it.</li>
+     * </ul>
+     */
+    private static final Set<String> KNOWN_SCHEMAS =
+            Set.of(MarkerFeedback.SCHEMA, MarkerFeedback.LEGACY_SCHEMA);
+
     private final boolean enabled;
     private final Path path;
 
@@ -194,6 +227,16 @@ public final class CritiqueIndex {
      * so a later pass with nothing left to read must not publish {@code complete} over the gap.
      */
     private long oversized;
+
+    /**
+     * Lines carrying a schema identifier this reader does not know, since the file was last replaced.
+     *
+     * <p>STICKY, like {@link #oversized}, and for the same reason: the record is missing from the
+     * projection until the file changes. A dashboard that renders "no complaints" over records it could
+     * not read is the precise failure this class was written to argue against, and a future shape is
+     * the likeliest way to produce one.
+     */
+    private long unknownSchema;
 
     /**
      * Whether the last pass stopped INSIDE an over-long line rather than at a newline.
@@ -472,6 +515,16 @@ public final class CritiqueIndex {
                         + " does not look like this store's file";
             }
         }
+        // …and the same rule for a record whose SHAPE this build cannot name. Loud, and it says which
+        // shapes it does know, because the fix is a deploy and the reader has to know which way.
+        if (unknownSchema > 0) {
+            complete = false;
+            if (readError.isEmpty()) {
+                readError = unknownSchema + " record(s) carry a schema this build cannot read; it "
+                        + "knows " + KNOWN_SCHEMAS.stream().sorted().toList() + ": "
+                        + path.toAbsolutePath();
+            }
+        }
         publish(complete);
     }
 
@@ -500,6 +553,7 @@ public final class CritiqueIndex {
         records = 0;
         critiques = 0;
         oversized = 0;
+        unknownSchema = 0;
         midOversizedLine = false;
         firstSeen = "";
         lastSeen = "";
@@ -616,6 +670,15 @@ public final class CritiqueIndex {
         if (key.isEmpty()) {
             // Line 1 is the header, which has no dedup_key. Skipping by absence rather than by line
             // number is what keeps a reader correct against a file it joined half-way through.
+            return;
+        }
+        // THE SHAPE IS NAMED, NOT GUESSED. A record written by a deployment this build has never heard
+        // of is REFUSED and SAID SO — counted, surfaced on the panel and logged — rather than folded on
+        // the hope that its keys happen to line up. Both shapes this reader knows fold identically;
+        // see KNOWN_SCHEMAS for why, and for what a conversion of the older one would cost.
+        String schema = Json.str(record, "schema");
+        if (!KNOWN_SCHEMAS.contains(schema)) {
+            unknownSchema++;
             return;
         }
         records++;

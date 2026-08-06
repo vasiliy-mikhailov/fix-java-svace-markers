@@ -117,6 +117,31 @@ public final class Verdict {
     public static final String SKIPPED = "skipped";
 
     /**
+     * What a FAILED call writes into {@code verdict_confidence}, and the one place that prefix is
+     * spelled.
+     *
+     * <p>The column is not one of the 21 the bugs table keeps, so this is the artifact's ONLY record
+     * that the endpoint — rather than the model — is why nothing was argued. @see #callFailure(Object)
+     */
+    private static final String CALL_FAILED = "error: ";
+
+    /**
+     * THE VERDICT CALL'S OWN FAILURE, read back off the row this stage wrote.
+     *
+     * <p>THE PARSE BESIDE THE SERIALISE, for a fact the row can only carry as prose. A caller
+     * assembling the Trial needs "was this an endpoint that never answered, or a model that argued
+     * nothing?" as a field it can branch on: the two leave an identical empty {@code verdict_text}, and
+     * they send a reader to opposite places. Written here rather than in that caller so the prefix is
+     * matched by whoever wrote it, and a change to the wording moves both halves at once.
+     *
+     * @return the failure text, or "" when the call was made and answered
+     */
+    public static String callFailure(Object row) {
+        String confidence = Json.str(row, "verdict_confidence");
+        return confidence.startsWith(CALL_FAILED) ? confidence.substring(CALL_FAILED.length()) : "";
+    }
+
+    /**
      * The label on the note, and it is NOT {@code [gap]}. That one means "the verdict stage does not
      * route this state", a defect in this file; this one means the question was deliberately not asked.
      * A run made cheaper on purpose must never be indistinguishable from a run that lost markers.
@@ -710,7 +735,7 @@ public final class Verdict {
                     // Kept verbatim, bounded: it is what an operator greps for, and the confidence is
                     // one narrow column rather than a place to paste a 500 page.
                     callFailure = Llm.failureText(e, ERROR_CUT, "verdict call failed");
-                    verdictConfidence = "error: " + callFailure;
+                    verdictConfidence = CALL_FAILED + callFailure;
                 }
                 if (!SourceText.isBlank(verdictText)) {
                     // NOTE: the state follows the VERDICT, not the trigger that led here. The three stay

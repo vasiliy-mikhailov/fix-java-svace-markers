@@ -105,8 +105,12 @@ class MarkerFeedbackTest {
                     List.copyOf(stages.keySet()));
             for (String stage : stages.keySet()) {
                 Map<String, Object> s = cast(stages.get(stage));
-                assertEquals(List.of("called", "prompt", "reply", "parsed"), List.copyOf(s.keySet()),
-                        "the shape must not vary by stage: " + stage);
+                // `input` is the marker's own contribution to the prompt, held APART from it: the
+                // prompt is template plus input and a training pass rewrites the TEMPLATE, so a
+                // record that kept only the joined text teaches about one marker's source as though
+                // it were part of the wording under test.
+                assertEquals(List.of("called", "prompt", "reply", "input", "parsed"),
+                        List.copyOf(s.keySet()), "the shape must not vary by stage: " + stage);
             }
             assertEquals("REPRODUCER PROMPT", cast(stages.get("reproducer")).get("prompt"));
             assertEquals("{\"can_prove\":true}", cast(stages.get("reproducer")).get("reply"));
