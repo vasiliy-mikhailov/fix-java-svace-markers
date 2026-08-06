@@ -75,7 +75,6 @@ public final class JudgingCall implements Llm.Http {
     public static final String VERDICT_WRITER = "verdict writer";
 
     /** A throw with nothing quotable still has to say something a human can act on. */
-    private static final String NOTHING_TO_SAY = "the call failed with no message";
 
     private final String marker;
     private final String stage;
@@ -101,7 +100,7 @@ public final class JudgingCall implements Llm.Http {
         } catch (Exception e) {
             // WARN, because INFO is the deployed level and this is the only trace of a stage that will
             // now certify nothing while reporting success.
-            report(options, Llm.failureText(e, HttpTransport.DESCRIPTION_CHARS, NOTHING_TO_SAY));
+            report(options, Llm.failureText(e, HttpTransport.DESCRIPTION_CHARS, Failures.NOTHING_TO_SAY));
             throw e;
         }
         if (asksForAChatCompletion(options) && !HttpLlmClient.isChatCompletion(reply)) {

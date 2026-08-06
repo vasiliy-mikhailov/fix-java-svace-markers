@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  pipeline — the reactor that builds the judgement engine and the orchestrator that drives it.
+  pipeline — the reactor that builds the judgement engine, the orchestrator that drives it, and the
+  runner that clones, patches and builds the repositories under analysis.
 
   WHY AN AGGREGATOR AND NOT A PARENT. `engine` deliberately has no <parent>: it is deployed on its own,
   built on its own, and its pom documents a zero-runtime-dependency policy that a parent could quietly
@@ -8,10 +9,11 @@
   reactor and to let `orchestrator` resolve `tech.mikhailov.fsm:engine` from the reactor instead of
   from a repository — inheritance is not required for either, so it is not imposed.
 
-  The consequence is that NEITHER module inherits the properties below; each pins Java 25 itself
-  (engine via maven.compiler.release, orchestrator via spring-boot-starter-parent's java.version).
-  The properties here exist so `mvn help:evaluate` at the root reports the same answer, and so a third
-  module added later has one obvious place to read the target from.
+  The consequence is that NO module inherits the properties below; each pins Java 25 itself (engine and
+  runner via maven.compiler.release, orchestrator via spring-boot-starter-parent's java.version). The
+  properties here exist so `mvn help:evaluate` at the root reports the same answer, and so a module
+  added later has one obvious place to read the target from. That module arrived: it is `runner`, and
+  this header still said "NEITHER" and "a third module added later" for some time after it did.
 
   Build order is by dependency, not by listing order: orchestrator depends on engine, so engine is
   always built first regardless of how the <modules> happen to be ordered.

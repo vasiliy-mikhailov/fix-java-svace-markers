@@ -214,27 +214,20 @@ public final class Json {
     // each time, and the one that got it wrong would not crash — it would silently retire a real
     // defect. They are spelled out once, here, instead.
 
-    /** The field as text. ABSENT reads as the empty string, and nothing else does. */
-    public static String str(Object container, String key) {
-        return str(get(container, key));
-    }
-
     /**
-     * A VALUE the caller already has, as text.
+     * The field as text. ABSENT reads as the empty string, and nothing else does — the rule is
+     * {@link Values#text}'s and is stated there.
      *
-     * <p>THIS USED TO BE {@code String(x || '')} AND THE {@code || ''} WAS A DEFECT. It swallowed a
-     * legitimate {@code 0} and a legitimate {@code false}: a marker on line 0, a
-     * {@code red_reproduced: false} and a {@code path_prefix: 0} were all indistinguishable from a
-     * field nobody set. Retired on 2026-08-05 with the rest of the JavaScript emulation — see
-     * {@code harness/README.md}, "Re-baselines". Absence is now the only thing that reads as empty,
-     * and it is {@link Values#text} that says so, once, for the whole engine.
-     *
-     * <p>Split out from the field read because a stage that has parsed its row into typed values still
-     * needs the coercion, and writing a second copy of it inside that stage is precisely the
-     * two-places-for-one-value divergence the parse exists to prevent.
+     * <p>THE ONE-ARGUMENT FORM IS GONE, as of 2026-08-06, and that is the point of this paragraph.
+     * {@code Json.str(Object)} was {@code return Values.text(v);} under twenty-two lines of javadoc
+     * re-telling the {@code x || ''} defect that {@link Values#text} already tells better. Two public
+     * names for one function is how three separate findings came to describe "{@code Json.str} versus
+     * {@code Values.text}" as though the answer could differ between them. A caller that has already
+     * parsed its row and holds the VALUE calls {@link Values#text} directly; this overload is for the
+     * field read, which is what the container and the key are for.
      */
-    public static String str(Object v) {
-        return Values.text(v);
+    public static String str(Object container, String key) {
+        return Values.text(get(container, key));
     }
 
     /** JS truthiness: null, false, 0, "" and an absent key are false; everything else is true. */

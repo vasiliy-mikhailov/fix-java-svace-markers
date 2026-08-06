@@ -285,7 +285,8 @@ class AReIngestIsSafeByDefaultTest {
         assertThat(account.discardedMarkers()).isEqualTo(2L);
         assertThat(account.discardedSettled()).isEqualTo(2L);
         assertThat(account.discardedArtifacts()).isEqualTo(1L);
-        assertThat(account.written()).isEqualTo(2L);
+        // `written` is a KEY on the answer and no longer a component: it was always `added`.
+        assertThat(account.toMap()).containsEntry("written", 2L);
     }
 
     /**

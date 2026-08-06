@@ -130,10 +130,15 @@ public class CsvSpool {
     /**
      * A report that arrived inline in the JSON body.
      *
-     * <p>Checked in CHARACTERS before it is encoded, and in BYTES as it is written. Both, because
-     * Jackson has already materialised the string by the time this is called — the length check is what
-     * makes the refusal say the right number, and the write check is what makes the bound real for the
-     * multipart path that shares it.
+     * <p>CHECKED IN BYTES, TWICE, and never in characters: the string is encoded first and it is the
+     * encoded length that is compared here, then compared again as the stream is written. The
+     * duplicate is worth its line — Jackson has already materialised the whole string by the time this
+     * is called, so refusing it here saves creating and deleting a temp file for a body already known
+     * to be over, and it is the encoded length that makes the 413 quote a number the sender can act
+     * on. (It said "in CHARACTERS before it is encoded" until 2026-08-06, which mattered: characters
+     * and bytes differ by up to 4× on a UTF-8 report, so a reader trusting that sentence would have
+     * believed a 32 MiB cap could refuse an 8 MiB file.) The write check is what makes the bound real
+     * for the multipart path that shares it.
      */
     public Path spool(String text) throws TooLarge, IOException {
         byte[] bytes = text.getBytes(StandardCharsets.UTF_8);

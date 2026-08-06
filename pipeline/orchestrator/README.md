@@ -39,7 +39,7 @@ POST /api/prove/marker┘                     ├─ GitHub contents  (source)
 
 ```bash
 cd pipeline
-mvn -B test                       # engine + orchestrator; no network, no container, no model
+mvn -B test                       # all three modules; no network, no container, no model
 mvn -pl orchestrator spring-boot:run
 # http://localhost:8085  — the dashboard, /api/state, /healthz
 ```

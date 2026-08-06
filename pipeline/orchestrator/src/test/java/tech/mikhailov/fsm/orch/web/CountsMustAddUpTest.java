@@ -90,7 +90,8 @@ class CountsMustAddUpTest {
      *
      * <p>{@code proving} is counted as UNSETTLED and that is the load-bearing half: a marker some
      * execution is currently holding has not been answered by anyone, and charging it as settled would
-     * also disagree with {@link WorkModel#UNSETTLED}, which is what the Effort panel divides by.
+     * also disagree with {@link tech.mikhailov.fsm.lib.SuspicionStatus#UNSETTLED} — the set
+     * {@code WorkModel}, and so the Effort panel, divides by.
      */
     @Test
     void settledIsTheBacklogMinusWhatNobodyHasAnsweredYet() {
@@ -127,7 +128,8 @@ class CountsMustAddUpTest {
      *
      * <p>{@code /topic/counts} is pushed on every transition and {@code /api/state} is polled; they are
      * built by different code paths over different queries — a SQL {@code GROUP BY} on one side, a walk
-     * over {@link WorkModel#UNSETTLED} on the other. The class comment on {@code counts()} says they
+     * over {@link tech.mikhailov.fsm.lib.SuspicionStatus#UNSETTLED} in {@code WorkModel} on the
+     * other. The class comment on {@code counts()} says they
      * must agree, and nothing checked it. If they drift, the Run-progress tile and the Effort panel show
      * two different settled counts on the same screen and there is no way to tell which one is lying.
      */

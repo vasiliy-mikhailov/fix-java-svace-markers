@@ -618,11 +618,29 @@ class BuildReproduceInputTest {
 
     @Test
     void base64ThatArrivesLineWrappedStillDecodes() {
-        // The GitHub contents API wraps its base64 at 60 characters. The newlines have to come out
-        // before the decode, or what reaches the model is whatever the decoder made of the padding.
+        // The GitHub contents API wraps its base64 at 60 characters. NOTHING UNWRAPS IT FIRST: the
+        // decoder skips every character outside the alphabet itself. Until 2026-08-06 the node called
+        // SourceText.stripSpace here and its comment called that strip load-bearing — it was a full
+        // copy of a source file (up to SRC_MAX) for no change in the decoded bytes.
         String wrapped = b64(SIMPLE).replaceAll("(.{20})", "$1\n");
         Outcome r = build(marker("svace_line", 5L), wrapped);
-        assertEquals(SIMPLE, r.src(), "the wrapping is stripped, not decoded");
+        assertEquals(SIMPLE, r.src(), "the wrapping is skipped, not decoded");
+        assertEquals("login", r.anchor());
+    }
+
+    @Test
+    void aWrapThatFallsInsideThePaddingStillDecodesTheWholeFile() {
+        // The exact case the deleted strip named as its reason to exist: the newline landing between
+        // the two "=" of the padding group. It decodes the same either way, because "=" ends the
+        // stream and the newline before it is skipped like any other non-alphabet character. This is
+        // the assertion that made deleting the strip safe, so it is the one that goes red if the
+        // decoder ever stops being tolerant.
+        String encoded = b64(SIMPLE);
+        assertTrue(encoded.endsWith("=="), "this case needs a two-character padding group");
+        String split = encoded.substring(0, encoded.length() - 1) + "\n"
+                + encoded.charAt(encoded.length() - 1);
+        Outcome r = build(marker("svace_line", 5L), split);
+        assertEquals(SIMPLE, r.src());
         assertEquals("login", r.anchor());
     }
 

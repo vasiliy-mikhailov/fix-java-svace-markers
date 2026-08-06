@@ -286,9 +286,11 @@ class AProverThatCannotUseItsCacheMustSaySoOnceTest {
     /**
      * A CACHE DIRECTORY THIS UID CANNOT WRITE TO AT ALL.
      *
-     * <p>{@link LocalRunner#ensureCache} calls {@code Files.createDirectories}, which SUCCEEDS on a
-     * directory that already exists whoever owns it — the mkdir is a no-op and the permission bits are
-     * never consulted. The only thing that touches the volume afterwards is
+     * <p>{@code Files.createDirectories} SUCCEEDS on a directory that already exists whoever owns it —
+     * the mkdir is a no-op and the permission bits are never consulted. (There used to be two more of
+     * them before this probe ran, in {@code Runner.main} and {@code LocalRunner.open}; they were
+     * deleted on 2026-08-06 for exactly that reason, so this is now the only one.) The only thing that
+     * touches the volume afterwards is
      * {@link MavenSettings#configure}, and it writes a file ONLY when {@code MAVEN_MIRROR_URL} is set;
      * unset — the shipped default, and what a reader with nothing but Docker runs — it calls
      * {@code Files.deleteIfExists} on a file that is not there, which answers false without ever

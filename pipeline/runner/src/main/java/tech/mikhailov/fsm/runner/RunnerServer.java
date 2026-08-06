@@ -41,9 +41,6 @@ final class RunnerServer implements AutoCloseable {
     /** The port the split shape expects; {@code HttpRunnerClient.DEFAULT_BASE_URL} names it too. */
     static final int DEFAULT_PORT = 8090;
 
-    /** {@code process.env.CACHE || '/cache'} — the persistent volume both clones live in. */
-    static final String DEFAULT_CACHE = LocalRunner.DEFAULT_CACHE;
-
     private final HttpServer server;
     private final ExecutorService executor;
     private final LocalRunner runner;
@@ -57,11 +54,11 @@ final class RunnerServer implements AutoCloseable {
         this.ownsRunner = ownsRunner;
     }
 
-    /** Bind and start serving real builds out of {@code cache}. */
-    static RunnerServer start(String host, int port, Path cache, String token) throws IOException {
-        return start(host, port, LocalRunner.open(cache, token, System.getenv(MavenSettings.MIRROR_ENV)),
-                true);
-    }
+    // A four-argument start(host, port, cache, token) stood here until 2026-08-06, opening a
+    // LocalRunner of its own and reading MAVEN_MIRROR_URL on the way. Nothing called it: Runner.main
+    // builds the LocalRunner itself (it also needs the git host) and passes it to the overload below,
+    // and both test sites use the six-argument one. The mirror wiring is NOT dead with it —
+    // Runner.main reads MAVEN_MIRROR_URL live and hands it to LocalRunner.open.
 
     /**
      * The seams, injectable — so the suite can prove the routes, the reply shapes and the build
@@ -133,7 +130,8 @@ final class RunnerServer implements AutoCloseable {
             String method = exchange.getRequestMethod();
             if ("GET".equals(method) || "HEAD".equals(method)) {
                 Api.sendJson(exchange, "/health".equals(path) ? 200 : 404,
-                        "/health".equals(path) ? health() : notFound());
+                        // LocalRunner#health reports the JDKs actually on disk.
+                        "/health".equals(path) ? runner.health() : notFound());
                 return;
             }
 
@@ -170,20 +168,10 @@ final class RunnerServer implements AutoCloseable {
         }
     }
 
-    /** {@code GET /health} — {@link LocalRunner#health()}, which reports the JDKs actually on disk. */
-    private Map<String, Object> health() {
-        return runner.health();
-    }
-
     private static Map<String, Object> notFound() {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("error", "not found");
         return out;
-    }
-
-    /** {@code fs.mkdirSync(CACHE, {recursive: true})} — the volume may be mounted empty. */
-    static void ensureCache(Path cache) {
-        LocalRunner.ensureCache(cache);
     }
 
     @Override

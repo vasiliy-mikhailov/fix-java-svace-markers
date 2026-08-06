@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import tech.mikhailov.fsm.lib.SourceText;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.MarkerState;
 import tech.mikhailov.fsm.lib.PrDecision;
@@ -183,7 +184,7 @@ public final class RecordOutcome {
 
         /** WHY the branch is missing: "retry this" and "this repo has no default branch" differ. */
         String branchErrorText() {
-            return Json.str(branchError);
+            return Values.text(branchError);
         }
     }
 
@@ -212,7 +213,7 @@ public final class RecordOutcome {
 
         /** Why the test does not exercise the real code, in the reviewer's own banner. */
         String realnessText() {
-            return Json.str(realness);
+            return Values.text(realness);
         }
     }
 
@@ -241,7 +242,7 @@ public final class RecordOutcome {
 
         /** The paths it refused, as the row records them. */
         String rejectedPaths() {
-            return Json.str(rejectedValue);
+            return Values.text(rejectedValue);
         }
     }
 
@@ -270,12 +271,12 @@ public final class RecordOutcome {
 
         /** The failure, for the row. @see #clip */
         String errorText() {
-            return Json.str(error);
+            return Values.text(error);
         }
 
         /** The build log the cause is read out of. @see #cause */
         String outputText() {
-            return Json.str(output);
+            return Values.text(output);
         }
     }
 
@@ -314,17 +315,17 @@ public final class RecordOutcome {
 
         /** @see ReproRun#errorText() */
         String errorText() {
-            return Json.str(error);
+            return Values.text(error);
         }
 
         /** The green build's log. @see #cause */
         String greenOutputText() {
-            return Json.str(greenOutput);
+            return Values.text(greenOutput);
         }
 
         /** The fix run's own RED build log — a different build from {@link ReproRun#outputText()}. */
         String redOutputText() {
-            return Json.str(redOutput);
+            return Values.text(redOutput);
         }
     }
 

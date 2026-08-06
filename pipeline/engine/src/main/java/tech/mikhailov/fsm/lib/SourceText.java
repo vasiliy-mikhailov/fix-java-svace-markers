@@ -102,14 +102,10 @@ public final class SourceText {
         return s.substring(from, to);
     }
 
-    /** Every space character removed — used to unwrap the GitHub API's 60-column base64. */
-    public static String stripSpace(String s) {
-        StringBuilder out = new StringBuilder(s.length());
-        for (int i = 0; i < s.length(); i++) {
-            if (!isSpace(s.charAt(i))) {
-                out.append(s.charAt(i));
-            }
-        }
-        return out.toString();
-    }
+    // stripSpace() lived here until 2026-08-06 to unwrap the GitHub contents API's 60-column base64.
+    // Its one caller — BuildReproduceInput.decode — did not need it: Values.base64ToUtf8 skips every
+    // character outside the alphabet on its own, so the unwrap was a full copy of a source file for no
+    // change in the decoded bytes. Deleted with the call. If a caller ever does need "every space
+    // character removed", write it against isSpace() there and say what it is for; a general-purpose
+    // stripper in lib is what let this one outlive its reason.
 }

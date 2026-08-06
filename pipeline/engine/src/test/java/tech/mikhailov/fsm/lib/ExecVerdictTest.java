@@ -261,6 +261,35 @@ class ExecVerdictTest {
         assertFalse(score("test_score", "").toLowerCase(Locale.ROOT).contains("realness"));
     }
 
+    /**
+     * A score that is not a finite number must reach the prose, not blow the stage up.
+     * {@code {"test_score": 1e400}} is well-formed JSON that parses to Infinity and arrives here RAW
+     * off a posted body. Until 2026-08-06 this field was rendered with {@code Json.stringify}, which
+     * refuses a non-finite double on purpose — and the caller in {@code Verdict} composes evidence
+     * outside every try, so one such body took the whole verdict stage down for a marker that was
+     * otherwise fully settled. {@code Values.text} prints the word instead, which is a value a
+     * reviewer can search for and a stage that still answers.
+     */
+    @Test
+    void aScoreThatIsNotAFiniteNumberIsPrintedRatherThanThrown() {
+        assertTrue(score("test_score", Double.POSITIVE_INFINITY)
+                .contains("Test realness Infinity/100."));
+        assertTrue(score("test_score", Double.NaN).contains("Test realness NaN/100."));
+    }
+
+    /**
+     * AND THE RENDERING MOVED WITH IT, deliberately: {@code Json.stringify} switches to
+     * {@code Double.toString} at |d| ≥ 1e15, so a score of 1e21 used to print as {@code "1.0E21"}.
+     * {@link tech.mikhailov.fsm.lib.Values#plain} says "no exponent, ever, at any magnitude" and this
+     * column is now under that rule like every other number the pipeline prints. No score a reviewer
+     * will ever see is affected — this pins the direction, so the next reader knows it was chosen.
+     */
+    @Test
+    void aScoreTooLargeToBeAScoreIsStillPrintedAsDigits() {
+        assertTrue(score("test_score", 1e21).contains("Test realness 1000000000000000000000/100."),
+                score("test_score", 1e21));
+    }
+
     private static String score(Object... kv) {
         Map<String, Object> item = ev("test_path", "a/BTest.java", "jdk", "25");
         item.putAll(ev(kv));

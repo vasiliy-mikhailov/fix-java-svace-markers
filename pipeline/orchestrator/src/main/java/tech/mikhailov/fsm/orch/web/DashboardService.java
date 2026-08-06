@@ -188,8 +188,8 @@ public class DashboardService {
         long queued = byStatus.getOrDefault(SuspicionDao.STATUS_NEW, 0L);
         long proving = byStatus.getOrDefault(SuspicionDao.STATUS_PROVING, 0L);
         // Settled means "somebody reached an answer". A marker in flight has not been settled by
-        // anyone — see WorkModel.UNSETTLED, which this must agree with or the Run progress tile and the
-        // Effort panel will disagree about the same run.
+        // anyone — see SuspicionStatus.UNSETTLED, which WorkModel walks and this must agree with, or the
+        // Run progress tile and the Effort panel will disagree about the same run.
         long settled = total - queued - proving;
 
         return DashboardPresenter.counts(byStatus, statesOrEmpty(), total, queued, proving, settled,
@@ -308,13 +308,23 @@ public class DashboardService {
         }
     }
 
-    /** {@code prover} / {@code ingest} / the raw job name. See {@link #FLOW_PROVER}. */
+    /**
+     * {@code prover} / {@code ingest} / the raw job name. See {@link #FLOW_PROVER}.
+     *
+     * <p>A SUBSTRING RULE, so that this class does not carry a second copy of {@code BatchConfig}'s job
+     * names: {@code prove}, {@code proveJob} and {@code markerProver} all light the prover panel.
+     * {@code "prover"} was spelled out beside {@code "prove"} until 2026-08-06 to say that both
+     * spellings count — but every string containing {@code prover} contains {@code prove}, so the
+     * second test could never run. Both spellings still classify; the rule that makes them is the
+     * shorter one, and it is pinned by name in
+     * {@code ABadReadMustNotBlankThePageTest.theFlowIsRecognisedBySubstringAndNotByEcho}.
+     */
     static String flowOf(String jobName) {
         if (jobName == null || jobName.isBlank()) {
             return "";
         }
         String lower = jobName.toLowerCase(Locale.ROOT);
-        if (lower.contains("prove") || lower.contains("prover")) {
+        if (lower.contains("prove")) {
             return FLOW_PROVER;
         }
         if (lower.contains("ingest")) {

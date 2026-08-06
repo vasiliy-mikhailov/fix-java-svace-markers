@@ -458,44 +458,12 @@ class NoNewCallerReachesTheBacklogAroundItsPortTest {
     }
 
     /**
-     * Comments out, STRING LITERALS IN.
-     *
-     * <p>Both halves are load-bearing and they pull in opposite directions. Comments have to go because
-     * every file here explains at length which statements it refuses to write and names the DAO while
-     * doing it. Literals have to stay because that is where the SQL is — and being inside a literal is
-     * what tells a {@code //} in a URL apart from a comment, which a line-oriented stripper cannot do.
+     * Comments out, STRING LITERALS IN — {@link TestSource#stripComments}, which is where this one
+     * moved to on 2026-08-06 so that the two guards that had a NAIVE copy of it read the same text
+     * this one does.
      */
     private static String stripComments(String source) {
-        StringBuilder out = new StringBuilder(source.length());
-        int i = 0;
-        int length = source.length();
-        while (i < length) {
-            if (source.startsWith("/*", i)) {
-                int end = source.indexOf("*/", i + 2);
-                i = end < 0 ? length : end + 2;
-            } else if (source.startsWith("//", i)) {
-                int end = source.indexOf('\n', i);
-                i = end < 0 ? length : end;
-            } else if (source.startsWith("\"\"\"", i)) {
-                int end = source.indexOf("\"\"\"", i + 3);
-                end = end < 0 ? length : end + 3;
-                out.append(source, i, end);
-                i = end;
-            } else if (source.charAt(i) == '"' || source.charAt(i) == '\'') {
-                char quote = source.charAt(i);
-                int end = i + 1;
-                while (end < length && source.charAt(end) != quote) {
-                    end += source.charAt(end) == '\\' ? 2 : 1;
-                }
-                end = Math.min(end + 1, length);
-                out.append(source, i, end);
-                i = end;
-            } else {
-                out.append(source.charAt(i));
-                i++;
-            }
-        }
-        return out.toString();
+        return TestSource.stripComments(source);
     }
 
     /** One file, comments removed — what {@link #theTwoWritersOfTheProvePathTakeThePortAndNotTheTable} reads. */

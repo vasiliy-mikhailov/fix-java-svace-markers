@@ -148,10 +148,10 @@ final class Workspace {
         this(cache, token, exec, gitHost, System::currentTimeMillis);
     }
 
-    Workspace(Path cache, String token, Proc.Exec exec, LongSupplier clock) {
-        this(cache, token, exec, CloneUrl.DEFAULT_HOST, clock);
-    }
-
+    // THERE IS NO (cache, token, exec, LongSupplier) OVERLOAD ANY MORE. Two four-argument
+    // constructors that differ only in the TYPE of the last argument is how a caller means to move the
+    // git host and moves the clock instead, silently, in a class whose clock decides how long a failed
+    // clone stays negatively cached. One test wanted it; it now names the host it is not changing.
     Workspace(Path cache, String token, Proc.Exec exec, String gitHost, LongSupplier clock) {
         this.cache = cache;
         this.fsCache = cache.resolve("fs");

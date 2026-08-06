@@ -22,10 +22,27 @@ import org.junit.jupiter.api.Test;
  * be exercised with three fakes and a table into one that needs a context, a datasource and a broker —
  * and nothing about that change looks wrong in a diff.
  *
- * <p>WHY A WHITELIST AND NOT A LIST OF BANNED PACKAGES. A banned list only catches the frameworks
- * somebody thought of. This asserts what these two packages ARE allowed to see, so the next dependency
- * anyone adds — a JSON library, a metrics client, a second web framework, the module's own DAO layer —
- * fails here on the day it arrives rather than the day someone tries to test around it.
+ * <p>WHAT IS ACTUALLY GUARANTEED, AND IT IS TWO RULES RATHER THAN ONE. Read this before trusting the
+ * check further than it goes.
+ * <ul>
+ *   <li>ON {@code import} LINES it is a WHITELIST ({@link #ALLOWED_IMPORTS}). A banned list only
+ *       catches the frameworks somebody thought of; this asserts what these two packages ARE allowed
+ *       to see, so the next dependency anyone adds — a JSON library, a metrics client, a second web
+ *       framework, the module's own DAO layer — fails here on the day it arrives rather than the day
+ *       someone tries to test around it. This is the rule that matters, because an import is how a
+ *       dependency is actually written.</li>
+ *   <li>EVERYWHERE ELSE IN THE FILE it is a BLACKLIST ({@link #BANNED_ANYWHERE}), ten entries long. A
+ *       fully-qualified reference in a method body leaves no import line, so it is checked against the
+ *       names below and nothing else. {@code com.google.common.collect.ImmutableList.of(…)} spelled
+ *       out in full inside a domain class therefore passes both halves. That hole is narrow — nobody
+ *       writes a whole package name per call site by accident — but it is a hole, and this paragraph
+ *       exists because the sentence that used to be here claimed the whitelist covered both.</li>
+ * </ul>
+ *
+ * <p>The blacklist half is what {@code ~15 lines of ArchUnit} would close, since a fully-qualified
+ * reference IS in the constant pool of the compiled class. The trade is real and was not taken here:
+ * ArchUnit cannot see the import a class does not use, and the failure message below — which names the
+ * three vocabulary types and the port that exists instead — is most of this file's value.
  *
  * <p>THE FOUR THINGS THAT ARE ALLOWED, and why each one is not a leak:
  * <ul>
@@ -42,11 +59,10 @@ import org.junit.jupiter.api.Test;
  *       The domain may NOT: that direction is checked separately below.</li>
  * </ul>
  *
- * <p>IT READS THE SOURCES, NOT THE BYTECODE, deliberately. A compiled class does not record an import
- * it did not use, and a fully-qualified name in a method body leaves no import at all — so the check
- * strips comments and then looks for both. The engine's own package is named in the failure message
- * because it is the one an unwary "just call the stage from here" would reach for, and it is the whole
- * reason the {@code JudgementEngine} port exists.
+ * <p>IT READS THE SOURCES, NOT THE BYTECODE, deliberately: a compiled class does not record an import
+ * it did not use. The engine's own package is named in the failure message because it is the one an
+ * unwary "just call the stage from here" would reach for, and it is the whole reason the
+ * {@code JudgementEngine} port exists.
  */
 class TheInnerCirclesDependOnNoFrameworkTest {
 
@@ -67,9 +83,10 @@ class TheInnerCirclesDependOnNoFrameworkTest {
      * The three engine types that are vocabulary rather than machinery.
      *
      * <p>Named one by one rather than allowing {@code tech.mikhailov.fsm.lib.*}, because that package
-     * also holds {@code Json}, {@code Js}, {@code Llm} and {@code ExecVerdict} — a JSON reader, a
-     * JavaScript-semantics shim, a model transport and a renderer. A domain that reached for any of
-     * those would be a domain that had started parsing the wire.
+     * also holds {@code Json}, {@code JsonExtract}, {@code Llm} and {@code ExecVerdict} — a JSON
+     * reader, a model-reply scraper, a model transport and a renderer. A domain that reached for any
+     * of those would be a domain that had started parsing the wire. (It used to name {@code Js}, the
+     * JavaScript-semantics shim; that class went with the emulation on 2026-08-05.)
      */
     private static final String ENGINE_VOCABULARY =
             "MarkerState, SuspicionStatus and Severity, and nothing else from tech.mikhailov.fsm.lib";
@@ -213,21 +230,10 @@ class TheInnerCirclesDependOnNoFrameworkTest {
      * narrowed to import lines either.
      */
     private static String stripComments(String source) {
-        StringBuilder out = new StringBuilder(source.length());
-        int i = 0;
-        while (i < source.length()) {
-            if (source.startsWith("/*", i)) {
-                int end = source.indexOf("*/", i + 2);
-                i = end < 0 ? source.length() : end + 2;
-            } else if (source.startsWith("//", i)) {
-                int end = source.indexOf('\n', i);
-                i = end < 0 ? source.length() : end;
-            } else {
-                out.append(source.charAt(i));
-                i++;
-            }
-        }
-        return out.toString();
+        // ONE implementation, in TestSource. This used to be a naive line-oriented copy, and a `//`
+        // inside a string literal — JobsController really does carry one — made it discard the rest of
+        // that line, so part of a governed file was invisible to this check.
+        return TestSource.stripComments(source);
     }
 
     /** {@code src/main/java}, derived from where this class was loaded from. */

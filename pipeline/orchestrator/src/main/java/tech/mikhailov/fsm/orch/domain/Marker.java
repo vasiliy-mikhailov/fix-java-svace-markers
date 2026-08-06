@@ -85,8 +85,16 @@ public final class Marker {
      *       an answer carrying fewer attempts than the row already has is an answer about an older
      *       sample of this marker — a late reply, or a prove that read a stale row. Writing it would
      *       hand the marker back its retry budget, and every ceiling in the engine (min-attempts for a
-     *       non-reproduction, three for an infra error) is counted against that column. NOTHING checks
-     *       this today, at any layer.</li>
+     *       non-reproduction, three for an infra error) is counted against that column. THIS METHOD IS
+     *       WHAT CHECKS IT — {@link AttemptsWentBackwards}, three lines down — and it is the only thing
+     *       that does. The sentence here used to read "NOTHING checks this today, at any layer", which
+     *       was written before the check and outlived it: a reader who believed it would go and add a
+     *       second guard, or worse, treat a refusal they had just been told was impossible as a bug.
+     *       BELOW THIS METHOD nothing checks it and nothing should: {@code SuspicionDao} settles with
+     *       {@code SET ... prove_attempts = ?} and no predicate on the column, deliberately, because a
+     *       settle is keyed on identity and writes the count it is handed. That division is asserted
+     *       from the port it protects, in {@code MarkerRepositoryContract}, so both adapters inherit
+     *       it.</li>
      * </ul>
      *
      * <p>THE NOTE IS THE ENGINE'S, unedited. It arrives already labelled — {@code [skipped]},

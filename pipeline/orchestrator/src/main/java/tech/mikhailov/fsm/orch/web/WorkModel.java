@@ -26,7 +26,8 @@ import tech.mikhailov.fsm.lib.SuspicionStatus;
  * on the page does not move for any reason but the work itself. {@code WorkModelTest} is what holds
  * that claim up.
  *
- * <p>{@link #UNSETTLED} SKIPS {@code proving} AS WELL AS {@code new}: the orchestrator claims a marker
+ * <p>THE UNSETTLED SET SKIPS {@code proving} AS WELL AS {@code new} ({@link SuspicionStatus#UNSETTLED}):
+ * the orchestrator claims a marker
  * by flipping it to {@code proving}, and a
  * marker somebody is currently looking at has not been settled by anyone — charging it 45 minutes of
  * human-equivalent work would inflate exactly the figure this file exists to keep honest.
@@ -92,22 +93,6 @@ public final class WorkModel {
      * everywhere the enum is routed on.
      */
     private static final String LEGACY_ARGUED_KIND = "undetermined";
-
-    /**
-     * Statuses that mean "nobody has settled this yet", and therefore cost nothing yet.
-     *
-     * <p>{@code new} is work.js's own rule. {@code proving} is the orchestrator's claim token — see
-     * {@link tech.mikhailov.fsm.orch.dao.SuspicionDao#STATUS_PROVING}, which is explicit that it is
-     * not an outcome and is erased on every restart. Charging it would also move the ETA, which
-     * divides observed machine time by the settled count.
-     *
-     * <p>IT IS THE ENUM'S OWN SET, not a copy of it — the same object {@link SuspicionStatus#UNSETTLED}
-     * derives from {@link SuspicionStatus.Work}. Named here because this is the name the dashboard's
-     * own tests point at when they check that {@code counts()} and the Effort panel partition a run the
-     * same way, and because a Set that is re-exported rather than re-spelled cannot drift from the
-     * vocabulary it belongs to.
-     */
-    public static final Set<SuspicionStatus> UNSETTLED = SuspicionStatus.UNSETTLED;
 
     /**
      * Spellings already reported, so an unrecognised one is loud ONCE rather than on every poll.
@@ -309,7 +294,14 @@ public final class WorkModel {
             SuspicionStatus queued = SuspicionStatus.of(status);
             if (queued == null) {
                 report("suspicions.status", status);
-            } else if (UNSETTLED.contains(queued)) {
+            // NOBODY HAS SETTLED THIS YET, so it costs nothing yet. `new` is work.js's own rule;
+            // `proving` is the orchestrator's claim token — see SuspicionDao.STATUS_PROVING, which is
+            // explicit that it is not an outcome and is erased on every restart. Charging it would also
+            // move the ETA, which divides observed machine time by the settled count. Read straight off
+            // the enum: there was a `WorkModel.UNSETTLED` re-export of this exact object here until
+            // 2026-08-06, whose own javadoc's defence — "a Set that is re-exported rather than
+            // re-spelled cannot drift" — is equally true of not re-exporting it.
+            } else if (SuspicionStatus.UNSETTLED.contains(queued)) {
                 continue;
             }
             settled++;

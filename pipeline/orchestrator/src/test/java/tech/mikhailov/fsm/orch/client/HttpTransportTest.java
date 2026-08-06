@@ -704,6 +704,72 @@ class HttpTransportTest {
         }
     }
 
+    // ---- the two decisions the constructor makes about the connection -----------------------------
+
+    /**
+     * NO {@code Upgrade: h2c} ON THE WIRE. The most expensive decision in this slice, and until
+     * 2026-08-06 nothing here asserted it — its twin in the engine is pinned by
+     * {@code OutboundTest}, and this class, which every deployed model call goes through, had the
+     * ten-line comment and no test. Grepping this whole test tree for {@code Upgrade},
+     * {@code HTTP_1_1}, {@code followRedirects} or {@code Redirect} returned zero hits.
+     *
+     * <p>WHAT IT COSTS WHEN IT REGRESSES. The JDK's default is HTTP_2, which over cleartext is an
+     * ordinary HTTP/1.1 request carrying {@code Upgrade: h2c} and {@code Connection: Upgrade,
+     * HTTP2-Settings}. uvicorn, which serves vLLM, reads that {@code Connection: Upgrade} and hands
+     * its app a request WITH NO BODY: every chat completion answers
+     * {@code 400 … 'msg': 'Field required'}. All three judging stages fail closed, so the only visible
+     * effect is markers settling {@code needs_review} with {@code skeptic_verdict 'unknown'} — no
+     * error, nothing red. THE BODY IS ASSERTED HERE TOO, because "no Upgrade header" and "the body
+     * arrived" are the two halves of that outage and a test for the first alone would have passed
+     * during it.
+     */
+    @Test
+    void noUpgradeToH2cIsOfferedAndTheBodyArrivesWithTheRequest() throws Exception {
+        try (Stub server = new Stub(200, "{\"ok\":true}")) {
+            Map<String, Object> options = new LinkedHashMap<>();
+            options.put("method", "POST");
+            options.put("url", server.url() + "/chat/completions");
+            options.put("body", Map.of("model", "qwen"));
+            options.put("json", true);
+
+            transport.request(options);
+
+            assertThat(server.headerValues("Upgrade"))
+                    .as("an h2c upgrade offer is what makes uvicorn deliver a bodyless request")
+                    .isEmpty();
+            assertThat(server.headerValues("HTTP2-Settings")).isEmpty();
+            assertThat(server.body())
+                    .as("and the half the outage was actually visible as")
+                    .isEqualTo("{\"model\":\"qwen\"}");
+        }
+    }
+
+    /**
+     * REDIRECTS ARE FOLLOWED. {@code followRedirects(NORMAL)} is the second decision on that builder
+     * and was unpinned for the same reason as the first. GitHub answers a RENAMED repository with a
+     * 301 to its new location; a transport that did not follow it would hand the caller a 301 with an
+     * empty body, which {@code GithubSourceClient} reports as a failed call and the row records as
+     * infra — for a repository that is right there under its new name.
+     */
+    @Test
+    void aRenamedRepositoryIsFollowedToWhereItMovedTo() throws Exception {
+        try (Stub moved = new Stub(200, "{\"content\":\"aGk=\"}")) {
+            try (Stub renamed = Stub.redirectingTo(moved.url() + "/repos/new/name")) {
+                Map<String, Object> options = new LinkedHashMap<>();
+                options.put("url", renamed.url() + "/repos/old/name");
+                options.put("json", true);
+
+                Object reply = transport.request(options);
+
+                assertThat(renamed.hits()).isEqualTo(1);
+                assertThat(moved.hits())
+                        .as("the redirect was followed rather than handed back as a reply")
+                        .isEqualTo(1);
+                assertThat(Json.str(reply, "content")).isEqualTo("aGk=");
+            }
+        }
+    }
+
     // ---- doubles --------------------------------------------------------------------------------------
 
     /**
@@ -754,15 +820,27 @@ class HttpTransportTest {
                 new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         private volatile String method;
         private volatile String requestBody;
+        /** Sent as {@code Location} when set, so a 3xx is a redirect and not just a status. */
+        private final String location;
 
         Stub(int status, String body) throws IOException {
             this(status, body, Duration.ZERO);
         }
 
+        /** A 301 to {@code location}, the shape GitHub answers a RENAMED repository with. */
+        static Stub redirectingTo(String location) throws IOException {
+            return new Stub(301, "", Duration.ZERO, location);
+        }
+
         Stub(int status, String body, Duration delay) throws IOException {
+            this(status, body, delay, null);
+        }
+
+        Stub(int status, String body, Duration delay, String location) throws IOException {
             this.status = status;
             this.body = body;
             this.delay = delay;
+            this.location = location;
             this.server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             this.server.createContext("/", this::handle);
             this.server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
@@ -788,6 +866,9 @@ class HttpTransportTest {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
+            }
+            if (location != null) {
+                exchange.getResponseHeaders().add("Location", location);
             }
             byte[] payload = body.getBytes(StandardCharsets.UTF_8);
             if (payload.length == 0) {

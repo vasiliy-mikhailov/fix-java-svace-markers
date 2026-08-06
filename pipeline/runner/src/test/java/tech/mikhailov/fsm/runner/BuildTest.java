@@ -224,7 +224,7 @@ class BuildTest {
     @Test
     void mavenIsTheDefaultAndEveryStyleGateIsSkipped(@TempDir Path ws) throws IOException {
         Files.writeString(ws.resolve("pom.xml"), "<project/>");
-        Build.Command c = Build.buildCmd(ws, "25", null, "auto", "BTest");
+        Build.Command c = Build.buildCmd(ws, "25", null, "auto", "BTest", null);
         assertEquals("mvn", c.cmd().getFirst());
         assertTrue(c.cmd().contains("-Dtest=BTest"));
         assertTrue(c.cmd().contains("-Dcheckstyle.skip=true") && c.cmd().contains("-Dspotbugs.skip=true"),
@@ -243,7 +243,7 @@ class BuildTest {
         // that passed only JAVA_HOME and PATH would run Maven with no HOME — and Maven with no HOME cannot
         // find ~/.m2/settings.xml, which is the file pointing it at the only repository it may use.
         Files.writeString(ws.resolve("pom.xml"), "<project/>");
-        Build.Command c = Build.buildCmd(ws, "17", null, "auto", "BTest");
+        Build.Command c = Build.buildCmd(ws, "17", null, "auto", "BTest", null);
         for (String inherited : System.getenv().keySet()) {
             if (!"JAVA_HOME".equals(inherited) && !"PATH".equals(inherited)) {
                 assertEquals(System.getenv(inherited), c.env().get(inherited), inherited);
@@ -254,7 +254,7 @@ class BuildTest {
     @Test
     void aModuleIsBuiltWithPlAm(@TempDir Path ws) throws IOException {
         Files.writeString(ws.resolve("pom.xml"), "<project/>");
-        List<String> cmd = Build.buildCmd(ws, "21", "core", "auto", "BTest").cmd();
+        List<String> cmd = Build.buildCmd(ws, "21", "core", "auto", "BTest", null).cmd();
         assertTrue(cmd.contains("-pl") && cmd.contains("core") && cmd.contains("-am"));
         assertEquals(cmd.indexOf("-pl") + 1, cmd.indexOf("core"), "-pl takes the module as its value");
     }
@@ -262,7 +262,7 @@ class BuildTest {
     @Test
     void gradleIsDetectedNotAssumed(@TempDir Path ws) throws IOException {
         Files.writeString(ws.resolve("build.gradle"), "");
-        List<String> cmd = Build.buildCmd(ws, "21", null, "auto", "BTest").cmd();
+        List<String> cmd = Build.buildCmd(ws, "21", null, "auto", "BTest", null).cmd();
         assertEquals("./gradlew", cmd.getFirst());
         assertTrue(cmd.contains("--tests") && cmd.contains("*BTest"));
         assertFalse(cmd.stream().anyMatch(a -> a.startsWith("-x")),
@@ -273,7 +273,7 @@ class BuildTest {
     @Test
     void aGradleModuleBecomesAProjectPath(@TempDir Path ws) throws IOException {
         Files.writeString(ws.resolve("settings.gradle"), "");
-        assertEquals(":a:b:test", Build.buildCmd(ws, "21", "/a/b/", "auto", "BTest").cmd().get(1),
+        assertEquals(":a:b:test", Build.buildCmd(ws, "21", "/a/b/", "auto", "BTest", null).cmd().get(1),
                 "a Maven-shaped module path is translated, and the wrapping slashes dropped");
     }
 
@@ -284,13 +284,13 @@ class BuildTest {
         // `::test` for Gradle, which resolves to no project. Prove normalises "" to null before it gets
         // here, so the service was never wrong — but a caller should not have to know that to be safe.
         Files.writeString(ws.resolve("pom.xml"), "<project/>");
-        List<String> maven = Build.buildCmd(ws, "17", "", "auto", "BTest").cmd();
+        List<String> maven = Build.buildCmd(ws, "17", "", "auto", "BTest", null).cmd();
         assertFalse(maven.contains("-pl"), "no module means the whole build: " + maven);
         assertEquals("test", maven.getLast());
 
         Files.delete(ws.resolve("pom.xml"));
         Files.writeString(ws.resolve("settings.gradle"), "");
-        assertEquals("test", Build.buildCmd(ws, "17", "", "auto", "BTest").cmd().get(1),
+        assertEquals("test", Build.buildCmd(ws, "17", "", "auto", "BTest", null).cmd().get(1),
                 "and the Gradle task is `test`, not `::test`");
     }
 
@@ -298,7 +298,7 @@ class BuildTest {
     void aPomWinsEvenWhenGradleFilesAreLyingAround(@TempDir Path ws) throws IOException {
         Files.writeString(ws.resolve("pom.xml"), "<project/>");
         Files.writeString(ws.resolve("build.gradle"), "");
-        assertEquals("mvn", Build.buildCmd(ws, "21", null, "auto", "BTest").cmd().getFirst());
+        assertEquals("mvn", Build.buildCmd(ws, "21", null, "auto", "BTest", null).cmd().getFirst());
     }
 
     @Test
@@ -306,10 +306,10 @@ class BuildTest {
         // `build: 'gradle'` on a repository with a pom, and `build: 'maven'` on one without. Detection is
         // a default, not a policy: a polyglot repository is exactly where it guesses wrong.
         Files.writeString(ws.resolve("pom.xml"), "<project/>");
-        assertEquals("./gradlew", Build.buildCmd(ws, "21", null, "gradle", "BTest").cmd().getFirst());
+        assertEquals("./gradlew", Build.buildCmd(ws, "21", null, "gradle", "BTest", null).cmd().getFirst());
         Files.delete(ws.resolve("pom.xml"));
         Files.writeString(ws.resolve("gradlew"), "");
-        assertEquals("mvn", Build.buildCmd(ws, "21", null, "maven", "BTest").cmd().getFirst());
+        assertEquals("mvn", Build.buildCmd(ws, "21", null, "maven", "BTest", null).cmd().getFirst());
     }
 
     @Test

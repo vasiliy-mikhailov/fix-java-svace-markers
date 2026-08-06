@@ -235,8 +235,8 @@ you which came from a file and which fell back to a compiled-in default:
 ```
 
 **`pipeline/engine/src/main/java/tech/mikhailov/fsm/nodes/`** — the ten decision classes. They are pure
-functions over maps with no I/O, which is why they have 901 tests and why you can call one from a unit
-test without a container.
+functions over maps with no I/O, which is why they can be tested exhaustively and why you can call one
+from a unit test without a container.
 
 ---
 
@@ -263,8 +263,16 @@ Set `FSM_PROVE_SCHEDULE=true` to have it drain on a timer instead of on demand.
 
 ```bash
 cd pipeline
-mvn -B test            # 1751 tests across engine (901), orchestrator (634), runner (216)
+mvn -B test            # all three modules; the run prints its own totals
 ```
+
+**No test count is written down here, deliberately.** This file used to print one per module, and they
+were wrong in both directions at once — one module overstated, two understated — which is probably part
+of why they lasted: counts that are uniformly low read as stale, and counts that are wrong both ways
+read as measured. A number that changes on every commit that adds a test cannot survive in prose, and a stale one
+in the first file a new maintainer reads is worse than no number, because it reads exactly like the
+facts around it. `mvn -B test` prints the current totals per module, and `DeploymentTest` fails if a
+count comes back into either README.
 
 The **browser tests are deliberately not in that run** — they need the browsers that ship in the
 Playwright image. The build prints a line saying so, and:
@@ -291,58 +299,33 @@ Everything is environment variables; nothing sensitive is in a yaml file. Copy `
 | `FSM_GIT_HOST` | where a bare `owner/name` lives. Default `github.com`; a full clone URL in `repo` overrides it per repository |
 | `FSM_SOURCE_MODE` | `checkout` (default) reads a marker's source from the clone the prove makes — any host; `github` uses the GitHub contents API |
 | `FSM_INGEST_MAX_CSV_BYTES` | the bound on a report sent in the request. 32 MiB. Refused, never truncated |
-| `FSM_DB_PATH` | H2 location. **Must be on a mounted volume** — see below |
-| `CACHE` | where the checkouts and build workspaces go. **Must be on a mounted volume**, same argument |
 | `FSM_PROVE_SCHEDULE` | `true` to drain on a timer, `false` for REST-only |
 | `FSM_PROVE_VERDICT` | `false` skips the verdict *argument* to iterate on prompts cheaply |
 | `FSM_FEEDBACK` | `true` records full prompts, replies and critiques for prompt tuning |
 | `MAVEN_MIRROR_URL` | which repository Maven resolves the analysed projects from. **Empty means Central**, which is the default and works on a machine with nothing but Docker. Set it to your own Nexus (`https://nexus.example.com/repository/maven-public/`) and it takes effect on the next `up -d` — no rebuild, on an image you did not build |
 | `FSM_RUNNER_MODE` | `local` (default) runs the prove in this process; `http` posts it to `FSM_RUNNER_URL` |
 
+**This table is the variables an operator sets, not every variable the stack reads.** Two paths it also
+reads — `FSM_DB_PATH` for H2 and `CACHE` for the checkouts and build workspaces — are set by
+`docker-compose.yml` itself, hardcoded and uninterpolated, pointing inside the named volumes it mounts,
+so a value in `.env` is discarded. They had rows here and lines in `.env.example` for a long time; both were knobs that did
+nothing. The volume argument is in `DOCKER.md`, "Things that will bite", and the compose file carries it
+at each line.
+
 ---
 
-## Things that cost us time — read this before debugging
+## `infra_error` is not a verdict
 
-**The H2 path must be on a volume.** `FSM_DB_PATH` defaults to `./data/fsm`, which inside a container is
-a writable layer thrown away on the next `up -d`. The stack starts, serves, accepts an ingest, runs for
-hours and reads zero afterwards, with nothing red at any point. Compose sets it correctly; if you deploy
-some other way, set it yourself.
+A build that never compiled, a source fetch that returned nothing, or an unparseable model reply are
+*pipeline* failures: they retry and never become a judgement about the code. If you change that, you
+break the only property that makes the output trustworthy.
 
-**`QWEN_BASE_URL` must resolve *inside the container*.** Miss it and the three judging stages fail
-*closed* — HTTP 200, a downgraded verdict, a green run history, and no error anywhere. `.env.example`
-ships it BLANK on purpose: a pre-filled wrong value is worse than an empty one, because it looks
-configured. Check it the way that answers the question:
-
-```bash
-docker exec fsm curl -s -o /dev/null -w '%{http_code}\n' "$QWEN_BASE_URL"
-```
-
-Any status — 200, 401, 404 — means the route exists. Only "refused" or "could not resolve" is broken.
-If your model lives in another Compose stack, put this container on that stack's network with
-`docker-compose.override.yml` (copy the committed example).
-
-**The compose file declares no external networks, and must not.** An `external: true` network is a name
-that exists on one machine; anywhere else `docker compose up -d` dies on its first line — *"network
-mvn-cache declared as external, but could not be found"* — after a build that succeeded, with nothing
-started. A host's private wiring belongs in `docker-compose.override.yml`, which Compose merges
-automatically and which is gitignored.
-
-**The Maven mirror is a runtime setting, and must not be baked into the image.** A `settings.xml` in the
-image pinning `mirrorOf=*` is not a cache in front of Central — it is *the only repository Maven will
-talk to*, so off the one network that hostname resolves on, every prove fails with hundreds of lines
-about unresolvable artifacts and reads as a broken project rather than as an image carrying somebody
-else's infrastructure. So: unset means Central; `MAVEN_MIRROR_URL` set means that URL. Use a public
-hostname — a compose-internal name only resolves inside one network, which is exactly why it cannot be a
-default. (The same variable is *also* a build argument, selecting the mirror the image's own build
-resolves through. `docker compose build` cannot join a custom network, so a mirror that lives on one
-needs `DOCKER_BUILDKIT=0 docker build --network <net> …`; BuildKit rejects custom network modes.)
-
-**The feedback directory needs the container's uid.** `FSM_FEEDBACK=true` writes as uid 10002; if the
-host directory is owned by someone else the service says so loudly on startup and records nothing.
-
-**`infra_error` is not a verdict.** A build that never compiled, a source fetch that returned nothing, or
-an unparseable model reply are *pipeline* failures: they retry and never become a judgement about the
-code. If you change that, you break the only property that makes the output trustworthy.
+**The operational traps live in [`DOCKER.md`](DOCKER.md), under "Things that will bite".** There used to
+be a second list of them here — same H2-on-a-volume paragraph, same `QWEN_BASE_URL` fail-closed
+paragraph, same `external:` network, same Maven mirror, same uid 10002 — written out again at full
+length. Two copies of an argument are one copy and one thing that will disagree with the compose file
+later, and the copy to keep is the one next to the setting it is about. Deleted on 2026-08-06; the
+sentence above stayed because it is the one item in that list that was never about deployment.
 
 ---
 
@@ -373,7 +356,7 @@ pipeline/
   deploy/docker-compose.override.yml.example  a host's private wiring, uncommitted
 ```
 
-Three Maven modules, one image. `runner` stays a module of its own — its 216 tests are the specification
+Three Maven modules, one image. `runner` stays a module of its own — its tests are the specification
 of the one distinction the whole pipeline rests on (did the test RUN and fail, or did it never run?), and
 it keeps a zero-third-party-dependency policy that a merge into `orchestrator` would quietly break.
 

@@ -596,6 +596,25 @@ class VerdictTest {
         assertEquals(status, out.get("suspicion_status"), "and the suspicion is retired accordingly");
     }
 
+    /**
+     * The stage survives a score that is not a finite number. {@code {"test_score": 1e400}} is
+     * well-formed JSON that parses to Infinity and reaches this stage RAW off a posted body; the
+     * evidence is composed at a line outside every try in this method, so the render refusing it took
+     * down a marker that was otherwise fully settled and left the row with no verdict at all.
+     * {@code ParseFix.serialisable} hardens its own path against this exact shape by name.
+     */
+    @Test
+    void aScoreThatParsedToInfinityIsPrintedRatherThanKillingTheStage() {
+        Map<String, Object> out = marker()
+                .rec("state", "pr_ready", "attempts", 1L, "test_path", "src/test/java/a/BTest.java",
+                        "jdk", "25")
+                .parseTest("test_score", Double.POSITIVE_INFINITY).run();
+        assertEquals("true-positive", out.get("verdict_kind"));
+        String text = String.valueOf(out.get("verdict_text"));
+        assertTrue(text.contains("Test realness Infinity/100"),
+                () -> "a score nobody can act on belongs in the row, not in a stack trace: " + text);
+    }
+
     @Test
     void aProvenMarkerThatWasNotProposedSaysWhyInTheCuratorsWords() {
         // pr_reason is repo-specific ("this fork is frozen", "the file is vendored") and it is the only
@@ -1170,10 +1189,10 @@ class VerdictTest {
 
     @Test
     void theArgumentIsONUnlessSomethingSaysOtherwise() {
-        // Default ON in both directions a Request is built: the twelve-argument constructor every
-        // existing caller uses, and the caller body, which has no such key and never will.
-        assertTrue(new Verdict.Request(item(), item(), item(), item(), item(), item(), item(),
-                new Llm.Endpoint("http://llm", "k", "m"), "", "", 2, "[stage vd1]").verdictEnabled());
+        // ON is decided in ONE place: the posted body, which has no such key and never will. There used
+        // to be a twelve-argument constructor defaulting it too, and an assertion here on that — but its
+        // only caller was this line, so the pair proved nothing about any path a marker takes. It was
+        // deleted on 2026-08-06; the three assertions below are the ones that were ever load-bearing.
         assertTrue(Verdict.Request.of(Json.parse("{}")).verdictEnabled());
         assertFalse(Verdict.Request.of(Json.parse("{\"verdict_enabled\":false}")).verdictEnabled());
         assertTrue(Verdict.Request.of(Json.parse("{\"verdict_enabled\":true}")).verdictEnabled());

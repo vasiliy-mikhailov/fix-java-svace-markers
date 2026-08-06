@@ -247,12 +247,10 @@ public class CommentDao {
         return n == null ? 0L : n;
     }
 
-    /** How many distinct markers have been commented on. */
-    public long markerCount() {
-        Long n = jdbc.queryForObject("SELECT COUNT(DISTINCT dedup_key) FROM marker_comments",
-                Long.class);
-        return n == null ? 0L : n;
-    }
+    // markerCount() — "how many distinct markers have been commented on" — was deleted on 2026-08-06.
+    // It had no caller in src/main or src/test, and its job had already been taken by countsByMarker
+    // above, whose keys ARE the distinct markers. Its neighbour count() looks equally unused and is
+    // not: it is asserted on from the tests.
 
     /**
      * EVERY COMMENT, GONE — and nothing in the application calls this.

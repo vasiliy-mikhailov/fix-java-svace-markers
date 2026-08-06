@@ -54,6 +54,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       curl ca-certificates tar gzip \
     && rm -rf /var/lib/apt/lists/*
 
+# THIS IMAGE IS NOT REPRODUCIBLE, AND THE REASON IS THE NEXT `curl`. `…/v3/binary/latest/${N}/ga/…` is a
+# MOVING TARGET: two builds of this file a week apart get different 25.0.x, with no checksum and no
+# signature checked on the way in. It is written down here rather than fixed because the fix is an
+# addition rather than a deletion and nobody has costed the upkeep:
+#
+#   https://api.adoptium.net/v3/binary/version/jdk-25.0.4+7/linux/${arch}/jdk/hotspot/normal/eclipse
+#
+# pins one release, and `/v3/assets/latest/${N}/hotspot?…` serves that release's sha256 so the tarball
+# can be verified rather than trusted. THE UPKEEP IS THE PART TO DECIDE FIRST: the runtime stage below
+# takes FIVE majors on TWO architectures, so a properly pinned-and-checksummed image is ten release
+# names and ten hashes that someone has to bump on every Adoptium release, and a stale pin is a JDK
+# nobody is patching. `latest` is the opposite trade, taken by default rather than on purpose.
+#
+# (JDK_VERSION stays the MAJOR either way — it is also the /opt/jdk/<major> directory name that
+# runner/Build.javaHome resolves against, and DeploymentTest pins it at 25.)
 RUN set -eux; \
     case "${TARGETARCH:-amd64}" in \
       amd64) arch=x64 ;; \
@@ -178,6 +193,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Build.JDKS is this list and Build.javaHome is this path; the two are checked against each other by the
 # runner's own suite. The prove picks one per build from the request and RE-RUNS with a different one
 # when a build reports a release-version mismatch, so every major it may switch to has to be present.
+#
+# UNPINNED, same as the build stage's single JDK — see the paragraph there for the exact pinned URL, the
+# checksum endpoint, and why the upkeep is the decision rather than the edit. This loop is the reason it
+# is ten hashes and not two.
 RUN set -eux; \
     case "${TARGETARCH:-amd64}" in \
       amd64) arch=x64 ;; \

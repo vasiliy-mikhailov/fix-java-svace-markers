@@ -218,15 +218,11 @@ final class Build {
                 s.build(), s.compileError(), "console");
     }
 
-    /**
-     * The build command for a workspace. Gradle is detected, never assumed.
-     *
-     * @param module a Maven module or Gradle project path, or null for the whole build
-     * @param build  {@code auto}, {@code maven} or {@code gradle} — the request may override detection
-     */
-    static Command buildCmd(Path ws, String jdk, String module, String build, String testClass) {
-        return buildCmd(ws, jdk, module, build, testClass, null);
-    }
+    // A five-argument buildCmd(ws, jdk, module, build, testClass) defaulting `settings` to null stood
+    // here until 2026-08-06. No production caller used it — Prove passes the file both times — and it
+    // was a hole: a new caller could omit `-s` and get a Maven that resolves from Central, which is
+    // the outcome LocalRunnerTest#aConfiguredMirrorReachesEveryMavenCommand exists to forbid. The
+    // test sites that wanted the default now pass `null` and say so at the call.
 
     /**
      * …and with the Maven settings file this deployment's mirror was written to.

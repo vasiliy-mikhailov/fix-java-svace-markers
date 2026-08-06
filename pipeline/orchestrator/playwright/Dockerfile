@@ -56,6 +56,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       curl ca-certificates tar gzip \
     && rm -rf /var/lib/apt/lists/*
 
+# THE SECOND-TO-LAST COPY OF THIS BLOCK, and the `latest` in it is the unpinned Adoptium fetch the
+# pipeline Dockerfile's build stage argues about at length. Read that paragraph before changing this
+# one; there is no way to share a stage between two Dockerfiles in two build contexts, so the copies
+# that could go went with `engine/Dockerfile` on 2026-08-06 (five down to three) and these are the ones
+# that are left.
 RUN set -eux; \
     case "${TARGETARCH:-amd64}" in \
       amd64) arch=x64 ;; \
@@ -106,7 +111,8 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 #                           is what makes the image correct when somebody forgets.
 ENV FSM_UI_CHROMIUM_ARGS="--no-sandbox --disable-dev-shm-usage"
 
-# Mirror, OPT-IN, exactly as the other two images argue it: `docker build` does not join a compose
+# Mirror, OPT-IN, exactly as the pipeline image argues it (there were two others until 2026-08-06;
+# `engine/Dockerfile` is gone and its profile runs `fsm:latest`): `docker build` does not join a compose
 # network, so a baked-in http://nexus:8081 makes the image unbuildable everywhere including on the host
 # that has Nexus. Default is Central; pass the mirror where it is reachable:
 #

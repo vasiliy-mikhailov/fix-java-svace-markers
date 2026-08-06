@@ -298,7 +298,7 @@ class WireSafetyTest {
     /** The 1 354-case reply-parsing family: json-extract, parse test, parse fix. */
     private static void jsonFamily(WireSafe g) {
         for (Object c : HarnessFixtures.cases("json-family-")) {
-            String id = "json-family#" + Json.str(Json.get(c, "id"));
+            String id = "json-family#" + Values.text(Json.get(c, "id"));
             switch (Json.str(c, "suite")) {
                 case "extract" -> {
                     List<String> keys = new ArrayList<>();

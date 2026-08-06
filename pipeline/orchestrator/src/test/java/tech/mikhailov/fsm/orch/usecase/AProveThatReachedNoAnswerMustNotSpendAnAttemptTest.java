@@ -116,10 +116,32 @@ class AProveThatReachedNoAnswerMustNotSpendAnAttemptTest {
     @Test
     void everyStatusTheEngineCanWriteIsOneAJudgementAccepts() {
         // The other half of the refusal above, and the half that matters more: a rule that rejects an
-        // unknown status is only safe if it accepts every KNOWN one. Verdict writes each of these.
+        // unknown status is only safe if it accepts every status the ENGINE can write. That is eight
+        // of the nine — Verdict's suspicion_status switch produces the seven settled ones and `new`.
+        // It is NOT every constant: `proving` is SuspicionDao's queue token and the loop asserted it
+        // was accepted, under a comment reading "Verdict writes each of these", which Verdict does not.
         for (SuspicionStatus status : SuspicionStatus.values()) {
+            if (status == SuspicionStatus.PROVING) {
+                continue;
+            }
             assertThat(judgement(status.wire(), 1L).status()).isEqualTo(status);
         }
+    }
+
+    /**
+     * The claim token is not an outcome, and it is the one known spelling that would park a marker
+     * where nothing looks for it: {@code claimNext} selects {@code status = 'new'}, so a row settled
+     * back at {@code proving} is offered by no drain and counted as settled by no grouping until a
+     * restart's reconciliation finds it. Nothing in the engine writes it; this is what keeps that so.
+     */
+    @Test
+    void aSettlementAtTheClaimTokenIsRefusedEvenThoughThePipelineClaimsThatSpelling() {
+        assertThat(SuspicionStatus.of("proving"))
+                .as("it passes the unknown-spelling check, which is why it needs its own")
+                .isEqualTo(SuspicionStatus.PROVING);
+        assertThatThrownBy(() -> judgement("proving", 1L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("a CLAIM and not an outcome");
     }
 
     // ---- the use case ----------------------------------------------------------------------------
@@ -134,7 +156,7 @@ class AProveThatReachedNoAnswerMustNotSpendAnAttemptTest {
                         ARTIFACT, kept),
                 journal, presenter);
 
-        ProveOutcome outcome = prove.prove(new ProveMarkerRequest(claimed(3L)));
+        ProveOutcome outcome = prove.prove(claimed(3L));
 
         assertThat(outcome).isInstanceOf(ProveOutcome.Settled.class);
         Settlement settled = ((ProveOutcome.Settled) outcome).settlement();
@@ -155,7 +177,7 @@ class AProveThatReachedNoAnswerMustNotSpendAnAttemptTest {
             throw outage;
         }, journal, presenter);
 
-        ProveOutcome outcome = prove.prove(new ProveMarkerRequest(claimed(2L)));
+        ProveOutcome outcome = prove.prove(claimed(2L));
 
         assertThat(outcome).isInstanceOf(ProveOutcome.Requeued.class);
         ProveOutcome.Requeued requeued = (ProveOutcome.Requeued) outcome;
@@ -182,7 +204,7 @@ class AProveThatReachedNoAnswerMustNotSpendAnAttemptTest {
         ProveMarker prove = new ProveMarker(
                 marker -> judgement("verified", 1L), journal, new Presenter());
 
-        prove.prove(new ProveMarkerRequest(claimed(0L)));
+        prove.prove(claimed(0L));
 
         assertThat(journal.appended).containsExactly(ProveTrace.EMPTY);
         assertThat(journal.appended.get(0).isEmpty())
@@ -213,5 +235,29 @@ class AProveThatReachedNoAnswerMustNotSpendAnAttemptTest {
         public void presentSettled(Settled response) {
             settled.add(response);
         }
+    }
+
+    /**
+     * A NULL MARKER IS A CALLER BUG AND IS REFUSED, rather than becoming a NullPointerException three
+     * frames deeper.
+     *
+     * <p>The guard is older than this test: it lived at {@code ProveMarkerRequest:14-18} until that
+     * one-field wrapper was deleted as ceremony, and it was carried across unchanged — and untested,
+     * which a verification pass found by deleting it and watching all 798 tests stay green. A guard
+     * nothing exercises is indistinguishable from one somebody removed while tidying, which is the
+     * exact defect class this repository keeps rediscovering.
+     *
+     * <p>It matters here specifically because the caller is a Spring Batch processor: an item that
+     * arrives null means the reader claimed nothing, and an NPE at that point fails the CHUNK rather
+     * than the marker — the difference between one requeued row and a whole drain stopping.
+     */
+    @Test
+    void provingNothingIsRefusedRatherThanDereferenced() {
+        assertThatThrownBy(() -> new ProveMarker(
+                marker -> Judgement.of(KEY, "false_positive", 1L, "", "A#run", "exact", ARTIFACT,
+                        new ProveTrace(Map.of())),
+                new Journal(), new Presenter()).prove(null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("claimed marker");
     }
 }

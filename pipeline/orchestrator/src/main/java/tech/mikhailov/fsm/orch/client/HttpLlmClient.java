@@ -52,7 +52,6 @@ public class HttpLlmClient implements LlmClient {
     static final String REASON = "llm: ";
 
     /** A throw with nothing quotable still has to say something a human can act on. */
-    private static final String NOTHING_TO_SAY = "the call failed with no message";
 
     /**
      * How many times ONE completion is attempted, in total.
@@ -173,17 +172,17 @@ public class HttpLlmClient implements LlmClient {
                 boolean answerless = HttpTransport.connectFailed(e)
                         || !(e instanceof HttpTimeoutException);
                 if (answerless && attempt < attempts) {
-                    log.warn("[llm] {} — attempt {}/{} for {}; retrying in {}s", cause(e), attempt,
+                    log.warn("[llm] {} — attempt {}/{} for {}; retrying in {}s", Failures.cause(e), attempt,
                             attempts, endpointOf(endpoint), retryDelay.toSeconds());
                     pause(endpoint);
                     continue;
                 }
-                throw new InfraFailure(REASON + Llm.failureText(e, budget(), NOTHING_TO_SAY), e);
+                throw new InfraFailure(REASON + Llm.failureText(e, budget(), Failures.NOTHING_TO_SAY), e);
             } catch (Exception e) {
                 // The endpoint answered, and what it said is a fact about the request rather than about
                 // the network. The caller's only correct response is to abort the prove and leave the
                 // marker queued, which is what InfraFailure means.
-                throw new InfraFailure(REASON + Llm.failureText(e, budget(), NOTHING_TO_SAY), e);
+                throw new InfraFailure(REASON + Llm.failureText(e, budget(), Failures.NOTHING_TO_SAY), e);
             }
         }
     }
@@ -199,14 +198,6 @@ public class HttpLlmClient implements LlmClient {
             throw new InfraFailure(
                     REASON + "interrupted between attempts at " + endpointOf(endpoint), e);
         }
-    }
-
-    /** A socket failure names itself; some of them carry no message at all. */
-    private static String cause(Throwable t) {
-        String message = t.getMessage();
-        return message == null || message.isBlank()
-                ? t.getClass().getSimpleName()
-                : t.getClass().getSimpleName() + ": " + message;
     }
 
     /**

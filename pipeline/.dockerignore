@@ -5,10 +5,12 @@
 # it that is ~130 MB of build output, differential-harness fixtures and node_modules per build, which is
 # most of the wall clock of an otherwise cached build.
 #
-# engine/.dockerignore stays where it is: `engine` is built with `context: ../engine`, so this file is
-# not consulted for it. It also records the sharper reason for the first rule below — a copied `target/`
-# would let a stale jar, compiled by whatever JDK the developer happens to have, win over the one the
-# image builds from source.
+# THIS IS THE ONLY .dockerignore THE STACK USES, as of 2026-08-06. There was a second one beside
+# `engine/Dockerfile`, which was built with `context: ../engine` and so did not consult this file; both
+# went when the engine profile stopped being a second image and became `fsm:latest` plus a
+# PropertiesLauncher entrypoint. Its sharper wording of the first rule below is kept here rather than
+# lost: a copied `target/` would let a stale jar, compiled by whatever JDK the developer happens to
+# have, win over the one the image builds from source.
 **/target/
 
 # Differential-harness OUTPUT: the unpacked copies of the frozen corpora, tens of megabytes, rebuilt by

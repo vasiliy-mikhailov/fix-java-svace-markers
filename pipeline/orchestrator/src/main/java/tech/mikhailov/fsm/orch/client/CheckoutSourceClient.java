@@ -40,6 +40,16 @@ import tech.mikhailov.fsm.lib.Json;
  * against a differential corpus that recorded its exact replies. Neither is a reason to make it the
  * default; both are reasons not to delete it.
  *
+ * <p>THERE IS NO RETRY HERE, and in one of the two modes that is a gap rather than a decision. With
+ * {@code fsm.runner.mode=local} the reader is an in-process call into the runner and there is nothing
+ * transient to retry — a failure is the clone's or the path's, and retrying it costs a marker three
+ * times the wait for the same answer. With {@code fsm.runner.mode=http} the SAME reader is
+ * {@code HttpSourceReader}, a real network call to another container, and a connection reset on it is
+ * exactly the shape {@link GithubSourceClient} spends a three-attempt budget on. Nothing is red
+ * because the client contract tests only ever instantiate the GitHub client. Written down rather than
+ * fixed on the way past: adding a budget here is a behaviour change to make on purpose, with a test
+ * that drives the {@code http} reader.
+ *
  * <p>THE FAILURE THIS CLASS IS BUILT AROUND. {@code BuildReproduceInput} reads {@code content} off
  * whatever comes back, and NO source is indistinguishable from a file that was deleted from the
  * repository: the reproducer is told the code is gone and the marker retires as stale. So the mapping
@@ -118,7 +128,7 @@ public class CheckoutSourceClient implements SourceClient {
             // The ADDRESS is in the message, because the two failures that happen here are "the runner
             // container is not up" and "the URL points at something else", and neither is legible from
             // a bare ConnectException.
-            throw new InfraFailure(REASON + describe() + " could not be read: " + cause(e), e);
+            throw new InfraFailure(REASON + describe() + " could not be read: " + Failures.cause(e), e);
         }
 
         String error = Json.str(reply, "error");
@@ -150,10 +160,4 @@ public class CheckoutSourceClient implements SourceClient {
         return new Source(200, out);
     }
 
-    private static String cause(Throwable t) {
-        String message = t.getMessage();
-        return message == null || message.isBlank()
-                ? t.getClass().getSimpleName()
-                : t.getClass().getSimpleName() + ": " + message;
-    }
 }

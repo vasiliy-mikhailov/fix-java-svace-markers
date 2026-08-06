@@ -7,10 +7,9 @@ import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import tech.mikhailov.fsm.lib.AnchorStatus;
+import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.SourceText;
 import tech.mikhailov.fsm.lib.Values;
-import tech.mikhailov.fsm.lib.Values;
-import tech.mikhailov.fsm.lib.Json;
 
 /**
  * {@code Build reproduce input} — re-anchors the marker and assembles the reproducer's prompt.
@@ -283,18 +282,26 @@ public final class BuildReproduceInput {
     /**
      * Decode the GitHub contents payload, or report nothing at all.
      *
-     * <p>The whitespace strip is not cosmetic: the contents API wraps its base64 at 60 columns, and
-     * the newlines have to come out before the decode or what reaches the model is whatever the
-     * decoder made of the padding. A non-string {@code content} — the whole contents object, which is
-     * what arrives when the path resolved to a directory — throws, and the throw is caught and
-     * reported as a file that could not be fetched rather than taking the run down.
+     * <p>THE WHITESPACE STRIP THAT USED TO BE HERE WAS A NO-OP AND IS GONE (2026-08-06). It was
+     * written when the decoder was Node's {@code Buffer.from(text, 'base64')} and its comment claimed
+     * the newlines "have to come out before the decode or what reaches the model is whatever the
+     * decoder made of the padding". {@link Values#base64ToUtf8} SKIPS every character outside the
+     * base64 alphabet itself ({@code Values.java:225-227} says so), so the contents API's 60-column
+     * wrapping decodes identically with or without the strip — including the case the old comment
+     * named as its reason, a padding group split across a newline. What it did cost was one full copy
+     * of a string up to {@code SRC_MAX} per source fetch. Pinned by
+     * {@code BuildReproduceInputTest.aWrapThatFallsInsideThePaddingStillDecodesTheWholeFile}.
+     *
+     * <p>A non-string {@code content} — the whole contents object, which is what arrives when the path
+     * resolved to a directory — throws, and the throw is caught and reported as a file that could not
+     * be fetched rather than taking the run down.
      */
     private static String decode(Object content) {
         Object v = Values.orIfAbsent(content, "");
         if (!(v instanceof String text)) {
             return "";
         }
-        return Values.base64ToUtf8(SourceText.stripSpace(text));
+        return Values.base64ToUtf8(text);
     }
 
     /**

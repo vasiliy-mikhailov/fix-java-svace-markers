@@ -49,18 +49,16 @@ final class HarnessFixtures {
     /** Relative to the module directory, which is Surefire's working directory. */
     static final Path DIR = Path.of("harness", "fixtures");
 
-    private final Path treeRoot;
+    // NO treeRoot FIELD. It held the directory the tree was materialised into, with a constructor
+    // parameter and an accessor, and nothing outside this file ever asked for it — the substitution
+    // that actually needs the root happens in gunzip() on the way in. Deleted 2026-08-06; the caller
+    // still has the path it passed to materialise().
     private final List<Object> cases;
     private final List<Object> jsResults;
 
-    private HarnessFixtures(Path treeRoot, List<Object> cases, List<Object> jsResults) {
-        this.treeRoot = treeRoot;
+    private HarnessFixtures(List<Object> cases, List<Object> jsResults) {
         this.cases = cases;
         this.jsResults = jsResults;
-    }
-
-    Path treeRoot() {
-        return treeRoot;
     }
 
     List<Object> cases() {
@@ -93,7 +91,7 @@ final class HarnessFixtures {
             throw new IOException("the frozen fixtures disagree about how many cases there are: "
                     + cases.size() + " cases, " + results.size() + " answers");
         }
-        return new HarnessFixtures(into, cases, results);
+        return new HarnessFixtures(cases, results);
     }
 
     @SuppressWarnings("unchecked")

@@ -309,7 +309,8 @@ final class HarnessJavaSide {
     private static Map<String, Object> buildCmd(Object c) {
         Object module = Json.get(c, "module");
         Build.Command r = Build.buildCmd(Path.of(str(c, "ws")), str(c, "jdk"),
-                module == null ? null : (String) module, str(c, "build"), str(c, "testClass"));
+                module == null ? null : (String) module, str(c, "build"), str(c, "testClass"),
+                null);
         Map<String, String> parent = System.getenv();
         List<Object> extra = new ArrayList<>();
         List<Object> missing = new ArrayList<>();

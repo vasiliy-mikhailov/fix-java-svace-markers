@@ -13,12 +13,11 @@ import tech.mikhailov.fsm.lib.Json;
  * this service answers {@code {"ok": false, "error": …}} with a 200, because a build that failed is an
  * ANSWER about a marker and not a failure of the call (see {@code orchestrator/…/RunnerClient#runTest}).
  *
- * <p>What it no longer copies at all is the PLUMBING on either side of that shape. {@link Http} owns
+ * <p>What it no longer copies at all is the PLUMBING on either side of that shape: {@link Http} owns
  * {@code MAX_BODY_BYTES}, {@code BodyTooLarge}, the capped reader and the JSON write for both
- * services; this class used to restate every one of them, with a comment admitting the copy and giving
- * as its reason that the engine's version was package-private — which was a fact about where the code
- * sat rather than a reason it had to sit there, and which left two HTTP surfaces of one deployment
- * free to drift to two different caps and two different encodings.
+ * services. This class used to restate every one of them, and the account of what that cost is in
+ * {@link Http}'s own class comment — once, rather than in both files, which is the shape of the defect
+ * being described.
  *
  * <p>The two methods that are left are the two places this service's contract really is its own: an
  * absent body means {@code {}}, and a HEAD gets headers and nothing else.

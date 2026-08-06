@@ -38,11 +38,9 @@ import org.springframework.batch.item.ExecutionContext;
  * @param discardedMarkers  rows deleted from {@code suspicions}. ZERO IS THE POINT in {@link #ADDITIVE}
  * @param discardedSettled  how many of those carried a verdict — the number that measures the damage
  * @param discardedArtifacts rows deleted from {@code bugs}
- * @param written           rows inserted, which equals {@code added}
  */
 public record IngestAccount(String mode, long added, long kept, long absent, List<String> absentKeys,
-                            long discardedMarkers, long discardedSettled, long discardedArtifacts,
-                            long written) {
+                            long discardedMarkers, long discardedSettled, long discardedArtifacts) {
 
     /** Markers already in the backlog are kept; the report can only add. The default. */
     public static final String ADDITIVE = "additive";
@@ -85,7 +83,7 @@ public record IngestAccount(String mode, long added, long kept, long absent, Lis
         if (destructive()) {
             return "RESET: discarded " + discardedMarkers + " marker(s), " + discardedSettled
                     + " of them settled, and " + discardedArtifacts + " artifact(s); wrote "
-                    + written + " marker(s) from the report";
+                    + added + " marker(s) from the report";
         }
         return "ADDITIVE: added " + added + " marker(s), kept " + kept
                 + " already in the backlog exactly as they were, and discarded nothing; " + absent
@@ -93,7 +91,17 @@ public record IngestAccount(String mode, long added, long kept, long absent, Lis
                 + (absentKeys.isEmpty() ? "" : " — " + String.join(", ", absentKeys));
     }
 
-    /** The same account as JSON-shaped values, for the endpoint that serves it. */
+    /**
+     * The same account as JSON-shaped values, for the endpoint that serves it.
+     *
+     * <p>{@code written} IS NOT A FIELD OF THIS RECORD AND IS STILL A KEY HERE. It was a component
+     * until 2026-08-06, documented in its own {@code @param} as "rows inserted, which equals
+     * {@code added}" — and {@code IngestTasklet} did pass {@code added} for both, so it was one number
+     * carried twice, in a record whose whole job is to be believed at 3 a.m. The COMPONENT is gone;
+     * the KEY stays, because it is on an answer this service already gives and dropping it would break
+     * a reader for a tidiness nobody outside this file can see. If a day ever comes when an insert can
+     * fail without lowering {@code added}, this is the line that has to learn the difference.
+     */
     public Map<String, Object> toMap() {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("mode", mode);
@@ -104,7 +112,7 @@ public record IngestAccount(String mode, long added, long kept, long absent, Lis
         m.put("discardedMarkers", discardedMarkers);
         m.put("discardedSettled", discardedSettled);
         m.put("discardedArtifacts", discardedArtifacts);
-        m.put("written", written);
+        m.put("written", added);
         return m;
     }
 
@@ -118,7 +126,7 @@ public record IngestAccount(String mode, long added, long kept, long absent, Lis
         context.putLong(PREFIX + "discardedMarkers", discardedMarkers);
         context.putLong(PREFIX + "discardedSettled", discardedSettled);
         context.putLong(PREFIX + "discardedArtifacts", discardedArtifacts);
-        context.putLong(PREFIX + "written", written);
+        context.putLong(PREFIX + "written", added);   // see toMap(): the key outlives the component
     }
 
     /**
@@ -141,7 +149,6 @@ public record IngestAccount(String mode, long added, long kept, long absent, Lis
                 keys.isEmpty() ? List.of() : List.of(keys.split(SEPARATOR, -1)),
                 context.getLong(PREFIX + "discardedMarkers", 0L),
                 context.getLong(PREFIX + "discardedSettled", 0L),
-                context.getLong(PREFIX + "discardedArtifacts", 0L),
-                context.getLong(PREFIX + "written", 0L));
+                context.getLong(PREFIX + "discardedArtifacts", 0L));
     }
 }

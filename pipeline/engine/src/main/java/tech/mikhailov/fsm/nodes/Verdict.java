@@ -181,22 +181,18 @@ public final class Verdict {
         }
 
         /**
-         * The stage as it has always run: the argument is written.
+         * Read the request out of a posted body. The keys are the stage names, snake-cased.
          *
-         * <p>Here so that ON is what a caller gets by DEFAULT rather than by remembering a boolean. A
-         * new component on a record is silently {@code false} at every call site that predates it, and
-         * {@code false} here means "argue nothing" — every marker that failed to reproduce would retire
-         * unargued, which is the exact defect this stage was built to end.
+         * <p>THIS IS WHERE "ABSENT MEANS ON" LIVES, and since 2026-08-06 it is the only place. There
+         * was a third constructor here, twelve arguments, defaulting {@code verdictEnabled} to
+         * {@code true} — on the argument that a new record component is silently {@code false} at every
+         * call site that predates it, and {@code false} here means "argue nothing", so every marker that
+         * failed to reproduce would retire unargued. The argument was sound when the component was
+         * added and had stopped applying: its only caller was the one test asserting that it defaulted
+         * to true, while all three real construction paths ({@link #of}, {@code ProveChain}, and the
+         * thirteen-argument constructor above) state the flag or compute it. The default that matters is
+         * the WIRE one, and it is {@link #verdictEnabled(Object)} below, pinned by three assertions.
          */
-        public Request(Object item, Object prepProver, Object parseTest, Object parseFix,
-                       Object reproduce, Object buildReproduceInput, Object prMaker, Llm.Endpoint llm,
-                       String svaceBaseUrl, String svaceToken, double minAttempts,
-                       String verdictStamp) {
-            this(item, prepProver, parseTest, parseFix, reproduce, buildReproduceInput, prMaker, llm,
-                    svaceBaseUrl, svaceToken, minAttempts, verdictStamp, true);
-        }
-
-        /** Read the request out of a posted body. The keys are the stage names, snake-cased. */
         public static Request of(Object body) {
             Object env = Json.get(body, "env");
             return new Request(Json.get(body, "item"), Json.get(body, "prep_prover"),
@@ -282,20 +278,21 @@ public final class Verdict {
     private static final String INFRA_REASON = "infra_reason";
 
     /**
-     * The attempt counter, read ONCE with BOTH of its fallbacks named on it.
+     * WHICH ATTEMPT THIS IS — {@code Number(x) || 1}, because an uncounted attempt is the FIRST one and
+     * not the zeroth.
      *
-     * <p>{@code attempts} is read twice by this stage under two different JS idioms — {@code || 1} for
-     * the argument, because an uncounted attempt is the FIRST one, and {@code || 0} for the status
-     * routing, because the note reports the count AS RECORDED. The two reads used to sit 152 lines
-     * apart in one method under near-identical names, and confusing them swaps a retry for a permanent
-     * retirement. There is now one read of the column and two named ways to ask it a question.
+     * <p>NOT THE SAME QUESTION THE STATUS ROUTING ASKS OF THE SAME COLUMN, which wants the count AS
+     * RECORDED ({@code || 0}) because that is what the note reports. The two reads used to sit 152
+     * lines apart in one method under near-identical names, and confusing them swaps a retry for a
+     * permanent retirement. What fixed that was {@link Row#of} reading the column ONCE; this method is
+     * the surviving half — a name for the fallback, so the difference is legible at the call site.
+     *
+     * <p>It was a one-component {@code Attempts} record with a {@code current()} and a {@code recorded()}
+     * until 2026-08-06: sixteen lines to give one double two accessors, one of which returned the
+     * component. The name was the whole value, and a static method carries it for two.
      */
-    private record Attempts(double recorded) {
-
-        /** {@code Number(x) || 1} — which attempt this IS. @see #recorded() */
-        double current() {
-            return recorded == 0 ? 1 : recorded;
-        }
+    private static double currentAttempt(double recorded) {
+        return recorded == 0 ? 1 : recorded;
     }
 
     /**
@@ -307,26 +304,25 @@ public final class Verdict {
      *                  would be a different function.
      * @param stateText the same value concatenated AT THE READ, where an absent key and an explicit
      *                  null can still be told apart. @see Llm#concat(Object, String)
-     * @param infraText the reason as text — what the two regexes and the notes read.
-     * @param infraJson THE SAME STRING, BY THE SAME FUNCTION, and this pair is now redundant.
-     *                  {@link Json#str} delegates to {@link Values#text}, so the "one key, two
-     *                  coercions" this javadoc used to claim is one coercion written twice: the
-     *                  divergence it described ({@code 1,2} and {@code [object Object]} against JSON)
-     *                  belonged to the retired {@code Js} renderer, and both components have rendered
-     *                  identically for every shape since 2026-08-05 — null, String, Long, Boolean,
-     *                  List, Map, NaN and Infinity all measured. Kept for now only because collapsing
-     *                  the component touches {@link ExecVerdict.Evidence}'s ten-key round trip; when
-     *                  that goes, {@code infraJson} goes with it and both readers take
-     *                  {@code infraText}.
+     * @param infraText the reason as text — what the two regexes, the notes AND the evidence map read.
+     *                  THERE USED TO BE A SECOND COMPONENT HERE, {@code infraJson}, read with
+     *                  {@link Json#str} instead of {@link Values#text} and documented as the same key
+     *                  under a second coercion: the divergence it described ({@code 1,2} and
+     *                  {@code [object Object]} against JSON) belonged to the retired {@code Js}
+     *                  renderer. {@code Json.str} delegates to {@code Values.text}, so the two had
+     *                  rendered identically for every shape since 2026-08-05 — null, String, Long,
+     *                  Boolean, List, Map, NaN and Infinity all measured — and the pair was a standing
+     *                  invitation to "fix" a divergence that no longer exists. Collapsed 2026-08-06;
+     *                  {@link #stuck} and {@link #evidence} both read this one.
      */
-    private record Row(Object state, String stateText, String infraText, String infraJson,
-                       Attempts attempts, String testPath, String jdk, String prTitle,
+    private record Row(Object state, String stateText, String infraText,
+                       double attempts, String testPath, String jdk, String prTitle,
                        String prBody) {
 
         static Row of(Object rec) {
             return new Row(Json.get(rec, STATE), Llm.presence(rec, STATE),
-                    Values.text(Json.get(rec, INFRA_REASON)), Json.str(rec, INFRA_REASON),
-                    new Attempts(Json.num(rec, "attempts")),
+                    Values.text(Json.get(rec, INFRA_REASON)),
+                    Json.num(rec, "attempts"),
                     Json.str(rec, "test_path"), Json.str(rec, "jdk"),
                     Json.str(rec, "pr_title"), Json.str(rec, "pr_body"));
         }
@@ -342,12 +338,15 @@ public final class Verdict {
      *
      * @param svaceChecker     the raw value, because it is copied into the returned item.
      * @param svaceCheckerText the same value as the prompt prints it, with the {@code ?} fallback.
-     * @param markerIdGiven    whether there is a marker id at all — a SEPARATE component from the text
-     *                         on purpose. The fetch gates on JS truthiness and then prints
-     *                         {@code String(x)}, and those two disagree about an empty array:
-     *                         {@code Boolean([])} is true and {@code String([])} is {@code ""}. Folding
-     *                         them into "the text is non-empty" would stop that one shape reaching the
-     *                         endpoint.
+     * @param markerId         the id as the fetch spells it, and the ONLY component about it. There
+     *                         used to be a {@code markerIdGiven} boolean beside it, defended by the
+     *                         two JS coercions disagreeing about an empty array —
+     *                         {@code Boolean([])} true, {@code String([])} {@code ""}. That argument
+     *                         refuted itself once the coercion became {@link Values#text}, which
+     *                         renders the empty array as {@code "[]"}: the two agree on exactly the
+     *                         shape the split existed for, and the boolean was
+     *                         {@code !Values.text(markerId).isEmpty()} — the field beside it, negated.
+     *                         Collapsed 2026-08-06; {@link #svaceDetail} asks the text directly.
      * @param argueOnly        {@code settle_by === 'argue'}: a checker that can only be settled by
      *                         ARGUMENT gets no retry, because a second reproducer sample cannot write a
      *                         runtime test for a dead store. Asked of {@link CheckerMap.SettleBy},
@@ -357,8 +356,7 @@ public final class Verdict {
      */
     private record VerdictMarker(String suspicionKey, String repo, String file, Object svaceChecker,
                                  String svaceCheckerText, String svaceSeverity, String svaceLine,
-                                 String description, boolean markerIdGiven, String markerId,
-                                 boolean argueOnly) {
+                                 String description, String markerId, boolean argueOnly) {
 
         static VerdictMarker of(Object j) {
             Object markerId = Json.get(j, "marker_id");
@@ -371,7 +369,7 @@ public final class Verdict {
                     Values.text(or(Json.get(j, "svace_severity"), "?")),
                     Values.text(or(Json.get(j, "svace_line"), "?")),
                     Values.text(Json.get(j, "description")),
-                    !Values.text(markerId).isEmpty(), Values.text(markerId),
+                    Values.text(markerId),
                     CheckerMap.SettleBy.of(or(Json.get(j, "settle_by"),
                             CheckerMap.SettleBy.TEST.wire())) == CheckerMap.SettleBy.ARGUE);
         }
@@ -383,11 +381,14 @@ public final class Verdict {
      * @param anchor           raw — copied into the returned item. @see VerdictMarker#svaceChecker
      * @param anchorStatus     raw, and for the same reason.
      * @param anchorStatusText the same value as the prompt prints it.
-     * @param methodGiven      whether a method body was quoted at all, split from its text for the
-     *                         reason {@link VerdictMarker#markerIdGiven} is split from its.
+     * @param methodText       the quoted method body, or "" when the node quoted none. There used to
+     *                         be a {@code methodGiven} boolean beside it, split for the reason
+     *                         {@link VerdictMarker#markerId} records — and equal to
+     *                         {@code !methodText.isEmpty()} by construction. Collapsed 2026-08-06 with
+     *                         it; {@link #argumentPrompt} asks the text.
      */
     private record Source(Object anchor, Object anchorStatus, String anchorStatusText,
-                          String anchorNote, boolean methodGiven, String methodText, String src) {
+                          String anchorNote, String methodText, String src) {
 
         static Source of(Object bri) {
             Object status = Json.get(bri, "anchor_status");
@@ -395,7 +396,7 @@ public final class Verdict {
             return new Source(or(Json.get(bri, "anchor"), ""), or(status, ""),
                     Values.text(or(status, "?")),
                     Values.text(Json.get(bri, "anchor_note")),
-                    !Values.text(methodText).isEmpty(), Values.text(methodText),
+                    Values.text(methodText),
                     Values.text(Json.get(bri, "src")));
         }
     }
@@ -427,12 +428,14 @@ public final class Verdict {
      * a score nobody took, and there it is {@code Number(x) || 0} because the row's {@code value_score}
      * column is a double. One record would have to carry both.
      *
-     * @param score the realness score RAW, and the one component here that could not be typed. Its
-     *              coercion is {@code '' + x} and it is PRIVATE to {@link ExecVerdict.Evidence#of} —
-     *              a measured score of 0 has to stay distinguishable from one nobody measured, which
-     *              {@link Json#str} would not do. Writing a second copy of that coercion in this file
-     *              is precisely the two-places-for-one-value drift this class exists to avoid, so the
-     *              raw value is carried to {@link #evidence} and the coercion stays where it is owned.
+     * @param score the realness score RAW. It is carried untouched because the coercion belongs to
+     *              whoever prints it, and what must survive that coercion is the difference between a
+     *              measured {@code 0} and a score nobody took — the worst tests the pipeline produces
+     *              are the ones a reviewer most needs to see rated. That used to require a reader
+     *              PRIVATE to {@link ExecVerdict.Evidence#of}, back when {@link Json#str} still meant
+     *              {@code x || ''} and would have turned the 0 into "not measured". It no longer does:
+     *              {@code Json.str} is {@link Values#text}, absence is the only thing that reads as
+     *              empty, and {@link #evidence} applies it here (2026-08-06).
      */
     private record VerdictTestReply(boolean canProve, String rootCause, Object score,
                                     String realness) {
@@ -650,10 +653,8 @@ public final class Verdict {
         boolean retry = false;
         Settled state = new Settled.Arrived(row.state());
 
-        // WHICH ATTEMPT THIS IS — `Number(x) || 1`, because an uncounted attempt is the FIRST one, not
-        // the zeroth. NOT the same question the status routing asks of the same column; see
-        // {@link Attempts}, which is where both are named.
-        double attemptNo = row.attempts().current();
+        // @see #currentAttempt — `|| 1`, and NOT the `|| 0` the status routing asks the same column for.
+        double attemptNo = currentAttempt(row.attempts());
         boolean buildOnly = BUILD_FAILED.matcher(row.infraText()).find()
                 && !REAL_INFRA.matcher(row.infraText()).find();
         // Everything below branches on the enum rather than on the string. @see #markerState
@@ -853,8 +854,8 @@ public final class Verdict {
         };
         SuspicionStatus settled = marker == null ? null : settledBy(marker);
         // THE COUNT AS RECORDED — `Number(x) || 0`, not the `|| 1` argue() asks the same column for.
-        // @see Attempts
-        double recordedAttempts = row.attempts().recorded();
+        // @see #currentAttempt
+        double recordedAttempts = row.attempts();
         SuspicionStatus suspicionStatus;
         String suspicionNote = "";
         if (marker == MarkerState.INFRA_ERROR) {
@@ -1014,43 +1015,35 @@ public final class Verdict {
      * {@code exhaustedBuild} hatch whose argument did not materialise. A marker no run will select
      * again is terminal, so whichever route it took the artifact has to say the same thing.
      *
-     * <p>ONLY the reason and the count reach it — a two-field object, deliberately: an
-     * {@code infra_stuck} row must not pick up a test path or a PR title from a run that never got
-     * that far.
+     * <p>ONLY the reason and the count reach it — the eight empty strings are the point, not padding:
+     * an {@code infra_stuck} row must not pick up a test path or a PR title from a run that never got
+     * that far. They used to be the ABSENCE of eight keys from a map, which said the same thing and
+     * said it to nobody the compiler could ask; a component added to {@link ExecVerdict.Evidence} now
+     * makes this line stop compiling until somebody decides what a stuck row says about it.
      */
     private static ExecVerdict.Verdict stuck(Row row, double attempts) {
-        Map<String, Object> ev = new LinkedHashMap<>();
-        ev.put("infra_reason", row.infraJson());
-        ev.put("attempts", attempts);
-        return ExecVerdict.of(MarkerState.INFRA_STUCK.wire(), ExecVerdict.Evidence.of(ev));
+        return ExecVerdict.of(MarkerState.INFRA_STUCK.wire(), new ExecVerdict.Evidence(
+                "", "", "", "", "", "", "", "", row.infraText(), (long) attempts));
     }
 
     /**
      * The evidence {@link ExecVerdict} words the outcome from, gathered off several nodes.
      *
-     * <p>STILL ASSEMBLED AS A MAP, and this is the one place in the stage where that is deliberate
-     * rather than left over. {@link ExecVerdict.Evidence#of} is where {@code test_score} is coerced
-     * with {@code '' + x} instead of {@code x || ''} — a measured score of ZERO has to stay
-     * distinguishable from one nobody measured, and it is the worst tests the pipeline produces that a
-     * reviewer most needs to see rated — and that coercion is PRIVATE to it. Calling the constructor
-     * directly would mean a second copy of it in this file, which is exactly the two-places-for-one-
-     * value drift this class exists to prevent. So the keys are written here and read back there, and
-     * the coercion stays where it is owned. THE VALUES ARE TYPED; only the ten names are not.
+     * <p>IT USED TO GO THROUGH A MAP, and the reason was real while it lasted: {@code test_score} was
+     * coerced by a reader PRIVATE to {@link ExecVerdict.Evidence#of}, so writing the ten values into
+     * keys and having them read back was how this file avoided owning a second copy of that coercion.
+     * The private reader is gone (2026-08-06 — it was {@code Json.stringify}, which threw on a
+     * non-finite score and took this stage with it), so what remained was ten string keys standing
+     * between ten typed values and a ten-component record: a misspelt key would have silently emptied a
+     * clause instead of failing to compile. Now the constructor is called and the ARGUMENT ORDER is
+     * what has to be right — which the compiler checks for the eight strings' neighbours only by type,
+     * so {@code ExecVerdictTest} asserts each clause by name.
      */
     private static ExecVerdict.Evidence evidence(Inputs in, double attempts) {
         Row row = in.row();
-        Map<String, Object> ev = new LinkedHashMap<>();
-        ev.put("test_path", row.testPath());
-        ev.put("jdk", row.jdk());
-        ev.put("pr_title", row.prTitle());
-        ev.put("pr_body", row.prBody());
-        ev.put("infra_reason", row.infraJson());
-        ev.put("attempts", attempts);
-        ev.put("pr_reason", in.prReason());
-        ev.put("fix_root_cause", in.fixRootCause());
-        ev.put("test_score", in.test().score());
-        ev.put("test_realness", in.test().realness());
-        return ExecVerdict.Evidence.of(ev);
+        return new ExecVerdict.Evidence(row.testPath(), row.jdk(), Values.text(in.test().score()),
+                in.test().realness(), in.fixRootCause(), row.prTitle(), in.prReason(), row.prBody(),
+                row.infraText(), (long) attempts);
     }
 
     /**
@@ -1067,7 +1060,7 @@ public final class Verdict {
         Source source = in.source();
 
         Detail detail = svaceDetail(req, http, marker);
-        String code = source.methodGiven()
+        String code = !source.methodText().isEmpty()
                 ? "The method the marker points into:\n```java\n"
                         + head(source.methodText(), CODE_CUT) + "\n```"
                 : "Source file:\n```java\n" + head(source.src(), CODE_CUT) + "\n```";
@@ -1170,7 +1163,7 @@ public final class Verdict {
     private static Detail svaceDetail(Request req, Llm.Http http, VerdictMarker marker) {
         // .trim(): a variable set to a stray space would otherwise be fetched as if it were a host.
         String base = SourceText.trim(Values.text(req.svaceBaseUrl()));
-        if (base.isEmpty() || !marker.markerIdGiven()) {
+        if (base.isEmpty() || marker.markerId().isEmpty()) {
             return null;
         }
         try {

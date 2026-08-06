@@ -362,16 +362,6 @@ public class JobsController {
     }
 
     /**
-     * The two things every ingest is refused for, in one place so the JSON and the multipart route
-     * cannot drift apart. Null means "carry on".
-     *
-     * <p>THE SECOND ONE IS THE HOST RULE. A blank branch means "resolve the repository's default
-     * branch, one lookup per marker" — and that lookup is the GitHub API, addressed as
-     * {@code /repos/owner/name}. For a GitLab clone URL it can only fail, one marker at a time, six
-     * hours into a run, as {@code branch_error} on every row of the backlog. Refusing the REQUEST is the
-     * same fact delivered while it can still be acted on.
-     */
-    /**
      * The destructive refusal: a reset that cannot say what it is discarding. Null means "carry on".
      *
      * <p>Answered HERE as well as inside the job, and the two are not redundant. The tasklet's check is
@@ -408,6 +398,19 @@ public class JobsController {
                 resetPolicy.resets(requestedReset), census));
     }
 
+    /**
+     * The two things every ingest is refused for, in one place so the JSON and the multipart route
+     * cannot drift apart. Null means "carry on".
+     *
+     * <p>THE SECOND ONE IS THE HOST RULE. A blank branch means "resolve the repository's default
+     * branch, one lookup per marker" — and that lookup is the GitHub API, addressed as
+     * {@code /repos/owner/name}. For a GitLab clone URL it can only fail, one marker at a time, six
+     * hours into a run, as {@code branch_error} on every row of the backlog. Refusing the REQUEST is the
+     * same fact delivered while it can still be acted on.
+     *
+     * <p>(This block sat 45 lines up, stacked above a second javadoc, from where javac attached it to
+     * nothing and the API's most surprising refusal was documented onto no method at all.)
+     */
     private ResponseEntity<Map<String, Object>> refuse(String repo, String branch) {
         if (repo == null || repo.isBlank()) {
             return badRequest("`repo` is required (e.g. \"WebGoat/WebGoat\", "

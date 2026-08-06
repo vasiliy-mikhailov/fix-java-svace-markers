@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.web.servlet.MultipartProperties;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
@@ -98,6 +99,10 @@ class TheFilterAndTheControllerRefuseInOneDocumentTest {
     @Autowired
     private ObjectMapper json;
 
+    /** The container's own half of the bound, which is the one that used to be able to disagree. */
+    @Autowired
+    private MultipartProperties multipart;
+
     /**
      * ONE BYTE OVER THE BOUND IS THESE 260 BYTES, and the request never reaches a controller.
      *
@@ -105,6 +110,26 @@ class TheFilterAndTheControllerRefuseInOneDocumentTest {
      * error page, or with a document a client cannot parse — which is what a filter answering outside
      * the {@code @ExceptionHandler} machinery would do if it were left to the container.
      */
+    /**
+     * ALL THREE ENFORCEMENT POINTS MOVE WITH THE ONE NUMBER, including the container's.
+     *
+     * <p>This context sets {@code fsm.ingest.max-csv-bytes} as a SPRING PROPERTY, which is how a
+     * {@code -D}, an {@code application-*.yml} or a test moves it. Until 2026-08-06
+     * {@code spring.servlet.multipart.max-file-size} resolved {@code ${FSM_INGEST_MAX_CSV_BYTES}}
+     * directly, so it could only be moved by the ENVIRONMENT: this context ran with a 1000-byte filter
+     * and spool and a 32 MiB container, and the class comment above claimed "one number, three
+     * enforcement points" while demonstrating two. In the deployment the env var moves all three, which
+     * is why nothing ever caught it.
+     */
+    @Test
+    void theContainersOwnBoundIsTheSameNumberTheFilterAndTheSpoolUse() {
+        assertThat(multipart.getMaxFileSize().toBytes())
+                .as("the container refuses before any method here runs; a bound it does not share is a "
+                        + "third number wearing the name of the first")
+                .isEqualTo(REPORT_LIMIT);
+        assertThat(multipart.getMaxRequestSize().toBytes()).isEqualTo(REPORT_LIMIT);
+    }
+
     @Test
     void oneByteOverTheBoundIsThisExactDocumentAndNotOneThatMerelyMentionsTheNumbers()
             throws Exception {

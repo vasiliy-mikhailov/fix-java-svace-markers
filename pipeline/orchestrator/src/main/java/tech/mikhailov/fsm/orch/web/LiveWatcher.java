@@ -153,18 +153,16 @@ public class LiveWatcher {
             return false;
         }
 
-        List<Map<String, Object>> changes = diff(current);
+        List<Moved> changes = diff(current);
         boolean runsMoved = !runsToken.equals(lastRuns);
         lastRuns = runsToken;
         lastSeen = current;
 
-        for (Map<String, Object> change : changes) {
-            String key = String.valueOf(change.get("dedupKey"));
-            String to = (String) change.get("to");
+        for (Moved change : changes) {
             // Stamped BEFORE it is announced: the observation is what the effort model reads later,
             // and a push that fails must not cost the record of when the marker actually moved.
-            progress.record(key, to, Instant.now(clock));
-            live.pushMarker(key, (String) change.get("from"), to, null);
+            progress.record(change.key(), change.to(), Instant.now(clock));
+            live.pushMarker(change.key(), change.from(), change.to(), null);
         }
 
         boolean moved = !changes.isEmpty() || runsMoved;
@@ -203,6 +201,23 @@ public class LiveWatcher {
     }
 
     /**
+     * ONE MARKER'S MOVE, between the scan that noticed it and the push that announces it.
+     *
+     * <p>A THREE-FIELD RECORD AND NOT A {@code Map<String, Object>}, which is what it was until
+     * 2026-08-06: the map was built with three keys here and taken apart eleven lines up with a
+     * {@code String.valueOf} and two unchecked {@code (String)} casts, in the one module that types
+     * everything. Its keys also RE-SPELLED three of {@code DashboardPresenter.markerTransition}'s wire
+     * names, in a file the presenter guard does not govern — so a reader had two vocabularies to keep
+     * straight and a compiler that could check neither. This type is internal to the watcher; the wire
+     * names stay where they are owned, in the presenter.
+     *
+     * @param from null for a marker seen for the FIRST time — an ingest, not a transition. It is still
+     *             stamped: the row appearing IS when this process first knew about it.
+     */
+    private record Moved(String key, String from, String to) {
+    }
+
+    /**
      * What changed since the previous pass.
      *
      * <p>A marker that has VANISHED produces nothing. A re-ingest clears the backlog and rewrites it,
@@ -211,8 +226,8 @@ public class LiveWatcher {
      *
      * @return the transitions since the previous pass; never called before {@link #lastSeen} is seeded
      */
-    private List<Map<String, Object>> diff(Map<String, String> current) {
-        List<Map<String, Object>> changes = new ArrayList<>();
+    private List<Moved> diff(Map<String, String> current) {
+        List<Moved> changes = new ArrayList<>();
         for (Map.Entry<String, String> entry : current.entrySet()) {
             String was = lastSeen.get(entry.getKey());
             String now = entry.getValue();
@@ -220,13 +235,7 @@ public class LiveWatcher {
             if (known && java.util.Objects.equals(was, now)) {
                 continue;
             }
-            Map<String, Object> change = new LinkedHashMap<>();
-            change.put("dedupKey", entry.getKey());
-            // null `from` for a marker seen for the first time — an ingest, not a transition. It is
-            // still stamped: the row appearing IS when this process first knew about it.
-            change.put("from", known ? was : null);
-            change.put("to", now);
-            changes.add(change);
+            changes.add(new Moved(entry.getKey(), known ? was : null, now));
         }
         return changes;
     }

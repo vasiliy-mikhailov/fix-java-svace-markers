@@ -106,13 +106,17 @@ services:
       # name nothing in this stack serves, and surfaces hours into a 6-26 hour run as a connect retried
       # three times and filed as an infrastructure failure. Both lines stay, or neither does.
       #
-      # THE DEFAULT IS EMPTY, not an address, and that is the other half. An address written here would
-      # be a knob that changes nothing in the `local` shape and would be believed by the next reader —
-      # which is why the previous revision left the line out altogether. Empty resolves to blank, and
-      # BOTH halves of the http shape agree on blank: HttpRunnerClient and HttpSourceReader each fall
-      # back to the same DEFAULT_BASE_URL, so the source window and the prove cannot end up pointed at
-      # two different runners. DeploymentTest pins the pair — mode and address are pass-through together
-      # or neither is.
+      # NO ADDRESS IS WRITTEN HERE, and that is the other half. One would be a knob that changes nothing
+      # in the `local` shape and would be believed by the next reader. Unset, the bare form below hands
+      # the process nothing and application.yml's ${FSM_RUNNER_URL:http://fsm-runner:8090} answers; set
+      # to blank, this is the one of the four where blank is survivable, because HttpRunnerClient and
+      # HttpSourceReader both fall back to that same compiled-in DEFAULT_BASE_URL — so the source window
+      # and the prove cannot end up pointed at two different runners. DeploymentTest pins the pair, and
+      # pins the yaml default against the compiled one.
+      #
+      # (This paragraph opened "THE DEFAULT IS EMPTY, not an address" until 2026-08-06 — a fossil of the
+      # `=${VAR:-}` shape the block below replaced, still describing mechanics this line had stopped
+      # having. The facts under it were true, which is why they are restated rather than deleted.)
       # THESE FOUR ARE PASSED WITHOUT `=`, AND THAT IS LOAD-BEARING. Compose forwards such a variable
       # only when it is set in the environment; with `=${VAR:-}` it forwards the variable SET TO EMPTY.
       # Spring's ${VAR:default} applies the default only when the variable is ABSENT, so an empty value
@@ -259,20 +263,53 @@ services:
   #
   # IT HOLDS NO SECRETS, and that is worth keeping: the model endpoint, the Svace endpoint and the
   # GitHub token all arrive IN THE REQUEST, so there is one source of truth for them — the caller's.
+  # NO SECOND IMAGE. Until 2026-08-06 this had `build: context: ../engine` and its own 148-line
+  # Dockerfile, which fetched its own JDK and built a second ~1.5 GB image to run one jar. It did not
+  # need to: `fsm.jar` already carries `BOOT-INF/lib/engine-0.1.0-SNAPSHOT.jar` plus Boot's
+  # PropertiesLauncher, so the pipeline image can start the engine's main directly. DOCKER.md documents
+  # the identical trick for running the RUNNER out of this image; there is now one image in this repo.
+  #
+  # Verified locally on 2026-08-06, outside Docker, against the built fat jar:
+  #   BIND=127.0.0.1 PORT=18092 java -Dloader.main=tech.mikhailov.fsm.engine.Engine \
+  #     -cp orchestrator/target/fsm-orchestrator.jar \
+  #     org.springframework.boot.loader.launch.PropertiesLauncher
+  #   -> [engine] fsm-engine 0.1.0-SNAPSHOT listening on 127.0.0.1:18092
+  #   -> GET /health 200 {"ok":true,"service":"fsm-engine",…}
+  # The compose wiring below is NOT verified — no image was built in that session.
+  #
+  # THE COST, STATED: `--profile engine up -d engine` now needs `fsm:latest` to exist. For a profile in
+  # this stack it always does, and `up -d` builds it.
   engine:
     profiles: ["engine"]
-    build:
-      context: ../engine
-      args:
-        MAVEN_MIRROR_URL: ${MAVEN_MIRROR_URL:-}
-    image: fsm-engine:latest
+    image: fsm:latest
     container_name: fsm-engine
     restart: unless-stopped
+    # `env LC_ALL=C.UTF-8` FIRST, and it is not decoration. The pipeline image deliberately declares no
+    # locale (see Dockerfile's runtime stage: an image-level LANG would flip file.encoding for every
+    # JDK 8/11 build under test), so its ENTRYPOINT sets one for its own process. Overriding the
+    # entrypoint drops that, and NodeRoutes returns each stage's log line in its reply — without it,
+    # `no stubbing at all — drives the real objects end to end` arrives as `at all ? drives`.
+    entrypoint: ["env", "LC_ALL=C.UTF-8",
+                 "java",
+                 "-XX:MaxRAMPercentage=75",
+                 "-Dstdout.encoding=UTF-8",
+                 "-Dstderr.encoding=UTF-8",
+                 "-Dloader.main=tech.mikhailov.fsm.engine.Engine",
+                 "-cp", "/app/fsm.jar",
+                 "org.springframework.boot.loader.launch.PropertiesLauncher"]
     ports:
       # Loopback, and published on purpose: reaching it by hand IS what this service is for.
       - "127.0.0.1:8092:8092"
     environment:
       - PORT=8092
+    healthcheck:
+      # Carried here rather than inherited: the pipeline image's HEALTHCHECK asks the ORCHESTRATOR's
+      # /healthz on 8085, which this process does not serve.
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8092/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
     volumes:
       # `Parse markers` reads the Svace report off the mounted repo: `csv_path` is resolved inside this
       # container. Read-only — the engine only ever reads a request and writes a reply.

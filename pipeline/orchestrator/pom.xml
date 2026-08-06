@@ -39,8 +39,6 @@
   <properties>
     <java.version>25</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <engine.version>0.1.0-SNAPSHOT</engine.version>
-    <runner.version>0.1.0-SNAPSHOT</runner.version>
 
     <!-- Same versions as engine and runner, deliberately: three modules in one reactor disagreeing
          about the measuring tool would mean three numbers that cannot be added up. JUnit itself is
@@ -81,7 +79,10 @@
     <dependency>
       <groupId>tech.mikhailov.fsm</groupId>
       <artifactId>engine</artifactId>
-      <version>${engine.version}</version>
+      <!-- ${project.version}, not a property of its own: all three modules are always built in one
+           reactor at one version, so a separate <engine.version> could only ever be a second name for
+           this and a way to drift from it. -->
+      <version>${project.version}</version>
     </dependency>
 
     <!-- THE PROVER'S HANDS, AS A LIBRARY, and this line is what makes the deployment one container.
@@ -102,7 +103,7 @@
     <dependency>
       <groupId>tech.mikhailov.fsm</groupId>
       <artifactId>runner</artifactId>
-      <version>${runner.version}</version>
+      <version>${project.version}</version>
     </dependency>
 
     <dependency>

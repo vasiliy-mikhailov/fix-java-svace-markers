@@ -16,7 +16,7 @@ public final class Runner {
         // under. Checked so a CACHE this JVM cannot spell says which of the two is wrong — the variable
         // or the locale — instead of dying in Path.of with "Malformed input" and the value printed as
         // question marks, which is what the encoding it failed on does to the message.
-        String cacheDir = env("CACHE", RunnerServer.DEFAULT_CACHE);
+        String cacheDir = env("CACHE", LocalRunner.DEFAULT_CACHE);
         if (!PathEncoding.spells(cacheDir)) {
             throw new IllegalArgumentException(PathEncoding.refusal("CACHE"));
         }
@@ -39,7 +39,9 @@ public final class Runner {
         // means that URL, whatever host it names. See MavenSettings for the defect this replaces.
         String mirror = System.getenv(MavenSettings.MIRROR_ENV);
 
-        RunnerServer.ensureCache(cache);
+        // NO mkdir HERE. Preflight makes the directory and then writes a byte into it, from
+        // LocalRunner's constructor; a bare createDirectories on the way up proves nothing about a
+        // read-only mount or a uid mismatch and only gets there first with a worse message.
         RunnerServer server = RunnerServer.start(host, port,
                 LocalRunner.open(cache, token, mirror, gitHost), true);
         // Compose sends SIGTERM on `down` and `restart`. Without this hook the JVM dies with the

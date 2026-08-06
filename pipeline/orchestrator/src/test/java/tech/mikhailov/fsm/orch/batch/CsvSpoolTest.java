@@ -192,6 +192,35 @@ class CsvSpoolTest {
             assertThat(someoneElses).exists();
         }
 
+        /**
+         * AND IT IS THE OWNER'S ALONE. The class comment lists four properties that make a report
+         * untrusted input, and three of them are pinned above; this is the fourth, and it is the only
+         * one that decides whether a third party's source paths and findings sit world-readable in a
+         * directory under {@code java.io.tmpdir} that every process on the host can list. Untested
+         * until 2026-08-06.
+         *
+         * <p>Guarded on POSIX being available, exactly as the production code is: the permissions are
+         * best effort there — a filesystem that cannot say so is not a reason to refuse an upload —
+         * so a test that demanded them everywhere would be asserting more than the code promises.
+         */
+        @Test
+        void theSpoolDirectoryIsReadableOnlyByTheProcessThatOwnsIt(@TempDir Path parent)
+                throws Exception {
+            Path dir = parent.resolve("spool");
+            org.junit.jupiter.api.Assumptions.assumeTrue(
+                    java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix"),
+                    "no POSIX permissions on this filesystem; the production code treats that as "
+                    + "acceptable and so does this");
+
+            spool(dir.toString(), 4096).spool(REPORT);
+
+            assertThat(Files.getPosixFilePermissions(dir))
+                    .as("a Svace report is somebody else's source paths and findings, spooled into a "
+                            + "shared temp directory")
+                    .containsExactlyInAnyOrderElementsOf(
+                            java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
+        }
+
         @Test
         void aSpoolDirectoryThatIsNotThereYetIsMadeRatherThanRefused(@TempDir Path parent)
                 throws Exception {

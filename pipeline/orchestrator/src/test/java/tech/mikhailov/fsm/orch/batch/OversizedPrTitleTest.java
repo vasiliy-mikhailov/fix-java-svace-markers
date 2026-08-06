@@ -113,6 +113,35 @@ class OversizedPrTitleTest {
         assertThat(stored.prTitle()).hasSize(2048).isEqualTo(LONG_TITLE.substring(0, 2048));
     }
 
+    /**
+     * THE CUT NEVER LANDS INSIDE A CHARACTER. A title of 2047 ASCII characters plus one emoji is 2049
+     * {@code char}s, and cutting it at the column width would leave a LONE HIGH SURROGATE as the last
+     * one: half a character, which every consumer of the row — the dashboard, a PR body, a terminal —
+     * renders as a replacement glyph. {@code Clip} steps back one when the last kept unit is a high
+     * surrogate, so this comes back 2047 long.
+     *
+     * <p>Untested until 2026-08-06, on a class whose own javadoc records that the failure it prevents
+     * is "one reply from one model, and a 26-hour drain makes no progress ever again". Correct then
+     * and correct now; what was missing was anything that would say so if the {@code max - 1} became
+     * {@code max}, which is both an out-of-bounds read away from the end and a silent mojibake.
+     */
+    @Test
+    void aTitleCutAtTheColumnDoesNotLeaveHalfOfACharacter() {
+        String withEmoji = "T".repeat(2047) + "😀";
+        assertThat(withEmoji).hasSize(2049);
+
+        bugs.upsert(artifact("emoji", withEmoji));
+
+        String stored = bugs.find("emoji").orElseThrow().prTitle();
+        assertThat(stored)
+                .as("the surrogate pair does not fit whole, so neither half of it is kept")
+                .hasSize(2047)
+                .isEqualTo("T".repeat(2047));
+        assertThat(Character.isHighSurrogate(stored.charAt(stored.length() - 1)))
+                .as("a lone high surrogate is what a reader sees as a replacement glyph")
+                .isFalse();
+    }
+
     /** …and a title that already fits is stored untouched. Clipping must not rewrite ordinary rows. */
     @Test
     void aTitleThatFitsIsStoredUnchanged() {

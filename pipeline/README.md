@@ -17,14 +17,14 @@ it for you), and afterwards confirm the marker count is what it was before you s
 
 | module | what it is | depends on |
 |---|---|---|
-| **engine** | The judgement, as pure functions over maps. Ten node classes, no I/O, ~900 tests. Also runs standalone over HTTP so one stage can be replayed by hand. | nothing |
+| **engine** | The judgement, as pure functions over maps. Ten node classes, no I/O, tested without a container. Also runs standalone over HTTP so one stage can be replayed by hand. | nothing |
 | **orchestrator** | Spring Batch drives each marker through the chain. Owns H2, the dashboard, the REST API and the WebSocket. **Embeds `engine` as a library** — no HTTP hop between the queue and the judgement. | engine |
 | **runner** | Clones the target repo, writes the test, applies the patch, runs Maven twice. Its parsing and edit rules are pinned by a 23,401-case frozen differential harness (`runner/harness/README.md`). **A library, not a service** — `LocalRunner` is what `orchestrator` calls; `RunnerServer` wraps the same code over HTTP for a deployment that wants the build sandbox split off. | engine |
 
 Each module has its own README with the detail — endpoints, configuration, and why particular decisions
 were made the way they were.
 
-`runner` stays a module rather than being folded into `orchestrator`, and that is deliberate: its 216
+`runner` stays a module rather than being folded into `orchestrator`, and that is deliberate: its
 tests are the specification of the one distinction the whole pipeline rests on — did the test RUN and
 fail, or did it never run — and it holds a zero-third-party-dependency policy that a merge into a Spring
 Boot module would quietly break.
@@ -33,7 +33,10 @@ Boot module would quietly break.
 
 `deploy/docker-compose.yml` is the whole deployment: **one service**, plus `engine` behind a profile for
 replaying a single stage by hand. `DeploymentTest` pins that, so a second running service is a red test
-rather than a discovery. `deploy/.env.example` documents every variable it reads.
+rather than a discovery. `deploy/.env.example` documents every variable an operator SETS — which is not
+every variable compose reads, and the gaps are deliberate: `FSM_RUNNER_URL` is left out so that unset
+means absent rather than blank, and `FSM_DB_PATH` and `CACHE` are fixed in the compose file itself,
+pointing inside the named volumes it mounts. The compose file gives the reason at each of those lines.
 
 `Dockerfile` is at the **reactor root**, which is also its build context, because `orchestrator` resolves
 `tech.mikhailov.fsm:engine` and `tech.mikhailov.fsm:runner` from the reactor and nothing publishes those
@@ -59,7 +62,7 @@ it takes effect with no rebuild. See `runner/src/main/java/.../MavenSettings.jav
 ## Tests
 
 ```bash
-mvn -B test                        # 1751 tests across the three modules
+mvn -B test                        # all three modules; the run prints its own totals
 orchestrator/playwright/run.sh     # the browser suite, inside the Playwright image
 ```
 

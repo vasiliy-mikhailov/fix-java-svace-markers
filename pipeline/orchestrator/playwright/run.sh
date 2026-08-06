@@ -8,12 +8,17 @@
 # Anything after the script name is appended to the Maven command inside the container, so a single
 # class, `-o`, or `-X` all work without rebuilding.
 #
-# WHY THIS IS NOT A COMPOSE SERVICE. deploy/docker-compose.yml declares exactly three services — engine,
-# orchestrator, runner — and DeploymentTest pins that list, because a fourth prover in the stack shares
-# no lock with the runner and two processes patching one workspace is not a thing anybody debugs
-# quickly. A test suite is also just not a long-lived service: it starts, asserts, exits, and has
-# nothing to restart. `docker run --rm` is the shape that matches, and it keeps the deployment's
-# service list a statement about what is deployed.
+# WHY THIS IS NOT A COMPOSE SERVICE. deploy/docker-compose.yml declares ONE running service, `fsm`,
+# plus `engine` behind a profile for replaying a single stage by hand. A test suite is not a service:
+# it starts, asserts, exits, and has nothing to restart. `docker run --rm` is the shape that matches,
+# and it keeps the deployment's service list a statement about what is deployed.
+#
+# This comment used to say compose declared "exactly three services — engine, orchestrator, runner —
+# and DeploymentTest pins that list". That stack was split into one image several commits ago, and the
+# test it cited as its authority is the one that FORBIDS what it claimed: DeploymentTest's DELETED list
+# holds "runner" and it asserts the service list contains no element of it. A sentence naming a real
+# test is the most believable kind of stale comment, which is why this note replaces it rather than
+# just deleting it.
 #
 # --shm-size=1g: Docker's default 64 MB /dev/shm is not enough for Chromium's renderer, which crashes
 # part-way through a test when it fills. The image also passes --disable-dev-shm-usage for the case

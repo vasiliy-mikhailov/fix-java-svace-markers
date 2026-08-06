@@ -106,7 +106,7 @@ public final class ParseTest {
     /** Parse the reproducer's reply. */
     public static Result parseTest(Request req) {
         Object j = req.prepProver();
-        // Values.text — and NOT, as this comment used to say, "not Json.str". Json.str(Object) IS
+        // Values.text — and NOT, as this comment used to say, "not Json.str". Values.text(Object) IS
         // Values.text; the two are one function under two names and cannot disagree about anything.
         // The distinction that is real is with Json.stringify: text renders a one-element list as
         // ["{...}"] rather than as the element, so a reply that arrived wrapped in an array does NOT

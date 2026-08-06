@@ -98,11 +98,10 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>${surefire.version}</version>
-        <configuration>
-          <!-- RunnerServerTest binds a real socket; every test asks the OS for port 0 so a parallel
-               run, or a developer with the fleet up, cannot collide with it. -->
-          <trimStackTrace>false</trimStackTrace>
-        </configuration>
+        <!-- NO <configuration>, for the reason the engine's pom gives: the one setting here was
+             <trimStackTrace>false</trimStackTrace>, which is surefire 3.5.6's own default, and the
+             comment above it was about RunnerServerTest binding a real socket on port 0 — a fact
+             about that test, not about this plugin. Removed 2026-08-06. -->
       </plugin>
 
       <plugin>

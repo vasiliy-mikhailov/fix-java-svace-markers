@@ -122,7 +122,9 @@ class TheAnswerToWhatDidThatIngestDoOutlivesTheLogTest {
         assertThat(account.destructive()).isTrue();
         assertThat(account.discardedMarkers()).isEqualTo(1L);
         assertThat(account.discardedSettled()).isEqualTo(1L);
-        assertThat(account.written()).isEqualTo(1L);
+        // `written` is a KEY on the answer and no longer a component (it was always `added` by
+        // construction), so it is asserted where a reader of this service actually meets it.
+        assertThat(account.toMap()).containsEntry("written", 1L);
     }
 
     /** THE KEYS ARE NAMED, not just counted — an operator asking "which ones?" gets an answer. */

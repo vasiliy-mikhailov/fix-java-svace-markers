@@ -65,7 +65,7 @@ public class LocalRunnerClient implements RunnerClient {
 
     public LocalRunnerClient(Prover prover, Duration configuredTimeout) {
         this.prover = Objects.requireNonNull(prover);
-        this.configuredTimeout = positive(configuredTimeout) ? configuredTimeout : DEFAULT_TIMEOUT;
+        this.configuredTimeout = Failures.positive(configuredTimeout) ? configuredTimeout : DEFAULT_TIMEOUT;
     }
 
     /** The wall clock applied when {@link #runTest} is called with no timeout. */
@@ -78,7 +78,7 @@ public class LocalRunnerClient implements RunnerClient {
         // A null body is a bug in the caller, not news about a marker — the same refusal the HTTP client
         // makes, and unchecked for the same reason: no retry policy can help with it.
         Objects.requireNonNull(body, "the run_test body is built by the engine and is never null");
-        Duration wall = positive(timeout) ? timeout : configuredTimeout;
+        Duration wall = Failures.positive(timeout) ? timeout : configuredTimeout;
 
         log.info("[run_test] in-process ({} keys, up to {}s)", body.size(), wall.toSeconds());
         Future<Map<String, Object>> running = prover.submit(body);
@@ -101,7 +101,4 @@ public class LocalRunnerClient implements RunnerClient {
         }
     }
 
-    private static boolean positive(Duration d) {
-        return d != null && !d.isZero() && !d.isNegative();
-    }
 }

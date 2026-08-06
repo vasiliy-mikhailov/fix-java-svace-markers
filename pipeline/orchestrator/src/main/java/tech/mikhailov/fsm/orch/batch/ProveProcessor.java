@@ -19,7 +19,6 @@ import tech.mikhailov.fsm.orch.usecase.EngineUnreachable;
 import tech.mikhailov.fsm.orch.usecase.FeedbackJournal;
 import tech.mikhailov.fsm.orch.usecase.ProveMarker;
 import tech.mikhailov.fsm.orch.usecase.ProveMarkerPresenter;
-import tech.mikhailov.fsm.orch.usecase.ProveMarkerRequest;
 import tech.mikhailov.fsm.orch.usecase.ProveOutcome;
 
 /**
@@ -65,6 +64,13 @@ public class ProveProcessor
     private final Duration runTestTimeout;
     private final boolean verdictEnabled;
 
+    // An 8-argument constructor lived here until 2026-08-06, defaulting verdictEnabled to true and
+    // building a throwaway `new FeedbackStore(false, DEFAULT_FILE_NAME)`. It had no caller: both sites
+    // that construct this class — BatchConfig and TheArgumentOffChangesNothingButTheArgumentTest —
+    // pass all ten, because both of the arguments it defaulted are deployment facts that a test has to
+    // be able to vary. It was also the only place in the codebase that built a FeedbackStore nobody
+    // configured, which is a second store pointing at the deployment's own default file name.
+
     /**
      * @param prompts        the five stage prompts, already resolved and validated by
      *                       {@link PromptSource} on the way up. An INPUT and not a static: which text
@@ -76,15 +82,6 @@ public class ProveProcessor
      *                       non-reproduction.
      * @param runTestTimeout the wall clock for one {@code /run_test} — clone plus a RED build plus a
      *                       GREEN build.
-     */
-    public ProveProcessor(SourceClient source, RunnerClient runner, LlmClient llm,
-                          PrepProver.RepoLookup repoLookup, Secrets secrets, PromptSource prompts,
-                          int minAttempts, Duration runTestTimeout) {
-        this(source, runner, llm, repoLookup, secrets, prompts, minAttempts, runTestTimeout, true,
-                new FeedbackStore(false, java.nio.file.Path.of(FeedbackStore.DEFAULT_FILE_NAME)));
-    }
-
-    /**
      * @param feedback       the critique store, OFF unless a deployment turned it on. It is a
      *                       constructor argument and not a lookup for the same reason the prompts are:
      *                       whether a run accumulates every prompt and every reply it produced is a
@@ -135,7 +132,7 @@ public class ProveProcessor
 
     @Override
     public ProvenMarker process(Suspicion suspicion) throws InfraFailure {
-        ProveOutcome outcome = proveMarker.prove(new ProveMarkerRequest(suspicion.marker()));
+        ProveOutcome outcome = proveMarker.prove(suspicion.marker());
         return switch (outcome) {
             case ProveOutcome.Settled settled -> ProvenMarker.of(settled.settlement());
             case ProveOutcome.Requeued requeued -> throw requeue(requeued);

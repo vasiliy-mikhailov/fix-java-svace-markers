@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
+import tech.mikhailov.fsm.orch.TestSource;
 
 /**
  * A CONTROLLER ROUTES; IT DOES NOT DESCRIBE. As a test, because a layering rule nobody can check is a
@@ -28,11 +29,25 @@ import org.junit.jupiter.api.Test;
  * described nowhere is one that drifts from its consumer without anybody choosing to change it, which
  * is the failure {@code ThePageAndTheApiAgreeOnEveryFieldNameTest} was written after.
  *
- * <p>SO THE WIRE NAMES LIVE IN THE PRESENTERS. {@link DashboardPresenter}, {@link JobsPresenter} and
- * {@code CommentPresenter} are the three files a reader opens to see the shape of every response this
- * service can give, and there is no fourth. What the controllers keep is what only they can decide:
- * status codes, cache headers, which parameter falls back rather than 400-ing, and which exceptions
- * become an answer instead of Boot's error page.
+ * <p>SO THE WIRE NAMES OF EVERY CONTROLLER'S BODY LIVE IN THE PRESENTERS. {@link DashboardPresenter},
+ * {@link JobsPresenter} and {@code CommentPresenter} are the three files a reader opens to see the
+ * shape of every response ASSEMBLED IN A CONTROLLER. What the controllers keep is what only they can
+ * decide: status codes, cache headers, which parameter falls back rather than 400-ing, and which
+ * exceptions become an answer instead of Boot's error page.
+ *
+ * <p>AND THAT IS NARROWER THAN "EVERY RESPONSE THIS SERVICE CAN GIVE", which is what this paragraph
+ * used to claim, with "and there is no fourth" under it. There are two, and neither can ever be caught
+ * by the check below, because the check finds controllers by ANNOTATION:
+ * <ul>
+ *   <li>{@code web/SourceWindowService} is a {@code @Service} and names 7 of its own keys — the
+ *       {@code /api/source} body;</li>
+ *   <li>{@code feedback/CritiqueIndex} carries no annotation at all and names 30-odd — the
+ *       {@code /api/feedback} bodies.</li>
+ * </ul>
+ * Both were found by reading, not by this test, which is the point being made: a guard that governs a
+ * hand-listed set is only as true as the sentence describing the set. Moving those names into
+ * {@link DashboardPresenter} is the fix and is a change to the read path, so it is a decision to make
+ * on purpose; until then the honest claim is the one above.
  *
  * <p>IT READS THE SOURCES, comments stripped, for the same reason the dependency rule does: these
  * files argue for their own decisions at length and quote the very keys they no longer build, so a
@@ -213,21 +228,10 @@ class NoControllerAssemblesItsOwnResponseTest {
      * did not strip those would report every documented contract as a violation of itself.
      */
     private static String stripComments(String source) {
-        StringBuilder out = new StringBuilder(source.length());
-        int i = 0;
-        while (i < source.length()) {
-            if (source.startsWith("/*", i)) {
-                int end = source.indexOf("*/", i + 2);
-                i = end < 0 ? source.length() : end + 2;
-            } else if (source.startsWith("//", i)) {
-                int end = source.indexOf('\n', i);
-                i = end < 0 ? source.length() : end;
-            } else {
-                out.append(source.charAt(i));
-                i++;
-            }
-        }
-        return out.toString();
+        // ONE implementation, in TestSource. This used to be a naive line-oriented copy, and a `//`
+        // inside a string literal — JobsController really does carry one — made it discard the rest of
+        // that line, so part of a governed file was invisible to this check.
+        return TestSource.stripComments(source);
     }
 
     /** {@code src/main/java}, derived from where this class was loaded from. */

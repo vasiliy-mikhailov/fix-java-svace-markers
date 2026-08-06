@@ -17,34 +17,13 @@
  * rather than throwing — deliberately, because "that stage never ran" has to reach the routing as a
  * decision instead of crashing the chain half way through a marker.
  *
- * <table border="1">
- *   <caption>The stages, most consequential first</caption>
- *   <tr><th>class</th><th>what it decides, and what a wrong branch costs</th></tr>
- *   <tr><td>{@link tech.mikhailov.fsm.nodes.RecordOutcome}</td>
- *       <td>the highest-consequence code in the pipeline: every downstream decision keys off the
- *       {@code state} it returns, and a wrong branch does not crash — it silently retires a real
- *       defect, or drafts a PR from a fix that was never applied.</td></tr>
- *   <tr><td>{@link tech.mikhailov.fsm.nodes.Verdict}</td>
- *       <td>the routing that decides whether a marker is argued, retried or retired. Its own comments
- *       record markers that were retired with no argument at all because a route was missing.</td></tr>
- *   <tr><td>{@link tech.mikhailov.fsm.nodes.ParseMarkers}</td>
- *       <td>ingest: turns the Svace CSV into suspicions, reading
- *       {@link tech.mikhailov.fsm.lib.CheckerMap}. It fails differently from the rest — nothing here
- *       crashes, it corrupts the BACKLOG: an unstripped CI build path, a dedup_key collision or a lost
- *       severity ordering each produce a full run that looks healthy and is worthless. Its CSV reading
- *       is {@link tech.mikhailov.fsm.lib.Csv} and its coercions
- *       {@link tech.mikhailov.fsm.lib.Values}.</td></tr>
- *   <tr><td>{@link tech.mikhailov.fsm.nodes.ParseTest}, {@link tech.mikhailov.fsm.nodes.ParseFix}</td>
- *       <td>they read the model replies through {@link tech.mikhailov.fsm.lib.JsonExtract}, and they
- *       are not thin: ParseTest decides whether an unusable reply becomes {@code parse_failed} or a
- *       verdict, and ParseFix carries the ALLOWLIST that stops a fixer editing the test it was asked
- *       to pass.</td></tr>
- *   <tr><td>{@link tech.mikhailov.fsm.nodes.BuildReproduceInput},
- *       {@link tech.mikhailov.fsm.nodes.BuildFixInput},
- *       {@link tech.mikhailov.fsm.nodes.PrepProver}</td><td>prompt assembly.</td></tr>
- *   <tr><td>{@link tech.mikhailov.fsm.nodes.FixSkeptic}, {@link tech.mikhailov.fsm.nodes.PrMaker}</td>
- *       <td>model calls plus their result routing.</td></tr>
- * </table>
+ * <p>READ {@link tech.mikhailov.fsm.nodes.RecordOutcome} AND {@link tech.mikhailov.fsm.nodes.Verdict}
+ * FIRST — that ordering is the one thing about this package a generated class list cannot tell you.
+ * They are where a wrong branch is most expensive, and neither fails loudly. Third is
+ * {@link tech.mikhailov.fsm.nodes.ParseMarkers}, which fails differently again: it corrupts the
+ * BACKLOG rather than the run. Each of the three says so in its own class comment, at the length the
+ * argument needs; a table here restating them was a second copy that had already gone stale once (it
+ * linked {@code lib.Js}, deleted 2026-08-05) and is gone as of 2026-08-06.
  *
  * <p>THE THREE STAGES THAT CALL A MODEL are three pieces on purpose: a PURE prompt builder, a PURE
  * reply parser, and a thin shell that makes the call and glues the two together, with the endpoint

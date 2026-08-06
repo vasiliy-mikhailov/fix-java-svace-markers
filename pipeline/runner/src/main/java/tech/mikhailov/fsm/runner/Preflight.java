@@ -164,9 +164,11 @@ final class Preflight {
     /**
      * CAN THIS UID WRITE A BYTE INTO THE CACHE AT ALL?
      *
-     * <p>{@link LocalRunner#ensureCache} calls {@code Files.createDirectories}, which SUCCEEDS on a
+     * <p>THIS USED TO BE THREE mkdirs AND NO PROBE. {@code Files.createDirectories} SUCCEEDS on a
      * directory that already exists whoever owns it — the mkdir is a no-op and the permission bits are
-     * never consulted. The only thing that touched the volume afterwards was
+     * never consulted — so the two extra calls on the way up (a {@code LocalRunner.ensureCache} in
+     * {@code Runner.main} and another in {@code LocalRunner.open}) proved nothing this one does not,
+     * and were deleted on 2026-08-06. The only thing that touched the volume afterwards was
      * {@link MavenSettings#configure}, and it writes a file ONLY when {@code MAVEN_MIRROR_URL} is set;
      * unset — the shipped default — it calls {@code deleteIfExists} on a file that is not there, which
      * answers false without touching the permission bits either. So the deployment that HAS a Nexus was
@@ -409,7 +411,9 @@ final class Preflight {
      * fault — and a directory with a {@code .git} in it, nothing else, because the cache also holds
      * {@code maven-settings.xml} and whatever else somebody pointed the setting at.
      *
-     * <p>BOTH ARE PROBED WITH A WRITE, including the second one, BOTH kinds, and both are probed with a WRITE.
+     * <p>BOTH TREES ARE PROBED WITH A WRITE — {@code /cache/<key>} and {@code /cache/fs/<key>} alike,
+     * including the one every other comment in this codebase calls read-only. The paragraph below is
+     * the reason, and it is the whole reason: read-only describes the FILES, not the directory.
      *
      * <p>{@code /cache/<key>} is the build workspace, reset before every prove. {@code /cache/fs/<key>}
      * is described elsewhere as "read-only and never mutated", and that is true of the SOURCE FILES but

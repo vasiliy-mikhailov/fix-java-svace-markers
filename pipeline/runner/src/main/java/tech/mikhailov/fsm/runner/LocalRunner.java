@@ -83,7 +83,6 @@ public final class LocalRunner implements AutoCloseable {
      *                repository; this is only what a SLUG means.
      */
     public static LocalRunner open(Path cache, String token, String mirrorUrl, String gitHost) {
-        ensureCache(cache);
         Path settings;
         try {
             settings = MavenSettings.configure(cache, mirrorUrl);
@@ -209,17 +208,6 @@ public final class LocalRunner implements AutoCloseable {
         StringWriter out = new StringWriter();
         t.printStackTrace(new PrintWriter(out));
         return Text.lastChars(out.toString(), Text.STACK);
-    }
-
-    /** {@code fs.mkdirSync(CACHE, {recursive: true})} — the volume may be mounted empty. */
-    static void ensureCache(Path cache) {
-        try {
-            Files.createDirectories(cache);
-        } catch (IOException e) {
-            // Refuse to start: a runner whose cache directory cannot be created answers every prove
-            // with a clone failure, which reads as "every repository is broken".
-            throw new UncheckedIOException(e);
-        }
     }
 
     /**

@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 /**
  * THE ONE LINE THIS BUILD PRINTS ABOUT THE TESTS IT DID NOT RUN.
  *
- * <p>WHY THIS CLASS EXISTS. The eight browser tests under {@code tech.mikhailov.fsm.orch.ui} are
+ * <p>WHY THIS CLASS EXISTS. The thirteen browser tests under {@code tech.mikhailov.fsm.orch.ui} are
  * excluded from an ordinary {@code mvn test} by JUnit tag, because they need a browser and the browser
  * comes from a container image rather than from a download at test time. That exclusion is correct and
  * it is also DANGEROUS in exactly the way this module keeps a whole class about: a suite that is
@@ -93,15 +93,32 @@ class TheBrowserSuiteIsNotInThisBuildTest {
      * output to the console by default.
      */
     @Test
-    void theBrowserSuiteDidNotRunInThisBuildAndHereIsHowToRunIt() {
+    void theBrowserSuiteDidNotRunInThisBuildAndHereIsHowToRunIt() throws IOException {
         System.out.println("[ui] NOT RUN IN THIS BUILD: " + SUITE.size() + " browser tests "
                 + "(@Tag(\"ui\"), tech.mikhailov.fsm.orch.ui) — they need the browser that ships in "
                 + "the Playwright image, so an ordinary `mvn test` excludes them. Run them with: "
                 + HOW_TO_RUN);
 
+        // THE NUMBER IN THE NOTICE IS THE TREE'S, checked here rather than believed. This assertion
+        // used to be `assertThat(SUITE).isNotEmpty()` on the hardcoded List.of above — an assertion
+        // that could not fail, in the one class whose entire thesis is that a stale notice about an
+        // absent suite IS the defect. (The class javadoc said "eight" while this list held thirteen.)
         assertThat(SUITE)
-                .as("the notice above names a suite; it has to be a real one")
-                .isNotEmpty();
+                .as("the notice prints %d browser tests and the tree holds a different number, so the "
+                        + "one line this build says about the suite it did not run is wrong",
+                        SUITE.size())
+                .containsExactlyInAnyOrderElementsOf(presentTests());
+    }
+
+    /** The browser tests as the TREE has them, which is what the notice and the list are checked against. */
+    private static List<String> presentTests() throws IOException {
+        try (Stream<Path> files = Files.list(UI_SOURCES)) {
+            return files.map(path -> path.getFileName().toString())
+                    .filter(name -> name.endsWith("Test.java"))
+                    .map(name -> name.substring(0, name.length() - ".java".length()))
+                    .sorted()
+                    .toList();
+        }
     }
 
     /**
@@ -122,18 +139,12 @@ class TheBrowserSuiteIsNotInThisBuildTest {
                         + "wrong", UI_SOURCES.toAbsolutePath())
                 .isDirectory();
 
-        List<String> present;
-        try (Stream<Path> files = Files.list(UI_SOURCES)) {
-            present = files.map(path -> path.getFileName().toString())
-                    .filter(name -> name.endsWith("Test.java"))
-                    .map(name -> name.substring(0, name.length() - ".java".length()))
-                    .sorted()
-                    .toList();
-        }
+        List<String> present = presentTests();
 
         assertThat(present)
-                .as("a browser test named in this class is missing from the tree")
-                .containsAll(SUITE);
+                .as("the tree and the list in this class disagree: a browser test named here is "
+                        + "missing, or one was added and the notice still counts the old number")
+                .containsExactlyInAnyOrderElementsOf(SUITE);
 
         for (String className : present) {
             String source = Files.readString(UI_SOURCES.resolve(className + ".java"),

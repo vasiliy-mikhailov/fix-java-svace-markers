@@ -5,7 +5,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * THE SHAPE OF EVERY READ-PATH RESPONSE, IN ONE PLACE — and deliberately NOT a second column list.
+ * THE SHAPE OF THE READ-PATH RESPONSES THE CONTROLLERS ASSEMBLE, IN ONE PLACE — and deliberately NOT
+ * a second column list.
+ *
+ * <p>IT SAID "EVERY READ-PATH RESPONSE" UNTIL 2026-08-06 and that was not true, in a heading a reader
+ * uses to decide they have seen the whole wire. Two files outside every controller name read-path keys
+ * of their own and {@code NoControllerAssemblesItsOwnResponseTest} cannot reach either, because it
+ * finds its subjects by controller annotation: {@link SourceWindowService} (a {@code @Service}, 7 keys,
+ * the {@code /api/source} body) and {@code feedback.CritiqueIndex} (no annotation, 30-odd keys, the
+ * {@code /api/feedback} bodies). Bringing those here is the remaining work and it moves the read path,
+ * so it is a deliberate change rather than a tidy-up.
  *
  * <p>WHAT THIS IS. {@code /api/state}, {@code /api/bug}, the counts document the socket pushes, the
  * activity rows and the four permanently-empty documents were assembled by twenty-five

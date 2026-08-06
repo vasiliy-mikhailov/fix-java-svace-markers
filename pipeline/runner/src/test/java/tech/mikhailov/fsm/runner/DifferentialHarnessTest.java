@@ -151,9 +151,16 @@ class DifferentialHarnessTest {
         // test for <key>. It was fixed in the reference before that service was retired, and these
         // are the fixed answers. Asserting it keeps the record straight: the cort did not inherit a
         // hole, it closed one.
-        report.invariants().get("js").forEach((rule, r) ->
-                assertEquals(0, r.violations(), () -> "the frozen reference answers violate: " + rule
-                        + "\n  " + r.examples()));
+        // AND IT IS CHECKED THE WAY ITS SIBLING IS. This method used to be a bare forEach with no
+        // assertion about size or applicability — the rule its own sibling states twelve lines up,
+        // broken in the very next method. An empty map passed it over zero rules, silently.
+        Map<String, HarnessCompare.Rule> js = report.invariants().get("js");
+        assertEquals(8, js.size(), "an invariant stopped being checked against the recorded answers");
+        js.forEach((rule, r) -> {
+            assertTrue(r.applicable() > 0, "no recorded case reached the rule: " + rule);
+            assertEquals(0, r.violations(), () -> "the frozen reference answers violate: " + rule
+                    + "\n  " + r.examples());
+        });
     }
 
     /** One field per line, so a catalogue change is reviewed as a diff and not as a wall. */

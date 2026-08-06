@@ -543,7 +543,7 @@ class WorkspaceTest {
         void aFailedCloneIsRememberedForAMinute(@TempDir Path cache) {
             FakeExec exec = new FakeExec(c -> FakeExec.failed("fatal: repository not found"));
             AtomicLong now = new AtomicLong(1_000_000);
-            Workspace workspace = new Workspace(cache, "", exec, now::get);
+            Workspace workspace = new Workspace(cache, "", exec, CloneUrl.DEFAULT_HOST, now::get);
 
             assertNull(workspace.prepareFs("o/r", "main"));
             assertNull(workspace.prepareFs("o/r", "main"));

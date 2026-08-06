@@ -172,7 +172,7 @@ public class IngestTasklet implements Tasklet {
                 resets ? IngestAccount.RESET : IngestAccount.ADDITIVE,
                 added, kept, absent.size(),
                 absent.subList(0, Math.min(absent.size(), IngestAccount.NAMED_KEYS)),
-                discardedMarkers, discardedSettled, discardedArtifacts, added);
+                discardedMarkers, discardedSettled, discardedArtifacts);
 
         // The `[ingest]` prefix is what operators grep for, so it is fixed. This line is the only
         // record of what the filters dropped — a marker that is silently absent looks exactly like a

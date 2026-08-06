@@ -84,11 +84,12 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>${surefire.version}</version>
-        <configuration>
-          <!-- The engine binds a real socket in EngineServerTest. Surefire's default forked JVM is
-               fine, but the tests must not race for a port; each test asks the OS for port 0. -->
-          <trimStackTrace>false</trimStackTrace>
-        </configuration>
+        <!-- NO <configuration>. It held <trimStackTrace>false</trimStackTrace>, which is what
+             surefire 3.5.6 already does (plugin.xml: default-value="false"), under a comment about
+             something else entirely — that EngineServerTest binds a real socket and asks the OS for
+             port 0, which is a property of the TEST and is stated there. A no-op setting under an
+             unrelated comment reads to the next reader as a decision that must not be touched.
+             Removed 2026-08-06; the version pin above is the part that matters. -->
       </plugin>
 
       <plugin>

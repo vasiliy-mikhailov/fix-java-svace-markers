@@ -106,7 +106,7 @@ public class HttpRunnerClient implements RunnerClient {
         this.transport = transport;
         this.endpoint = HttpTransport.uriOf(trimTrailingSlash(
                 baseUrl == null || baseUrl.isBlank() ? DEFAULT_BASE_URL : baseUrl.trim()) + PATH);
-        this.configuredTimeout = positive(configuredTimeout) ? configuredTimeout : DEFAULT_TIMEOUT;
+        this.configuredTimeout = Failures.positive(configuredTimeout) ? configuredTimeout : DEFAULT_TIMEOUT;
         this.connectAttempts = Math.max(1, connectAttempts);
         this.connectRetryDelay = connectRetryDelay == null || connectRetryDelay.isNegative()
                 ? Duration.ZERO : connectRetryDelay;
@@ -138,7 +138,7 @@ public class HttpRunnerClient implements RunnerClient {
         // runner as a request with no repo, come back 200 {"ok": false} and be recorded as a marker
         // that failed to build. Unchecked, because no retry policy can help with it.
         Objects.requireNonNull(body, "the run_test body is built by the engine and is never null");
-        Duration wall = positive(timeout) ? timeout : configuredTimeout;
+        Duration wall = Failures.positive(timeout) ? timeout : configuredTimeout;
 
         // Json.stringify, so the body is serialised by the same writer the engine's own tests pin —
         // whole doubles without a fraction, lone surrogates escaped. A Java file sliced out of a
@@ -202,12 +202,12 @@ public class HttpRunnerClient implements RunnerClient {
                 // knob to turn. A CONNECT timeout is a different event and is caught below — it is a
                 // subclass, so this branch tests for it rather than assuming the order of the catches.
                 if (HttpTransport.connectFailed(e) && attempt < connectAttempts) {
-                    retrying(attempt, cause(e));
+                    retrying(attempt, Failures.cause(e));
                     pause();
                     continue;
                 }
                 if (HttpTransport.connectFailed(e)) {
-                    throw new InfraFailure(REASON + cause(e) + " (" + endpoint + ", "
+                    throw new InfraFailure(REASON + Failures.cause(e) + " (" + endpoint + ", "
                             + connectAttempts + " attempt(s))", e);
                 }
                 throw new InfraFailure(REASON + "no reply from " + endpoint + " within "
@@ -215,11 +215,11 @@ public class HttpRunnerClient implements RunnerClient {
                         + "s (the build was still running when the clock ran out)", e);
             } catch (IOException e) {
                 if (HttpTransport.connectFailed(e) && attempt < connectAttempts) {
-                    retrying(attempt, cause(e));
+                    retrying(attempt, Failures.cause(e));
                     pause();
                     continue;
                 }
-                throw new InfraFailure(REASON + cause(e) + " (" + endpoint + ")", e);
+                throw new InfraFailure(REASON + Failures.cause(e) + " (" + endpoint + ")", e);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new InfraFailure(REASON + "interrupted while waiting for " + endpoint, e);
@@ -245,19 +245,10 @@ public class HttpRunnerClient implements RunnerClient {
         }
     }
 
-    private static boolean positive(Duration d) {
-        return d != null && !d.isZero() && !d.isNegative();
-    }
 
     private static String trimTrailingSlash(String url) {
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 
     /** A socket failure names itself; some of them carry no message at all. */
-    private static String cause(Throwable t) {
-        String message = t.getMessage();
-        return message == null || message.isBlank()
-                ? t.getClass().getSimpleName()
-                : t.getClass().getSimpleName() + ": " + message;
-    }
 }

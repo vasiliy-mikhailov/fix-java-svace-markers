@@ -654,7 +654,11 @@ class DeploymentTest {
         // Multi-stage: the runtime layer must not carry the ~/.m2 tree the build accumulated.
         assertThat(image).contains("AS build");
         assertThat(image.split("(?m)^FROM ").length - 1)
-                .as("multi-stage, like engine/Dockerfile and for the same reasons")
+                .as("multi-stage: a single-stage image ships Maven and the whole ~/.m2 tree the build "
+                        + "downloaded. (This used to say 'like engine/Dockerfile'. There is no "
+                        + "engine/Dockerfile since 2026-08-06 — the engine profile runs this same "
+                        + "image through PropertiesLauncher — and this is now the only Dockerfile the "
+                        + "reactor builds.)")
                 .isGreaterThanOrEqualTo(2);
         // The whole port targets 25; an image on 21 fails at class-file version, at run time.
         assertThat(image).contains("JDK_VERSION=25");
@@ -751,6 +755,60 @@ class DeploymentTest {
                 .noneMatch(line -> line.startsWith("QWEN_API_KEY=") && line.length() > "QWEN_API_KEY=".length())
                 .noneMatch(line -> line.startsWith("GIT_TOKEN=") && line.length() > "GIT_TOKEN=".length())
                 .noneMatch(line -> line.startsWith("GITHUB_TOKEN=") && line.length() > "GITHUB_TOKEN=".length());
+    }
+
+    /**
+     * NO TEST TOTAL IN THE TWO READMES A NEW MAINTAINER READS FIRST.
+     *
+     * <p>ORIGIN. {@code README.md} and {@code pipeline/README.md} between them printed SIX test counts —
+     * "1751 tests across engine (901), orchestrator (634), runner (216)", twice, plus three more in
+     * passing. Every one was wrong, and wrong in BOTH DIRECTIONS AT ONCE, which is what makes a stale
+     * count impossible to eyeball: measured against 860/787/225, engine's 901 was 41 too MANY while
+     * orchestrator's 634 was 153 too FEW and runner's 216 was 9 short. Nobody had lied — each number was
+     * right when it was written, and then the tree moved under all six of them at different rates.
+     *
+     * <p>WHY A GUARD AND NOT JUST A CORRECTION. A test total has a half-life of hours — this repository
+     * shipped a stale one at least twice, and the pass that removed these six was itself working in a
+     * tree whose count had already moved by ten since the commit it started from. There is no number
+     * that can be written here and stay true, so the rule is that no number is written here at all:
+     * {@code mvn -B test} prints the current totals, and prose says what the command does. Counts that
+     * DO NOT rot are untouched by this check — {@code README.md} still prints 23,401 harness cases and
+     * 833 catalogued divergences, because those are pinned by frozen fixtures and move only when
+     * somebody deliberately re-records them.
+     *
+     * <p>WHITESPACE IS NORMALISED BEFORE MATCHING, and that is not tidiness. One of the six read
+     * {@code "its 216\ntests are the specification"} — the count and the word "tests" on either side of
+     * a line wrap. A line-oriented search finds five of six and reports the file clean, which is the
+     * same defect class as the comments this guard exists to keep out.
+     *
+     * <p>{@code runner/harness/README.md} is deliberately NOT covered. It is a historical document
+     * about a recording, it discusses the numbers it names as history, and it reconciles them itself in
+     * a note saying what the current total is. Numbers are the subject there rather than a fact in
+     * passing.
+     */
+    @Test
+    void neitherReadmeAtTheFrontPrintsATestCount() {
+        // A count, then up to two words, then "tests": catches "1751 tests", "~900 tests",
+        // "216 tests", "901 more tests". Also the phrase that introduced the worst of them.
+        Pattern count = Pattern.compile("[~≈]?\\d[\\d,]*\\s+(?:[A-Za-z]+\\s+){0,2}tests\\b|tests\\s+across");
+
+        List<Path> readmes = List.of(ROOT.getParent().resolve("README.md"), ROOT.resolve("README.md"));
+        List<String> offenders = new ArrayList<>();
+        for (Path readme : readmes) {
+            // Collapse every run of whitespace, so a count separated from "tests" by a line wrap is
+            // still one match. See the paragraph above: this is how five of six used to be found.
+            Matcher m = count.matcher(read(readme).replaceAll("\\s+", " "));
+            while (m.find()) {
+                offenders.add(ROOT.getParent().relativize(readme) + ": \"" + m.group() + "\"");
+            }
+        }
+
+        assertThat(offenders)
+                .as("a test total written in a README is wrong by the next commit that adds a test, and "
+                        + "a stale number in the first file a new maintainer reads is worse than no "
+                        + "number because it reads exactly like the facts beside it. Say what `mvn -B "
+                        + "test` runs and let the run print its own totals.")
+                .isEmpty();
     }
 
     // ---- the feedback store's writable path ---------------------------------------------------------

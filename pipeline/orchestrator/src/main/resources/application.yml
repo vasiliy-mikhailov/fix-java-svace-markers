@@ -80,15 +80,22 @@ spring:
 
   servlet:
     multipart:
-      # THE MULTIPART HALF OF THE INGEST BOUND, wired to the SAME variable fsm.ingest.max-csv-bytes
-      # reads — one number, three enforcement points (the container, the request filter and the spool),
+      # THE MULTIPART HALF OF THE INGEST BOUND, wired to the SAME NUMBER fsm.ingest.max-csv-bytes
+      # holds — one number, three enforcement points (the container, the request filter and the spool),
       # because a report is untrusted input arriving on a port with no authentication in front of it.
+      #
+      # IT READS THE PROPERTY AND NOT THE ENVIRONMENT VARIABLE, and that is the fix rather than the
+      # style. Until 2026-08-06 these two lines resolved ${FSM_INGEST_MAX_CSV_BYTES} directly while
+      # IngestSizeLimit and CsvSpool read the PROPERTY fsm.ingest.max-csv-bytes below. In the deployment,
+      # where the env var is what moves, all three agreed; set it as a Spring property — which is what
+      # every test doing so does, and what a -D or an application-*.yml would do — and the filter and the
+      # spool moved while the container stayed at 32 MiB. One number with two spellings is two numbers.
       #
       # Bare numbers are BYTES. Exceeding this is refused by the container before any controller method
       # runs; JobsController turns that into the same 413 the other two produce, rather than the 500 and
       # stack trace it would otherwise be.
-      max-file-size: ${FSM_INGEST_MAX_CSV_BYTES:33554432}
-      max-request-size: ${FSM_INGEST_MAX_CSV_BYTES:33554432}
+      max-file-size: ${fsm.ingest.max-csv-bytes:33554432}
+      max-request-size: ${fsm.ingest.max-csv-bytes:33554432}
 
   h2:
     console:

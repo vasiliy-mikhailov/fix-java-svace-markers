@@ -20,7 +20,7 @@ import tech.mikhailov.fsm.runner.CloneUrl;
  *   GET https://api.github.com/repos/{repo}/contents/{file}?ref={branch}
  *   User-Agent: svace-marker-fixer      // see {@link #USER_AGENT} before changing this
  *   Accept: application/vnd.github+json
- *   Authorization: Bearer $GITHUB_TOKEN
+ *   Authorization: Bearer $GIT_TOKEN      // $GITHUB_TOKEN when that one is unset; see Secrets#gitToken
  *   Connection: close
  *   timeout 60s, retryOnFail maxTries 3, waitBetweenTries 3000
  * </pre>
@@ -29,6 +29,18 @@ import tech.mikhailov.fsm.runner.CloneUrl;
  * all — which does not fail loudly, it fails as every marker in the run being recorded against an
  * empty file. ({@code Connection: close} is one the JDK now manages itself; see
  * {@link HttpTransport} for why the transport drops it rather than throwing on it.)
+ *
+ * <p>THIS IS THE ONLY COPY OF THAT REQUEST. {@link SourceClient} carried a second one until
+ * 2026-08-06 and the two had already drifted: the interface said {@code $GIT_TOKEN}, which is right —
+ * {@code Secrets.gitToken} reads {@code GIT_TOKEN} and falls back to {@code GITHUB_TOKEN} — and this
+ * copy still named the fallback as though it were the setting.
+ *
+ * <p>THE RETRY BUDGET IS THIS CLASS'S, and not a promise the interface makes for every implementation.
+ * Three attempts, three seconds apart, both configuration: transport failures, 429 and 5xx are
+ * retried, 401 and 403 never are, and the throw comes only once the budget is spent, so a single 502
+ * does not cost a marker its place in the queue. {@link CheckoutSourceClient} — the DEFAULT — has no
+ * retry at all, deliberately for its in-process reader and not so deliberately for the {@code http}
+ * one; that is recorded there.
  *
  * <p>THE REPLY IS NOT DECODED. What comes back is the contents object exactly as it arrived — base64
  * {@code content}, {@code encoding}, {@code sha} and all — because
@@ -169,11 +181,11 @@ public class GithubSourceClient implements SourceClient {
             } catch (IOException e) {
                 // Timeout, DNS, TLS, reset — all of them transient often enough to be worth the
                 // three seconds, and none of them a fact about the marker.
-                InfraFailure spent = new InfraFailure(REASON + cause(e) + " (" + uri + ")", e);
+                InfraFailure spent = new InfraFailure(REASON + Failures.cause(e) + " (" + uri + ")", e);
                 if (attempt >= attempts) {
                     throw spent;
                 }
-                retrying(attempt, uri, cause(e));
+                retrying(attempt, uri, Failures.cause(e));
                 pause();
                 continue;
             }
@@ -292,10 +304,4 @@ public class GithubSourceClient implements SourceClient {
         return path.endsWith("/") ? path.substring(0, path.length() - 1) : path;
     }
 
-    private static String cause(Throwable t) {
-        String message = t.getMessage();
-        return message == null || message.isBlank()
-                ? t.getClass().getSimpleName()
-                : t.getClass().getSimpleName() + ": " + message;
-    }
 }
