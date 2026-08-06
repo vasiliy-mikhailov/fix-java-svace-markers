@@ -259,23 +259,19 @@ public final class Json {
     }
 
     /**
-     * {@code Number(x) || 0}: attempt counters arrive off items that may carry them as a string ("3"
-     * out of a stored cell) or not at all.
+     * The numeric field read: attempt counters arrive off items that may carry them as a string
+     * ("3" out of a stored cell) or not at all.
+     *
+     * <p>ONE READER, {@link Values#numberOr}, AND THIS IS THE FIELD-READ SPELLING OF IT. It used to be
+     * a second implementation, and the two disagreed exactly where it was most expensive: this one
+     * called {@link Double#parseDouble} bare, so {@code "1d"}, {@code "0x1p3"} and {@code "Infinity"}
+     * all became numbers, and it let a non-finite double through unchanged. {@code prove_attempts} is
+     * read through the guarded helper at {@code PrepProver} and through this one at
+     * {@code RecordOutcome}, and {@code (long) Infinity + 1} is {@code Long.MIN_VALUE} — so the
+     * attempts ceiling in {@code Verdict} never fired and the marker requeued for ever.
      */
     public static double num(Object container, String key) {
-        Object v = get(container, key);
-        if (v instanceof Number n) {
-            return Double.isNaN(n.doubleValue()) ? 0 : n.doubleValue();
-        }
-        if (v instanceof String s) {
-            try {
-                double d = Double.parseDouble(s.trim());
-                return Double.isNaN(d) ? 0 : d;
-            } catch (NumberFormatException e) {
-                return 0;
-            }
-        }
-        return 0;
+        return Values.numberOr(get(container, key), 0);
     }
 
     /** Field read that tolerates a non-object, because `$('Parse fix').item.json` may be anything. */

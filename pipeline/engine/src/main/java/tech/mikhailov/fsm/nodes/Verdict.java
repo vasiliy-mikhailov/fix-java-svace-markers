@@ -307,14 +307,17 @@ public final class Verdict {
      *                  would be a different function.
      * @param stateText the same value concatenated AT THE READ, where an absent key and an explicit
      *                  null can still be told apart. @see Llm#concat(Object, String)
-     * @param infraText {@code (x || '') + ''} — what the two regexes and the notes read.
-     * @param infraJson {@code String(x || '')} as {@link Json#str} spells it — what
-     *                  {@link ExecVerdict.Evidence} reads. ONE KEY, TWO COERCIONS, and they disagree
-     *                  for exactly one shape: a list or an object, which Js renders {@code 1,2} and
-     *                  {@code [object Object]} where Json renders JSON. Both spellings are already
-     *                  live at four call sites, so both are read here rather than one being quietly
-     *                  picked — and that they are two components of ONE record is the point. Spread
-     *                  across the file the divergence is invisible; here it is a line of javadoc.
+     * @param infraText the reason as text — what the two regexes and the notes read.
+     * @param infraJson THE SAME STRING, BY THE SAME FUNCTION, and this pair is now redundant.
+     *                  {@link Json#str} delegates to {@link Values#text}, so the "one key, two
+     *                  coercions" this javadoc used to claim is one coercion written twice: the
+     *                  divergence it described ({@code 1,2} and {@code [object Object]} against JSON)
+     *                  belonged to the retired {@code Js} renderer, and both components have rendered
+     *                  identically for every shape since 2026-08-05 — null, String, Long, Boolean,
+     *                  List, Map, NaN and Infinity all measured. Kept for now only because collapsing
+     *                  the component touches {@link ExecVerdict.Evidence}'s ten-key round trip; when
+     *                  that goes, {@code infraJson} goes with it and both readers take
+     *                  {@code infraText}.
      */
     private record Row(Object state, String stateText, String infraText, String infraJson,
                        Attempts attempts, String testPath, String jdk, String prTitle,
@@ -1228,7 +1231,20 @@ public final class Verdict {
         return out.toString();
     }
 
-    /** {@code x || fallback} as a VALUE — see the note on {@code FixSkeptic.or}. */
+    /**
+     * {@code x || fallback} as a VALUE — see the note on {@code FixSkeptic.or}.
+     *
+     * <p>AND IT IS SWALLOWING A {@code svace_line} OF 0 AT {@code :372}, WHICH IS A DEFECT.
+     * {@code Values.java:29-35} records that the {@code x || ''} idiom was retired precisely because it
+     * could not tell "absent" from "a marker on line 0"; this helper is that idiom, and
+     * {@code Values.text(or(Json.get(j, "svace_line"), "?"))} therefore tells the adjudicating model
+     * that the marker's line is UNKNOWN when the marker is on line 0. The fix is one word —
+     * {@code Values.orIfAbsent} — and it is not applied here because it moves the node-family
+     * catalogue: the JS reference has the same defect, so correcting it opens two new divergence
+     * classes (138 to 140) against {@code harness/fixtures/node-family-expected.json}. Re-record
+     * deliberately, with {@code svace_severity} at {@code :371} and the {@code settle_by} at
+     * {@code :375} audited in the same pass, or not at all.
+     */
     private static Object or(Object v, Object fallback) {
         return Json.truthy(v) ? v : fallback;
     }

@@ -144,7 +144,7 @@ public final class BuildFixInput {
         return new Outcome(j, testCode, red, redOutput, agentInput);
     }
 
-    /** {@code "text " + j.field} — a raw splice, where an absent field really does read "undefined". */
+    /** A field spliced into the prompt: absent renders EMPTY, and only absent does. */
     private static String str(Object marker, String key) {
         return Values.text(Json.get(marker, key));
     }

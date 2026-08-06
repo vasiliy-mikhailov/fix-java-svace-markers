@@ -32,7 +32,8 @@
  *       {@link tech.mikhailov.fsm.lib.CheckerMap}. It fails differently from the rest — nothing here
  *       crashes, it corrupts the BACKLOG: an unstripped CI build path, a dedup_key collision or a lost
  *       severity ordering each produce a full run that looks healthy and is worthless. Its CSV reading
- *       is {@link tech.mikhailov.fsm.lib.Csv} and its coercions {@link tech.mikhailov.fsm.lib.Js}.</td></tr>
+ *       is {@link tech.mikhailov.fsm.lib.Csv} and its coercions
+ *       {@link tech.mikhailov.fsm.lib.Values}.</td></tr>
  *   <tr><td>{@link tech.mikhailov.fsm.nodes.ParseTest}, {@link tech.mikhailov.fsm.nodes.ParseFix}</td>
  *       <td>they read the model replies through {@link tech.mikhailov.fsm.lib.JsonExtract}, and they
  *       are not thin: ParseTest decides whether an unusable reply becomes {@code parse_failed} or a

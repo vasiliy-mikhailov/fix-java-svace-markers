@@ -106,10 +106,11 @@ public final class ParseTest {
     /** Parse the reproducer's reply. */
     public static Result parseTest(Request req) {
         Object j = req.prepProver();
-        // Values.text, not Json.str: the contract is `($json.output || '').toString()`, and the
-        // two disagree for a value that is not a string. `String(["{...}"])` is the element joined with
-        // commas — which PARSES — while a JSON serialiser would produce `["{...}"]`, which does not.
-        // The difference lands on parse_failed, so it decides whether the marker is retried.
+        // Values.text — and NOT, as this comment used to say, "not Json.str". Json.str(Object) IS
+        // Values.text; the two are one function under two names and cannot disagree about anything.
+        // The distinction that is real is with Json.stringify: text renders a one-element list as
+        // ["{...}"] rather than as the element, so a reply that arrived wrapped in an array does NOT
+        // accidentally parse. That lands on parse_failed, which decides whether the marker is retried.
         String text = Values.text(Json.get(req.reproducer(), "output"));
 
         // A crashed agent (no `output` at all) and a malformed reply both land here; both are flagged

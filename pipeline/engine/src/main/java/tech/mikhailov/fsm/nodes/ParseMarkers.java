@@ -53,7 +53,7 @@ import tech.mikhailov.fsm.lib.SuspicionStatus;
  * every field in it can be absent, null or the wrong type and there is a defined answer for each.
  * Typing it as a record would replace those answers with binding errors on a request a human is still
  * composing, so the body arrives as it is and each read goes
- * through {@link Js} / {@link Json}, which spell the coercions out.
+ * through {@link Values} / {@link Json}, which spell the coercions out.
  *
  * <p>WHY THIS STAGE DOES NOT LOG. The summary is RETURNED — and, on the "everything filtered out"
  * path, embedded in the exception message — so the edge logs it once. A println inside a pure function
@@ -144,7 +144,7 @@ public final class ParseMarkers {
      *
      * @param line       provisional; re-anchoring against the real checkout may move it. A double
      *                   rather than a long because it travels the wire as a JavaScript Number, and the
-     *                   difference is observable at the extremes; see {@link Js#parseInt10}
+     *                   difference is observable at the extremes; see {@link Values#leadingInt}
      * @param svaceLine  what Svace actually reported — never overwritten, so a re-anchor that goes
      *                   wrong can still be traced back to the marker
      * @param method     unknown until the prover re-anchors against the real checkout

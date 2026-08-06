@@ -274,7 +274,7 @@ orchestrator/playwright/run.sh          # builds the image, runs the UI suite in
 ```
 
 There is also a **differential harness**: 23,401 frozen cases, each with the answer a recorded reference
-run gave for it, and 745 catalogued divergences from those answers, every one explained. It runs as a
+run gave for it, and 833 catalogued divergences from those answers, every one explained. It runs as a
 normal JUnit test. `pipeline/runner/harness/README.md` says what the recording is and how to read a
 change in it.
 

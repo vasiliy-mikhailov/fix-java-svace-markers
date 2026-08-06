@@ -338,6 +338,31 @@ class TestRealnessTest {
     }
 
     @Test
+    void aLongStringConstantDoesNotDragAnUnrelatedMockIntoTheWindow() {
+        // mask() promises offsets are preserved CHARACTER FOR CHARACTER, because the @Mock rules
+        // measure an 80-character window and a mask that SHORTENS pulls text closer together. The
+        // comment rules honour it; string literals used to collapse to "" on the line below the
+        // paragraph that says length is load-bearing.
+        //
+        // Here the @Mock is on an unrelated collaborator (DataSource) and the subject's own field is
+        // 110 characters further down — outside the window, so this proof is sound. Collapse the SQL
+        // constant to two characters and the distance falls to 54: the scan reads the test as mocking
+        // its own subject, sound=false, score=0, and RecordOutcome routes a real proof to
+        // needs_review with a reason accusing it of the cardinal sin.
+        String src = """
+                public class CartTest {
+                  @Mock DataSource ds;
+                  static final String SQL = "SELECT id, name, price FROM cart_items WHERE cart_id = ?";
+                  Cart cart = new Cart(ds);
+                  @Test void t() { assertEquals(2, cart.total()); }
+                }""";
+        Result r = TestRealness.testRealness(src, "Cart");
+        assertFalse(r.mocksSubject(), "the @Mock is on DataSource, 110 characters away");
+        assertTrue(r.touchesReal());
+        assertTrue(r.sound());
+    }
+
+    @Test
     void aClassNameWithRegexMetacharactersDoesNotBreakTheScan() {
         Result r = TestRealness.testRealness(
                 "public class T { @Test void t(){ Foo$Inner x = new Foo$Inner(); x.go(); } }",

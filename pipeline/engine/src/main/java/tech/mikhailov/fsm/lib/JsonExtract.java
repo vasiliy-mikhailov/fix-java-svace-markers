@@ -108,9 +108,15 @@ public final class JsonExtract {
         // answered first and illustrated afterwards, and one illustrated first and answered after.
         Pattern keyRe = Pattern.compile("^[" + SourceText.SPACE_CLASS + "]*\"("
                 + String.join("|", keys) + ")\"[" + SourceText.SPACE_CLASS + "]*:");
+        // ONE matcher, moved over the reply with region() — never t.substring(p + 1). The substring
+        // copied the whole tail per candidate, so a reply thick with braces cost O(braces × length):
+        // measured 8.6 GB allocated on a 709 KB reply with 24,001 braces, which is the quadratic the
+        // class comment above forbids. lookingAt() anchors at the region start, which is what find()
+        // on the '^'-anchored pattern did to the copy; matches() would demand the whole tail.
+        Matcher key = keyRe.matcher(t);
         for (int p : starts) {
-            // find() on a ^-anchored pattern tests the prefix; matches() would demand the whole tail.
-            if (keyRe.matcher(t.substring(p + 1)).find()) {
+            key.region(p + 1, t.length());
+            if (key.lookingAt()) {
                 Map<String, Object> r = tryAt(t, p, keys);
                 if (r != null) {
                     // Not the end of it if this one fails: an anchored start that cannot be repaired

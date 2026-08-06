@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import tech.mikhailov.fsm.orch.config.FsmProperties;
 import tech.mikhailov.fsm.orch.feedback.FeedbackStore;
+import tech.mikhailov.fsm.orch.feedback.RecordSink;
 
 /**
  * THE COPY THAT SURVIVES A FRESH DEPLOY — every comment, appended to a file beside the harvested
@@ -42,9 +43,11 @@ import tech.mikhailov.fsm.orch.feedback.FeedbackStore;
  *       correct, it simply is not yet proof against a redeploy.</li>
  *   <li>AND THAT DIRECTION IS REPORTED, NOT SWALLOWED. {@link FeedbackStore#append} never throws; that
  *       rule exists so a diagnostic cannot strand a marker, and it is the wrong rule in front of a
- *       person who was just told their comment was saved. {@link #write} therefore reads the store's
- *       failure counter across the call and returns {@link Outcome#FAILED} — which the API puts in the
- *       response body. A green tick over a silently lost durability guarantee is the exact failure the
+ *       person who was just told their comment was saved. {@link FeedbackStore#append} therefore
+ *       ANSWERS PER CALL, and {@link #write} returns {@link Outcome#FAILED} on a false. It used to read
+ *       the store's shared failure COUNTER either side of the call, which is not per-call at all: two
+ *       concurrent comments, one failing, each read the other's increment and swapped answers, so the
+ *       person whose comment was LOST got the tick. A green tick over a silently lost guarantee is the
  *       feedback panel's off/waiting/clean distinction was built to prevent, one layer down.</li>
  * </ul>
  *
@@ -135,7 +138,7 @@ public class CommentJournal {
         }
     }
 
-    private final FeedbackStore store;
+    private final RecordSink store;
 
     /**
      * @param properties {@code fsm.comments.*}. The default path is the SAME writable bind the
@@ -150,7 +153,15 @@ public class CommentJournal {
 
     /** For tests and for anything that wants the file somewhere else. */
     public CommentJournal(boolean enabled, Path path) {
-        this.store = new FeedbackStore(enabled, path, JOURNAL);
+        this(new FeedbackStore(enabled, path, JOURNAL));
+    }
+
+    /**
+     * The seam a test uses to make ONE record fail while the next succeeds — see {@link RecordSink},
+     * which exists for exactly that and says why.
+     */
+    CommentJournal(RecordSink store) {
+        this.store = store;
     }
 
     /** Whether anything is written to disk at all. */
@@ -185,8 +196,6 @@ public class CommentJournal {
         if (!store.enabled()) {
             return Outcome.OFF;
         }
-        long before = store.failures();
-        store.append(event);
-        return store.failures() == before ? Outcome.WRITTEN : Outcome.FAILED;
+        return store.append(event) ? Outcome.WRITTEN : Outcome.FAILED;
     }
 }

@@ -363,6 +363,34 @@ class JsonTest {
     }
 
     @Test
+    void numRefusesTheSpellingsOnlyJavaAcceptsAndTheInfinityThatBreaksTheCeiling() {
+        // ONE COLUMN, ONE READER. `prove_attempts` is read through Values.numberOr at PrepProver and
+        // through Json.num at RecordOutcome, and the two used to disagree: this one called
+        // Double.parseDouble bare, which takes a suffixed "1d", a hex float "0x1p3" and a bare
+        // "Infinity" — none of which any stored cell holds, and every one of which turns a corrupt
+        // cell into a plausible-looking count.
+        assertEquals(0, Json.num(Map.of("prove_attempts", "1d"), "prove_attempts"));
+        assertEquals(0, Json.num(Map.of("prove_attempts", "1f"), "prove_attempts"));
+        assertEquals(0, Json.num(Map.of("prove_attempts", "0x1p3"), "prove_attempts"));
+
+        // THE EXPENSIVE ONE, and it is not about parsing. An Infinity used to pass straight through;
+        // RecordOutcome then writes `(long) attempts + 1`, and `(long) Infinity` saturates to
+        // Long.MAX_VALUE so the sum wraps to Long.MIN_VALUE. The `attempts >= MAX_ATTEMPTS` ceiling in
+        // Verdict is then false for ever and the marker requeues on every scheduler tick, spending a
+        // model call each time and never reaching a human.
+        assertEquals(0, Json.num(Map.of("prove_attempts", "Infinity"), "prove_attempts"));
+        assertEquals(0, Json.num(Map.of("prove_attempts", "1e400"), "prove_attempts"),
+                "a decimal literal that overflows a double is still an Infinity");
+        assertEquals(0, Json.num(Map.of("prove_attempts", Double.POSITIVE_INFINITY), "prove_attempts"));
+        assertEquals(0, Json.num(Map.of("prove_attempts", Double.NEGATIVE_INFINITY), "prove_attempts"));
+
+        // …and the ordinary readings are untouched, including the negative and the exponent a real
+        // cell can hold.
+        assertEquals(-2, Json.num(Map.of("k", "-2"), "k"));
+        assertEquals(1500, Json.num(Map.of("k", "1.5e3"), "k"));
+    }
+
+    @Test
     void strWritesTheValueWheneverItIsNotOneOfTheFalsyOnes() {
         // The other half of `String(x || '')`. The falsy list is already pinned above; this is the
         // path that has to carry a value THROUGH, and both ways of getting it wrong are silent.

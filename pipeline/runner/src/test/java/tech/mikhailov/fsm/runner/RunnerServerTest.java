@@ -61,12 +61,15 @@ class RunnerServerTest {
     /** How long a "build" takes when {@link #slowBuilds} is on. */
     private static final long BUILD_MS = 80;
 
+    /** Held so a test can assert that a request ran NO commands, not merely that it answered. */
+    private FakeExec exec;
+
     @BeforeEach
     void start() throws IOException {
         Files.createDirectories(jdkRoot.resolve("17"));
         Files.createDirectories(jdkRoot.resolve("25"));
 
-        FakeExec exec = new FakeExec(call -> {
+        exec = new FakeExec(call -> {
             if (call.isGitClone()) {
                 Path target = FakeExec.clonedInto(call);
                 Files.writeString(target.resolve("A.java"), "class A { int x = 1; }\n");
@@ -181,6 +184,37 @@ class RunnerServerTest {
         void aGetToAPostRouteIs404() throws Exception {
             assertEquals(404, send("GET", "/run_test", null).statusCode(),
                     "a GET must never start a build, whatever the path says");
+        }
+
+        @Test
+        void aHeadToAPostRouteRunsNoCommandsAtAll() throws Exception {
+            // HEAD is a SAFE method: a prober may send it unannounced, and the one thing it must not do
+            // is work. The method check tested only for GET, so HEAD fell past it into the POST switch
+            // and reached runner.runTest — a clone, two Maven builds, up to 90 minutes, holding the
+            // single FIFO build slot and patching the shared workspace, for a request whose whole
+            // contract is that it has no body and no effect.
+            //
+            // The status is asserted, but the COMMAND LIST is the assertion that matters: a 404 alone
+            // would pass on a server that ran the build and then answered 404. Measured as a DELTA
+            // because starting the server preflights `git --version` and `mvn -B -v`; those are the
+            // server coming up, not this request doing work.
+            List<FakeExec.Call> beforeTheRequest = List.copyOf(exec.calls());
+            assertEquals(404, send("HEAD", "/run_test", null).statusCode());
+            assertEquals(beforeTheRequest, exec.calls(),
+                    "HEAD /run_test executed commands — an unsafe method on a safe verb");
+        }
+
+        @Test
+        void aHeadToHealthIsTheSameAnswerAsTheGet() throws Exception {
+            // The other half: the one HEAD a prober actually sends was a 404, so a load balancer
+            // configured the ordinary way read this service as down while it was serving proves.
+            HttpResponse<String> head = send("HEAD", "/health", null);
+            assertEquals(200, head.statusCode());
+            assertEquals("", head.body(), "a HEAD reply carries no body");
+            assertEquals(String.valueOf(send("GET", "/health", null).body()
+                            .getBytes(StandardCharsets.UTF_8).length),
+                    head.headers().firstValue("content-length").orElse(null),
+                    "and states the length the GET would have returned");
         }
     }
 

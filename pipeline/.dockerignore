@@ -17,7 +17,8 @@
 # NOT harness/fixtures/ — those are the frozen JavaScript answers themselves, they are committed, and
 # the harness TESTS read them during `mvn package` inside the image build. Excluding them here would
 # fail every image build with a missing-fixture error, which is the one failure mode a .dockerignore is
-# worst at explaining. harness/report.txt and harness/README.md are committed and are not output either.
+# worst at explaining. harness/README.md is committed and is not output either. harness/report.txt is
+# NOT committed — it is generated into target/harness/ by the test and gitignored.
 **/harness/out/
 
 # Node dependencies and stale Python bytecode. The n8n generator tree that these also covered

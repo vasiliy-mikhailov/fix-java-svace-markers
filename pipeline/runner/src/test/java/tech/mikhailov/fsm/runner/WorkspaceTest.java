@@ -92,7 +92,8 @@ class WorkspaceTest {
      * A CREDENTIAL THAT IS UNSET IS NULL, NOT EMPTY — and it used to take the whole clone down.
      *
      * <p>FOUND BY RUNNING IT (2026-08-03). {@code Secrets.gitToken()} answers null when the variable is
-     * unset, {@code ClientConfig} hands that straight to {@code LocalRunner.open}, and {@link #gitEnv}
+     * unset, {@code ClientConfig} hands that straight to {@code LocalRunner.open}, and
+     * {@link Workspace#gitEnv}
      * asked it {@code isEmpty()}. Every clone on a deployment with no token — which is every deployment
      * analysing a public repository, and every developer's first run — died with a
      * NullPointerException. It surfaced as "source unavailable — NullPointerException" in the marker

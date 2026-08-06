@@ -23,7 +23,7 @@ import tech.mikhailov.fsm.runner.CloneUrl;
  * an operator can grep for, where a silently empty base URL looks like a relative-path bug somewhere
  * else entirely. An unset git token produces the header {@code Bearer undefined}, which GitHub answers
  * with a visible 401, where {@code Bearer } with nothing after it looks like a request nobody meant to
- * authenticate. See {@link Llm#concat(Object)} and {@code PrepProver.Request}.
+ * authenticate. See {@link Llm#text} and {@code PrepProver.Request}.
  *
  * <p>THE ONE PLACE THIS CLASS DOES MORE THAN READ is {@link #gitToken()}, which reads two names in
  * order. That is not a second answer to "what does unset mean" — it is one answer over two spellings of

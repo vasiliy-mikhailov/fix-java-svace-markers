@@ -350,6 +350,58 @@ class CritiqueIndexTest {
     }
 
     /**
+     * A FILE WITH NO NEWLINE IN IT IS READ ONCE AND THEN LET GO OF.
+     *
+     * <p>Every one of this class's three headline bounds is about a file that has newlines in it. Give
+     * it one that does not — a truncated copy, a binary dropped in the path by mistake, an operator's
+     * {@code cat} of two files, or simply one enormous record — and all three stop holding at once:
+     * {@code consumed} is only incremented at a {@code '\n'}, so it stays 0, the {@code BUDGET_BYTES}
+     * loop guard never trips, {@code offset} never advances, and every byte goes into an unbounded
+     * {@code ByteArrayOutputStream}. The next poll starts from zero and does it again, two seconds
+     * later, for ever.
+     *
+     * <p>WHAT WOULD BE WRONG IF THIS FAILED, and it is two separate things. The dashboard would re-read
+     * and re-buffer the whole file every two seconds — the exact defect
+     * {@code everyLineIsParsedExactlyOnce} exists to forbid, reached by an input that test does not
+     * cover. And the pass would report {@code complete}, because {@code consumed < BUDGET_BYTES} is
+     * trivially true when nothing was consumed — so the panel would put a full-total headline over a
+     * file it had not read a record of.
+     *
+     * <p>Sized past the budget deliberately: under it, "read it all" and "read the budget" are the same
+     * number and the test would prove nothing.
+     */
+    @Test
+    void aFileWithNoNewlineIsNotReReadOnEveryPollAndIsNotCalledComplete() throws IOException {
+        // No newline anywhere, and larger than one pass is allowed to consume.
+        Files.writeString(file, "x".repeat(CritiqueIndex.BUDGET_BYTES + 4096),
+                StandardCharsets.UTF_8);
+        long size = Files.size(file);
+
+        CritiqueIndex index = new CritiqueIndex(true, file);
+        index.guidance();
+        // It takes more than one pass, because it is bigger than one pass's budget — that part is the
+        // design working. What must not happen is a SECOND reading of the same bytes.
+        for (int poll = 0; poll < 5; poll++) {
+            index.refreshNow();
+        }
+        long readOnce = index.bytesRead();
+
+        assertThat(readOnce)
+                .as("the file was read more than once: six polls took %d bytes off a %d-byte file",
+                        readOnce, size)
+                .isEqualTo(size);
+        index.refreshNow();
+        assertThat(index.bytesRead()).as("and a further poll reads nothing at all").isEqualTo(size);
+        assertThat(index.guidance().get("complete"))
+                .as("a pass that folded no record must not describe its counts as a total")
+                .isEqualTo(false);
+        // …and the reason is stated rather than shown as an empty panel, because "on and empty" and
+        // "on and unreadable" are the two answers this class exists to keep apart.
+        assertThat(index.state()).isEqualTo(CritiqueIndex.State.UNREADABLE);
+        assertThat(index.headline()).contains("CANNOT BE READ");
+    }
+
+    /**
      * A FILE THAT WAS REPLACED STARTS AGAIN, rather than splicing a new tail onto old counts.
      *
      * <p>{@code FeedbackStore.repairOrCreate} deletes and re-creates the file when a kill landed inside

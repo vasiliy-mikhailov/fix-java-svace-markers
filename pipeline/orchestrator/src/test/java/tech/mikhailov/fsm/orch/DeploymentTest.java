@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Set;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -1075,6 +1076,75 @@ class DeploymentTest {
                 .as("these travel as `=${VAR:-}`, so an operator who has not set them gets the variable "
                         + "SET TO EMPTY and application.yml's default never applies. List them bare "
                         + "(`- VAR`) so Compose forwards them only when set")
+                .isEmpty();
+    }
+
+    /**
+     * THE OTHER END OF THE SAME ROPE, and the test above cannot see it.
+     *
+     * <p>Listing a variable bare in compose forwards it only when it is SET IN THE ENVIRONMENT — and
+     * {@code .env} is that environment. So {@code FSM_GIT_HOST=} in an {@code .env.example} undoes the
+     * whole bare pass-through: the variable is set, it is empty, it is forwarded empty, and Spring's
+     * {@code ${VAR:default}} never applies. {@code aVariableWithADefaultIsNeverForwardedAsEmpty}
+     * iterates the compose file and {@code continue}s on exactly these entries, because from compose's
+     * side they are already correct.
+     *
+     * <p>AND THE RUNBOOK IS {@code cp .env.example .env}. {@code README.md:33-34} and
+     * {@code DOCKER.md:24-25} both say so verbatim, so a stranger following the documented quickstart
+     * shipped three empty values: {@code FSM_INGEST_MAX_CSV_BYTES=} crash-loops the container (a
+     * {@code DataSize} cannot parse {@code ""}), {@code FSM_GIT_HOST=} builds clone URLs like
+     * {@code https:///owner/name.git}, and {@code FSM_SOURCE_MODE=} defeats {@code checkout}.
+     *
+     * <p>EVERY {@code *.env.example} IN THE TREE, not the one this suite happens to know about. There
+     * are two of them, they have already drifted apart once, and the runbooks point at the other one
+     * from the one an earlier test asserts against.
+     */
+    @Test
+    void noEnvExampleShipsAnEmptyValueForAVariableComposePassesThroughBare() throws IOException {
+        Service app = COMPOSE.get(APP);
+        Set<String> bare = new java.util.LinkedHashSet<>();
+        for (String entry : app.environment) {
+            if (entry.indexOf('=') < 0) {
+                bare.add(entry.strip());
+            }
+        }
+        assertThat(bare).as("compose has stopped using the bare pass-through — read its comment "
+                + "before changing this test").isNotEmpty();
+
+        List<Path> examples;
+        try (var walk = Files.walk(ROOT)) {
+            examples = walk.filter(p -> p.getFileName().toString().endsWith(".env.example"))
+                    .filter(p -> !p.toString().contains("/target/"))
+                    .sorted()
+                    .toList();
+        }
+        assertThat(examples).as("no .env.example found under " + ROOT).isNotEmpty();
+
+        List<String> offenders = new ArrayList<>();
+        for (Path example : examples) {
+            int lineNumber = 0;
+            for (String line : read(example).lines().toList()) {
+                lineNumber++;
+                String stripped = line.strip();
+                if (stripped.startsWith("#")) {
+                    continue;
+                }
+                int eq = stripped.indexOf('=');
+                if (eq < 0) {
+                    continue;
+                }
+                String name = stripped.substring(0, eq).strip();
+                if (bare.contains(name) && stripped.substring(eq + 1).isBlank()) {
+                    offenders.add(ROOT.relativize(example) + ":" + lineNumber + " " + name);
+                }
+            }
+        }
+
+        assertThat(offenders)
+                .as("compose passes these through bare so that an unset one arrives ABSENT and "
+                        + "application.yml's default applies. Shipping `NAME=` in a file the runbook "
+                        + "says to copy to .env sets it to EMPTY, which is the exact shape the bare "
+                        + "pass-through exists to prevent. Comment the line out instead")
                 .isEmpty();
     }
 

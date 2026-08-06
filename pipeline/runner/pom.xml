@@ -85,6 +85,11 @@
                  crashing. Warnings are the cheapest place to catch that class of mistake. -->
             <arg>-Xlint:all</arg>
             <arg>-Werror</arg>
+            <!-- Same reason as the engine, where five dangling {@link}s to a deleted class went
+                 unnoticed because nobody runs javadoc. With -Werror above, the next one is a build
+                 failure. `reference` only: the other doclint groups would demand @param and @return
+                 on every private helper. -->
+            <arg>-Xdoclint:reference</arg>
           </compilerArgs>
         </configuration>
       </plugin>

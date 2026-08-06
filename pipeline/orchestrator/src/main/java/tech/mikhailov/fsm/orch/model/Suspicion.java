@@ -22,7 +22,7 @@ import tech.mikhailov.fsm.orch.domain.MarkerSnapshot;
  * <p>WHY {@code line} AND {@code svaceLine} ARE DOUBLES. The engine holds them as JavaScript Numbers
  * and the difference is observable at the extremes ({@code Values.leadingInt}). Narrowing them to
  * {@code int} here would make the round-trip through the database lossy in exactly the cases the
- * re-anchoring is least sure about. {@link tech.mikhailov.fsm.lib.Js#string} renders an integral
+ * re-anchoring is least sure about. {@link tech.mikhailov.fsm.lib.Values#plain} renders an integral
  * double as {@code 7} and not {@code 7.0}, so nothing downstream ever sees a decimal point.
  *
  * <p>WHY {@code status} IS A STRING AND NOT AN ENUM. It has three separate vocabularies layered on
@@ -80,8 +80,8 @@ public record Suspicion(String dedupKey, String markerId, String repo, String br
      * change meaning the moment one of them is blank.
      *
      * <p>Nulls are written as nulls rather than omitted. A key that is absent and a key holding null
-     * are different values to the engine ({@code undefined} vs {@code null}, see
-     * {@link tech.mikhailov.fsm.lib.Llm#concat(Object, String)}) — and a column read back from SQL is
+     * are different values to the engine ({@code (absent)} vs {@code null}, see
+     * {@link tech.mikhailov.fsm.lib.Llm#presence}) — and a column read back from SQL is
      * the second one: the cell exists and has no value. Omitting it here would report a NULL database
      * cell as a field the ingester never wrote.
      */

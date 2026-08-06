@@ -355,7 +355,7 @@ final class HarnessJavaSide {
      * The type-tagged encoding, matching js-side.cjs character for character.
      *
      * <p>A {@code Long} is written with its exact digits and only a {@code Double} goes through
-     * {@link Js#numberToString}: {@link Json#stringify} writes an integral Long exactly, so rendering
+     * {@link Values#plain}: {@link Json#stringify} writes an integral Long exactly, so rendering
      * it through a double here would report a rounding this module does not actually perform.
      */
     private static Object tag(Object v) {

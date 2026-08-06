@@ -92,6 +92,20 @@ public final class CritiqueIndex {
     /** How much of the file one refresh will consume. @see CritiqueIndex */
     static final int BUDGET_BYTES = 8 * 1024 * 1024;
 
+    /**
+     * How long ONE in-flight line may get before it stops being a record and starts being a problem.
+     *
+     * <p>{@link #BUDGET_BYTES} bounds a PASS and can only be measured at a newline, so on its own it
+     * bounds nothing about a file that has no newline in it: the in-flight buffer grows to the size of
+     * the file, {@code offset} never advances, and the next poll two seconds later reads it all again.
+     * This is the bound that does not need a newline to exist.
+     *
+     * <p>Generous on purpose. A real record carries whole prompts, whole replies and a source file
+     * capped at 300,000 characters, so it is hundreds of kilobytes; anything past four megabytes on one
+     * line is not one of this store's records and folding it would not tell a reader anything.
+     */
+    static final int MAX_LINE_BYTES = 4 * 1024 * 1024;
+
     /** The shortest gap between two passes, so a 2 s poll does not stat the file 30 times a minute. */
     static final long QUIET_MILLIS = 2_000;
 
@@ -173,6 +187,23 @@ public final class CritiqueIndex {
     private long offset;
     private Object fileKey;
     private long lastPassAt;
+
+    /**
+     * Lines stepped over for being longer than {@link #MAX_LINE_BYTES}, since the file was last
+     * replaced. Sticky on purpose: the record is missing from the projection until the file changes,
+     * so a later pass with nothing left to read must not publish {@code complete} over the gap.
+     */
+    private long oversized;
+
+    /**
+     * Whether the last pass stopped INSIDE an over-long line rather than at a newline.
+     *
+     * <p>Without it the next pass starts a fresh line at {@code offset}, never reaches
+     * {@link #MAX_LINE_BYTES} on the remaining tail, and so ends at EOF holding an unterminated line it
+     * believes is an append in flight — which means it does not advance the offset, and the tail is
+     * re-read on every poll for ever. The bound has to survive the pass boundary or it is not a bound.
+     */
+    private boolean midOversizedLine;
 
     /**
      * EVERY BYTE THIS PROCESS HAS EVER TAKEN OFF THE FILE, cumulative and never reset.
@@ -428,6 +459,18 @@ public final class CritiqueIndex {
             readError = e.toString();
             log.warn("[feedback] could not read {}: {}", path.toAbsolutePath(), e.toString());
         }
+        // A SKIPPED RECORD OUTLIVES THE PASS THAT SKIPPED IT. Once the over-long line has been stepped
+        // over, later passes have nothing left to read and would otherwise publish `complete` and a
+        // healthy state over a projection that is knowingly missing a record. It clears when the file
+        // is replaced or truncated, which is the only event that makes the projection whole again.
+        if (oversized > 0) {
+            complete = false;
+            if (readError.isEmpty()) {
+                readError = oversized + " line(s) longer than " + MAX_LINE_BYTES
+                        + " bytes were skipped: " + path.toAbsolutePath()
+                        + " does not look like this store's file";
+            }
+        }
         publish(complete);
     }
 
@@ -455,6 +498,8 @@ public final class CritiqueIndex {
         byMarker.clear();
         records = 0;
         critiques = 0;
+        oversized = 0;
+        midOversizedLine = false;
         firstSeen = "";
         lastSeen = "";
     }
@@ -472,32 +517,89 @@ public final class CritiqueIndex {
      */
     private boolean consume(long size) throws IOException {
         long consumed = 0;
+        boolean budgetSpent = false;
+        long skipped = 0;
         try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ)) {
             channel.position(offset);
             InputStream in = Channels.newInputStream(channel);
             byte[] buffer = new byte[64 * 1024];
             ByteArrayOutputStream line = new ByteArrayOutputStream(16 * 1024);
+            // The in-flight line's LENGTH, counted separately from the buffer that holds it, because
+            // past MAX_LINE_BYTES the buffer is thrown away and the length is all that is still true.
+            long pending = 0;
+            // Resume discarding if the previous pass ran out of budget in the middle of one.
+            boolean discarding = midOversizedLine;
             int read;
-            while (consumed < BUDGET_BYTES && (read = in.read(buffer)) > 0) {
+            reading:
+            while ((read = in.read(buffer)) > 0) {
                 bytesRead.addAndGet(read);
                 for (int i = 0; i < read; i++) {
                     if (buffer[i] == '\n') {
                         // A record is a record only once its newline is on disk — the store's header
                         // says so, and it is why a torn tail is never counted.
-                        consumed += line.size() + 1L;
-                        offset += line.size() + 1L;
-                        accept(line.toString(StandardCharsets.UTF_8));
+                        consumed += pending + 1L;
+                        offset += pending + 1L;
+                        if (discarding) {
+                            skipped++;
+                        } else {
+                            accept(line.toString(StandardCharsets.UTF_8));
+                        }
                         line.reset();
+                        pending = 0;
+                        discarding = false;
+                        midOversizedLine = false;
+                        if (consumed >= BUDGET_BYTES) {
+                            budgetSpent = true;
+                            break reading;
+                        }
                     } else {
-                        line.write(buffer[i]);
+                        pending++;
+                        if (discarding) {
+                            // Still looking for the newline that ends it. The bytes are counted and
+                            // dropped, so the heap cost of this line is now zero however long it runs.
+                            if (pending >= BUDGET_BYTES) {
+                                // Do not read a four-gigabyte line in one pass either. Bank what was
+                                // skipped, remember that the line is still open, and let the next poll
+                                // carry on from here. Not counted as skipped yet — the line has not
+                                // ended, and one line must not be reported as several.
+                                consumed += pending;
+                                offset += pending;
+                                pending = 0;
+                                midOversizedLine = true;
+                                budgetSpent = true;
+                                break reading;
+                            }
+                        } else if (pending > MAX_LINE_BYTES) {
+                            // IT IS NOT A RECORD. Let go of the bytes rather than keep growing a
+                            // ByteArrayOutputStream that is bounded only by the size of the file.
+                            discarding = true;
+                            line.reset();
+                        } else {
+                            line.write(buffer[i]);
+                        }
                     }
                 }
-                if (consumed >= BUDGET_BYTES) {
-                    break;
-                }
+            }
+            // END OF FILE INSIDE AN OVER-LONG LINE, which is the case that used to cost everything: no
+            // newline ever arrives, so `offset` never moves and the whole file is read again on the
+            // next poll, and the one after that. An unterminated line this long is not an append in
+            // flight — the store writes one record under one lock — so it is stepped over.
+            //
+            // `!budgetSpent` is what makes this END OF FILE rather than "the loop stopped". Breaking
+            // for budget leaves the same line open on purpose, and running this block on that exit
+            // would clear the carry flag and count one line as several.
+            if (discarding && !budgetSpent) {
+                offset += pending;
+                skipped++;
+                midOversizedLine = false;
             }
         }
-        return offset >= size || consumed < BUDGET_BYTES;
+        oversized += skipped;
+        // COMPLETE MEANS THE PROJECTION REFLECTS THE WHOLE FILE. A pass that spent its budget has more
+        // to do; a pass that threw a record away is missing one. `consumed < BUDGET_BYTES` used to
+        // stand in for "reached the end", which is true right up until a pass consumes NOTHING — and
+        // then it reported a full total over a file it had not folded a record of.
+        return !budgetSpent && skipped == 0;
     }
 
     /** One line: the header, a record, or something unparseable. None of the three may throw. */

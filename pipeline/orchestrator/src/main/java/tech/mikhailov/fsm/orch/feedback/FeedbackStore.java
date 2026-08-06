@@ -72,7 +72,7 @@ import tech.mikhailov.fsm.lib.Json;
  * will not serialise must cost a WARN line and nothing else. The failure is loud in the log and silent
  * to the prove — never the other way round.
  */
-public final class FeedbackStore {
+public final class FeedbackStore implements RecordSink {
 
     private static final Logger log = LoggerFactory.getLogger(FeedbackStore.class);
 
@@ -251,11 +251,23 @@ public final class FeedbackStore {
      * The prove step is single-flight so contention is not the normal case; a restart overlapping a
      * shutdown, or an operator running a second process, is.
      *
+     * <p>STILL NEVER THROWS — that rule is unchanged and is why the harvester cannot strand a marker.
+     * What it now does is ANSWER. The boolean is about THIS record and nothing else, which the
+     * {@link #failures()} counter cannot be: the counter belongs to the store, so a caller reading it
+     * either side of its own append was reading every other thread's outcome too, and two concurrent
+     * {@code POST /api/comment} swapped answers — the one whose line reached the disk was told FAILED.
+     * A caller that does not care (the prove chain, which has a log line and a counter for this) simply
+     * ignores the return, exactly as before.
+     *
      * @param record {@link MarkerFeedback#toMap()}; nothing else is assumed about it
+     * @return whether this record is on the disk. {@code false} for a store that is switched off, for
+     *         one that could not write, and for a record that would not serialise — all three mean the
+     *         same thing to a caller holding it: this did not become durable
      */
-    public void append(Map<String, Object> record) {
+    @Override
+    public boolean append(Map<String, Object> record) {
         if (!enabled) {
-            return;
+            return false;
         }
         try {
             // Serialised FIRST and outside the lock: Json.stringify REFUSES a NaN and anything that is
@@ -268,26 +280,28 @@ public final class FeedbackStore {
             } finally {
                 mutex.unlock();
             }
+            return true;
         } catch (IOException | RuntimeException e) {
-            // WARN and RETURN. The alternative is a marker stranded by a diagnostic.
+            // WARN and RETURN FALSE. The alternative is a marker stranded by a diagnostic.
             log.warn("[feedback] {} {} was NOT recorded to {}: {}", journal.what(),
                     Json.str(record, journal.recordKey()), path.toAbsolutePath(), e.toString());
             failures.incrementAndGet();
+            return false;
         }
     }
 
     /**
-     * HOW MANY APPENDS WERE SWALLOWED, and the only reason this counter exists.
+     * HOW MANY APPENDS THIS STORE HAS SWALLOWED, ACROSS EVERY CALLER.
      *
-     * <p>{@link #append} never throws — that is the rule this class is built around, and it is right
-     * for the harvester, which is a diagnostic bolted onto a chain that must not gain a new way to
-     * strand a marker. It is NOT right for a caller that has just told a HUMAN their comment was
-     * saved: a person who typed a paragraph and got a green tick is owed the truth about whether it
-     * reached the disk that survives a redeploy.
+     * <p>A TOTAL, AND ONLY EVER A TOTAL. It is the operator's number — "this mount has been refusing
+     * writes for an hour" — and it must not be read as an answer to one call. It used to be:
+     * {@code CommentJournal} took it either side of its own append and reported the difference, which
+     * works for one thread and inverts for two. {@link #append}'s return is the per-call answer now,
+     * and this counter has no other reader.
      *
-     * <p>So the swallow stays and the FACT of it becomes readable. {@code CommentJournal} takes this
-     * count before and after its append and reports the difference in the API response, which is the
-     * only way a never-throwing writer can be honest to a synchronous caller.
+     * <p>The swallow itself stays. {@link #append} never throwing is the rule this class is built
+     * around: the harvester is a diagnostic bolted onto a chain whose whole design is that every
+     * marker reaches a settled state, and a throw here would be a new way to strand one.
      */
     public long failures() {
         return failures.get();

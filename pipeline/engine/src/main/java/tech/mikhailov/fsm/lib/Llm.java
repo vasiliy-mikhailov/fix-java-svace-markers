@@ -73,7 +73,7 @@ public final class Llm {
     /** Where the model lives. Read straight from the process environment. */
     public record Endpoint(String baseUrl, String apiKey, String model) {
 
-        /** {@code $env.QWEN_*}, absent keys included — see {@link #concat} for why they are not "". */
+        /** {@code $env.QWEN_*}, absent keys included — see {@link Llm#text} for why they are not "". */
         public static Endpoint of(Object environment) {
             return new Endpoint(text(environment, "QWEN_BASE_URL"), text(environment, "QWEN_API_KEY"),
                     text(environment, "QWEN_MODEL"));
@@ -87,7 +87,9 @@ public final class Llm {
      * raw — the {@code $env} endpoint settings and each stage's version stamp — and the difference is
      * visible in the transcript on purpose. An unset {@code QWEN_BASE_URL} produces
      * {@code undefined/chat/completions}, which an operator can grep for; {@code /chat/completions}
-     * looks like a relative-path bug somewhere else entirely. See {@link #concat}.
+     * looks like a relative-path bug somewhere else entirely. See {@link #baseUrl}, which is where
+     * that decision now lands: an unset base URL is rendered as the NAME of the variable that is
+     * missing, which is both the diagnosis and the fix.
      */
     public static String text(Object container, String key) {
         Object v = Json.get(container, key);

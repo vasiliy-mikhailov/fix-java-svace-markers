@@ -176,6 +176,15 @@ final class Edit {
      * unique", never on a silent insertion — except for a two-character file, where this counts one
      * and prepends the replacement. Left as it is rather than tidied: the tidy version is a second
      * behaviour that no recorded case covers.
+     *
+     * <p>THE TWO-CHARACTER CASE IS A REAL DEFECT AND IS NOT FIXED HERE. {@code applyEdit("{}", "",
+     * "HACKED")} answers {@code ok=true, text="HACKED{}"} — a patch nobody aimed, which is the outcome
+     * the {@code old == null} refusal exists to prevent. The one-line guard that closes it
+     * ({@code if (old.isEmpty())} above the call in {@link #applyEdit}) moves 554 recorded cases of
+     * the differential catalogue and takes two of its invariants off zero violations, so it is a
+     * deliberate re-record and not a drive-by fix. The empty branch below is also NOT deletable:
+     * without it the loop never advances, because {@code indexOf("", from)} answers {@code from} for
+     * ever.
      */
     static int splitCount(String haystack, String needle) {
         if (needle.isEmpty()) {
@@ -223,7 +232,7 @@ final class Edit {
         try {
             // Leading slashes are stripped, not rejected: a model that quotes an absolute-looking path
             // means the repository-relative one, and `path.resolve` would otherwise leave the workspace.
-            full = base.resolve(stripLeadingSlashes(p == null ? "" : p)).normalize();
+            full = base.resolve(Workspace.stripLeadingSlashes(p == null ? "" : p)).normalize();
         } catch (InvalidPathException notAFilename) {
             // A NUL in the middle of a name, which `Path.of` refuses. Throwing here would end the whole
             // prove as `ok: false`, so a model reply garbled in ONE edit would cost the marker its
@@ -237,21 +246,20 @@ final class Edit {
             return Target.failed("path escapes workspace");
         }
         String rel = base.relativize(full).toString().replace(File.separatorChar, '/');
-        String tp = (testPath == null ? "" : testPath).replace(File.separatorChar, '/');
+        // STRIPPED THE SAME WAY `p` IS, because the two are about to be compared for equality. `rel`
+        // comes out of base.relativize and never carries a leading slash; the request's test_path may,
+        // and Prove.java:116 puts it through this same helper when it WRITES the test — so an
+        // absolute-looking test_path is a SUPPORTED shape, not a malformed one. Comparing the two
+        // spellings raw made "/tests/Proof.java" unequal to "tests/Proof.java", and for a project whose
+        // tests are not under src/test/ this arm is the only guard there is: the fixer was handed the
+        // proof test and could grade its own exam.
+        String tp = Workspace.stripLeadingSlashes(
+                (testPath == null ? "" : testPath).replace(File.separatorChar, '/'));
         String lower = rel.toLowerCase(Locale.ROOT);
         if (lower.contains("/src/test/") || lower.startsWith("src/test/")
                 || (!tp.isEmpty() && rel.equals(tp))) {
             return Target.failed("refuses to edit a test file (fixer may not touch the test)");
         }
         return Target.of(full);
-    }
-
-    /** {@code String(p || '').replace(/^\/+/, '')}. */
-    private static String stripLeadingSlashes(String p) {
-        int i = 0;
-        while (i < p.length() && p.charAt(i) == '/') {
-            i++;
-        }
-        return p.substring(i);
     }
 }

@@ -166,9 +166,13 @@ public final class TestRealness {
         String s = BLOCK_COMMENT.matcher(src)
                 .replaceAll(m -> NOT_NEWLINE.matcher(m.group()).replaceAll(" "));
         s = LINE_COMMENT.matcher(s).replaceAll(m -> " ".repeat(m.group().length()));
-        // String literals collapse to "" — their length is not load-bearing, and keeping the quotes
-        // means an unterminated literal cannot swallow the rest of the file.
-        return STRING_LITERAL.matcher(s).replaceAll("\"\"");
+        // String literals keep their own quotes and their own length, for the reason in the paragraph
+        // above: a long SQL constant between an unrelated @Mock and the subject's declaration is what
+        // holds the two 80 characters apart. Collapsing them to "" pulled the pair together and read
+        // a sound proof as mocking its own subject. Keeping the quotes is still what stops an
+        // unterminated literal swallowing the rest of the file.
+        return STRING_LITERAL.matcher(s)
+                .replaceAll(m -> "\"" + " ".repeat(m.group().length() - 2) + "\"");
     }
 
     private static boolean find(String s, String regex) {

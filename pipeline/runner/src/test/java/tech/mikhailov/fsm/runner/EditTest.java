@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -201,6 +202,25 @@ class EditTest {
         }
 
         @Test
+        void aTwoCharacterFilePlusAnEmptyOldStringPrependsSilentlyAndThatIsADefect() {
+            // PINNED AS A DEFECT, NOT AS A CONTRACT. The uniqueness guard above only catches an empty
+            // old_str by accident of arithmetic: splitCount answers haystack.length() - 1, so on a file
+            // of exactly two characters it answers ONE, the guard passes, and replaceFirst splices at
+            // index 0. ok=true, text="HACKED{}" — a patch nobody aimed, wearing the shape of a good
+            // one, which is the outcome the `old == null` refusal exists to prevent.
+            //
+            // Left red-in-prose rather than fixed: the one-line guard that closes it moves 554 recorded
+            // cases of the differential catalogue and takes "a unique exact match is applied on the
+            // exact path" and "several exact matches are refused as not unique" off zero violations
+            // (48 and 508). That is a deliberate re-record of the reference, not a drive-by fix. This
+            // test exists so the behaviour is written down where the fixer will look, and so the
+            // re-record has something to flip rather than something to discover.
+            Edit.Applied r = Edit.applyEdit("{}", "", "HACKED");
+            assertTrue(r.ok(), "if this went red, somebody fixed it — flip this test and re-record");
+            assertEquals("HACKED{}", r.text(), "the replacement is prepended, unasked");
+        }
+
+        @Test
         void theSplitCountSemanticsAreTheJsOnes() {
             // `s.split(sep).length - 1` for an empty separator, which is what decides WHICH error a
             // caller gets. Pinned because it is not the obvious answer and a tidier count would change
@@ -239,6 +259,25 @@ class EditTest {
             // `(tp && rel === tp)`: an empty test_path must not make the workspace root itself refused,
             // or every edit in a request without one would be rejected.
             assertTrue(Edit.fixTarget(WS, "src/main/java/a/B.java", "").ok());
+        }
+
+        @Test
+        void aLeadingSlashOnTheTestPathDoesNotOpenTheProofTestToTheFixer() {
+            // THE EXACT-MATCH ARM IS THE WHOLE GUARD for a project whose tests are not under src/test/,
+            // and it compared two paths spelled differently. `rel` comes from base.relativize, which
+            // never carries a leading slash; `tp` was the request's own spelling, which may. So
+            // "/tests/Proof.java" was not equal to "tests/Proof.java" and the fixer was handed the very
+            // test it had to pass — it could delete the assertion and grade its own exam, and the run
+            // would report a green build as a proven fix.
+            //
+            // A leading slash is not a hypothetical shape here: Prove.java:116 puts the test_path
+            // through Workspace.stripLeadingSlashes when it WRITES the test, so the two halves of the
+            // request disagreed about which file the proof test was.
+            for (String spelling : List.of("/tests/Proof.java", "//tests/Proof.java")) {
+                Edit.Target t = Edit.fixTarget(WS, "tests/Proof.java", spelling);
+                assertTrue(t.error() != null && t.error().contains("refuses to edit a test"),
+                        () -> spelling + " let the fixer edit the proof test: " + t.error());
+            }
         }
     }
 

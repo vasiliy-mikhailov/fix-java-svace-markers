@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -309,6 +310,66 @@ class FeedbackStoreTest {
         List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
         assertThat(lines).hasSize(1 + writers * each);
         assertThat(keys(lines)).hasSize(writers * each).doesNotHaveDuplicates();
+    }
+
+    /**
+     * EVERY CALLER GETS THE ANSWER ABOUT ITS OWN RECORD, and not about whatever else was in flight.
+     *
+     * <p>This is the property {@code CommentJournal} needs and could not have. It read the SHARED
+     * failure counter either side of its own append and called the difference its answer — but the
+     * counter belongs to the store, not to the call, so a failure on one thread landed inside another
+     * thread's window. The caller whose line reached the disk was told FAILED, and a person who typed
+     * a paragraph into {@code POST /api/comment} was told it would not survive a redeploy while it was
+     * sitting in the file. Two overlapping comments is not an exotic case: the endpoint has no rate
+     * limit and no authentication of its own.
+     *
+     * <p>Asserted as an ACCOUNTING IDENTITY — how many callers were told "written" must equal how many
+     * records are on the disk — because that is the claim being made to a human, and it holds however
+     * the threads interleave.
+     */
+    @Test
+    void aWriterIsToldAboutItsOwnRecordAndNotAboutAnotherThreads() throws Exception {
+        Path file = dir.resolve("gepa-feedback.jsonl");
+        // ONE store, shared, which is what Spring gives two concurrent requests.
+        FeedbackStore store = new FeedbackStore(true, file);
+
+        int writers = 4;
+        int each = 40;
+        CountDownLatch start = new CountDownLatch(1);
+        AtomicInteger toldWritten = new AtomicInteger();
+        List<Thread> threads = new ArrayList<>();
+        for (int w = 0; w < writers; w++) {
+            int id = w;
+            // Half the threads carry a record that cannot serialise — a real failure, swallowed and
+            // counted, exactly as a read-only mount or a uid mismatch is. The other half carry good
+            // ones and are the callers being lied to.
+            boolean poisoned = id % 2 == 0;
+            Thread thread = new Thread(() -> {
+                awaitQuietly(start);
+                for (int i = 0; i < each; i++) {
+                    Map<String, Object> r = record(id + "-" + i);
+                    if (poisoned) {
+                        r.put("score", Double.NaN);
+                    }
+                    if (store.append(r)) {
+                        toldWritten.incrementAndGet();
+                    }
+                }
+            });
+            thread.start();
+            threads.add(thread);
+        }
+        start.countDown();
+        for (Thread thread : threads) {
+            thread.join(TimeUnit.SECONDS.toMillis(30));
+        }
+
+        int onDisk = Files.readAllLines(file, StandardCharsets.UTF_8).size() - 1;
+        assertThat(onDisk).isEqualTo(writers / 2 * each);
+        assertThat(toldWritten.get())
+                .as("callers told their record was durable, against records actually on disk")
+                .isEqualTo(onDisk);
+        assertThat(store.failures()).isEqualTo((long) writers / 2 * each);
     }
 
     // ---- helpers -------------------------------------------------------------------------------------

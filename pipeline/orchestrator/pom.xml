@@ -213,6 +213,10 @@
             <!-- Same reason as the engine: the failures in this pipeline are silent by nature. A
                  marker written off with the wrong status does not crash anything. -->
             <arg>-Xlint:all,-serial,-this-escape</arg>
+            <!-- Same reason as the engine, where five dangling {@link}s to a class deleted on
+                 2026-08-05 went unnoticed because nobody runs javadoc. `reference` only: the other
+                 doclint groups would demand @param and @return on every private helper. -->
+            <arg>-Xdoclint:reference</arg>
           </compilerArgs>
         </configuration>
       </plugin>

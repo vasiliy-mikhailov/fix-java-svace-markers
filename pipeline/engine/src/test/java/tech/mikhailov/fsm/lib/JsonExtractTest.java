@@ -3,6 +3,7 @@ package tech.mikhailov.fsm.lib;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -532,5 +533,39 @@ class JsonExtractTest {
         // the last '}' is still the answer's, so the direct parse takes it and the cap never applies
         assertEquals(obj("can_prove", true, "root_cause", "x"),
                 extract(ANSWER + "]".repeat(401)));
+    }
+
+    @Test
+    void theCandidateScanDoesNotCopyTheTailPerBrace() {
+        // THE CLASS COMMENT'S "neither the candidate scan nor the rewind may become quadratic",
+        // asserted rather than hoped for. MAX_STARTS bounds pass 3 only; pass 2 visits every '{' in
+        // the reply, and it used to hand each one a fresh t.substring(p + 1) — one full copy of the
+        // tail per brace. The reproducer is the ordinary shape: a reproducer or fixer reply with a
+        // whole Java file in it, so the brace count scales with the payload.
+        //
+        // MEASURED 2026-08-06 on this input (709 KB, 24,001 braces): 8,595,917,912 bytes allocated
+        // before, 768,088 after. The bound below is 100 MB — two orders of magnitude clear of the
+        // fixed version and two clear of the broken one, so it pins the SHAPE and cannot fail on a
+        // JIT or GC detail. Allocation is counted exactly by the JVM; this is not a timing test.
+        StringBuilder sb = new StringBuilder("Here is my reasoning.\n");
+        for (int i = 0; i < 24_000; i++) {
+            sb.append("if (x) { y(); } // note ").append(i).append('\n');
+        }
+        sb.append("{\"can_prove\":true,\"root_cause\":\"x\"}\n");
+        String reply = sb.toString();
+
+        com.sun.management.ThreadMXBean threads =
+                (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory
+                        .getThreadMXBean();
+        long id = Thread.currentThread().threadId();
+        extract(ANSWER);                                 // warm the regex and the parser
+        long before = threads.getThreadAllocatedBytes(id);
+        Map<String, Object> found = extract(reply);
+        long allocated = threads.getThreadAllocatedBytes(id) - before;
+
+        assertEquals(obj("can_prove", true, "root_cause", "x"), found, "and it still finds it");
+        assertTrue(allocated < 100L * 1024 * 1024,
+                () -> "allocated " + allocated + " bytes reading a " + reply.length()
+                        + "-char reply — the tail is being copied per candidate again");
     }
 }

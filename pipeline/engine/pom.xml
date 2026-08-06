@@ -70,6 +70,12 @@
                  place to catch that class of mistake, so they are not optional here. -->
             <arg>-Xlint:all</arg>
             <arg>-Werror</arg>
+            <!-- A {@link} to something that no longer exists is a comment that has stopped being
+                 checked by anything. Five of them accumulated pointing at a class deleted on
+                 2026-08-05, because nobody runs javadoc; with -Werror above, the sixth is a build
+                 failure. `reference` only — the other doclint groups would demand @param and @return
+                 on every private helper, which is not the bargain being made here. -->
+            <arg>-Xdoclint:reference</arg>
           </compilerArgs>
         </configuration>
       </plugin>

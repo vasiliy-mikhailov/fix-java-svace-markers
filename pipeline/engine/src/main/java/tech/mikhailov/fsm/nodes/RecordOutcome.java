@@ -220,9 +220,10 @@ public final class RecordOutcome {
      * THE FIXER'S REPLY, off {@code Parse fix}.
      *
      * @param rejectedValue ONE KEY, TWO COERCIONS, and they are components of one value here rather
-     *                      than two reads ninety lines apart: {@code !!x} decides whether the
-     *                      source-only allowlist refused anything, {@code String(x || '')} is what the
-     *                      row quotes. @see #rejected() @see #rejectedPaths()
+     *                      than two reads ninety lines apart: {@link Json#truthy} decides whether the
+     *                      source-only allowlist refused anything, {@link Json#str} is what the row
+     *                      quotes. They really are two questions — a rejection list of {@code []} is
+     *                      present and answers "no" to the first. @see #rejected() @see #rejectedPaths()
      */
     private record FixReply(boolean parseFailed, Object rejectedValue, String editsJson,
                             String prTitle, String prBody) {

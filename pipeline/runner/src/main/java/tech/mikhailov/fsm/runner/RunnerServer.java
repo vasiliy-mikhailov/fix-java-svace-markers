@@ -111,11 +111,18 @@ final class RunnerServer implements AutoCloseable {
     /**
      * One request.
      *
-     * <p>GET is answered without reading a body and never routes to a POST endpoint: the method is
-     * checked first and returns. It has the consequence that {@code POST /health} is a 404, which is
-     * deliberate, because the
-     * Docker HEALTHCHECK and every curl probe in the operators' notes use GET on /health and nothing uses
-     * the other combinations.
+     * <p>THE SAFE METHODS ARE ANSWERED FIRST AND NEVER ROUTE TO A POST ENDPOINT. GET and HEAD are
+     * both read-only by contract, so both are checked here and both return without reading a body. It
+     * has the consequence that {@code POST /health} is a 404, which is deliberate, because the Docker
+     * HEALTHCHECK and every curl probe in the operators' notes use GET on /health and nothing uses the
+     * other combinations.
+     *
+     * <p>HEAD is on this branch and not below it because the branch below BUILDS. Testing only for GET
+     * let a HEAD fall through into the POST switch and reach {@link LocalRunner#runTest}: a clone and
+     * two Maven builds, up to 90 minutes, holding the single FIFO slot and patching the shared
+     * workspace — started by the one method whose entire contract is that it has no effect. The
+     * body-suppression half is {@link Api#sendJson}'s and was already correct; this is what gives it
+     * something to suppress on the route a prober actually asks for.
      */
     private void handle(HttpExchange exchange) throws IOException {
         // NOT try-with-resources. It closes the exchange BEFORE the catch clause runs, and an exchange
@@ -123,7 +130,8 @@ final class RunnerServer implements AutoCloseable {
         // code and turn any bug here into a dropped connection the caller reports as a network error.
         try {
             String path = exchange.getRequestURI().getPath();
-            if ("GET".equals(exchange.getRequestMethod())) {
+            String method = exchange.getRequestMethod();
+            if ("GET".equals(method) || "HEAD".equals(method)) {
                 Api.sendJson(exchange, "/health".equals(path) ? 200 : 404,
                         "/health".equals(path) ? health() : notFound());
                 return;
