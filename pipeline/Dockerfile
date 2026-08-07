@@ -50,8 +50,18 @@ ARG JDK_VERSION
 ARG MAVEN_VERSION
 ARG TARGETARCH
 
+# `git` IS FOR THE TESTS, NOT FOR THE BUILD. Nothing here clones anything — but the orchestrator's
+# @SpringBootTest classes boot the REAL application context, that context builds LocalRunner, and
+# LocalRunner's constructor runs the boot preflight, which REFUSES TO START without a usable git:
+#
+#     fsm-runner: REFUSING TO START — there is no usable git on this PATH — `git --version` exited 1
+#
+# Without it, 313 tests fail here as "Failed to load ApplicationContext" and the real message appears
+# once, several screens up. That is exactly what the preflight is for — a process that cannot do its
+# job says so instead of failing one marker at a time — so the answer is to give the build what the
+# tests need, not to weaken the check.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl ca-certificates tar gzip \
+      curl ca-certificates tar gzip git \
     && rm -rf /var/lib/apt/lists/*
 
 # THIS IMAGE IS NOT REPRODUCIBLE, AND THE REASON IS THE NEXT `curl`. `…/v3/binary/latest/${N}/ga/…` is a

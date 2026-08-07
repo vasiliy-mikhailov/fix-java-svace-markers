@@ -1206,4 +1206,41 @@ class DeploymentTest {
                 .isEmpty();
     }
 
+
+    /**
+     * THE BUILD STAGE MUST CARRY WHAT THE TESTS THAT RUN IN IT NEED — today that means git.
+     *
+     * <p>Nothing in the build clones anything. But the orchestrator's {@code @SpringBootTest} classes
+     * boot the REAL application context, that context builds {@code LocalRunner}, and its constructor
+     * runs the boot preflight, which refuses to start without a usable git. Omit it and 313 tests fail
+     * inside {@code docker build} as "Failed to load ApplicationContext", with the one real message
+     * several screens above them.
+     *
+     * <p>It went unnoticed because no image had been built between the preflight landing and the next
+     * deploy — a gap no test can close, which is why this one checks the cheap half: that the tool the
+     * context requires is present where the context is booted.
+     */
+    @Test
+    void theBuildStageInstallsWhatBootingTheContextRequires() throws Exception {
+        String image = Files.readString(ROOT.resolve("Dockerfile"), StandardCharsets.UTF_8);
+        int build = image.indexOf("AS build");
+        assertThat(build).as("the Dockerfile must still have a stage named build").isGreaterThan(0);
+        int runtime = image.indexOf("FROM debian", build);
+        String buildStage = runtime > 0 ? image.substring(build, runtime) : image.substring(build);
+
+        // The APT LINE, not the prose. A first version of this asserted `buildStage.contains(" git ")`
+        // and passed with git removed — because the comment above the apt-get line says "git" too. A
+        // guard that its own explanation satisfies is not a guard.
+        String installs = buildStage.lines()
+                .filter(l -> !l.trim().startsWith("#"))
+                .filter(l -> l.contains("apt-get install") || l.trim().startsWith("curl ca-certificates"))
+                .reduce("", (a, b) -> a + "\n" + b);
+
+        assertThat(installs)
+                .as("the build stage runs the orchestrator's @SpringBootTest classes, which boot the "
+                    + "real context; LocalRunner's preflight refuses to start without a usable git, so "
+                    + "a build stage without git fails 313 tests with a message about Spring. Checked "
+                    + "on the apt-get line only: %s", installs)
+                .containsPattern("\\bgit\\b");
+    }
 }
