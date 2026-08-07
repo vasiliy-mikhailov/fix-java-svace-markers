@@ -25,11 +25,12 @@ import tech.mikhailov.fsm.lib.Values;
  * compiler can be asked instead of one a person has to notice.
  *
  * <p>WHERE IT IS CALLED FROM, AND WHERE IT SHOULD END UP. Today it is called by
- * {@link Trial#of} — the chain still holds the raw replies, because no stage has been converted. The
- * conversion moves the call one circle out, into the {@code RunnerClient} adapter, so
- * {@code RunResult} carries an {@code Execution} instead of an {@code Object} and the raw map never
- * enters the engine at all. Nothing in this record has to change for that: the parse is already
- * written where it will live.
+ * {@link Trial#withRed} and {@link Trial#withGreen} — the chain hands over the raw reply because the
+ * runner is a SEPARATE PROCESS and there is no typed object to hand over: both replies cross a real
+ * network hop and arrive as parsed JSON. The conversion that remains moves the call one circle out,
+ * into the {@code RunnerClient} adapter, so {@code RunResult} carries an {@code Execution} instead of
+ * an {@code Object} and the raw map never enters the engine at all. Nothing in this record has to
+ * change for that: the parse is already written where it will live.
  *
  * <h2>WHAT IT IS NOT</h2>
  *

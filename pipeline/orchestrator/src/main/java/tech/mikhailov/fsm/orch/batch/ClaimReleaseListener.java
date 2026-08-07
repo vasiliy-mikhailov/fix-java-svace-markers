@@ -15,14 +15,14 @@ import tech.mikhailov.fsm.orch.domain.InfraStreak;
 import tech.mikhailov.fsm.orch.domain.MarkerId;
 import tech.mikhailov.fsm.orch.domain.Requeue;
 import tech.mikhailov.fsm.orch.model.Suspicion;
-import tech.mikhailov.fsm.orch.usecase.ChargeInfrastructureFailures;
-import tech.mikhailov.fsm.orch.usecase.ChargeInfrastructureFailures.RequeuedMarker;
-import tech.mikhailov.fsm.orch.usecase.ChargeInfrastructureFailures.RunReport;
-import tech.mikhailov.fsm.orch.usecase.InfrastructurePresenter;
-import tech.mikhailov.fsm.orch.usecase.MarkerRepository;
-import tech.mikhailov.fsm.orch.usecase.ProveMarker;
-import tech.mikhailov.fsm.orch.usecase.ReleaseClaim;
-import tech.mikhailov.fsm.orch.usecase.ReleasePresenter;
+import tech.mikhailov.fsm.orch.usecase.try_prove.ChargeInfrastructureFailures;
+import tech.mikhailov.fsm.orch.usecase.try_prove.ChargeInfrastructureFailures.RequeuedMarker;
+import tech.mikhailov.fsm.orch.usecase.try_prove.ChargeInfrastructureFailures.RunReport;
+import tech.mikhailov.fsm.orch.usecase.try_prove.InfrastructurePresenter;
+import tech.mikhailov.fsm.orch.usecase.try_prove.MarkerRepository;
+import tech.mikhailov.fsm.orch.usecase.try_prove.ProveMarker;
+import tech.mikhailov.fsm.orch.usecase.try_prove.ReleaseClaim;
+import tech.mikhailov.fsm.orch.usecase.try_prove.ReleasePresenter;
 
 /**
  * SPRING BATCH, DRIVING {@link ReleaseClaim} AND {@link ChargeInfrastructureFailures} — the infra path.

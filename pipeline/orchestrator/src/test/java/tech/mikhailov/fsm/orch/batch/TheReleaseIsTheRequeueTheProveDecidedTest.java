@@ -7,9 +7,9 @@ import tech.mikhailov.fsm.orch.client.InfraFailure;
 import tech.mikhailov.fsm.orch.domain.InfraReason;
 import tech.mikhailov.fsm.orch.domain.Requeue;
 import tech.mikhailov.fsm.orch.model.Suspicion;
-import tech.mikhailov.fsm.orch.usecase.EngineUnreachable;
-import tech.mikhailov.fsm.orch.usecase.ProveMarker;
-import tech.mikhailov.fsm.orch.usecase.ProveOutcome;
+import tech.mikhailov.fsm.orch.usecase.try_prove.EngineUnreachable;
+import tech.mikhailov.fsm.orch.usecase.try_prove.ProveMarker;
+import tech.mikhailov.fsm.orch.usecase.try_prove.ProveOutcome;
 
 /**
  * ONE RELEASE, DECIDED ONCE — the seam between the processor's throw and the skip listener's release.

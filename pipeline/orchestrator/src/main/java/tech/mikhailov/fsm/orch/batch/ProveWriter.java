@@ -4,10 +4,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.item.Chunk;
 import org.springframework.batch.item.ItemWriter;
-import tech.mikhailov.fsm.orch.usecase.ArtifactRepository;
-import tech.mikhailov.fsm.orch.usecase.MarkerRepository;
-import tech.mikhailov.fsm.orch.usecase.RecordProvenMarker;
-import tech.mikhailov.fsm.orch.usecase.SettlementPresenter;
+import tech.mikhailov.fsm.orch.usecase.try_prove.ArtifactRepository;
+import tech.mikhailov.fsm.orch.usecase.try_prove.MarkerRepository;
+import tech.mikhailov.fsm.orch.usecase.try_prove.RecordProvenMarker;
+import tech.mikhailov.fsm.orch.usecase.try_prove.SettlementPresenter;
 
 /**
  * SPRING BATCH, DRIVING {@link RecordProvenMarker} — the two writes at the end of the workflow.

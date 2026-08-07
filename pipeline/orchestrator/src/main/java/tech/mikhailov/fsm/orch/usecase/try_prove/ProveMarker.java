@@ -1,9 +1,10 @@
-package tech.mikhailov.fsm.orch.usecase;
+package tech.mikhailov.fsm.orch.usecase.try_prove;
 
 import tech.mikhailov.fsm.orch.domain.InfraReason;
 import tech.mikhailov.fsm.orch.domain.Judgement;
 import tech.mikhailov.fsm.orch.domain.Marker;
 import tech.mikhailov.fsm.orch.domain.Settlement;
+import tech.mikhailov.fsm.orch.usecase.collect_feedback.FeedbackJournal;
 
 /**
  * PROVE ONE MARKER — ask the engine, apply the answer to the marker, and say which of the two things

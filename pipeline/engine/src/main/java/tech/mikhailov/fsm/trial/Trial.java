@@ -25,19 +25,43 @@ import tech.mikhailov.fsm.nodes.RecordOutcome;
  * shape below is what it would have to read; see {@link Label} for the join and {@link Stage} for the
  * key it joins on.
  *
- * <h2>THE JOURNEY WAS BEING ACCUMULATED TWICE</h2>
+ * <h2>THE JOURNEY WAS BEING ACCUMULATED TWICE, AND NOW IT IS NOT</h2>
  *
- * <p>Once through the stages, as ten nodes passing each other untyped maps — 43 {@code Object} fields
- * across the ten stage requests, and 46 nested records whose only job is to read them back. And again
- * at the finish, as {@code feedback.MarkerFeedback}: 11 more {@code Object} fields, 5 {@link StageTrace}
- * components and 38 key reads re-deriving what every stage already knew.
+ * <p>Once through the stages, and again at the finish as {@code feedback.MarkerFeedback} — 11
+ * {@code Object} fields, 5 {@link StageTrace} components and 38 key reads re-deriving what every stage
+ * already knew. The second accumulation existed because {@code ProveChain} kept the typed stage records
+ * as SEVEN LOCALS and only assembled them into a record on its last statement, so the record was a
+ * second reading of a run that had already finished.
  *
- * <p>The second accumulation exists because the first one lost the types. Nothing in
- * {@code MarkerFeedback} is a fact the chain did not already hold — it is a re-parse of values that
- * were typed a moment before they were flattened into a map. With a Trial carried along there is
+ * <p>THAT ONE IS GONE. {@code ProveChain} now builds a Trial on its FIRST statements — {@link #start} —
+ * and each stage hands it on with its own component filled ({@link #withProof}, {@link #withRed},
+ * {@link #withRouting}, …). What reaches the bottom is the same value that entered the top, so there is
  * nothing left to re-derive: serialise it, attach the human's comment, and that IS the training
- * example. {@code MarkerFeedback} becomes a PROJECTION of this record rather than a second reading of
- * the same run.
+ * example. {@code MarkerFeedback} is a PROJECTION of this record rather than a second reading of the
+ * same run.
+ *
+ * <h2>WHAT THE STAGE REQUESTS' {@code Object} FIELDS ARE, WHICH IS NOT LAZINESS</h2>
+ *
+ * <p>The ten stage requests hold 38 {@code Object} fields between them and the nodes hold 46 nested
+ * records that read them. IT IS TEMPTING TO READ THAT AS THE SAME DEBT AS ABOVE, AND IT IS NOT. Those
+ * fields are the {@code /node/<name>} WIRE, and they carry two facts a typed record cannot:
+ *
+ * <ul>
+ *   <li>VERBATIM PASSTHROUGH. Five stages spread an upstream item into their own output
+ *       ({@code ParseTest}, {@code ParseFix}, {@code FixSkeptic}, {@code PrMaker}, {@code Verdict}), so
+ *       a key nobody typed — and the ORDER the keys arrived in — survives the hop. A record has a fixed
+ *       key set and would silently drop the rest.</li>
+ *   <li>ABSENCE. {@code branch_ok} absent is a row written before the flag existed and is NOT
+ *       {@code false}; {@code svace_line} absent prints {@code ?} to the adjudicating model and is NOT
+ *       {@code 0}; an absent {@code module} reaches the prover as NO KEY rather than as {@code ""}. A
+ *       primitive component cannot hold the difference, and {@link PrepProver.Outcome} types both of
+ *       those as primitives.</li>
+ * </ul>
+ *
+ * <p>Both are pinned by tests and by the 30 311-case differential catalogue, which tags every value
+ * with its type precisely because {@code ""}, {@code 0}, {@code null} and ABSENT are four different
+ * answers. So the conversion those fields are waiting for is not a retyping of the request — it is the
+ * wire itself moving, which is a different job from this one.
  *
  * <h2>NAMED FOR WHAT THEY ARE</h2>
  *
@@ -316,48 +340,112 @@ public record Trial(String dedupKey, String startedAt, PrepProver.Outcome marker
     }
 
     /**
-     * THE FACTORY, AND IT CONVERTS NO STAGE.
+     * THE CHAIN'S FIRST STATEMENT — the marker, before any stage has concluded anything about it.
      *
-     * <p>Every argument is a value the chain ALREADY HOLDS at the point it assembles the feedback
-     * record today, which is the claim this method exists to make good: the Trial needs nothing the
-     * pipeline does not already have, so carrying it costs no new work anywhere.
+     * <p>THIS IS WHERE THE TRIAL IS BUILT, AND IT IS BUILT ONCE. Everything after it is a {@code with}
+     * that fills ONE component and copies the rest, so the value the chain carries at step N is the
+     * same object that entered at step 0 with N conclusions attached. That is the difference between a
+     * Trial that TRAVELS and a Trial ASSEMBLED AT THE END out of locals kept on the side: the second
+     * one is a second reading of a run that already happened, and the second reading is what drifts.
      *
-     * <p>THE ARGUMENT TYPES ARE THE HONEST MAP OF THE CONVERSION STILL OWED. Five stages already hand
-     * back a type and arrive here typed; three still hand back a {@code Map} and are parsed on the way
-     * in; two arrive as raw HTTP replies and go through {@link Execution#of}. Converting a stage later
-     * DELETES a parse from this method and changes nothing else — and when the last one goes, this
-     * signature has no {@code Object} left in it.
+     * <p>THE UNFILLED COMPONENTS ARE NULL, AND NULL HERE MEANS "NO STAGE HAS REACHED THIS YET". It is
+     * NOT the same fact as {@link StageTrace#NOT_CALLED}, which is a stage that WAS reached and was
+     * deliberately not asked; and it is not the same as a stage's fail-closed default, which is a
+     * conclusion the stage really drew. A Trial that leaves {@code ProveChain} still holding a null
+     * component is a chain that stopped early — an exception on the way through — and that is worth
+     * being able to see rather than papering over with an empty record that claims a stage ran.
      *
-     * @param certificationRow the {@code Fix skeptic} row — still a {@code Map}
-     * @param publicationRow   the {@code PR maker} row — still a {@code Map}
-     * @param settlementRow    the {@code Verdict} row — still a {@code Map}
-     * @param argumentCall     the adjudicator's call. {@link StageTrace#NOT_CALLED} when the argument
-     *                         was gated, skipped or never due — and that is not derivable from the row,
-     *                         which carries a composed verdict in exactly the shape an argued one has.
-     * @param argumentFailure  the verdict call's own failure text, which the row cannot carry: it lands
-     *                         in {@code verdict_confidence} as prose and in {@code infra_reason} as an
-     *                         append, and neither is a field a reader can branch on
+     * @param versions the stage stamps this prove runs under. Taken at the START, not at the finish:
+     *                 they are a fact about the build that is executing, and reading them at the end
+     *                 would attribute a prove to whatever was live when it happened to finish.
      */
-    public static Trial of(String dedupKey, String startedAt, PrepProver.Outcome marker,
-                           BuildReproduceInput.Outcome reproduceInput, StageTrace reproducerCall,
-                           ParseTest.Result parsedTest, Object redReply, String fixInput,
-                           StageTrace fixerCall, ParseFix.Result parsedFix, Object greenReply,
-                           StageTrace certificationCall, Object certificationRow,
-                           StageTrace publicationCall, Object publicationRow,
-                           RecordOutcome.Outcome routing, StageTrace argumentCall,
-                           Object settlementRow, String argumentFailure,
-                           Map<String, Object> versions) {
-        return new Trial(dedupKey, startedAt, marker, Source.of(reproduceInput),
-                new Step<>(reproduceInput.agentInput(), reproducerCall, Proof.of(parsedTest)),
-                Execution.of(redReply),
-                new Step<>(fixInput, fixerCall, Repair.of(parsedFix)),
-                Execution.of(greenReply),
-                // The three judging stages assemble one formatted prompt with no separable per-marker
-                // input, so `input` is NULL and not "". @see Step#input()
-                new Step<>(null, certificationCall, Certification.of(certificationRow)),
-                new Step<>(null, publicationCall, Publication.of(publicationRow)),
-                routing,
-                new Step<>(null, argumentCall, Argument.of(settlementRow, argumentFailure)),
-                Settlement.of(settlementRow), Map.copyOf(versions));
+    public static Trial start(String dedupKey, String startedAt, PrepProver.Outcome marker,
+                              Map<String, Object> versions) {
+        return new Trial(dedupKey, startedAt, marker, null, null, null, null, null, null, null, null,
+                null, null, Map.copyOf(versions));
+    }
+
+    /** WHAT THE STAGES ACTUALLY SAW, once the fetch has happened. @see #source */
+    public Trial withSource(BuildReproduceInput.Outcome reproduceInput) {
+        return new Trial(dedupKey, startedAt, marker, Source.of(reproduceInput), proof, red, repair,
+                green, certification, publication, routing, argument, settlement, versions);
+    }
+
+    /** The reproducer's step: the input it was handed, the call, and what it concluded. */
+    public Trial withProof(String input, StageTrace call, ParseTest.Result parsed) {
+        return new Trial(dedupKey, startedAt, marker, source,
+                new Step<>(input, call, Proof.of(parsed)), red, repair, green, certification,
+                publication, routing, argument, settlement, versions);
+    }
+
+    /**
+     * The RED build, as it came back from the runner.
+     *
+     * <p>{@code Object} BECAUSE THE RUNNER IS A SEPARATE PROCESS. This component crosses a real network
+     * hop and arrives as parsed JSON, so there is no typed reply object to hand over — {@link Execution}
+     * is the first thing that reads it, and it reads it exactly once, here.
+     */
+    public Trial withRed(Object reply) {
+        return new Trial(dedupKey, startedAt, marker, source, proof, Execution.of(reply), repair,
+                green, certification, publication, routing, argument, settlement, versions);
+    }
+
+    /** The fixer's step. @see #withProof */
+    public Trial withRepair(String input, StageTrace call, ParseFix.Result parsed) {
+        return new Trial(dedupKey, startedAt, marker, source, proof, red,
+                new Step<>(input, call, Repair.of(parsed)), green, certification, publication,
+                routing, argument, settlement, versions);
+    }
+
+    /** The GREEN build. @see #withRed */
+    public Trial withGreen(Object reply) {
+        return new Trial(dedupKey, startedAt, marker, source, proof, red, repair,
+                Execution.of(reply), certification, publication, routing, argument, settlement,
+                versions);
+    }
+
+    /**
+     * The skeptic's step.
+     *
+     * <p>The three judging stages assemble one formatted prompt with no separable per-marker input, so
+     * {@code input} is NULL and not {@code ""}. @see Step#input()
+     */
+    public Trial withCertification(StageTrace call, Object row) {
+        return new Trial(dedupKey, startedAt, marker, source, proof, red, repair, green,
+                new Step<>(null, call, Certification.of(row)), publication, routing, argument,
+                settlement, versions);
+    }
+
+    /** The PR curator's step. @see #withCertification */
+    public Trial withPublication(StageTrace call, Object row) {
+        return new Trial(dedupKey, startedAt, marker, source, proof, red, repair, green,
+                certification, new Step<>(null, call, Publication.of(row)), routing, argument,
+                settlement, versions);
+    }
+
+    /** WHAT THE MARKER BECAME — already typed by the stage that decided it. @see #routing */
+    public Trial withRouting(RecordOutcome.Outcome decided) {
+        return new Trial(dedupKey, startedAt, marker, source, proof, red, repair, green,
+                certification, publication, decided, argument, settlement, versions);
+    }
+
+    /**
+     * The adjudicator's step AND the settlement, which are one stage's two answers.
+     *
+     * <p>THEY ARE FILLED TOGETHER BECAUSE ONE ROW CARRIES BOTH, and splitting them into two calls would
+     * invite a caller to fill one and forget the other — leaving a Trial whose argument and settlement
+     * came from different runs. @see Settlement
+     *
+     * @param call        {@link StageTrace#NOT_CALLED} when the argument was gated, skipped or never
+     *                    due — not derivable from the row, which carries a composed verdict in exactly
+     *                    the shape an argued one has
+     * @param callFailure the verdict call's own failure text, which the row cannot carry: it lands in
+     *                    {@code verdict_confidence} as prose and in {@code infra_reason} as an append,
+     *                    and neither is a field a reader can branch on
+     */
+    public Trial withArgument(StageTrace call, Object row, String callFailure) {
+        return new Trial(dedupKey, startedAt, marker, source, proof, red, repair, green,
+                certification, publication, routing, new Step<>(null, call, Argument.of(row,
+                        callFailure)), Settlement.of(row), versions);
     }
 }

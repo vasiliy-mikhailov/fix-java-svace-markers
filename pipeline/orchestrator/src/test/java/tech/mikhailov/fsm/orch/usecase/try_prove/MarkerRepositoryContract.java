@@ -1,4 +1,4 @@
-package tech.mikhailov.fsm.orch.usecase;
+package tech.mikhailov.fsm.orch.usecase.try_prove;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

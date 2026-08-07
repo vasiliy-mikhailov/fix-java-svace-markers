@@ -34,8 +34,8 @@ import tech.mikhailov.fsm.orch.dao.JdbcArtifactRepository;
 import tech.mikhailov.fsm.orch.dao.JdbcMarkerRepository;
 import tech.mikhailov.fsm.orch.dao.SuspicionDao;
 import tech.mikhailov.fsm.orch.model.Suspicion;
-import tech.mikhailov.fsm.orch.usecase.ArtifactRepository;
-import tech.mikhailov.fsm.orch.usecase.MarkerRepository;
+import tech.mikhailov.fsm.orch.usecase.try_prove.ArtifactRepository;
+import tech.mikhailov.fsm.orch.usecase.try_prove.MarkerRepository;
 
 /**
  * The two jobs that replace the two workflows.

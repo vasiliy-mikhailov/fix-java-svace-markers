@@ -1,4 +1,4 @@
-package tech.mikhailov.fsm.orch.usecase;
+package tech.mikhailov.fsm.orch.usecase.try_prove;
 
 import java.util.List;
 import tech.mikhailov.fsm.orch.domain.InfraReason;

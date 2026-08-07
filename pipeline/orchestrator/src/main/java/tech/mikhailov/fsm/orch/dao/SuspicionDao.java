@@ -430,7 +430,7 @@ public class SuspicionDao {
      * else is looking at the marker, and only the database can settle it: the caller reads a zero as
      * "some other path settled it first and knows more than this one does" and must not charge the
      * failure against the marker. Reading the row first and writing unconditionally would replace that
-     * with a decision this process takes hopefully. @see tech.mikhailov.fsm.orch.usecase.ReleaseClaim
+     * with a decision this process takes hopefully. @see tech.mikhailov.fsm.orch.usecase.try_prove.ReleaseClaim
      */
     public int releaseClaim(String dedupKey, String note) {
         return jdbc.update(

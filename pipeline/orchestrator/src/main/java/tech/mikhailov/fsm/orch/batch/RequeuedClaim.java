@@ -2,8 +2,8 @@ package tech.mikhailov.fsm.orch.batch;
 
 import tech.mikhailov.fsm.orch.client.InfraFailure;
 import tech.mikhailov.fsm.orch.domain.Requeue;
-import tech.mikhailov.fsm.orch.usecase.ProveMarker;
-import tech.mikhailov.fsm.orch.usecase.ReleaseClaim;
+import tech.mikhailov.fsm.orch.usecase.try_prove.ProveMarker;
+import tech.mikhailov.fsm.orch.usecase.try_prove.ReleaseClaim;
 
 /**
  * THE PROVE'S DECISION, IN THE CURRENCY THE STEP'S SKIP POLICY MATCHES ON — one release, carried from

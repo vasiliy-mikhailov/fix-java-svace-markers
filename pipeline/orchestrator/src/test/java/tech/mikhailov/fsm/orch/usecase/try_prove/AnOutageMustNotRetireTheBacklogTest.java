@@ -1,4 +1,4 @@
-package tech.mikhailov.fsm.orch.usecase;
+package tech.mikhailov.fsm.orch.usecase.try_prove;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -13,8 +13,8 @@ import tech.mikhailov.fsm.orch.domain.InfraStreak;
 import tech.mikhailov.fsm.orch.domain.MarkerId;
 import tech.mikhailov.fsm.orch.domain.Requeue;
 import tech.mikhailov.fsm.orch.domain.Settlement;
-import tech.mikhailov.fsm.orch.usecase.ChargeInfrastructureFailures.RequeuedMarker;
-import tech.mikhailov.fsm.orch.usecase.ChargeInfrastructureFailures.RunReport;
+import tech.mikhailov.fsm.orch.usecase.try_prove.ChargeInfrastructureFailures.RequeuedMarker;
+import tech.mikhailov.fsm.orch.usecase.try_prove.ChargeInfrastructureFailures.RunReport;
 
 /**
  * WHEN THE RUNNER OR THE MODEL ENDPOINT IS DOWN, EVERY MARKER FAILS — and a rule that charged those

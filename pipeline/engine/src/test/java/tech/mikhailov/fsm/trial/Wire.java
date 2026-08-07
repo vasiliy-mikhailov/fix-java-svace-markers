@@ -17,9 +17,9 @@ import tech.mikhailov.fsm.nodes.RecordOutcome;
  *
  * <p>THE PRODUCTION CHAIN DOES NOT NEED THIS AND MUST NOT GROW ONE. {@code ProveChain} holds the five
  * stage records already — {@code PrepProver.Outcome}, {@code BuildReproduceInput.Outcome},
- * {@code ParseTest.Result}, {@code ParseFix.Result}, {@code RecordOutcome.Outcome} — and hands them to
- * {@link Trial#of} untouched, which is the claim the factory exists to make good: carrying a Trial
- * costs no new work anywhere.
+ * {@code ParseTest.Result}, {@code ParseFix.Result}, {@code RecordOutcome.Outcome} — and hands each one
+ * to {@link Trial#start} and the {@code with} chain as the stage produces it, which is the claim the
+ * accumulator exists to make good: carrying a Trial costs no new work anywhere.
  *
  * <p>WHAT STILL NEEDS A ROW-SHAPED READER IS EVERYTHING THAT NEVER RAN THE CHAIN: the 30 311-case wire
  * harness, which drives the nodes from recorded JSON bodies, and the fixtures that state a prove as the
@@ -126,15 +126,27 @@ public final class Wire {
                 }
             });
         }
+        // THE ROWS ARE REPLAYED THROUGH THE SAME `with` CHAIN THE PROVE USES, in the same order. A
+        // second assembly path — one for the chain and one for recorded rows — is exactly the drift
+        // this type was introduced to end, so the harness walks the production accumulator rather than
+        // a constructor of its own.
+        //
         // THE FIXER'S INPUT IS NULL, AND THAT IS THE POINT. No row in the old shape ever carried it —
         // `Build fix input`'s text was a local that died with the stage — so a Trial rebuilt from rows
         // genuinely does not know it. NULL says "never recorded"; "" would claim the fixer was handed
         // an empty brief. @see Step#input()
-        return Trial.of(dedupKey, writtenAt, marker(prep), source(reproduceInput), reproducer,
-                proof(parseTest), redRun, null, fixer,
-                repair(parseFix), greenRun, fixSkeptic, skeptic, prMaker, curated, routing(recorded),
-                verdictWriter, verdict, tech.mikhailov.fsm.nodes.Verdict.callFailure(verdict),
-                stamps);
+        BuildReproduceInput.Outcome bri = source(reproduceInput);
+        return Trial.start(dedupKey, writtenAt, marker(prep), stamps)
+                .withSource(bri)
+                .withProof(bri.agentInput(), reproducer, proof(parseTest))
+                .withRed(redRun)
+                .withRepair(null, fixer, repair(parseFix))
+                .withGreen(greenRun)
+                .withCertification(fixSkeptic, skeptic)
+                .withPublication(prMaker, curated)
+                .withRouting(routing(recorded))
+                .withArgument(verdictWriter, verdict,
+                        tech.mikhailov.fsm.nodes.Verdict.callFailure(verdict));
     }
 
     /** {@code Values.text}, with the one refusal it is entitled to make caught rather than thrown. */

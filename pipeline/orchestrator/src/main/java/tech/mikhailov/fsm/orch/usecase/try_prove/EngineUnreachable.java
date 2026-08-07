@@ -1,4 +1,4 @@
-package tech.mikhailov.fsm.orch.usecase;
+package tech.mikhailov.fsm.orch.usecase.try_prove;
 
 /**
  * The question was never answered — {@link JudgementEngine}'s only failure.

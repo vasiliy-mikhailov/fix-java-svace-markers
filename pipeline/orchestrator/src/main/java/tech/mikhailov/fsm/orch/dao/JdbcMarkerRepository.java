@@ -4,7 +4,7 @@ import tech.mikhailov.fsm.orch.domain.InfraReason;
 import tech.mikhailov.fsm.orch.domain.MarkerId;
 import tech.mikhailov.fsm.orch.domain.Requeue;
 import tech.mikhailov.fsm.orch.domain.Settlement;
-import tech.mikhailov.fsm.orch.usecase.MarkerRepository;
+import tech.mikhailov.fsm.orch.usecase.try_prove.MarkerRepository;
 
 /**
  * {@code MarkerRepository} over the {@code suspicions} table — four lines of translation and nothing

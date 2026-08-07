@@ -293,9 +293,16 @@ class MarkerFeedbackIsAProjectionOfATrialTest {
         verdictRow.put("suspicion_status", "verified");
         verdictRow.put("suspicion_note", "");
 
-        return Trial.of("k1", "2026-08-06T09:00:00Z", prep, bri, reproducerCall, parsedTest,
-                redReply, "FIX INPUT", fixerCall, parsedFix, greenReply, skepticCall, skepticRow,
-                prCall, prRow, recorded, StageTrace.NOT_CALLED, verdictRow, "", versions);
+        return Trial.start("k1", "2026-08-06T09:00:00Z", prep, versions)
+                .withSource(bri)
+                .withProof(bri.agentInput(), reproducerCall, parsedTest)
+                .withRed(redReply)
+                .withRepair("FIX INPUT", fixerCall, parsedFix)
+                .withGreen(greenReply)
+                .withCertification(skepticCall, skepticRow)
+                .withPublication(prCall, prRow)
+                .withRouting(recorded)
+                .withArgument(StageTrace.NOT_CALLED, verdictRow, "");
     }
 
     private static String reproducerReply() {

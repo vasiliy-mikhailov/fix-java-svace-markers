@@ -34,8 +34,8 @@ import tech.mikhailov.fsm.orch.domain.Judgement;
 import tech.mikhailov.fsm.orch.domain.Marker;
 import tech.mikhailov.fsm.orch.domain.ProveTrace;
 import tech.mikhailov.fsm.orch.model.Bug;
-import tech.mikhailov.fsm.orch.usecase.EngineUnreachable;
-import tech.mikhailov.fsm.orch.usecase.JudgementEngine;
+import tech.mikhailov.fsm.orch.usecase.try_prove.EngineUnreachable;
+import tech.mikhailov.fsm.orch.usecase.try_prove.JudgementEngine;
 import tech.mikhailov.fsm.trial.Trial;
 
 /**
@@ -171,6 +171,13 @@ public class ProveChain implements JudgementEngine {
                 repoLookup);
         Map<String, Object> prep = prepared.toMap();
 
+        // THE TRIAL IS BUILT HERE, AT THE TOP, AND EVERY STAGE BELOW HANDS IT ON. It is not assembled
+        // at the finish out of locals kept on the side: a record made from locals is a SECOND reading
+        // of a run that already happened, and the second reading is the one that drifts from the first.
+        // Each `with` fills exactly one component and copies the rest, so what arrives at the bottom is
+        // this object with fourteen conclusions attached rather than a fresh one built to look like it.
+        Trial trial = Trial.start(key, Instant.now().toString(), prepared, Versions.versions());
+
         // --- Fetch source. The contents reply travels VERBATIM, base64 and all: the engine decodes
         // it, re-anchors the marker against the real source and labels how far the location can be
         // trusted. Decoding here would be the first line of judgement creeping back out. ---
@@ -185,12 +192,15 @@ public class ProveChain implements JudgementEngine {
         BuildReproduceInput.Outcome reproduceInput = BuildReproduceInput.buildReproduceInput(
                 new BuildReproduceInput.Request(prep, fetched.body()));
         Map<String, Object> reproduceItem = reproduceInput.toMap();
+        trial = trial.withSource(reproduceInput);
 
         // --- REPRODUCER: write the failing test, verify it goes red on unpatched code. ---
         AgentCall reproducer = agent(REPRODUCER, prompts.reproducerSystem(),
                 reproduceInput.agentInput(), endpoint);
         ParseTest.Result parsedTest =
                 ParseTest.parseTest(new ParseTest.Request(prep, reproducer.item()));
+        trial = trial.withProof(reproduceInput.agentInput(),
+                StageTrace.of(reproducer.prompt(), reproducer.reply()), parsedTest);
         if (!parsedTest.realnessLog().isEmpty()) {
             // The realness verdict has no home in either table, so this line is the only place an
             // operator can ever see WHY a proof was rejected. The engine returns it rather than
@@ -207,6 +217,7 @@ public class ProveChain implements JudgementEngine {
         } catch (InfraFailure e) {
             throw unreachable(e);
         }
+        trial = trial.withRed(redRun);
 
         // --- FIXER: source-only fix, must pass the reproducer's test, verified green. ---
         BuildFixInput.Outcome fixInput = BuildFixInput.buildFixInput(
@@ -215,6 +226,8 @@ public class ProveChain implements JudgementEngine {
         ParseFix.Result parsedFix = ParseFix.parseFix(
                 new ParseFix.Request(prep, testItem, redRun, fixer.item()));
         Map<String, Object> fixItem = parsedFix.toMap();
+        trial = trial.withRepair(fixInput.agentInput(),
+                StageTrace.of(fixer.prompt(), fixer.reply()), parsedFix);
 
         Object greenRun;
         try {
@@ -222,6 +235,7 @@ public class ProveChain implements JudgementEngine {
         } catch (InfraFailure e) {
             throw unreachable(e);
         }
+        trial = trial.withGreen(greenRun);
 
         // --- judgement + record. These three fail CLOSED inside the engine; see the class comment.
         // Failing closed means reporting SUCCESS with a defaulted verdict, so a model endpoint that
@@ -246,18 +260,21 @@ public class ProveChain implements JudgementEngine {
                 new FixSkeptic.Request(prep, testItem, fixItem, greenRun, endpoint,
                         Versions.stamp(Versions.SKEPTIC), prompts.text(Stage.FIX_SKEPTIC)),
                 skepticCall);
+        trial = trial.withCertification(skepticCall.trace(), skeptic);
         PromptRecorder prCall =
                 new PromptRecorder(recording, llm.judging(key, JudgingCall.PR_CURATOR));
         Map<String, Object> prMaker = PrMaker.prMaker(
                 new PrMaker.Request(prep, testItem, fixItem, redRun, skeptic, endpoint,
                         Versions.stamp(Versions.PR_MAKER), prompts.text(Stage.PR_MAKER)),
                 prCall);
+        trial = trial.withPublication(prCall.trace(), prMaker);
         // …and the routing likewise: `Record outcome` returns the typed conclusion, and the archive
         // takes it from there rather than reading it back out of the row this line flattens it into.
         RecordOutcome.Outcome routing = RecordOutcome.recordOutcome(
                 new RecordOutcome.Request(prep, testItem, fixItem, redRun, reproduceItem, prMaker,
                         Versions.versions()));
         Map<String, Object> recorded = routing.toMap();
+        trial = trial.withRouting(routing);
 
         // The verdict sits BETWEEN Record outcome and the writes, so `state` is final before either
         // table is touched: a marker with a written rebuttal is stored as its verdict, and one merely
@@ -276,25 +293,23 @@ public class ProveChain implements JudgementEngine {
                         Versions.stamp(Versions.VERDICT), verdictEnabled,
                         prompts.text(Stage.VERDICT)),
                 verdictCall, line -> log.info("{}", line));
+        trial = trial.withArgument(verdictCall.trace(), verdict, Verdict.callFailure(verdict));
 
-        // --- the critique record. ASSEMBLED LAST, and only when this deployment keeps one: it is built
-        // out of locals from every stage above, so a record made earlier would describe a prove that had
-        // not finished. It is deliberately NOT assembled on the unreachable path either — a marker whose
-        // question was never asked has nothing to say about a prompt, and recording one would put the
-        // pipeline's worst day in the file as the model's.
+        // --- the critique record. The Trial is COMPLETE by this line — it has been carried through
+        // every stage above, each of which filled its own component — so there is nothing left to
+        // assemble and nothing to re-read. What is still decided HERE is whether this deployment keeps
+        // one, which is a different question from whether one exists.
+        //
+        // It is deliberately NOT recorded on the unreachable path either — a marker whose question was
+        // never asked has nothing to say about a prompt, and recording one would put the pipeline's
+        // worst day in the file as the model's. That path throws before it reaches this line, and the
+        // half-filled Trial it was carrying dies with it.
         //
         // It travels back with the judgement rather than being written from here, which is what lets the
         // decision "was this prove worth recording, and when" be stated in one place instead of being a
         // side effect halfway down a chain.
-        ProveTrace trace = recording
-                ? new ProveTrace(new MarkerFeedback(Trial.of(key, Instant.now().toString(), prepared,
-                        reproduceInput, StageTrace.of(reproducer.prompt(), reproducer.reply()),
-                        parsedTest, redRun, fixInput.agentInput(),
-                        StageTrace.of(fixer.prompt(), fixer.reply()), parsedFix, greenRun,
-                        skepticCall.trace(), skeptic, prCall.trace(), prMaker, routing,
-                        verdictCall.trace(), verdict, Verdict.callFailure(verdict),
-                        Versions.versions())).toMap())
-                : ProveTrace.EMPTY;
+        ProveTrace trace =
+                recording ? new ProveTrace(new MarkerFeedback(trial).toMap()) : ProveTrace.EMPTY;
 
         // THE MAP-TO-ENTITY BOUNDARY, and it is the only one in the prove path. Everything above is the
         // engine's item shape; everything the caller sees is the domain's.

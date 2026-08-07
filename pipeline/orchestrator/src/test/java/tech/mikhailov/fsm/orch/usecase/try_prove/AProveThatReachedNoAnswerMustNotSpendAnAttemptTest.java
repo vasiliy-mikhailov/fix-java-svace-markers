@@ -1,4 +1,4 @@
-package tech.mikhailov.fsm.orch.usecase;
+package tech.mikhailov.fsm.orch.usecase.try_prove;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -17,6 +17,7 @@ import tech.mikhailov.fsm.orch.domain.MarkerSnapshot;
 import tech.mikhailov.fsm.orch.domain.ProveTrace;
 import tech.mikhailov.fsm.orch.domain.Requeue;
 import tech.mikhailov.fsm.orch.domain.Settlement;
+import tech.mikhailov.fsm.orch.usecase.collect_feedback.FeedbackJournal;
 
 /**
  * THE INVARIANT OF THE PROVE PATH: a question that was never answered costs the marker nothing.

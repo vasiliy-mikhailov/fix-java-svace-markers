@@ -91,7 +91,7 @@ class NoNewCallerReachesTheBacklogAroundItsPortTest {
     private static final String DAO_FILE = "SuspicionDao.java";
 
     /** The port the prove path's writes go through, named in the failure messages. */
-    private static final String PORT = "tech.mikhailov.fsm.orch.usecase.MarkerRepository";
+    private static final String PORT = "tech.mikhailov.fsm.orch.usecase.try_prove.MarkerRepository";
 
     /**
      * THE FILES THAT MAY HOLD {@link #DAO}, AND THE ARGUMENT EACH ONE MAKES.

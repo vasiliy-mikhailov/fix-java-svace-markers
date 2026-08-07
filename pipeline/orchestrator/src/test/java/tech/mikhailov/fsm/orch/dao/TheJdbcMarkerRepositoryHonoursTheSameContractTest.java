@@ -7,8 +7,8 @@ import org.springframework.test.context.ActiveProfiles;
 import tech.mikhailov.fsm.lib.SuspicionStatus;
 import tech.mikhailov.fsm.orch.domain.MarkerId;
 import tech.mikhailov.fsm.orch.model.Suspicion;
-import tech.mikhailov.fsm.orch.usecase.MarkerRepository;
-import tech.mikhailov.fsm.orch.usecase.MarkerRepositoryContract;
+import tech.mikhailov.fsm.orch.usecase.try_prove.MarkerRepository;
+import tech.mikhailov.fsm.orch.usecase.try_prove.MarkerRepositoryContract;
 
 /**
  * The SAME contract, against the real H2 and the real {@code schema.sql}.

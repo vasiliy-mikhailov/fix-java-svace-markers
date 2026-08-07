@@ -1,4 +1,4 @@
-package tech.mikhailov.fsm.orch.usecase;
+package tech.mikhailov.fsm.orch.usecase.collect_feedback;
 
 import tech.mikhailov.fsm.orch.domain.ProveTrace;
 

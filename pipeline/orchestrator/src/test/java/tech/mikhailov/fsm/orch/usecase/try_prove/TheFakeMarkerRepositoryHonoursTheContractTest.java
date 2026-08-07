@@ -1,4 +1,4 @@
-package tech.mikhailov.fsm.orch.usecase;
+package tech.mikhailov.fsm.orch.usecase.try_prove;
 
 import org.junit.jupiter.api.BeforeEach;
 import tech.mikhailov.fsm.lib.SuspicionStatus;

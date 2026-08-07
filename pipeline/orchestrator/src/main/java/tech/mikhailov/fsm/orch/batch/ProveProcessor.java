@@ -15,11 +15,11 @@ import tech.mikhailov.fsm.orch.domain.ProveTrace;
 import tech.mikhailov.fsm.orch.engine.ProveChain;
 import tech.mikhailov.fsm.orch.feedback.FeedbackStore;
 import tech.mikhailov.fsm.orch.model.Suspicion;
-import tech.mikhailov.fsm.orch.usecase.EngineUnreachable;
-import tech.mikhailov.fsm.orch.usecase.FeedbackJournal;
-import tech.mikhailov.fsm.orch.usecase.ProveMarker;
-import tech.mikhailov.fsm.orch.usecase.ProveMarkerPresenter;
-import tech.mikhailov.fsm.orch.usecase.ProveOutcome;
+import tech.mikhailov.fsm.orch.usecase.try_prove.EngineUnreachable;
+import tech.mikhailov.fsm.orch.usecase.collect_feedback.FeedbackJournal;
+import tech.mikhailov.fsm.orch.usecase.try_prove.ProveMarker;
+import tech.mikhailov.fsm.orch.usecase.try_prove.ProveMarkerPresenter;
+import tech.mikhailov.fsm.orch.usecase.try_prove.ProveOutcome;
 
 /**
  * SPRING BATCH, DRIVING {@link ProveMarker} — the item processor as a humble object.
@@ -171,7 +171,7 @@ public class ProveProcessor
      * so it happens in the skip listener — and the framework hands that listener the item and the
      * throwable and nothing else. Drop {@link ProveOutcome.Requeued#requeue()} at this line and
      * {@link ClaimReleaseListener} has to read the decision a SECOND time, off the persisted row and
-     * the exception — at which point {@link tech.mikhailov.fsm.orch.usecase.ProveMarker} describes a
+     * the exception — at which point {@link tech.mikhailov.fsm.orch.usecase.try_prove.ProveMarker} describes a
      * release the system does not perform. See {@link RequeuedClaim}.
      *
      * <p>Nothing about the step moves: the classifier matches {@code InfraFailure} by assignability and

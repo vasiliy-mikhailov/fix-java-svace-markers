@@ -2,7 +2,7 @@ package tech.mikhailov.fsm.orch.dao;
 
 import tech.mikhailov.fsm.orch.domain.Artifact;
 import tech.mikhailov.fsm.orch.model.Bug;
-import tech.mikhailov.fsm.orch.usecase.ArtifactRepository;
+import tech.mikhailov.fsm.orch.usecase.try_prove.ArtifactRepository;
 
 /**
  * {@code ArtifactRepository} over the {@code bugs} table, keeping the {@code MERGE … KEY

@@ -174,13 +174,13 @@ class TheInnerCirclesDependOnNoFrameworkTest {
         assertThat(Files.readString(batch.resolve("ProveProcessor.java"), StandardCharsets.UTF_8))
                 .as("the Spring Batch processor must DRIVE the prove use case, not hold a second copy "
                         + "of the flow: one implementation, with the framework as a driver of it")
-                .contains("tech.mikhailov.fsm.orch.usecase.ProveMarker");
+                .contains("tech.mikhailov.fsm.orch.usecase.try_prove.ProveMarker");
         assertThat(Files.readString(batch.resolve("ProveWriter.java"), StandardCharsets.UTF_8))
-                .contains("tech.mikhailov.fsm.orch.usecase.RecordProvenMarker");
+                .contains("tech.mikhailov.fsm.orch.usecase.try_prove.RecordProvenMarker");
         assertThat(Files.readString(batch.resolve("ClaimReleaseListener.java"),
                         StandardCharsets.UTF_8))
-                .contains("tech.mikhailov.fsm.orch.usecase.ReleaseClaim")
-                .contains("tech.mikhailov.fsm.orch.usecase.ChargeInfrastructureFailures");
+                .contains("tech.mikhailov.fsm.orch.usecase.try_prove.ReleaseClaim")
+                .contains("tech.mikhailov.fsm.orch.usecase.try_prove.ChargeInfrastructureFailures");
     }
 
     private static List<Path> innerCircleSources() throws Exception {
