@@ -123,8 +123,14 @@ public final class BuildFixInput {
                 // The line has usually drifted, so the method name is the more trustworthy half of
                 // the location — but with no anchor the hint is omitted ENTIRELY, because
                 // "(in undefined())" would read to the model as a real method.
-                + (!Json.str(j, "anchor").isEmpty()
-                   ? "  (in " + str(j, "anchor") + "())" : "")
+                //
+                // READ OFF buildReproduceInput, NOT off `j`. The anchor is re-derived by
+                // BuildReproduceInput; it is not one of PrepProver.Outcome's keys, so reading it from
+                // the prep item silently yields "" for every marker the chain has ever proved and the
+                // hint is dropped in production while a unit test that hand-builds the anchor onto the
+                // prep item passes. `src` two lines up already comes from the right item.
+                + (!Json.str(req.buildReproduceInput(), "anchor").isEmpty()
+                   ? "  (in " + str(req.buildReproduceInput(), "anchor") + "())" : "")
                 + "\n"
                 + "The checker's claim: " + Values.text(Json.get(j, "description")) + "\n\n"
                 + "An INDEPENDENT reproducer wrote this failing regression test — you MUST NOT modify "

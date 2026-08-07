@@ -124,12 +124,29 @@ class BuildFixInputTest {
         assertFalse(p.contains("undefined"));
     }
 
+    /**
+     * THE ANCHOR COMES OFF THE REPRODUCE-INPUT ITEM, WHICH IS THE ONLY ITEM THAT HAS ONE.
+     *
+     * <p>This test used to build {@code marker("anchor", "login")} — the anchor on the PREP item — and
+     * passed while production dropped the hint from every fixer prompt ever sent. PrepProver.Outcome
+     * emits 23 keys and {@code anchor} is not among them; it is re-derived by BuildReproduceInput. So
+     * the old assertion pinned a request shape ProveChain cannot produce, which is the one thing a
+     * unit test must never do: it was green precisely because it disagreed with the wiring.
+     */
     @Test
-    void theEnclosingMethodIsNamedWhenTheMarkerRecordCarriesOne() {
-        String withAnchor = build(marker("anchor", "login"), red()).agentInput();
+    void theEnclosingMethodIsNamedWhenTheREPRODUCEInputCarriesOne() {
+        String withAnchor = build(marker(), red(),
+                item("src", SRC, "anchor", "login"), item("test_code", TEST_CODE)).agentInput();
         assertTrue(withAnchor.contains("at src/main/java/a/B.java:42  (in login())"),
                 "the line has usually drifted, so the method name is the more trustworthy half of "
                 + "the location");
+
+        // The anchor on the PREP item is what the wiring never produces: it must change nothing.
+        String onTheWrongItem = build(marker("anchor", "login"), red()).agentInput();
+        assertFalse(onTheWrongItem.contains("(in "),
+                "an anchor on the prep item is not an anchor — reading it there is the defect this "
+                + "test exists to keep fixed");
+
         String noAnchor = build(marker(), red()).agentInput();
         assertFalse(noAnchor.contains("(in "),
                 "with no anchor the hint is omitted entirely — \"(in undefined())\" would read as a "

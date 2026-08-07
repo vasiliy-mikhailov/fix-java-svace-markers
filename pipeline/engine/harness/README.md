@@ -201,6 +201,48 @@ it should. Only a person can say that, and this is where they say it.
 
 ## Re-baselines — every deliberate move of a catalogue, dated
 
+### 2026-08-06 — the fixer's location hint: read the anchor off the item that has one
+
+**WHAT MOVED.** `input-family`, three cases, all at `out.agent_input`, all in `build fix input`:
+identical 1402 → 1399, divergent 797 → 800, divergence classes 464 → 467, per-node
+`build fix input` [162,101] → [162,98]. `node-family`, `json-family` and the runner catalogue did not
+move at all — a prediction that this would touch node-family was wrong and is recorded here so the
+next reader does not inherit it.
+
+**WHY.** `BuildFixInput` read `Json.str(j, "anchor")` where `j` is the PREP item. `anchor` is not one
+of `PrepProver.Outcome`'s 23 emitted keys — it is re-derived by `BuildReproduceInput`, one stage
+later. So in production the read always yielded `""` and **every fixer prompt the pipeline has ever
+sent has been missing its `(in method())` hint**, which the code's own comment calls "the more
+trustworthy half of the location" because the line number has usually drifted. `src` four lines above
+already came from the right item.
+
+**WHY NOTHING CAUGHT IT.** `BuildFixInputTest` hand-built `marker("anchor", "login")` — the anchor on
+the prep item, a request shape `ProveChain` cannot produce. The test agreed with the code and both
+disagreed with the wiring. There was no test driving one stage's real output into the next, so the
+seam nobody asserted is exactly where the defect lived. `TheFixerIsToldWhereTheMarkerIsTest` now
+drives `BuildReproduceInput`'s actual output into `BuildFixInput` and fails if the hint is dropped;
+the unit test asserts the anchor on the prep item changes NOTHING, which is the defect stated as a
+rule.
+
+**WHAT THE MOVED CASES SHOW, INCLUDING THE UNCOMFORTABLE PART.** All three are hostile-typed corpus
+inputs, not production shapes: the corpus crafts an `anchor` that is a number or a boolean, so the
+reference and this build disagree about which item carried one. Two consequences worth recording
+rather than smoothing over:
+
+- The reference emitted `(in x())` and `(in 42())` for cases where this build now emits no hint. That
+  is the corpus feeding an anchor onto the prep item, which production never does — so the divergence
+  is a fact about the fixtures and not about the pipeline.
+- With the read corrected, a NON-STRING anchor renders as `(in false())` or `(in 42())` — a fake
+  method name, which is precisely what the guard's comment warns against for `undefined`. Production
+  cannot reach it (`BuildReproduceInput` writes `em.name()` or `""`, always a String), so this is not
+  fixed here. If the anchor ever becomes attacker- or model-influenced, the emptiness check is the
+  wrong guard and it should test for a plausible identifier instead.
+
+**HOW IT WAS CHECKED.** The defect was reproduced against the compiled stages before anything changed,
+using `ProveChain`'s real wiring; the fix was measured against all four catalogues before any fixture
+was written; and both new tests were shown to fail with the original read restored, with the source
+file checksummed back afterwards.
+
 ### 2026-08-05 — the JavaScript emulation was DELETED, and all three catalogues moved
 
 **WHAT MOVED.** All three: `json-family`, `input-family` and `node-family`. This is the largest

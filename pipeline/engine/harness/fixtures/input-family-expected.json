@@ -1,12 +1,12 @@
 {
   "cases": 2199,
-  "identical": 1402,
-  "divergent": 797,
-  "divergenceClasses": 464,
+  "identical": 1399,
+  "divergent": 800,
+  "divergenceClasses": 467,
   "byNode_totalThenIdentical": {
     "prep prover": [1500,827],
     "build reproduce input": [537,474],
-    "build fix input": [162,101]
+    "build fix input": [162,98]
   },
   "classes": [
     {
@@ -2676,32 +2676,44 @@
     {
       "cases": 1,
       "at": "out.agent_input",
-      "js": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42\nThe checker's claim: a resource is not closed …(753)",
-      "java": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42  (in 0())\nThe checker's claim: a resource is n…(763)"
+      "js": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42  (in x())\nThe checker's claim: a resource is n…(763)",
+      "java": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42\nThe checker's claim: a resource is not closed …(753)"
     },
     {
       "cases": 1,
       "at": "out.agent_input",
-      "js": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42\nThe checker's claim: a resource is not closed …(753)",
-      "java": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42  (in false())\nThe checker's claim: a resource …(767)"
+      "js": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42  (in 42())\nThe checker's claim: a resource is …(764)",
+      "java": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42\nThe checker's claim: a resource is not closed …(753)"
+    },
+    {
+      "cases": 1,
+      "at": "out.agent_input",
+      "js": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42  (in 2.5())\nThe checker's claim: a resource is…(765)",
+      "java": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42\nThe checker's claim: a resource is not closed …(753)"
     },
     {
       "cases": 1,
       "at": "out.agent_input",
       "js": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42  (in [object Object]())\nThe checker's claim: a…(777)",
-      "java": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42  (in {\"a\":1}())\nThe checker's claim: a resourc…(769)"
+      "java": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42\nThe checker's claim: a resource is not closed …(753)"
     },
     {
       "cases": 1,
       "at": "out.agent_input",
       "js": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42  (in a,b())\nThe checker's claim: a resource is…(765)",
-      "java": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42  (in [\"a\",\"b\"]())\nThe checker's claim: a resou…(771)"
+      "java": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42\nThe checker's claim: a resource is not closed …(753)"
     },
     {
       "cases": 1,
       "at": "out.agent_input",
       "js": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42  (in ())\nThe checker's claim: a resource is no…(762)",
-      "java": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42  (in []())\nThe checker's claim: a resource is …(764)"
+      "java": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42\nThe checker's claim: a resource is not closed …(753)"
+    },
+    {
+      "cases": 1,
+      "at": "out.agent_input",
+      "js": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42  (in true())\nThe checker's claim: a resource i…(766)",
+      "java": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42\nThe checker's claim: a resource is not closed …(753)"
     },
     {
       "cases": 1,
@@ -2786,6 +2798,12 @@
       "at": "out",
       "js": "u",
       "java": "[\"o\",[\"test_code\",\"s:class BFsmProofTest {\\n  @Test void leaks() { assertNull(B.handle()); }\\n}\"],[\"red_reproduced\",\"b:true\"],[\"red_output\",\"s:expected: <null> but was: <Statement@1a2b>\"],[\"agent_input\",\"s:Repository:   …(840)"
+    },
+    {
+      "cases": 1,
+      "at": "out.agent_input",
+      "js": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42  (in login())\nThe checker's claim: a resource …(767)",
+      "java": "s:Repository: o/r   (branch develop, module 'webgoat-container')\nSource file to fix: src/main/java/a/B.java\n\nSVACE MARKER  [Major]  HANDLE_LEAK  at src/main/java/a/B.java:42\nThe checker's claim: a resource is not closed …(753)"
     },
     {
       "cases": 1,
