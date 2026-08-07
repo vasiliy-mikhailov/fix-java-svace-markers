@@ -188,6 +188,8 @@ class AProverThatCannotUseItsCacheMustSaySoOnceTest {
         realCheckout(checkout);
         readOnly(checkout.resolve(".git"));
         readOnly(checkout);
+        Assumptions.assumeFalse(Files.isWritable(checkout),
+                "running as root: the write bits mean nothing and this check cannot be exercised");
 
         Proc.Result reset = Proc.EXEC.run(
                 List.of("git", "-C", checkout.toString(), "reset", "--hard"), null, null,
@@ -270,6 +272,8 @@ class AProverThatCannotUseItsCacheMustSaySoOnceTest {
         realCheckout(readOnlyTree);
         readOnly(readOnlyTree.resolve(".git"));
         readOnly(readOnlyTree);
+        Assumptions.assumeFalse(Files.isWritable(readOnlyTree),
+                "running as root: the write bits mean nothing and this check cannot be exercised");
 
         RuntimeException refused = assertThrows(RuntimeException.class,
                 () -> LocalRunner.open(cache, "", null).close(),
