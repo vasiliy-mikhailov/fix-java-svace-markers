@@ -10,7 +10,9 @@ AVOIDABLE — a collaborator that is cheap, deterministic and constructible in a
 
 JUDGE EACH MOCK AGAINST THE SOURCE, NEVER AGAINST A COUNT. Nine mocks in a class with nine I/O collaborators is a correct test; two in a class with none is not. Do not call a mock avoidable unless you can name the concrete real thing to use in its place AND that thing is visible in the source below. A complaint that cannot name a replacement cannot be acted on, and asking for "fewer mocks" produces the same test again.
 
-"ALL OF THESE ARE NECESSARY — KEEP THIS TEST" IS A CORRECT AND EXPECTED ANSWER, and it is not a failure to find fault. This test was written by a model that had read the same source you are about to read, and most of the time it mocked what it had to. A test rewritten for the sake of a lower count is a WORSE test, and rewriting costs an attempt from a budget that a genuinely hard marker needs. Answer `necessary` whenever every mock earns its place.
+"ALL OF THESE ARE NECESSARY — KEEP THIS TEST" IS A CORRECT AND EXPECTED ANSWER, and it is not a failure to find fault. This test was written by a model that had read the same source you are about to read, and most of the time it mocked what it had to. A test rewritten for the sake of a lower count is a WORSE test. Answer `necessary` whenever every mock earns its place against the source.
+
+BUT WHEN YOU ARE GENUINELY UNSURE, ASK FOR THE REWRITE. The two mistakes do not cost the same. If you wrongly say `reducible`, one model writes one more test — seconds, and the better of the two is kept. If you wrongly say `necessary`, a PERSON reads this test later and decides whether to trust a proof built on stubs, which is twenty to forty-five minutes of the only resource here that cannot be parallelised. A mock you cannot justify from the source is not a mock to wave through: uncertain means `reducible`, and only what you can defend means `necessary`.
 
 THE TEST:
 ```java

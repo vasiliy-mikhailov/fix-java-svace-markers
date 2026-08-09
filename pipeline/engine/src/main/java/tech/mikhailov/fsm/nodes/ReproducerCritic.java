@@ -58,10 +58,11 @@ import tech.mikhailov.fsm.lib.Values;
  * in which the endpoint was never reachable and a run in which the critic approved all 140 tests are the
  * same rows.
  *
- * <p>NO CALLER YET, AND THAT IS DELIBERATE — SAY IT OUT LOUD RATHER THAN LET IT BE DISCOVERED. The loop
- * is not built: {@code ProveChain} does not call this stage, so no prove makes this request today. What
- * exists is the stage and its prompt, reachable through {@code POST /node/reproducer-critic} on the
- * engine's debugging service, which is what makes it exercisable against a real marker's test and source
+ * <p>WHEN IT IS ASKED, AND WHEN IT IS NOT. {@code ProveChain} consults this stage only after the free
+ * scorer has already complained about a test's mocking; an UNSOUND test is retried with no model call
+ * at all, because {@code TestRealness} has already decided that for nothing. It is also reachable
+ * through {@code POST /node/reproducer-critic} on the engine's debugging service, which makes it
+ * exercisable against a real marker's test and source
  * before anything spends an attempt budget on it. Wiring it is four lines beside the skeptic's, with a
  * {@code JudgingCall.REPRODUCER_CRITIC} transport and a {@code PromptRecorder}; the LOOP — re-asking
  * the reproducer with these findings quoted — is the part that still has to be designed.
@@ -125,7 +126,7 @@ public final class ReproducerCritic {
      * refuses to start on a file whose count disagrees.
      *
      * <p>PUBLIC and named {@code DEFAULT_} for the same reason {@link FixSkeptic#DEFAULT_PROMPT} is:
-     * {@code prompts/reproducer-critic.txt} wins over it, {@code DEFAULT_REPRODUCER_CRITIC_PROMPT} in
+     * {@code prompts/proof-critic.txt} wins over it, {@code DEFAULT_PROOF_CRITIC_PROMPT} in
      * the environment comes between them, and this node still decides NOTHING about where the text came
      * from. The {@code \s\} at a line end is a space that survives incidental-whitespace stripping; the
      * trailing {@code \} joins the line to the next without a newline.
@@ -162,8 +163,16 @@ public final class ReproducerCritic {
             "ALL OF THESE ARE NECESSARY — KEEP THIS TEST" IS A CORRECT AND EXPECTED ANSWER, and it is\s\
             not a failure to find fault. This test was written by a model that had read the same source\s\
             you are about to read, and most of the time it mocked what it had to. A test rewritten for\s\
-            the sake of a lower count is a WORSE test, and rewriting costs an attempt from a budget that\s\
-            a genuinely hard marker needs. Answer `necessary` whenever every mock earns its place.
+            the sake of a lower count is a WORSE test. Answer `necessary` whenever every mock earns\s\
+            its place against the source.
+
+            BUT WHEN YOU ARE GENUINELY UNSURE, ASK FOR THE REWRITE. The two mistakes do not cost the\s\
+            same. If you wrongly say `reducible`, one model writes one more test — seconds, and the\s\
+            better of the two is kept. If you wrongly say `necessary`, a PERSON reads this test later\s\
+            and decides whether to trust a proof built on stubs, which is twenty to forty-five minutes\s\
+            of the only resource here that cannot be parallelised. A mock you cannot justify from the\s\
+            source is not a mock to wave through: uncertain means `reducible`, and only what you can\s\
+            defend means `necessary`.
 
             THE TEST:
             ```java
