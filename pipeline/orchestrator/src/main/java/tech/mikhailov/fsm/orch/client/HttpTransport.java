@@ -14,6 +14,9 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.LinkedHashMap;
+import java.util.List;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.Llm;
 
@@ -125,12 +128,98 @@ public class HttpTransport implements Llm.Http, AutoCloseable {
      * @throws IOException                        connection refused, DNS failure, TLS failure, reset,
      *                                            or a body over {@link #MAX_RESPONSE_BYTES}
      */
+    /**
+     * ASK A CHAT COMPLETION TO STREAM, because a silent connection gets reaped.
+     *
+     * <p>A reasoning model emits NOTHING while it thinks. Measured against OpenRouter from this
+     * deployment: a reproducer-sized request goes quiet for the whole reasoning phase and something in
+     * the path drops it at ~30 seconds — two of three large calls died that way, at 30.6s and 31.4s,
+     * while the one that survived took 68s. The same request with {@code stream: true} succeeded at
+     * 23.7s and 56.8s, because tokens keep arriving and nothing is ever idle.
+     *
+     * <p>IT IS SET HERE AND NOT IN {@code Llm.chat} ON PURPOSE. The engine's request body is pinned by
+     * the frozen node-family catalogue; adding a field there moves 1,000+ cases for a decision that is
+     * not the engine's to make. Which transport keeps a connection alive is a property of the network
+     * between this process and the endpoint, and it belongs on this side of the boundary.
+     *
+     * <p>Only chat completions are streamed. A GitHub contents fetch answers in one packet and gains
+     * nothing.
+     */
+    private static Object streaming(Object body, URI uri) {
+        if (body == null || !uri.getPath().endsWith("/chat/completions")) {
+            return body;
+        }
+        Object parsed = Json.parseOrNull(string(body));
+        if (!(parsed instanceof Map<?, ?> m) || m.containsKey("stream")) {
+            return body;
+        }
+        Map<String, Object> withStream = new LinkedHashMap<>();
+        m.forEach((k, v) -> withStream.put(String.valueOf(k), v));
+        withStream.put("stream", Boolean.TRUE);
+        return Json.stringify(withStream);
+    }
+
+    /**
+     * Reassemble a server-sent-event stream into the ONE completion object every caller already reads.
+     *
+     * <p>The shape that comes back is byte-for-byte the shape a non-streamed call returns —
+     * {@code choices[0].message.content} and {@code .reasoning} — so nothing downstream can tell the
+     * difference: not {@link Llm#replyText}, not a stage parser, not a frozen catalogue. Streaming is a
+     * property of the wire, not of the answer.
+     *
+     * <p>A {@code [DONE]} sentinel and any line that is not {@code data:} are skipped, and a chunk that
+     * will not parse is skipped rather than thrown: a stream that loses one frame still carries an
+     * answer, and discarding the whole reply over it would turn a good completion into a failed call.
+     */
+    static String assemble(String sse) {
+        StringBuilder content = new StringBuilder();
+        StringBuilder reasoning = new StringBuilder();
+        String finish = null;
+        for (String line : sse.split("\n")) {
+            String t = line.strip();
+            if (!t.startsWith("data:")) {
+                continue;
+            }
+            String payload = t.substring(5).strip();
+            if (payload.isEmpty() || "[DONE]".equals(payload)) {
+                continue;
+            }
+            Object chunk = Json.parseOrNull(payload);
+            Object choices = Json.get(chunk, "choices");
+            Object first = choices instanceof List<?> l && !l.isEmpty() ? l.get(0) : null;
+            if (first == null) {
+                continue;
+            }
+            Object delta = Json.get(first, "delta");
+            content.append(Values.text(Json.get(delta, "content")));
+            reasoning.append(Values.text(Json.get(delta, "reasoning")));
+            String stop = Values.text(Json.get(first, "finish_reason"));
+            if (!stop.isEmpty()) {
+                finish = stop;
+            }
+        }
+        Map<String, Object> message = new LinkedHashMap<>();
+        message.put("role", "assistant");
+        message.put("content", content.toString());
+        message.put("reasoning", reasoning.toString());
+        Map<String, Object> choice = new LinkedHashMap<>();
+        choice.put("index", 0L);
+        choice.put("message", message);
+        choice.put("finish_reason", finish == null ? "stop" : finish);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("choices", List.of(choice));
+        return Json.stringify(out);
+    }
+
     public Reply exchange(HttpRequest request) throws IOException, InterruptedException {
         HttpResponse<InputStream> response =
                 client.send(request, HttpResponse.BodyHandlers.ofInputStream());
         String text;
         try (InputStream in = response.body()) {
             text = readCapped(in, MAX_RESPONSE_BYTES);
+        }
+        if (response.headers().firstValue("content-type").orElse("").contains("text/event-stream")) {
+            text = assemble(text);
         }
         return new Reply(response.statusCode(), text);
     }
@@ -154,7 +243,7 @@ public class HttpTransport implements Llm.Http, AutoCloseable {
         URI uri = uriOf(url);
 
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri).timeout(timeout(options));
-        Object body = options.get("body");
+        Object body = streaming(options.get("body"), uri);
         builder.method(options.containsKey("method") ? string(options.get("method")) : "GET",
                 publisher(body));
 

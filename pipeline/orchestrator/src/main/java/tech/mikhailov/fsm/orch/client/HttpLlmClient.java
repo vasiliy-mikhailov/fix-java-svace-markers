@@ -58,10 +58,45 @@ public class HttpLlmClient implements LlmClient {
      * failure this budget exists for — a front end that dropped the connection while the model was
      * loading — is answered by one more try or not at all.
      */
-    public static final int ATTEMPTS = 2;
+    public static final int ATTEMPTS = 10;
 
     /** …and the wait between them, matching the source fetch so an operator has one number. */
-    public static final Duration RETRY_DELAY = Duration.ofSeconds(3);
+    public static final Duration RETRY_DELAY = Duration.ofSeconds(1);
+
+    /**
+     * The wait before attempt {@code n}, in FIBONACCI seconds: 1 2 3 5 8 13 21 34 55.
+     *
+     * <p>A FIXED delay is the wrong shape for the failure this sees. A hosted endpoint drops a long
+     * request for two different reasons — a moment's packet loss, which the next attempt survives, and
+     * a rate limit or a degraded upstream, which needs real time. A flat three seconds retries the
+     * first too slowly and the second far too fast, and ten flat retries is thirty seconds of hammering
+     * something that asked for a pause.
+     *
+     * <p>Fibonacci starts fast for the transient case and reaches minutes for the persistent one: the
+     * nine waits total 142 seconds, so ten attempts span about two and a half minutes of wall clock
+     * plus the calls themselves. That is well inside the budget of a prove that already tolerates a
+     * 90-minute Maven build, and far outside the window in which a rate limiter is still angry.
+     *
+     * <p>The total is asserted rather than described, because the first version of this comment said
+     * 88 seconds — the sum of 1 1 2 3 5 8 13 21 34 — and the ladder this actually produces starts
+     * 1 2 3, not 1 1 2. A reader budgeting a timeout around the prose would have been out by 54
+     * seconds; the test is what makes the number true.
+     *
+     * @param attempt the attempt ABOUT to be made, 1-based; attempt 1 never waits
+     */
+    static Duration backoff(int attempt, Duration unit) {
+        if (attempt <= 1 || unit.isZero()) {
+            return Duration.ZERO;
+        }
+        long a = 1;
+        long b = 1;
+        for (int i = 2; i < attempt; i++) {
+            long next = a + b;
+            a = b;
+            b = next;
+        }
+        return unit.multipliedBy(b);
+    }
 
     private final HttpTransport transport;
     private final int attempts;
@@ -170,9 +205,10 @@ public class HttpLlmClient implements LlmClient {
                 boolean answerless = HttpTransport.connectFailed(e)
                         || !(e instanceof HttpTimeoutException);
                 if (answerless && attempt < attempts) {
+                    Duration wait = backoff(attempt + 1, retryDelay);
                     log.warn("[llm] {} — attempt {}/{} for {}; retrying in {}s", Failures.cause(e), attempt,
-                            attempts, endpointOf(endpoint), retryDelay.toSeconds());
-                    pause(endpoint);
+                            attempts, endpointOf(endpoint), wait.toSeconds());
+                    pause(endpoint, wait);
                     continue;
                 }
                 throw new InfraFailure(REASON + Llm.failureText(e, budget(), Failures.NOTHING_TO_SAY), e);
@@ -185,12 +221,12 @@ public class HttpLlmClient implements LlmClient {
         }
     }
 
-    private void pause(Llm.Endpoint endpoint) throws InfraFailure {
-        if (retryDelay.isZero()) {
+    private void pause(Llm.Endpoint endpoint, Duration wait) throws InfraFailure {
+        if (wait.isZero()) {
             return;
         }
         try {
-            Thread.sleep(retryDelay);
+            Thread.sleep(wait);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new InfraFailure(

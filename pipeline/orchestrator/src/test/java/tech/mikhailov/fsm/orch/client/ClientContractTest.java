@@ -398,7 +398,9 @@ class ClientContractTest {
 
     @Test
     void anUnreachableEndpointIsInfraForTheReproducerAndTheFixer() {
-        LlmClient client = new HttpLlmClient(transport);
+        // Duration.ZERO, and it is load-bearing: this is the one test that EXHAUSTS the retry budget,
+        // and at the shipped fibonacci unit that is 88 seconds of real sleeping inside `mvn test`.
+        LlmClient client = new HttpLlmClient(transport, HttpLlmClient.ATTEMPTS, Duration.ZERO);
 
         Throwable thrown = catchThrowable(() ->
                 client.complete(new Llm.Endpoint("http://127.0.0.1:1", "k", "m"), "prompt", 0.2));
@@ -663,12 +665,20 @@ class ClientContractTest {
 
     @Test
     void theModelBudgetIsTheOneTheConfigurationDocuments() {
-        assertThat(HttpLlmClient.ATTEMPTS).isEqualTo(2);
-        assertThat(HttpLlmClient.RETRY_DELAY).isEqualTo(Duration.ofSeconds(3));
+        assertThat(HttpLlmClient.ATTEMPTS).isEqualTo(10);
+        assertThat(HttpLlmClient.RETRY_DELAY)
+                .as("the UNIT of a fibonacci ladder, not a flat wait: delays are 1 2 3 5 8 13 21 34 55")
+                .isEqualTo(Duration.ofSeconds(1));
+        // Nine waits, 142 seconds. Asserted because ten attempts at a FLAT delay would be a very
+        // different promise, and because the javadoc first claimed 88 — the ladder starts 1 2 3, not
+        // 1 1 2, and prose alone got that wrong.
+        assertThat(java.util.stream.IntStream.rangeClosed(2, HttpLlmClient.ATTEMPTS)
+                .mapToLong(n -> HttpLlmClient.backoff(n, HttpLlmClient.RETRY_DELAY).toSeconds()).sum())
+                .isEqualTo(142L);
 
         HttpLlmClient unconfigured = new HttpLlmClient(transport);
-        assertThat(unconfigured.attempts()).isEqualTo(2);
-        assertThat(unconfigured.retryDelay()).isEqualTo(Duration.ofSeconds(3));
+        assertThat(unconfigured.attempts()).isEqualTo(10);
+        assertThat(unconfigured.retryDelay()).isEqualTo(Duration.ofSeconds(1));
     }
 
     // ---- secrets ---------------------------------------------------------------------------------
