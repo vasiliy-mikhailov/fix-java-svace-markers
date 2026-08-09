@@ -327,6 +327,10 @@ public record Trial(String dedupKey, String startedAt, PrepProver.Outcome marker
         }
         return switch (stage) {
             case REPRODUCER -> proof;
+            // The critic has no Step of its own: it does not produce a stage output, it judges the
+            // reproducer's. A label naming it is a label about the proof, so it resolves there — which
+            // is also what a training pass wants, since the prompt it would optimise is the writer's.
+            case PROOF_CRITIC -> proof;
             case FIXER -> repair;
             case FIX_SKEPTIC -> certification;
             case PR_MAKER -> publication;

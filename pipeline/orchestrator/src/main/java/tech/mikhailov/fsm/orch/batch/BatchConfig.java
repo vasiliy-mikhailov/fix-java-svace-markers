@@ -220,6 +220,7 @@ public class BatchConfig {
         // a file landed mid-run, and would say nothing about it.
         return new ProveProcessor(source, runner, llm, repoLookup, secrets, prompts,
                 properties.prove().minAttempts(), properties.prove().fixAttempts(),
+                properties.prove().proofAttempts(),
                 properties.runner().timeout(),
                 properties.prove().verdictEnabled(), feedback);
     }

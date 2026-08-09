@@ -458,4 +458,41 @@ class UnsureIsNotUnreachableTest {
                         + "only ever move by one")
                 .isEqualTo(1L);
     }
+
+    /**
+     * A TEST THAT PROVES NOTHING GOES BACK TO ITS WRITER, and it costs no model call to notice.
+     *
+     * <p>TestRealness has already decided, deterministically and for free, that the test never drove
+     * the real class. That verdict used to end the marker on {@code needs_review} — 10 of the 16
+     * markers in the recorded human queue arrived exactly that way, at 20 min assess + 45 min
+     * write_test each. Now the scorer's own sentences go back to the reproducer and only a second
+     * failure reaches a person.
+     *
+     * <p>NO CRITIC IS CONSULTED HERE. {@code ReproducerCritic.gate} deliberately skips an unsound
+     * test — "a worse complaint than mocking, and the free scorer already made it" — so this path
+     * spends nothing on judgement it already has.
+     */
+    @Test
+    void aTestThatNeverTouchesTheRealClassIsRewrittenBeforeAnyoneIsAsked() throws Exception {
+        suspicions.upsert(ProveScript.marker(0L));
+        source.answering(200, ProveScript.contents(ProveScript.SOURCE));
+        ProveScript.reproducerWritesAnUnsoundTest(model);
+        // The rewrite: this one constructs the real Widget, so the chain proceeds as normal.
+        ProveScript.reproducerWritesATest(model);
+        ProveScript.redRunGoesRed(runner);
+        ProveScript.fixerWritesAFix(model);
+        ProveScript.greenRunPasses(runner, List.of(ProveScript.FILE));
+        model.replying("{\"verdict\":\"sound\",\"reason\":\"general\"}");
+        model.replying("{\"decision\":\"make\",\"reason\":\"ok\",\"title\":\"t\",\"body\":\"b\"}");
+
+        assertThat(prove.launchJob(prove.getUniqueJobParameters()).getStatus())
+                .isEqualTo(BatchStatus.COMPLETED);
+
+        assertThat(bugs.find(ProveScript.KEY).orElseThrow().state())
+                .as("the rewritten test drove the real class, so this never reaches a human")
+                .isEqualTo(MarkerState.PR_READY.wire());
+        assertThat(suspicions.find(ProveScript.KEY).orElseThrow().proveAttempts())
+                .as("two reproducer calls inside ONE prove may move the marker's budget by one")
+                .isEqualTo(1L);
+    }
 }

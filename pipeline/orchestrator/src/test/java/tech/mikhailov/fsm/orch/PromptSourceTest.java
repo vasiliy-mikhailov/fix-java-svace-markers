@@ -333,18 +333,21 @@ class PromptSourceTest {
     // ---- the stage set --------------------------------------------------------------------------
 
     @Test
-    void theStagesAreTheFiveThatActuallyReachTheModel() {
-        // Five model calls leave this process, and all five are now tunable. A sixth entry here that
-        // nothing sends, or a missing one, is a directory that does not describe the pipeline.
+    void theStagesAreTheSixThatActuallyReachTheModel() {
+        // Six model calls leave this process, and all six are tunable. An entry here that nothing
+        // sends, or a missing one, is a directory that does not describe the pipeline. The sixth is
+        // the proof critic: it is asked only when the free scorer has already complained about a
+        // test's mocking, so it does not fire on every marker — but it is a real call and belongs.
         assertThat(java.util.Arrays.stream(Stage.values()).map(Stage::stageName).toList())
-                .containsExactly("reproducer", "fixer", "fix-skeptic", "pr-maker", "verdict");
+                .containsExactly("reproducer", "fixer", "proof-critic", "fix-skeptic", "pr-maker",
+                        "verdict");
         assertThat(java.util.Arrays.stream(Stage.values()).map(Stage::fileName).toList())
-                .containsExactly("reproducer.txt", "fixer.txt", "fix-skeptic.txt", "pr-maker.txt",
-                        "verdict.txt");
+                .containsExactly("reproducer.txt", "fixer.txt", "proof-critic.txt", "fix-skeptic.txt",
+                        "pr-maker.txt", "verdict.txt");
         assertThat(java.util.Arrays.stream(Stage.values()).map(Stage::environmentVariable).toList())
                 .containsExactly("DEFAULT_REPRODUCER_PROMPT", "DEFAULT_FIXER_PROMPT",
-                        "DEFAULT_FIX_SKEPTIC_PROMPT", "DEFAULT_PR_MAKER_PROMPT",
-                        "DEFAULT_VERDICT_PROMPT");
+                        "DEFAULT_PROOF_CRITIC_PROMPT", "DEFAULT_FIX_SKEPTIC_PROMPT",
+                        "DEFAULT_PR_MAKER_PROMPT", "DEFAULT_VERDICT_PROMPT");
     }
 
     // ---- helpers ----------------------------------------------------------------------------------

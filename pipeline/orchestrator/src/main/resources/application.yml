@@ -350,6 +350,12 @@ fsm:
     # 95 of every 101 patches in the recorded corpus are certified first time, so the second attempt
     # is reached about 6% of the time. Set to 1 to restore the old behaviour.
     fix-attempts: ${FSM_PROVE_FIX_ATTEMPTS:2}
+
+    # How many times the reproducer may be asked, INCLUDING the first. Gated twice: TestRealness must
+    # complain first (free), and only then is the critic asked whether the mocking was avoidable. An
+    # unsound test is 10 of the 16 markers in the human queue; each costs 20 min assess + 45 min
+    # write_test. Set to 1 to restore the old behaviour.
+    proof-attempts: ${FSM_PROVE_PROOF_ATTEMPTS:2}
     # WHETHER A MARKER THAT WILL NOT REPRODUCE IS ARGUED. ON everywhere, and OFF is for iterating on the
     # EARLIER prompts, where a rebuttal written against a reproducer prompt that is about to change
     # again is dead weight.

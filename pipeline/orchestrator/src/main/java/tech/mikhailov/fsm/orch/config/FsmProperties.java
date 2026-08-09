@@ -251,6 +251,9 @@ public record FsmProperties(@DefaultValue Prove prove, @DefaultValue Github gith
      *                          retry after the skeptic rejects a patch, instead of sending the marker
      *                          straight to NEEDS_REVIEW — the human queue — over a complaint the
      *                          skeptic had already made for free. 1 restores the old behaviour.
+     * @param proofAttempts     how many times the reproducer may be asked, INCLUDING the first. The
+     *                          critic is only consulted when TestRealness already complains, so a
+     *                          sound test costs nothing extra. 1 restores the old behaviour.
      * @param minAttempts       how many reproducer samples a non-reproduction is worth before it is
      *                          written up as a
      *                          verdict — one sample is a weak basis for "this marker is wrong", and
@@ -292,6 +295,7 @@ public record FsmProperties(@DefaultValue Prove prove, @DefaultValue Github gith
      */
     public record Prove(@DefaultValue("2") int minAttempts,
                         @DefaultValue("2") int fixAttempts,
+                        @DefaultValue("2") int proofAttempts,
                         @DefaultValue("0") int maxMarkersPerRun,
                         @DefaultValue("3") int maxInfraStrikes,
                         @DefaultValue("") String marker,

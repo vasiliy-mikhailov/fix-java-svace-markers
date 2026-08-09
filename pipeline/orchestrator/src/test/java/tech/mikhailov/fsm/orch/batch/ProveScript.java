@@ -361,6 +361,34 @@ final class ProveScript {
     // breaks composes it from these rather than re-writing the six replies with one of them changed —
     // and a re-written script is where a fixture stops matching what the pipeline actually sends.
 
+    /**
+     * A test that never touches the real Widget: it asserts against a mock it configured itself, so
+     * TestRealness scores it 0 and marks it unsound. This is the shape that puts 10 of the 16 markers
+     * in the recorded human queue.
+     */
+    private static final String UNSOUND_TEST_CODE = """
+            package com.example;
+            import org.junit.jupiter.api.Test;
+            import static org.junit.jupiter.api.Assertions.assertTrue;
+            import static org.mockito.Mockito.*;
+            class WidgetFsmProofTest {
+              @Test void size_is_never_negative() {
+                Widget w = mock(Widget.class);
+                when(w.size()).thenReturn(1);
+                assertTrue(w.size() >= 0);
+              }
+            }
+            """;
+
+    /** A reproducer reply whose test proves nothing about the source. @see #UNSOUND_TEST_CODE */
+    static void reproducerWritesAnUnsoundTest(ScriptedClients.Model model) {
+        model.completing(Json.stringify(Map.of(
+                "can_prove", true,
+                "test_code", UNSOUND_TEST_CODE,
+                "root_cause", "size() returns a sentinel -1",
+                "value_verdict", "real")));
+    }
+
     static void reproducerWritesATest(ScriptedClients.Model model) {
         model.completing(Json.stringify(Map.of(
                 "can_prove", true,

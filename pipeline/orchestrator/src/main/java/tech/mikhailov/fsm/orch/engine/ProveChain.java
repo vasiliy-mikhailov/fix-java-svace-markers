@@ -11,6 +11,8 @@ import tech.mikhailov.fsm.feedback.StageTrace;
 import tech.mikhailov.fsm.lib.Json;
 import tech.mikhailov.fsm.lib.SkepticVerdict;
 import tech.mikhailov.fsm.lib.Values;
+import tech.mikhailov.fsm.lib.MockNecessity;
+import tech.mikhailov.fsm.nodes.ReproducerCritic;
 import tech.mikhailov.fsm.lib.Llm;
 import tech.mikhailov.fsm.nodes.BuildFixInput;
 import tech.mikhailov.fsm.nodes.BuildReproduceInput;
@@ -133,6 +135,15 @@ public class ProveChain implements JudgementEngine {
      * one it falls back to rather than failing the prove.
      */
     private final int fixAttempts;
+
+    /**
+     * How many times the reproducer may be asked, INCLUDING the first. 2 means one rewrite after the
+     * critic judges some of the test's mocking avoidable.
+     *
+     * <p>Gated twice before it costs anything: TestRealness must complain (free, deterministic), and
+     * only then is the critic asked. A test the scorer is happy with never reaches either.
+     */
+    private final int proofAttempts;
     private final boolean verdictEnabled;
     private final boolean recording;
 
@@ -158,7 +169,7 @@ public class ProveChain implements JudgementEngine {
     public ProveChain(SourceClient source, RunnerClient runner, LlmClient llm,
                       PrepProver.RepoLookup repoLookup, Secrets secrets, PromptSource prompts,
                       int minAttempts, Duration runTestTimeout, boolean verdictEnabled,
-                      boolean recording, int fixAttempts) {
+                      boolean recording, int fixAttempts, int proofAttempts) {
         this.source = source;
         this.runner = runner;
         this.llm = llm;
@@ -168,6 +179,7 @@ public class ProveChain implements JudgementEngine {
         this.minAttempts = minAttempts;
         this.runTestTimeout = runTestTimeout == null ? RunnerClient.DEFAULT_TIMEOUT : runTestTimeout;
         this.fixAttempts = Math.max(1, fixAttempts);
+        this.proofAttempts = Math.max(1, proofAttempts);
         this.verdictEnabled = verdictEnabled;
         this.recording = recording;
     }
@@ -209,12 +221,67 @@ public class ProveChain implements JudgementEngine {
         trial = trial.withSource(reproduceInput);
 
         // --- REPRODUCER: write the failing test, verify it goes red on unpatched code. ---
-        AgentCall reproducer = agent(REPRODUCER, prompts.reproducerSystem(),
-                reproduceInput.agentInput(), endpoint);
-        ParseTest.Result parsedTest =
-                ParseTest.parseTest(new ParseTest.Request(prep, reproducer.item()));
-        trial = trial.withProof(reproduceInput.agentInput(),
-                StageTrace.of(reproducer.prompt(), reproducer.reply()), parsedTest);
+        //
+        // A WEAK PROOF IS SENT BACK TO ITS WRITER, NOT TO A PERSON. An unsound test — one that never
+        // drives the real class, or asserts only against mocks it configured — lands the marker on
+        // NEEDS_REVIEW, which is the human queue: 10 of the 16 markers waiting there in the recorded
+        // corpus arrived that way. WorkModel prices one at 20 min assess + 45 min write_test.
+        //
+        // TWO LAYERS, because a model call is not free. TestRealness is the cheap gate: it parses the
+        // test and counts stubs, asserts and constructor calls for nothing, and a test it is happy
+        // with is accepted with NO critic call at all. Only when it complains is the critic asked, and
+        // only the critic can judge whether a mock was NECESSARY — a counter cannot tell nine stubs
+        // that exist because the class has nine I/O collaborators from nine written out of habit.
+        //
+        // The critic's accepting answer is `necessary`, and it must be able to give it: a critic that
+        // can only complain turns every hard marker into a burned budget. Retry ONLY on `reducible`,
+        // never on `unaudited` or `not-run` — those mean it could not answer, and asking the writer
+        // again against silence spends a call to get the same test.
+        AgentCall reproducer = null;
+        ParseTest.Result parsedTest = null;
+        String criticFindings = "";
+
+        for (int attempt = 1; ; attempt++) {
+            reproducer = agent(REPRODUCER, prompts.reproducerSystem(),
+                    reproduceInput.agentInput() + criticFindings, endpoint);
+            parsedTest = ParseTest.parseTest(new ParseTest.Request(prep, reproducer.item()));
+            trial = trial.withProof(reproduceInput.agentInput() + criticFindings,
+                    StageTrace.of(reproducer.prompt(), reproducer.reply()), parsedTest);
+
+            if (attempt >= proofAttempts) {
+                break;
+            }
+            Map<String, Object> asked = parsedTest.toMap();
+
+            // AN UNSOUND TEST NEEDS NO CRITIC. TestRealness has already decided, deterministically and
+            // for nothing, that the test never drove the real class or asserted only against mocks it
+            // configured. That is a worse complaint than over-mocking and it is the one that puts 10
+            // of the 16 markers in the human queue. Ask again with the scorer's own sentences and
+            // spend no model call finding out what a parser already knows.
+            if (Json.truthy(asked, "can_prove") && !Json.truthy(asked, "test_sound")) {
+                criticFindings = "\n\nYOUR PREVIOUS TEST WAS REJECTED as not exercising the real "
+                        + "class: " + Values.text(Json.get(asked, "test_realness"))
+                        + "\nWrite it again so it constructs the real subject (or calls its static "
+                        + "method) and asserts on what that returns or changes.";
+                continue;
+            }
+            if (!ReproducerCritic.gate(asked).call()) {
+                break;
+            }
+            PromptRecorder criticCall =
+                    new PromptRecorder(recording, llm.judging(key, JudgingCall.PROOF_CRITIC));
+            Map<String, Object> critique = ReproducerCritic.reproducerCritic(
+                    new ReproducerCritic.Request(prep, reproduceItem, asked, endpoint,
+                            Versions.stamp(Versions.PROOF_CRITIC), prompts.text(Stage.PROOF_CRITIC)),
+                    criticCall);
+            if (MockNecessity.of(Json.get(critique, "critic_verdict")) != MockNecessity.REDUCIBLE) {
+                break;
+            }
+            criticFindings = "\n\nA REVIEWER READ YOUR TEST AND THE SOURCE, and judged that some of "
+                    + "its mocking was avoidable. " + Values.text(Json.get(critique, "critic_reason"))
+                    + "\nWrite the test again using the real collaborators where they said so. Keep "
+                    + "the mocks they agreed were necessary.";
+        }
         if (!parsedTest.realnessLog().isEmpty()) {
             // The realness verdict has no home in either table, so this line is the only place an
             // operator can ever see WHY a proof was rejected. The engine returns it rather than

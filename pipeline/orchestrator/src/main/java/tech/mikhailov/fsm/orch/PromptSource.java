@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import tech.mikhailov.fsm.nodes.FixSkeptic;
+import tech.mikhailov.fsm.nodes.ReproducerCritic;
 import tech.mikhailov.fsm.nodes.PrMaker;
 import tech.mikhailov.fsm.nodes.Verdict;
 import tech.mikhailov.fsm.orch.config.FsmProperties;
@@ -81,6 +82,10 @@ public class PromptSource {
 
         /** Corrects the source without touching the test it was handed. */
         FIXER("fixer", "DEFAULT_FIXER_PROMPT", Prompts.FIXER_SYS, 0),
+
+        /** Judges whether a generated test mocked more than it had to. See ReproducerCritic. */
+        PROOF_CRITIC("proof-critic", "DEFAULT_PROOF_CRITIC_PROMPT", ReproducerCritic.DEFAULT_PROMPT,
+                6),
 
         /** Judges whether the fix is general or over-fit. Five {@code %s}; see FixSkeptic. */
         FIX_SKEPTIC("fix-skeptic", "DEFAULT_FIX_SKEPTIC_PROMPT", FixSkeptic.DEFAULT_PROMPT, 5),

@@ -35,11 +35,14 @@ import java.util.Map;
 public record Critique(String stage, String source, String kind, String text,
                        Map<String, Object> context) {
 
-    /** The five stages, spelled as the store's {@code stages} object spells them. */
+    /** The six stages, spelled as the store's {@code stages} object spells them. */
     public static final String REPRODUCER = "reproducer";
 
     /** @see #REPRODUCER */
     public static final String FIXER = "fixer";
+
+    /** The stage that judges whether a generated test mocked more than it had to. */
+    public static final String PROOF_CRITIC = "proof_critic";
 
     /** @see #REPRODUCER */
     public static final String FIX_SKEPTIC = "fix_skeptic";

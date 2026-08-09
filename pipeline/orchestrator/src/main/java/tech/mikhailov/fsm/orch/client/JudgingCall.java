@@ -66,6 +66,9 @@ public final class JudgingCall implements Llm.Http {
      * same phrase and find the cause. Two vocabularies for the same five calls is how the artifact and
      * the log stop being about each other.
      */
+    /** The reproducer's critic: judges whether each mock in a generated test was necessary. */
+    public static final String PROOF_CRITIC = "proof critic";
+
     public static final String SKEPTIC = "fix skeptic";
 
     /** @see #SKEPTIC */

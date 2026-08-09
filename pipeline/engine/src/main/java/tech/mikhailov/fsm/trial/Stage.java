@@ -21,6 +21,9 @@ public enum Stage {
     /** Writes the failing test. Its brief is the one the retry budget exists to iterate on. */
     REPRODUCER(Critique.REPRODUCER),
 
+    /** The reproducer's critic. @see Critique#PROOF_CRITIC */
+    PROOF_CRITIC(Critique.PROOF_CRITIC),
+
     /** Corrects the source without touching the test it was handed. */
     FIXER(Critique.FIXER),
 

@@ -48,6 +48,8 @@ public final class Versions {
     public static final String PR_MAKER = "pr3 (2026-07-22: an uncurated draft is banner-marked in "
             + "pr_body)";
 
+    public static final String PROOF_CRITIC = "pc1 (2026-08-09: judges whether each mock was NECESSARY; `reducible` sends the test back to its writer once, `necessary` accepts it)";
+
     public static final String SKEPTIC = "sk5 (2026-07-22: fail-closed whitelist; a valid verdict with "
             + "no reason is not mislabelled unrecognised)";
 
@@ -82,6 +84,7 @@ public final class Versions {
         m.put("reproducer", REPRODUCER);
         m.put("fixer", FIXER);
         m.put("pr_maker", PR_MAKER);
+        m.put("proof_critic", PROOF_CRITIC);
         m.put("skeptic", SKEPTIC);
         m.put("verdict", VERDICT);
         return m;
