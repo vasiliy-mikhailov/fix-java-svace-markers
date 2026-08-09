@@ -233,7 +233,16 @@ public final class Llm {
         Object message = Json.get(first, "message");
         Object content = Json.get(message, "content");
         String answer = Values.text(content);
-        return !answer.isEmpty() ? answer : Values.text(Json.get(message, "reasoning_content"));
+        if (!answer.isEmpty()) {
+            return answer;
+        }
+        // TWO SPELLINGS, because the field is not standardised and the two providers this has
+        // run against disagree: a vLLM chat completion calls it `reasoning_content`, OpenRouter
+        // calls it `reasoning`. Reading only one of them turns a reply that HAS an answer into
+        // an empty string, which every stage fails closed on — a verdict nobody wrote, a fix
+        // nobody proposed. Read both before giving up.
+        String scratch = Values.text(Json.get(message, "reasoning_content"));
+        return !scratch.isEmpty() ? scratch : Values.text(Json.get(message, "reasoning"));
     }
 
     /**

@@ -105,6 +105,32 @@ class LlmTest {
         assertEquals("", Llm.replyText(item("choices", "not a list")));
     }
 
+    /**
+     * TWO PROVIDERS, TWO SPELLINGS, AND THE PIPELINE MUST READ BOTH.
+     *
+     * <p>A vLLM chat completion puts the scratchpad in {@code reasoning_content}; OpenRouter puts it in
+     * {@code reasoning}. The field is not standardised. Reading only one turns a reply that HAS an
+     * answer into an empty string, and every stage fails CLOSED on empty — no verdict written, no fix
+     * proposed, the marker to a human. That is the most expensive way to lose a reply the model
+     * actually gave.
+     */
+    @Test
+    void aScratchpadIsReadUnderEitherSpellingBecauseProvidersDisagree() {
+        Map<String, Object> message = new LinkedHashMap<>();
+        message.put("content", "");
+        message.put("reasoning", "the answer, in OpenRouter's spelling");
+        assertEquals("the answer, in OpenRouter's spelling",
+                Llm.replyText(item("choices", List.of(item("message", message)))),
+                "OpenRouter names it `reasoning`; reading only `reasoning_content` loses the answer");
+
+        Map<String, Object> both = new LinkedHashMap<>();
+        both.put("content", "");
+        both.put("reasoning_content", "vllm");
+        both.put("reasoning", "openrouter");
+        assertEquals("vllm", Llm.replyText(item("choices", List.of(item("message", both)))),
+                "when a provider sends both, the documented one wins and the order is deliberate");
+    }
+
     @Test
     void aReplyThatIsNotAnObjectIsATransportFailureNotAnEmptyAnswer() {
         // Deliberately unguarded in all three parsers: the throw belongs in the shell's catch, labelled
