@@ -153,8 +153,13 @@ class UnsureIsNotUnreachableTest {
         source.answering(200, ProveScript.contents(ProveScript.SOURCE));
         provenFix();
         // Reached, at temperature 0, and it says the fix special-cases the tested input. That is the
-        // stage WORKING — the one outcome needs_review exists for.
+        // stage WORKING — and since fix-attempts is 2, the rejection now goes BACK TO THE FIXER with
+        // that sentence attached rather than to a person. The second patch is scripted below; the
+        // skeptic rejects it too, so the marker still ends where this test is about: needs_review.
         model.replying("{\"verdict\":\"over-fit\",\"reason\":\"it special-cases the tested column\"}");
+        ProveScript.fixerWritesAFix(model);
+        ProveScript.greenRunPasses(runner, List.of(ProveScript.FILE));
+        model.replying("{\"verdict\":\"over-fit\",\"reason\":\"still special-cases the tested column\"}");
 
         assertThat(prove.launchJob(prove.getUniqueJobParameters()).getStatus())
                 .isEqualTo(BatchStatus.COMPLETED);
@@ -165,7 +170,10 @@ class UnsureIsNotUnreachableTest {
                 .as("nothing broke, so nothing may be reported as broken")
                 .isEmpty();
         assertThat(artifact.prBody()).startsWith("⚠ FIX SKEPTIC (over-fit)")
-                .contains("it special-cases the tested column");
+                .as("the banner carries the LAST rejection, not the first: the fixer was asked again "
+                        + "with the first one attached, and it is the second patch that survives into "
+                        + "the row a reviewer reads")
+                .contains("still special-cases the tested column");
     }
 
     /**
@@ -409,5 +417,45 @@ class UnsureIsNotUnreachableTest {
         ProveScript.redRunGoesRed(runner);
         ProveScript.fixerWritesAFix(model);
         ProveScript.greenRunPasses(runner, List.of(ProveScript.FILE));
+    }
+
+    /**
+     * A REJECTED PATCH GOES BACK TO THE FIXER, NOT TO A PERSON — and the retry costs the marker nothing.
+     *
+     * <p>The skeptic has always judged the patch; a flagged one used to land on {@code needs_review},
+     * which is the human queue, over a complaint the skeptic had already made for free. WorkModel
+     * prices one of those at 20 min assess + 45 min write_test against a retry of one model call and
+     * one build, and the recorded corpus says 95 of 101 patches are certified first time, so the
+     * second attempt is rare.
+     *
+     * <p>THE DANGEROUS HALF IS THE ATTEMPT BUDGET. {@code prove_attempts} is the MARKER-level count
+     * that decides when a marker is retired for good; the retry happens inside ONE prove and must not
+     * touch it. If it did, a marker would burn its budget on the pipeline's own second thoughts and
+     * retire while nobody had answered the question.
+     */
+    @Test
+    void aRejectedPatchIsReworkedAndTheRetryDoesNotSpendTheMarkersBudget() throws Exception {
+        suspicions.upsert(ProveScript.marker(0L));
+        source.answering(200, ProveScript.contents(ProveScript.SOURCE));
+        provenFix();
+        model.replying("{\"verdict\":\"over-fit\",\"reason\":\"it special-cases the tested column\"}");
+        // The rework: a second patch, a second green run, and this time the skeptic is satisfied.
+        ProveScript.fixerWritesAFix(model);
+        ProveScript.greenRunPasses(runner, List.of(ProveScript.FILE));
+        model.replying("{\"verdict\":\"sound\",\"reason\":\"now asserts the general property\"}");
+        model.replying("{\"decision\":\"make\",\"reason\":\"ok\",\"title\":\"t\",\"body\":\"b\"}");
+
+        assertThat(prove.launchJob(prove.getUniqueJobParameters()).getStatus())
+                .isEqualTo(BatchStatus.COMPLETED);
+
+        Bug artifact = bugs.find(ProveScript.KEY).orElseThrow();
+        assertThat(artifact.state())
+                .as("the second patch was certified, so this never reaches a human")
+                .isEqualTo(MarkerState.PR_READY.wire());
+
+        assertThat(suspicions.find(ProveScript.KEY).orElseThrow().proveAttempts())
+                .as("two fixer calls happened inside ONE prove; the marker's retirement budget may "
+                        + "only ever move by one")
+                .isEqualTo(1L);
     }
 }

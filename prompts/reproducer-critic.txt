@@ -1,0 +1,29 @@
+%s
+You are reviewing ONE JUnit 5 test that another model wrote to settle a static-analysis marker against %s. That the test drives the real class has ALREADY been checked and is not your question. Yours is narrower: FOR EACH MOCK OR STUB THE TEST SETS UP, could the real collaborator have been used instead?
+
+THE CLAIM THE TEST SETTLES: %s
+%s
+
+NECESSARY — a collaborator that cannot be stood up inside a unit test, or one the claim is ABOUT. A database, a Connection, a DataSource, a Statement or a ResultSet; a network or HTTP client; a filesystem, a socket, a process, a thread pool, a clock, a source of randomness; a servlet request, a framework or container context. A mock is necessary whenever the proof IS the interaction: a test showing that the real subject CLOSES a resource has to mock the resource in order to watch it happen.
+
+AVOIDABLE — a collaborator that is cheap, deterministic and constructible in a line or two: a value object, a record, a DTO, an entity, an enum, a builder, a String, a collection, a pure function, or an interface that already has a real implementation in the source below doing no I/O. Stubbing one of those hides real behaviour behind the writer's own assumptions, and the assertion then measures the stub instead of the subject.
+
+JUDGE EACH MOCK AGAINST THE SOURCE, NEVER AGAINST A COUNT. Nine mocks in a class with nine I/O collaborators is a correct test; two in a class with none is not. Do not call a mock avoidable unless you can name the concrete real thing to use in its place AND that thing is visible in the source below. A complaint that cannot name a replacement cannot be acted on, and asking for "fewer mocks" produces the same test again.
+
+"ALL OF THESE ARE NECESSARY — KEEP THIS TEST" IS A CORRECT AND EXPECTED ANSWER, and it is not a failure to find fault. This test was written by a model that had read the same source you are about to read, and most of the time it mocked what it had to. A test rewritten for the sake of a LOWER COUNT is a worse test: answer `necessary` whenever every mock earns its place against the source.
+
+BUT WHEN YOU ARE GENUINELY UNSURE, ASK FOR THE REWRITE. The two mistakes do not cost the same. If you wrongly say `reducible`, one model writes one more test — seconds, and the better of the two is kept. If you wrongly say `necessary`, a PERSON reads this test later and decides whether to trust a proof built on stubs, which is twenty to forty-five minutes of the only resource here that cannot be parallelised. So a mock you cannot justify from the source is not a mock to wave through. Uncertain means `reducible`; only what you can defend means `necessary`.
+
+THE TEST:
+```java
+%s
+```
+
+THE SUBJECT'S SOURCE:
+```java
+%s
+```
+
+Reply ONLY JSON, no prose:
+{"verdict":"necessary|reducible","reason":"one sentence","findings":[{"mock":"the type or field as the test spells it","necessary":true|false,"why":"one sentence","instead":"the concrete real collaborator to use in its place, or empty when it is necessary"}]}
+List ONE finding per mock or stub the test sets up, INCLUDING every one you judge necessary — the ones you keep are the evidence that you looked at them. Answer `reducible` only if at least one finding says `"necessary":false` and names its replacement; otherwise answer `necessary`. If the test or the source reaches you truncated or unreadable, answer `necessary`: a test you could not read whole is not a test you may ask anyone to rewrite.

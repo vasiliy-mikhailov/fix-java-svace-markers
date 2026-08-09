@@ -247,6 +247,10 @@ public record FsmProperties(@DefaultValue Prove prove, @DefaultValue Github gith
      * it is read: {@code ProveScheduler}, {@code BatchConfig}, {@code LiveWatcher},
      * {@code H2Exposure}.
      *
+     * @param fixAttempts       how many times the fixer may be asked, INCLUDING the first. 2 means one
+     *                          retry after the skeptic rejects a patch, instead of sending the marker
+     *                          straight to NEEDS_REVIEW — the human queue — over a complaint the
+     *                          skeptic had already made for free. 1 restores the old behaviour.
      * @param minAttempts       how many reproducer samples a non-reproduction is worth before it is
      *                          written up as a
      *                          verdict — one sample is a weak basis for "this marker is wrong", and
@@ -287,6 +291,7 @@ public record FsmProperties(@DefaultValue Prove prove, @DefaultValue Github gith
      *                          the way back. Read by {@code ProveProcessor}.
      */
     public record Prove(@DefaultValue("2") int minAttempts,
+                        @DefaultValue("2") int fixAttempts,
                         @DefaultValue("0") int maxMarkersPerRun,
                         @DefaultValue("3") int maxInfraStrikes,
                         @DefaultValue("") String marker,

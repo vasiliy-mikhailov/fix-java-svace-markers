@@ -219,7 +219,8 @@ class TheArgumentOffChangesNothingButTheArgumentTest {
      */
     private ProveProcessor withTheArgumentOff() {
         return new ProveProcessor(sourceClient, runnerClient, llmClient, repoLookup, secrets, prompts,
-                properties.prove().minAttempts(), properties.runner().timeout(), false,
+                properties.prove().minAttempts(), properties.prove().fixAttempts(),
+                properties.runner().timeout(), false,
                 new FeedbackStore(false, deployment.resolve("unused.jsonl")));
     }
 

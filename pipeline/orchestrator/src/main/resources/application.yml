@@ -342,6 +342,14 @@ fsm:
     # One sample is a weak basis for "this marker is wrong", and
     # the engine refuses to guess the number.
     min-attempts: ${FSM_PROVE_MIN_ATTEMPTS:2}
+
+    # How many times the fixer may be asked, INCLUDING the first. 2 = one retry after the skeptic
+    # rejects a patch as over-fit or a regression risk. Before this existed, a rejected patch went
+    # straight to NEEDS_REVIEW — a person — over a complaint the skeptic had already made for free;
+    # WorkModel prices that at 65 minutes against a retry of one model call and one Maven build.
+    # 95 of every 101 patches in the recorded corpus are certified first time, so the second attempt
+    # is reached about 6% of the time. Set to 1 to restore the old behaviour.
+    fix-attempts: ${FSM_PROVE_FIX_ATTEMPTS:2}
     # WHETHER A MARKER THAT WILL NOT REPRODUCE IS ARGUED. ON everywhere, and OFF is for iterating on the
     # EARLIER prompts, where a rebuttal written against a reproducer prompt that is about to change
     # again is dead weight.

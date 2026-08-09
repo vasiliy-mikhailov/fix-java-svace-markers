@@ -9,6 +9,8 @@ import org.slf4j.LoggerFactory;
 import tech.mikhailov.fsm.feedback.MarkerFeedback;
 import tech.mikhailov.fsm.feedback.StageTrace;
 import tech.mikhailov.fsm.lib.Json;
+import tech.mikhailov.fsm.lib.SkepticVerdict;
+import tech.mikhailov.fsm.lib.Values;
 import tech.mikhailov.fsm.lib.Llm;
 import tech.mikhailov.fsm.nodes.BuildFixInput;
 import tech.mikhailov.fsm.nodes.BuildReproduceInput;
@@ -120,6 +122,17 @@ public class ProveChain implements JudgementEngine {
     private final PromptSource prompts;
     private final int minAttempts;
     private final Duration runTestTimeout;
+
+    /**
+     * How many times the fixer may be asked, INCLUDING the first. 2 means one retry after a rejection.
+     *
+     * <p>Bounded because each attempt costs a model call AND a Maven build, and because a critic that
+     * never approves must not spin. On the recorded corpus 95 of 101 patches are certified first time,
+     * so a second attempt is reached about 6% of the time. A marker still flagged at the cap goes to
+     * NEEDS_REVIEW exactly as it did before: that is the outcome this loop exists to avoid, and the
+     * one it falls back to rather than failing the prove.
+     */
+    private final int fixAttempts;
     private final boolean verdictEnabled;
     private final boolean recording;
 
@@ -145,7 +158,7 @@ public class ProveChain implements JudgementEngine {
     public ProveChain(SourceClient source, RunnerClient runner, LlmClient llm,
                       PrepProver.RepoLookup repoLookup, Secrets secrets, PromptSource prompts,
                       int minAttempts, Duration runTestTimeout, boolean verdictEnabled,
-                      boolean recording) {
+                      boolean recording, int fixAttempts) {
         this.source = source;
         this.runner = runner;
         this.llm = llm;
@@ -154,6 +167,7 @@ public class ProveChain implements JudgementEngine {
         this.prompts = prompts;
         this.minAttempts = minAttempts;
         this.runTestTimeout = runTestTimeout == null ? RunnerClient.DEFAULT_TIMEOUT : runTestTimeout;
+        this.fixAttempts = Math.max(1, fixAttempts);
         this.verdictEnabled = verdictEnabled;
         this.recording = recording;
     }
@@ -222,20 +236,69 @@ public class ProveChain implements JudgementEngine {
         // --- FIXER: source-only fix, must pass the reproducer's test, verified green. ---
         BuildFixInput.Outcome fixInput = BuildFixInput.buildFixInput(
                 new BuildFixInput.Request(prep, testItem, redRun, reproduceItem));
-        AgentCall fixer = agent(FIXER, prompts.fixerSystem(), fixInput.agentInput(), endpoint);
-        ParseFix.Result parsedFix = ParseFix.parseFix(
-                new ParseFix.Request(prep, testItem, redRun, fixer.item()));
-        Map<String, Object> fixItem = parsedFix.toMap();
-        trial = trial.withRepair(fixInput.agentInput(),
-                StageTrace.of(fixer.prompt(), fixer.reply()), parsedFix);
 
-        Object greenRun;
-        try {
-            greenRun = runner.runTest(parsedFix.body(), runTestTimeout).body();
-        } catch (InfraFailure e) {
-            throw unreachable(e);
+        // THE FIXER GETS ITS CRITIC'S ANSWER BACK, instead of the marker going to a person.
+        //
+        // The fix skeptic judges the patch — sound / over-fit / regression-risk. A flagged patch must
+        // NOT go straight to NEEDS_REVIEW: that is the human queue, and it is the most expensive
+        // possible destination for a complaint a stage has already made for free. WorkModel prices
+        // one at 20 min assess + 45 min write_test, against a retry of one model call and one build.
+        //
+        // So a flagged patch is handed back to the fixer WITH THE SKEPTIC'S OWN SENTENCE, and only
+        // reaches a person if the retry is flagged too. The loop is INVISIBLE on a sound patch, which
+        // is 95 of every 101 in the recorded corpus — it must stay that way, or a cost that is paid
+        // 6% of the time becomes one paid always.
+        //
+        // A RETRY IS NOT A PROVE ATTEMPT. prove_attempts is the marker-level budget that retires a
+        // marker; this loop lives inside ONE prove and must never touch it. @see ProveMarker
+        AgentCall fixer = null;
+        ParseFix.Result parsedFix = null;
+        Map<String, Object> fixItem = null;
+        Object greenRun = null;
+        Map<String, Object> skeptic = null;
+        PromptRecorder skepticCall = null;
+        String criticNote = "";
+
+        for (int attempt = 1; ; attempt++) {
+            fixer = agent(FIXER, prompts.fixerSystem(), fixInput.agentInput() + criticNote, endpoint);
+            parsedFix = ParseFix.parseFix(new ParseFix.Request(prep, testItem, redRun, fixer.item()));
+            fixItem = parsedFix.toMap();
+            trial = trial.withRepair(fixInput.agentInput() + criticNote,
+                    StageTrace.of(fixer.prompt(), fixer.reply()), parsedFix);
+
+            try {
+                greenRun = runner.runTest(parsedFix.body(), runTestTimeout).body();
+            } catch (InfraFailure e) {
+                throw unreachable(e);
+            }
+            trial = trial.withGreen(greenRun);
+
+            skepticCall = new PromptRecorder(recording, llm.judging(key, JudgingCall.SKEPTIC));
+            skeptic = FixSkeptic.fixSkeptic(
+                    new FixSkeptic.Request(prep, testItem, fixItem, greenRun, endpoint,
+                            Versions.stamp(Versions.SKEPTIC), prompts.text(Stage.FIX_SKEPTIC)),
+                    skepticCall);
+            trial = trial.withCertification(skepticCall.trace(), skeptic);
+
+            SkepticVerdict verdict = SkepticVerdict.of(Json.get(skeptic, "skeptic_verdict"));
+            // RETRY ONLY ON AN ACTIVE REJECTION. `unknown` and `not-run` mean the skeptic did not
+            // answer — an unreachable endpoint yields exactly that — and asking the fixer again
+            // against silence buys nothing while spending a model call and a Maven build. Those
+            // already fail closed to no pull request, which is the safe direction.
+            boolean rejected = verdict == SkepticVerdict.OVER_FIT
+                    || verdict == SkepticVerdict.REGRESSION_RISK;
+            if (attempt >= fixAttempts || !rejected) {
+                break;
+            }
+            // The skeptic's OWN wording, not a paraphrase and not a scolding: a fixer told only "try
+            // again" writes the same patch. An UNKNOWN verdict does not reach here — it fails closed
+            // to no pull request already, and retrying against silence buys nothing.
+            criticNote = "\n\nA REVIEWER REJECTED YOUR PREVIOUS PATCH and it has been discarded. "
+                    + "Their verdict was '" + Values.text(Json.get(skeptic, "skeptic_verdict"))
+                    + "': " + Values.text(Json.get(skeptic, "skeptic_reason"))
+                    + "\nWrite a DIFFERENT patch that answers that objection. Do not resubmit the "
+                    + "previous one, and do not widen the test to accommodate it.";
         }
-        trial = trial.withGreen(greenRun);
 
         // --- judgement + record. These three fail CLOSED inside the engine; see the class comment.
         // Failing closed means reporting SUCCESS with a defaulted verdict, so a model endpoint that
@@ -254,13 +317,6 @@ public class ProveChain implements JudgementEngine {
         // returned, and they are the two things the store exists to hold. The recorder copies them off
         // the transport rather than rebuilding them, because Verdict's prompt cannot be rebuilt at all
         // — see PromptRecorder.
-        PromptRecorder skepticCall =
-                new PromptRecorder(recording, llm.judging(key, JudgingCall.SKEPTIC));
-        Map<String, Object> skeptic = FixSkeptic.fixSkeptic(
-                new FixSkeptic.Request(prep, testItem, fixItem, greenRun, endpoint,
-                        Versions.stamp(Versions.SKEPTIC), prompts.text(Stage.FIX_SKEPTIC)),
-                skepticCall);
-        trial = trial.withCertification(skepticCall.trace(), skeptic);
         PromptRecorder prCall =
                 new PromptRecorder(recording, llm.judging(key, JudgingCall.PR_CURATOR));
         Map<String, Object> prMaker = PrMaker.prMaker(

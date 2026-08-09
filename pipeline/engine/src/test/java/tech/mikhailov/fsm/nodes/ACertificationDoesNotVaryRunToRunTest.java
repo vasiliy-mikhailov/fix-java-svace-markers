@@ -271,7 +271,8 @@ class ACertificationDoesNotVaryRunToRunTest {
             throw new AssertionError("could not read the nodes sources", e);
         }
 
-        assertEquals(new TreeSet<>(Map.of("FixSkeptic.java", 1, "PrMaker.java", 1, "Verdict.java", 1)
+        assertEquals(new TreeSet<>(Map.of("FixSkeptic.java", 1, "PrMaker.java", 1, "Verdict.java", 1,
+                        "ReproducerCritic.java", 1)
                         .entrySet().stream().map(e -> e.getKey() + " x" + e.getValue()).toList()),
                 new TreeSet<>(found.entrySet().stream().map(e -> e.getKey() + " x" + e.getValue())
                         .toList()),

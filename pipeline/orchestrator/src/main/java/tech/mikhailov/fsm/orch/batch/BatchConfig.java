@@ -219,7 +219,8 @@ public class BatchConfig {
         // A second instance built here would resolve again, could disagree with the announced one after
         // a file landed mid-run, and would say nothing about it.
         return new ProveProcessor(source, runner, llm, repoLookup, secrets, prompts,
-                properties.prove().minAttempts(), properties.runner().timeout(),
+                properties.prove().minAttempts(), properties.prove().fixAttempts(),
+                properties.runner().timeout(),
                 properties.prove().verdictEnabled(), feedback);
     }
 

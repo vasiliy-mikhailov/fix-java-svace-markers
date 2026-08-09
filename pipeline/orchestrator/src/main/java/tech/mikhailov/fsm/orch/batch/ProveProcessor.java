@@ -61,6 +61,9 @@ public class ProveProcessor
     private final ProveMarker proveMarker;
     private final FeedbackStore feedback;
     private final int minAttempts;
+
+    /** {@code fsm.prove.fix-attempts}: how many times the fixer may be asked, including the first. */
+    private final int fixAttempts;
     private final Duration runTestTimeout;
     private final boolean verdictEnabled;
 
@@ -92,19 +95,20 @@ public class ProveProcessor
      */
     public ProveProcessor(SourceClient source, RunnerClient runner, LlmClient llm,
                           PrepProver.RepoLookup repoLookup, Secrets secrets, PromptSource prompts,
-                          int minAttempts, Duration runTestTimeout, boolean verdictEnabled,
+                          int minAttempts, int fixAttempts, Duration runTestTimeout, boolean verdictEnabled,
                           FeedbackStore feedback) {
         this.feedback = feedback;
         this.minAttempts = minAttempts;
         this.runTestTimeout = runTestTimeout == null ? RunnerClient.DEFAULT_TIMEOUT : runTestTimeout;
         this.verdictEnabled = verdictEnabled;
+        this.fixAttempts = fixAttempts;
         // Assembled here rather than injected because these are the collaborators this bean was handed
         // and the graph has exactly one shape: the framework hands the driver its adapters, the driver
         // hands the use case its ports. It is its own presenter and its own journal — the two output
         // boundaries a prove crosses — which is what lets the interactor have no logger and no file.
         this.proveMarker = new ProveMarker(
                 new ProveChain(source, runner, llm, repoLookup, secrets, prompts, minAttempts,
-                        this.runTestTimeout, verdictEnabled, feedback.enabled()),
+                        this.runTestTimeout, verdictEnabled, feedback.enabled(), fixAttempts),
                 this, this);
     }
 
