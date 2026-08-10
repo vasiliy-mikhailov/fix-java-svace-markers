@@ -56,6 +56,10 @@ public final class Dashboard {
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
             .to-do{background:#0d1117;color:#6e7681;border:1px solid #21262d}
             td.latest{color:#8b949e;font-size:12px;max-width:46ch}
+            .tabs{display:flex;gap:2px;flex-wrap:wrap;padding:10px 24px;border-bottom:1px solid #21262d}
+            .tabs a{padding:5px 11px;border-radius:6px;font-size:12px;color:#8b949e}
+            .tabs a:hover{background:#161b22;text-decoration:none}
+            .tabs a.on{background:#1f6feb;color:#fff}
             .infra{background:#2d1618;color:#f85149}
             .proving{background:#122033;color:#58a6ff}
             .proving::before{content:"● ";animation:p 1.4s ease-in-out infinite}
@@ -141,12 +145,12 @@ public final class Dashboard {
             e.close();
         });
         server.createContext("/marker", e -> send(e, "text/html; charset=utf-8",
-                events(trace, settlements, query(e, "k"), open(e))));
+                marker(trace, settlements, query(e, "k"), query(e, "a"), open(e))));
         // THE WHOLE TRACE, every marker, in the order it happened. The per-marker view answers "why
         // did this settle so"; this one answers "what is this thing doing", which is a different
         // question and the one asked while a run is in flight.
         server.createContext("/trace", e -> send(e, "text/html; charset=utf-8",
-                events(trace, settlements, "", open(e))));
+                events(trace, settlements, "", open(e), "")));
         server.createContext("/", e -> send(e, "text/html; charset=utf-8",
                 index(settlements, trace, lines(settlements.resolveSibling("markers.txt")))));
         server.start();
@@ -266,13 +270,132 @@ public final class Dashboard {
 
     // ----------------------------------------------------------------- marker
 
+    /** The agents, in the order they run. A tab each, plus the record itself. */
+    private static final List<String> AGENTS = List.of("reproducer", "proof-critic", "fixer",
+            "fix-skeptic", "pr-curator", "verdict", "estimator");
+
+    /**
+     * One marker, by tab.
+     *
+     * <p>The chronological trace answers "what happened" and is the wrong shape for "what did the
+     * fixer end up saying" — a reproducer that answered twice buries its final test under the
+     * rejected one and eighty tool calls. So each agent gets a tab showing its LAST answer first,
+     * with earlier attempts folded beneath it in the order they were given.
+     *
+     * @param agent one of {@link #AGENTS}, {@code trace} for the record, or empty for the summary
+     */
+    private static String marker(Path trace, Path settlements, String key, String agent,
+                                 boolean expand) {
+        if (agent.equals("trace")) {
+            return events(trace, settlements, key, expand, tabs(key, agent));
+        }
+        List<String> mine = new ArrayList<>();
+        for (String line : lines(trace)) {
+            if (field(line, "marker").equals(key)) {
+                mine.add(line);
+            }
+        }
+        String state = "";
+        for (String line : lines(settlements)) {
+            if (field(line, "suspicion_key").equals(key)) {
+                state = field(line, "state");
+            }
+        }
+        StringBuilder b = head(key.substring(key.lastIndexOf('/') + 1),
+                esc(key) + (state.isEmpty() ? "" : " · <span class='s " + css(state) + "'>"
+                        + esc(state) + "</span>"));
+        b.append(tabs(key, agent));
+
+        if (agent.isEmpty()) {
+            // The summary: every agent's final word, in the order they ran, and nothing else.
+            for (String who : AGENTS) {
+                List<String> said = asked(mine, who);
+                if (said.isEmpty()) {
+                    continue;
+                }
+                String last = said.get(said.size() - 1);
+                b.append("<div class='ev asked'><span class=who>").append(esc(who))
+                        .append("</span><span class=kind>")
+                        .append(said.size() > 1 ? "final of " + said.size() + " attempts" : "answered")
+                        .append(" · <a href='/marker?k=").append(enc(key)).append("&a=").append(who)
+                        .append("'>open</a></span><pre>").append(esc(field(last, "reply")))
+                        .append("</pre></div>");
+            }
+            return b.toString();
+        }
+
+        List<String> said = asked(mine, agent);
+        if (said.isEmpty()) {
+            return b.append("<div class=empty>").append(esc(agent))
+                    .append(" did not run for this marker.</div>").toString();
+        }
+        int i = mine.indexOf(said.get(said.size() - 1));
+        String last = said.get(said.size() - 1);
+        b.append("<div class='ev asked'><span class=who>").append(esc(agent))
+                .append("</span><span class=kind>")
+                .append(said.size() > 1 ? "final answer, attempt " + said.size() : "answered")
+                .append("</span><pre>").append(esc(field(last, "reply"))).append("</pre>")
+                .append(fold("the prompt it was given", field(last, "prompt"), expand))
+                .append(rate(key, agent, i, "/marker?k=" + enc(key) + "&a=" + agent,
+                        field(last, "prompt"), field(last, "reply")))
+                .append("</div>");
+
+        for (int n = said.size() - 2; n >= 0; n--) {
+            String earlier = said.get(n);
+            b.append("<div class='ev tool'><span class=kind>attempt ").append(n + 1)
+                    .append(", superseded</span>")
+                    .append(fold("what it said", field(earlier, "reply"), false))
+                    .append(fold("the prompt", field(earlier, "prompt"), false)).append("</div>");
+        }
+
+        StringBuilder tools = new StringBuilder();
+        for (String e : mine) {
+            if (field(e, "kind").equals("tool") && field(e, "agent").endsWith(agent)) {
+                tools.append(field(e, "tool")).append("  ").append(cut(field(e, "arguments"), 110))
+                        .append('\n');
+            }
+        }
+        if (tools.length() > 0) {
+            b.append("<div class='ev tool'>")
+                    .append(fold("what it reached for", tools.toString(), expand)).append("</div>");
+        }
+        return b.toString();
+    }
+
+    /** Every {@code asked} by one agent, oldest first. */
+    private static List<String> asked(List<String> events, String agent) {
+        List<String> out = new ArrayList<>();
+        for (String e : events) {
+            if (field(e, "kind").equals("asked") && field(e, "agent").equals(agent)) {
+                out.add(e);
+            }
+        }
+        return out;
+    }
+
+    private static String tabs(String key, String current) {
+        StringBuilder b = new StringBuilder("<nav class=tabs>")
+                .append(tab(key, "", "summary", current));
+        for (String a : AGENTS) {
+            b.append(tab(key, a, a, current));
+        }
+        return b.append(tab(key, "trace", "the record", current))
+                .append("<a href='/'>← all markers</a></nav>").toString();
+    }
+
+    private static String tab(String key, String a, String label, String current) {
+        return "<a class='" + (a.equals(current) ? "on" : "") + "' href='/marker?k=" + enc(key)
+                + (a.isEmpty() ? "" : "&a=" + a) + "'>" + esc(label) + "</a>";
+    }
+
     /**
      * Everything that happened, in order — to one marker, or to all of them when {@code key} is empty.
      *
      * @param expand every fold open. Long, and exactly what a reader wants when the interesting part
      *               is a prompt rather than an answer.
      */
-    private static String events(Path trace, Path settlements, String key, boolean expand) {
+    private static String events(Path trace, Path settlements, String key, boolean expand,
+                                 String nav) {
         List<String> mine = new ArrayList<>();
         for (String line : lines(trace)) {
             if (key.isEmpty() || field(line, "marker").equals(key)) {
@@ -291,7 +414,7 @@ public final class Dashboard {
         StringBuilder b = head(title, where + " · " + mine.size() + " event(s)"
                 + (state.isEmpty() ? "" : " · <span class='s " + css(state) + "'>"
                 + esc(state) + "</span>"));
-        b.append("<a class=back href='/'>← all markers</a> ")
+        b.append(nav).append("<a class=back href='/'>← all markers</a> ")
                 .append("<a class=back href='").append(key.isEmpty() ? "/trace" : "/marker?k=" + enc(key))
                 .append(expand ? "" : (key.isEmpty() ? "?raw=1" : "&raw=1"))
                 .append("'>").append(expand ? "collapse" : "expand everything").append("</a>");
