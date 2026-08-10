@@ -117,9 +117,10 @@ public final class Prove {
         String evidence = "\nThe failing test:\n" + test + "\nRED:\n" + red.summary();
 
         String patch = agents.fixer().run(brief + evidence);
-        Runner.Result green = runner.run("green", testClass(test));
+        Runner.Result green = patchUntilItBuilds(runner, agents, brief, evidence, test);
         if (green.infra()) {
-            return "INFRA: " + green.summary();
+            return settled("reproduced", "the defect is real; no patch of it would build:\n"
+                    + green.summary());
         }
         if (!green.passed()) {
             return settled("reproduced", "the defect is real and no patch held:\n" + green.summary());
@@ -136,11 +137,11 @@ public final class Prove {
                         + "\nYour previous patch was REJECTED and discarded:\n" + rejected
                         + "\nThe reviewer's objection:\n" + certificate
                         + "\nWrite a DIFFERENT patch answering it. Do not widen the test.");
-                green = runner.run("green", testClass(test));
+                green = patchUntilItBuilds(runner, agents, brief, evidence, test);
                 if (green.infra()) {
-                    // A build that never ran is not a failed certification. Collapsing the two is how
-                    // a Maven crash gets recorded as "the patch was not certified".
-                    return "INFRA: " + green.summary();
+                    // A build that never ran is not a failed certification.
+                    return settled("reproduced", "the defect is real; the replacement patch would "
+                            + "not build:\n" + green.summary());
                 }
                 certificate = agents.fixSkeptic().run(brief + evidence + "\nGREEN:\n" + green.summary()
                         + "\nThe patch it certifies:\n" + patch);
@@ -184,6 +185,23 @@ public final class Prove {
             build = runner.run("red", testClass(reply));
         }
         return new Attempt(reply, build);
+    }
+
+    /**
+     * Build the patched tree, handing the compiler's own words back to the fixer when it will not
+     * build — the same courtesy {@link #reproduce} gives the reproducer, and for the same reason: a
+     * patch that does not compile is not a rejected patch, it is an unfinished one.
+     */
+    private static Runner.Result patchUntilItBuilds(Runner runner, Agents agents, String brief,
+                                                    String evidence, String test) {
+        Runner.Result green = runner.run("green", testClass(test));
+        for (int again = 0; again < REASK && green.infra(); again++) {
+            agents.fixer().run(brief + evidence
+                    + "\nYour patch did not build. The compiler said:\n" + green.summary()
+                    + "\nFix exactly that. Do not change the test.");
+            green = runner.run("green", testClass(test));
+        }
+        return green;
     }
 
     /**
