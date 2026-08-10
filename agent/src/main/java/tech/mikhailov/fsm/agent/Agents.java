@@ -56,8 +56,10 @@ final class Agents {
                 servlet container. A test that stubs its collaborators and asserts on its own stubs \
                 proves nothing and will be sent back.
 
-                Write it under src/test/java in the package of the class you are testing. Then say, in \
-                one line, the fully qualified test class name and what its failing demonstrates.
+                Write it under src/test/java in the package of the class you are testing. THEN STOP. \
+                Say in one line what its failing demonstrates and nothing else — do not keep reading \
+                the project once the file is written. Your tool budget is small and exploring after \
+                the work is done is what exhausts it.
 
                 If the marker does not describe a real defect, say so and write no test. That is a \
                 useful answer.

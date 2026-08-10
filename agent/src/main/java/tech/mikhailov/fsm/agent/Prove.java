@@ -80,12 +80,13 @@ public final class Prove {
         // are for reading what nobody anticipated.
         String brief = "Marker: " + marker
                 + "\nThe checkout is your workspace; read further only if you need to.\n\n"
-                + "The flagged file, " + fileOf(marker) + ":\n" + source(checkout, marker);
+                + "The flagged file, " + fileOf(marker) + ":\n" + source(checkout, marker)
+                + siblingTests(checkout, marker);
 
         trace.progress(marker, "reproducer: writing a failing test");
         Attempt a = reproduce(runner, agents, brief, "", agents.reproducer().run(brief), trace);
         if (declined(a.test())) {
-            return settled("not-a-bug", agents.verdict().run(brief
+            return argued(agents.verdict().run(brief
                     + "\nThe reproducer declined to write a test, saying:\n" + a.test()));
         }
         // EVERY FAILURE CARRIES WHAT FAILED. A settlement that says "the test never compiled" and
@@ -96,7 +97,7 @@ public final class Prove {
                     + REASK + " re-ask(s) with the compiler's own words:\n" + a.build().summary());
         }
         if (a.build().passed()) {
-            return settled("false-positive", agents.verdict().run(brief
+            return argued(agents.verdict().run(brief
                     + "\nA test written for this defect PASSED before any patch:\n"
                     + a.build().summary()));
         }
@@ -232,6 +233,17 @@ public final class Prove {
     }
 
     /**
+     * THE STATE FOLLOWS THE ARGUMENT. Where the verdict agent was asked at all, its word IS the
+     * settlement — filing its answer under a state chosen by the branch that called it records a
+     * marker argued by-design as false-positive, and those mean opposite things to whoever reads the
+     * row: one says the code is deliberately that way, the other says the claim is untrue.
+     */
+    private static String argued(String argument) {
+        String kind = verdict(argument, "false-positive", "by-design", "unprovable");
+        return settled(kind.isEmpty() ? "unprovable" : kind, argument);
+    }
+
+    /**
      * THE DISPOSITION, ENTERED FROM THE RECORD — a statement of what the builds and the skeptic
      * established. No model is called for it: where the facts are established there is nothing to
      * argue, and a sampled reply would make a deterministic outcome vary run to run.
@@ -301,6 +313,35 @@ public final class Prove {
     private static String fileOf(String marker) {
         String[] parts = marker.split("\\|");
         return parts.length > 1 ? parts[1] : "";
+    }
+
+    /**
+     * The tests that already sit beside the flagged class, in full.
+     *
+     * <p>They are what a reproducer reads to learn how this project stands a subject up — the harness,
+     * the datasource, the annotations — and it reads them every time. Handing them over costs a longer
+     * brief and saves the tool calls that a hardcoded 25-call ceiling makes scarce.
+     */
+    private static String siblingTests(Path checkout, String marker) {
+        Path dir = checkout.resolve(fileOf(marker).replace("src/main/java", "src/test/java")).getParent();
+        if (dir == null || !Files.isDirectory(dir)) {
+            return "";
+        }
+        StringBuilder b = new StringBuilder();
+        try (var files = Files.list(dir)) {
+            files.filter(f -> f.toString().endsWith("Test.java")).limit(2).forEach(f -> {
+                try {
+                    b.append("\n\nAn existing test beside it, ").append(f.getFileName())
+                            .append(" — this is how this project stands a subject up:\n")
+                            .append(Files.readString(f));
+                } catch (IOException ignored) {
+                    // One unreadable sibling is not worth failing a brief over.
+                }
+            });
+        } catch (IOException ignored) {
+            return "";
+        }
+        return b.toString();
     }
 
     /** Absent or unreadable is not fatal: the agent still has read_file and can go and get it. */
