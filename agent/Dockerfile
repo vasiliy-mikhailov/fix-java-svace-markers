@@ -40,6 +40,11 @@ COPY --from=builder /src/agent/target/lib              /opt/agent/lib
 COPY entrypoint.sh                                     /opt/agent/entrypoint.sh
 RUN chmod +x /opt/agent/entrypoint.sh && chown -R prover:prover /work
 
+# THE RESULTS DIRECTORY IS MADE BEFORE THE VOLUME IS DECLARED. Declaring a VOLUME on a path that
+# does not exist creates it owned by root, and this image does not run as root — so the trace and the
+# settlements silently fail to write, and a prove that ran perfectly leaves nothing behind.
+RUN mkdir -p /results /work/checkouts && chown -R prover:prover /results /work
+
 USER prover
 ENV RESULTS=/results \
     CHECKOUTS=/work/checkouts
