@@ -468,7 +468,7 @@ public final class Prove {
      * <p>So the version follows the scheme rather than a global preference: h2 for the hosted
      * endpoints, 1.1 for a vLLM on the other end of a container network.
      */
-    private static ChatModel model() {
+    static ChatModel model() {
         String base = env("QWEN_BASE_URL");
         HttpClient.Version version = base.startsWith("https://")
                 ? HttpClient.Version.HTTP_2

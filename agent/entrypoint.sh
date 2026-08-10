@@ -62,13 +62,26 @@ case "${1:-dashboard}" in
         echo "SLICE DONE ($n marker(s), $done_already already settled)"
         ;;
 
+    seed)
+        # seed cases from a trace you have read
+        java -cp "$CP" tech.mikhailov.fsm.agent.ModelTest --seed "$RESULTS/trace.jsonl" \
+            "${2:-$RESULTS/cases.jsonl}"
+        ;;
+
+    test)
+        # model tests: an agent, an input it has seen, the property its answer must still have
+        dir=$(checkout "${REPO:-https://github.com/WebGoat/WebGoat.git}")
+        exec java -cp "$CP" tech.mikhailov.fsm.agent.ModelTest \
+            "$dir" "${2:-$RESULTS/cases.jsonl}" "$RESULTS"
+        ;;
+
     dashboard)
         exec java -cp "$CP" tech.mikhailov.fsm.agent.Dashboard \
             "$RESULTS/settlements.jsonl" "${PORT:-8087}"
         ;;
 
     *)
-        echo "usage: prove 'repo|file|line|checker' | slice <markers-file> | dashboard" >&2
+        echo "usage: prove 'repo|file|line|checker' | slice <markers> | test [cases] | seed [cases] | dashboard" >&2
         exit 2
         ;;
 esac
