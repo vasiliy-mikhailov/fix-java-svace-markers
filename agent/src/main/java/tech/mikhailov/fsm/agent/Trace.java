@@ -29,8 +29,14 @@ interface Trace {
     /** A build. The only entry here that is a fact rather than an opinion. */
     void built(String phase, Runner.Result result);
 
-    /** What the marker became, and the argument for it. */
-    void settled(String marker, String state, String because);
+    /**
+     * What the marker became, the argument for it, and what the builds actually did.
+     *
+     * @param red   a test genuinely failed before any patch
+     * @param green the same test genuinely passed after one. Recording these as anything other than
+     *              what the runner reported puts a claim in the record that nobody made.
+     */
+    void settled(String marker, String state, String because, boolean red, boolean green);
 
     /** The prove did not finish. Recorded so a dropped connection cannot look like nothing happening. */
     void failed(String marker, Throwable cause);

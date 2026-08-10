@@ -51,10 +51,16 @@ record Settlement(String markerKey, String repo, String file, String checker,
 
     /** A stage boundary: what is true about this marker right now. */
     static void note(Path results, String markerKey, String state, String text) {
+        note(results, markerKey, state, text, false, false);
+    }
+
+    /** @param red,green what the runner reported, not what the disposition implies. */
+    static void note(Path results, String markerKey, String state, String text,
+                     boolean red, boolean green) {
         try {
             new Settlement(markerKey, markerKey.split("\\|")[0], fileOf(markerKey),
                     markerKey.substring(markerKey.lastIndexOf('|') + 1),
-                    state, text, false, false, "", "", "", "").appendTo(results);
+                    state, text, red, green, "", "", "", "").appendTo(results);
         } catch (RuntimeException | IOException e) {
             // A journal that cannot be written must not end a prove that is otherwise fine, and must
             // never replace the failure it was called to record.

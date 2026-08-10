@@ -59,10 +59,13 @@ public final class Prove {
         JsonlTrace trace = new JsonlTrace(results.resolve("trace.jsonl"),
                 results.resolve("settlements.jsonl"), marker);
         try {
-            String account = prove(checkout, marker,
-                    new Agents(model(), checkout, trace, Runner.of(checkout)), Runner.of(checkout), trace);
+            Runner runner = Runner.of(checkout);
+            Prove prove = new Prove(checkout, marker,
+                    new Agents(model(), checkout, trace, runner), runner, trace);
+            String account = prove.run();
             String state = account.split("\n", 2)[0];
-            trace.settled(marker, state, account);
+            // The flags come from the prove that ran, not from what the disposition implies.
+            trace.settled(marker, state, account, prove.redOk, prove.greenOk);
         } catch (RuntimeException e) {
             // A prove that dies still leaves a row: a dropped connection must not look like nothing
             // having happened.
@@ -78,6 +81,11 @@ public final class Prove {
     private final Runner runner;
     private final Trace trace;
     private String brief = "";
+    // WHAT THE BUILDS ACTUALLY DID, carried to the settlement. A disposition implies them and an
+    // implication is not a record: `reproduced` and `verified` both mean red failed, and only one of
+    // them means green passed.
+    private boolean redOk;
+    private boolean greenOk;
 
     private Prove(Path checkout, String marker, Agents agents, Runner runner, Trace trace) {
         this.checkout = checkout;
@@ -256,9 +264,17 @@ public final class Prove {
     }
 
     /** Run a build and report it. The one entry in the trace that is a fact. */
-    private static Runner.Result built(Runner runner, Trace trace, String phase, String test) {
+    private Runner.Result built(Runner runner, Trace trace, String phase, String test) {
         Runner.Result r = runner.run(phase, test);
         trace.built(phase, r);
+        if (!r.infra()) {
+            // RED counts when the test FAILED; GREEN when it passed. Anything else is not evidence.
+            if (phase.equals("red")) {
+                redOk = !r.passed();
+            } else {
+                greenOk = r.passed();
+            }
+        }
         return r;
     }
 

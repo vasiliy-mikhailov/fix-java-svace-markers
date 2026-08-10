@@ -54,9 +54,10 @@ final class JsonlTrace implements Trace, DeepAgentFlowListener {
     }
 
     @Override
-    public void settled(String markerKey, String state, String because) {
-        write("settled", Map.of("state", state, "because", because));
-        Settlement.note(settlements, markerKey, state, because);
+    public void settled(String markerKey, String state, String because, boolean red, boolean green) {
+        write("settled", Map.of("state", state, "because", because,
+                "red", String.valueOf(red), "green", String.valueOf(green)));
+        Settlement.note(settlements, markerKey, state, because, red, green);
     }
 
     @Override
