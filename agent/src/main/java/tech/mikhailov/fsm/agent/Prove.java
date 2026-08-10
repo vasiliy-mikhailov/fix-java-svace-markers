@@ -13,24 +13,17 @@ import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 
 /**
- * THE ORDER, IN JAVA — because the version that asked a model to follow it did not.
+ * THE ORDER. Investigation belongs to the agents; sequence belongs here, where nothing can rewrite it.
  *
- * <p>An orchestrator was given the sequence as instructions beginning "THE ORDER IS NOT YOURS TO
- * CHOOSE". It planned nine steps, replaced them with three, and delegated one task carrying a
- * settlement it had already decided; five of six agents never ran and no build completed. Investigation
- * stays with the agents; sequence lives here.
+ * <p>RED RUNS BEFORE THE CRITIC. A test that does not compile cannot be over-mocked in any interesting
+ * way, and a test that does not go red proves nothing whatever its mocks look like — so grading its
+ * mocking first spends a model call on something no build has agreed exists.
  *
- * <p>RED RUNS BEFORE THE CRITIC, and that ordering is the whole of this class's judgement. A test that
- * does not compile cannot be over-mocked in any interesting way, and a test that does not go red proves
- * nothing whatever its mocks look like — so asking a model to weigh its mocking first is spending a
- * call to grade something no build has agreed exists. The old pipeline did exactly that: it opened the
- * critic gate on 105 of 471 proves while 5 of 11 written tests never compiled at all.
+ * <p>THE COMPILER IS A CRITIC TOO, and a free one: when RED fails to build, its error goes back to the
+ * reproducer verbatim. That is the one piece of feedback here guaranteed to be correct.
  *
- * <p>THE COMPILER IS A CRITIC TOO, and a free one. When RED fails to build, its error goes back to the
- * reproducer verbatim. That is the one piece of feedback in this program guaranteed to be correct.
- *
- * <p>THE BUILD IS NOT A TOOL. No agent can invoke Maven, because whether RED runs before the patch is
- * not a decision. This class runs it, and re-runs it after any rewrite — a rewritten test that nobody
+ * <p>THE BUILD IS NOT A TOOL. No agent may invoke the runner, because whether RED runs before the patch
+ * is not a decision. This class runs it, and re-runs it after any rewrite — a rewritten test nobody
  * re-builds is how a green proof gets recorded for a test that stopped reproducing.
  */
 public final class Prove {
@@ -68,10 +61,9 @@ public final class Prove {
 
     /** The whole prove. Read it top to bottom; that is the order, and nothing can reorder it. */
     static String prove(Path checkout, String marker, Agents agents, Runner runner) {
-        // THE FLAGGED SOURCE IS HANDED OVER, NOT FETCHED. The first run of this design spent 19 of the
-        // runtime's hardcoded 25 tool calls reading five files it could have been given, and hit the
-        // cap before writing anything. File tools are for reading what nobody anticipated; they are a
-        // poor way to deliver the one file the marker names.
+        // THE FLAGGED SOURCE IS HANDED OVER, NOT FETCHED. A runtime caps one agent at 25 sequential
+        // tool calls, and fetching a file the caller already holds can spend most of them. File tools
+        // are for reading what nobody anticipated.
         String brief = "Marker: " + marker
                 + "\nThe checkout is your workspace; read further only if you need to.\n\n"
                 + "The flagged file, " + fileOf(marker) + ":\n" + source(checkout, marker);
@@ -121,9 +113,7 @@ public final class Prove {
             }
         }
 
-        // EVIDENCE, ASSEMBLED ONCE. Every downstream call gets it, so a retry can never be poorer
-        // than the first attempt it replaces — which is exactly what the previous version was: the
-        // fixer's retry dropped the test and the build, and the skeptic's dropped the test.
+        // EVIDENCE, ASSEMBLED ONCE, so a retry can never be poorer than the call it replaces.
         String evidence = "\nThe failing test:\n" + test + "\nRED:\n" + red.summary();
 
         String patch = agents.fixer().run(brief + evidence);
@@ -141,8 +131,6 @@ public final class Prove {
         if (rejects(certificate)) {
             for (int again = 0; again < REASK; again++) {
                 // "Do not resubmit the previous one" is unfollowable unless the previous one is here.
-                // The old pipeline said exactly that while BuildFixInput carried no previous patch,
-                // and this rebuilt the same defect before anyone noticed.
                 String rejected = patch;
                 patch = agents.fixer().run(brief + evidence
                         + "\nYour previous patch was REJECTED and discarded:\n" + rejected
@@ -163,8 +151,8 @@ public final class Prove {
                     + certificate);
         }
 
-        // The curator decides whether this reaches a stranger's repository. It gets the whole record:
-        // deciding that from the patch alone is less than the old pipeline gave it.
+        // The curator decides whether this reaches a stranger's repository, so it gets the whole
+        // record rather than the patch alone.
         String curation = agents.prCurator().run(brief + evidence + "\nGREEN:\n" + green.summary()
                 + "\nThe certified patch:\n" + patch + "\nThe certification:\n" + certificate);
         return settled(says(curation, "make") ? "verified/pr-ready" : "verified/pr-rejected", curation);
@@ -177,13 +165,12 @@ public final class Prove {
     /**
      * Build the test, re-asking its author with the compiler's own words until it builds.
      *
-     * <p>RETURNS THE LATEST REPLY, not just the build. The previous version dropped it, so the
-     * caller's {@code test} string stayed at the FIRST attempt while the file on disk moved on — and
-     * a rewrite that renamed the class was then built under the old name and handed to the critic as
-     * source that no longer existed.
+     * <p>RETURNS THE LATEST REPLY, not just the build. Drop it and the caller's {@code test} string
+     * describes a file the reproducer has since replaced — a rewrite that renames the class is then
+     * built under the old name and handed to the critic as source that does not exist.
      *
      * @param context what else the reproducer must not forget while fixing the build — the critic's
-     *                request, when this is a rewrite. Empty on the first attempt.
+     *                request, when this is a rewrite. Empty otherwise.
      */
     private static Attempt reproduce(Runner runner, Agents agents, String brief, String context,
                                      String reply) {

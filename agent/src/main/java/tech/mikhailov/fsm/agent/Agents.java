@@ -9,10 +9,8 @@ import dev.langchain4j.model.chat.ChatModel;
 /**
  * THE SIX, EACH WITH ITS OWN TOOLS AND ITS OWN CLOSED SET OF ANSWERS.
  *
- * <p>There is no orchestrator. The first version had one, and it wrote a nine-step plan, replaced it
- * with a three-step plan, and delegated a single task carrying a conclusion it had already reached —
- * five of six agents never ran. An agent asked to follow an order it can rewrite will rewrite it.
- * {@link Prove} runs the order now; these are the six things it calls.
+ * <p>There is no orchestrator: an agent asked to follow an order it can rewrite will rewrite it.
+ * {@link Prove} runs the order; these are the six things it calls.
  *
  * <p>TWO WRITE AND FOUR JUDGE, and the split decides the tools. A writer's output is checked by the
  * compiler and the build, so it gets file access — the reproducer may create a file, the fixer may
@@ -22,9 +20,8 @@ import dev.langchain4j.model.chat.ChatModel;
  * <p>THE DIRECTIONS OF SILENCE DIFFER, and they are not arbitrary — they follow one rule. An
  * OBJECTION must be raised to bite, so an absent objector waives and the work stands. A CERTIFICATE
  * must be given to bite, so an absent certifier withholds and nothing is enforced. The critic objects;
- * the skeptic and the curator certify. That is why an unreachable critic keeps the test and an
- * unreachable skeptic blocks the pull request, and why the old pipeline's curator defaulting to
- * {@code make} was a defect rather than a choice.
+ * the skeptic and the curator certify. So an unreachable critic keeps the test, and an unreachable
+ * skeptic or curator blocks the pull request.
  */
 final class Agents {
 
@@ -61,9 +58,8 @@ final class Agents {
     /**
      * Objects to a test that observes more than the defect requires. Read-only.
      *
-     * <p>Asked ONLY after the build has agreed the test compiles and goes red — grading the mocking of
-     * a test that never built is the waste the old pipeline measured, 105 gate-opens against 5 of 11
-     * tests that never compiled.
+     * <p>Asked ONLY after the build has agreed the test compiles and goes red: grading the mocking of
+     * a test that never built spends a model call on nothing.
      */
     SubAgentRuntime proofCritic() {
         return runtime("proof-critic", Tools.reading(root), """

@@ -14,21 +14,18 @@ import dev.langchain4j.service.tool.ToolExecutor;
 /**
  * WHAT EACH AGENT CAN REACH, AND NOTHING MORE.
  *
- * <p>The first version of this program handed every agent the same tools through
- * {@code DeepAgentConfig.additionalTools}, which the library's own javadoc says is shared: "built-in
- * file tools (if enabled), then shared additionalTools, then per-definition extraTools". The smoke
- * run showed what that costs — {@code [sub-agent:verdict] tool=maven}, a judge running the build
- * whose output it was supposed to be reading. A capability that is granted globally is granted to
- * whoever asks first.
+ * <p>TOOLS ARE SCOPED PER AGENT, HERE, BY NAME. {@code DeepAgentConfig.additionalTools} is shared —
+ * the library's javadoc: "built-in file tools (if enabled), then shared additionalTools, then
+ * per-definition extraTools" — so a capability granted there is granted to whoever asks first,
+ * including a judge running the build whose output it is meant to be reading.
  *
- * <p>So tools are scoped HERE, per agent, by name. {@link FileToolFactory} builds all four
- * ({@code list_dir}, {@code read_file}, {@code write_file}, {@code edit_file}) and each set below
- * keeps only what that agent's job needs. A judge that cannot write cannot edit the thing it is
- * certifying; a critic that cannot run Maven cannot manufacture the evidence it is judging.
+ * <p>{@link FileToolFactory} builds all four ({@code list_dir}, {@code read_file},
+ * {@code write_file}, {@code edit_file}); each set below keeps only what that agent's job needs. A judge that cannot write cannot edit the thing it is
+ * certifying; a critic that cannot run the build cannot manufacture the evidence it is judging.
  *
- * <p>NOBODY GETS MAVEN. It is not a tool in this program: the build is run by {@link Prove} between
- * stages and its result is handed to the next agent as text. That is deliberate — a tool is something
- * a model chooses to invoke, and whether RED runs before the patch is not a choice.
+ * <p>NOBODY GETS THE RUNNER. {@link Prove} runs the build between stages and hands the result to the
+ * next agent as text: a tool is something a model chooses to invoke, and whether RED runs before the
+ * patch is not a choice.
  */
 final class Tools {
 
@@ -55,8 +52,8 @@ final class Tools {
      * Read, look around, and edit existing files.
      *
      * <p>The fixer needs {@code edit_file} for the source. It does NOT get {@code write_file}:
-     * creating a new file is not patching a defect, and the fixer that "fixes" a marker by writing a
-     * second test is a failure mode the old pipeline's skeptic had to catch in prose.
+     * creating a new file is not patching a defect, and a fixer that "fixes" a marker by writing a
+     * second test is then something a judge has to catch in prose.
      */
     static Map<ToolSpecification, ToolExecutor> patching(Path root) {
         return only(root, Set.of("list_dir", "read_file", "edit_file"));

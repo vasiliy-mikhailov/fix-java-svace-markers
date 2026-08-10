@@ -2,35 +2,51 @@
 
 One marker in, one settlement out.
 
-    mvn -q -DskipTests package -f agent
-    QWEN_BASE_URL=… QWEN_API_KEY=… QWEN_MODEL=… \
-      java -cp agent/target/agent-0.1.0-SNAPSHOT.jar:$(cat cp.txt) \
-        tech.mikhailov.fsm.agent.Prove <checkout> 'repo|file|line|checker'
+```
+mvn -q -DskipTests package -f agent
+QWEN_BASE_URL=… QWEN_API_KEY=… QWEN_MODEL=… \
+  java -cp agent/target/agent-0.1.0-SNAPSHOT.jar:$(cat cp.txt) \
+    tech.mikhailov.fsm.agent.Prove <checkout> 'repo|file|line|checker'
+```
 
-Six agents, each with its own tools; the build is the only arbiter. See [agent/SPEC.md](agent/SPEC.md).
+A marker claims a defect at a file and a line. The prove either demonstrates it or argues it away.
 
-## What was here before
+## How
 
-A 14,220-line Java/Spring pipeline that settled 277 of 279 WebGoat markers in 10.8 hours. It was
-removed on the `agent-only` branch; `git log main` has all of it. What replaced it is 491 lines,
-because the model and its tools now do directly what that code did by hand: HTTP and streaming,
-JSON, prompt assembly, reply parsing, and a fourteen-stage chain.
+Six agents, each with its own tools, called in a fixed order:
 
-## What has NOT been replaced, and is simply gone
+```
+reproducer → RED → proof-critic → fixer → GREEN → fix-skeptic → pr-curator
+```
 
-Say so plainly rather than discover it later:
+**The build is the only arbiter.** A test that fails before the patch and passes after it is the
+whole standard of proof; no agent may invoke the runner, because whether RED runs before the patch is
+not a decision.
 
-- **The queue.** No claim, no lease, no single-flight, no requeue-on-infra. The old `SuspicionDao`
-  held a marker with a 16-attempt CAS so two provers could not take the same one and a restart did
-  not re-prove two hundred. This proves one marker when asked.
-- **The dashboard.** `Settlement` writes rows in the `bugs` shape the old dashboard read, so wiring
-  one back is reading a JSONL — but nothing reads it today.
-- **Clone and JDK selection.** The agent assumes a checkout exists and that `mvn` works in it.
-- **The 30,311 frozen differential cases.** They pinned the parsers and input builders, which no
-  longer exist. They cannot be regenerated; `git log main` is the only copy.
+**Two agents write, four judge.** A writer's output is checked by the compiler and the build, so it
+gets file access — the reproducer may create a test, the fixer may edit source, neither may do the
+other's. A judge answers from a closed word set with read-only access, because a certification that
+can edit its subject certifies nothing.
+
+**Silence has a direction.** An objection must be raised to bite, so an unreachable critic waives and
+the test stands. A certificate must be given to bite, so an unreachable skeptic or curator blocks the
+pull request.
+
+Settlements append to `results/settlements.jsonl`, one line per prove, in a dashboard's column shape.
+
+See [agent/SPEC.md](agent/SPEC.md).
+
+## What it does not do
+
+- **Drain a queue.** No claim, no lease, no single-flight, no requeue. It proves one marker when asked;
+  two copies pointed at the same marker will both prove it.
+- **Clone, or choose a JDK.** It assumes a checkout exists and that the build tool works in it.
+- **Show anything.** `Settlement` writes rows a dashboard can read; nothing reads them yet.
 
 ## Status
 
-The agent has completed **zero** end-to-end proves. The last smoke reached GREEN and stopped on a
-fixer patch that did not compile — the reproducer gets the compiler's error back, the fixer does not.
-The old pipeline's 471 recorded proves in `examples/results-282.csv` are the comparison to beat.
+Zero completed end-to-end proves. The last run reached GREEN and stopped on a fixer patch that did
+not compile — the reproducer gets the compiler's error back, the fixer does not.
+
+`examples/results-282.csv` holds 471 recorded proves from a previous system over the same markers.
+That is the comparison.

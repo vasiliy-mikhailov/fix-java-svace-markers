@@ -10,15 +10,11 @@ import java.util.Map;
 /**
  * WHAT ONE PROVE PRODUCED — written in the shape the existing dashboard already reads.
  *
- * <p>The old pipeline's {@code bugs} table has the columns below and {@code DashboardService},
- * {@code DashboardController} and the STOMP pushes are all built on them. Emitting that shape means
- * the dashboard needs no change at all: something upserts these rows through {@code BugDao} and every
- * view, filter and counter keeps working. Inventing a nicer shape here would cost a rewrite of 1 400
- * lines of web code to display strictly less.
+ * <p>The column names below are a dashboard's: emit that shape and a viewer needs no mapping layer,
+ * and every filter and counter written against it keeps working.
  *
  * <p>ONE LINE PER PROVE, appended. Not one file per marker: a marker legitimately proves more than
- * once, and a file named after the marker would silently lose every attempt but the last — which is
- * exactly what the old {@code Trial} record did to its own retry attempts.
+ * once, and a file named after the marker silently keeps only the last attempt.
  *
  * <p>THE FIELDS ARE NOT ALL FILLABLE, and the empty ones are the honest part. {@code value_score},
  * {@code versions} and {@code jdk} come from machinery this program does not have; leaving them blank
