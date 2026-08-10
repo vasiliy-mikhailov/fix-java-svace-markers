@@ -275,7 +275,7 @@ public final class Dashboard {
 
     /** The agents, in the order they run. A tab each, plus the record itself. */
     private static final List<String> AGENTS = List.of("reproducer", "proof-critic", "fixer",
-            "fix-skeptic", "pr-curator", "verdict", "estimator");
+            "fix-critic", "pr-maker", "pr-critic", "verdict", "estimator", "estimator-critic");
 
     /**
      * One marker, by tab.
@@ -354,8 +354,13 @@ public final class Dashboard {
         StringBuilder tools = new StringBuilder();
         for (String e : mine) {
             if (field(e, "kind").equals("tool") && field(e, "agent").endsWith(agent)) {
+                // WITH WHAT CAME BACK. A list of calls says what an agent looked for; only the
+                // results say what it found, and "it grepped for Serializable" and "it grepped for
+                // Serializable and got nothing" are different stories about the same answer.
                 tools.append(field(e, "tool")).append("  ").append(cut(field(e, "arguments"), 110))
-                        .append('\n');
+                        .append('\n').append("    → ")
+                        .append(cut(field(e, "result").replace("\n", "\n    "), 400))
+                        .append("\n\n");
             }
         }
         if (tools.length() > 0) {

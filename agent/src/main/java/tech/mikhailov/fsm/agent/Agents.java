@@ -35,16 +35,18 @@ final class Agents {
     private final ChatModel model;
     private final Path root;
     private final JsonlTrace trace;
+    private final Runner runner;
 
-    Agents(ChatModel model, Path root, JsonlTrace trace) {
+    Agents(ChatModel model, Path root, JsonlTrace trace, Runner runner) {
         this.model = model;
         this.root = root;
         this.trace = trace;
+        this.runner = runner;
     }
 
     /** Writes ONE JUnit test that must fail because of the defect. May create files, never edit them. */
     Agent reproducer() {
-        return runtime("reproducer", Tools.writing(root), """
+        return runtime("reproducer", Tools.writing(root, runner), """
                 You write ONE JUnit test that fails because of the defect the marker names.
 
                 Read the flagged file first. Read whatever else you need to understand it — the classes \
@@ -103,7 +105,7 @@ final class Agents {
 
     /** Patches the defect. May edit existing files, never create them — a new file is not a patch. */
     Agent fixer() {
-        return runtime("fixer", Tools.patching(root), """
+        return runtime("fixer", Tools.patching(root, runner), """
                 You patch the defect the marker names, minimally.
 
                 Edit the source so the failing test passes. The smallest edit that removes the defect, \
@@ -117,9 +119,9 @@ final class Agents {
                 """);
     }
 
-    /** Certifies the patch. Its silence REFUSES: an absent certificate enforces nothing. */
-    Agent fixSkeptic() {
-        return runtime("fix-skeptic", Tools.reading(root), """
+    /** Criticises the patch. Its silence REFUSES: an absent certificate enforces nothing. */
+    Agent fixCritic() {
+        return runtime("fix-critic", Tools.reading(root), """
                 You judge ONE question: is this patch sound, or does it only satisfy the test?
 
                 Read the patch, the test, and the source around both. Ask whether the patch removes \
@@ -137,8 +139,8 @@ final class Agents {
     }
 
     /** Decides whether to propose the patch. Its silence REFUSES. */
-    Agent prCurator() {
-        return runtime("pr-curator", Tools.reading(root), """
+    Agent prMaker() {
+        return runtime("pr-maker", Tools.reading(root), """
                 You decide ONE thing: should this patch be proposed to the repository's maintainers?
 
                 Before you answer, look for evidence that the code is deliberately this way. Read the \
@@ -150,6 +152,54 @@ final class Agents {
 
                 Answer `make` only when the defect is a genuine accident in ordinary code and the \
                 patch is one a maintainer would merge. Then give the title and body you would use.
+                """);
+    }
+
+    /**
+     * Criticises the decision to propose, or not to. Loops back to the pr-maker.
+     *
+     * <p>The expensive mistake here is one-sided: proposing a patch that breaks a lesson costs a
+     * maintainer's afternoon and this project's credibility, and declining a good one costs nothing
+     * anyone notices. So it is asked to be hardest on `make`.
+     */
+    Agent prCritic() {
+        return runtime("pr-critic", Tools.reading(root), """
+                A colleague decided whether to propose this patch upstream. Judge the DECISION.
+
+                If they said `make`: is this a change a maintainer would actually merge, unsolicited, \
+                from a stranger? Would it break something the project means to keep — a lesson, a \
+                test, a documented behaviour? Go and read whatever settles that.
+
+                If they said `reject`: is the reason real, or did they refuse an ordinary correct fix \
+                out of caution?
+
+                Be hardest on `make`. A wrongly proposed patch costs a maintainer their afternoon and \
+                this project its welcome; a wrongly declined one costs nothing anybody notices.
+
+                Answer `sound` if the decision stands, or `redo` and say exactly what they missed.
+                """);
+    }
+
+    /**
+     * Criticises the estimate. Loops back to the estimator.
+     *
+     * <p>An estimate nobody argues with drifts, and it drifts high: every step looks like work when
+     * you are the one describing it. This reads the same record and says whether the number is one a
+     * developer would recognise.
+     */
+    Agent estimatorCritic() {
+        return runtime("estimator-critic", Tools.reading(root), """
+                A colleague estimated what this marker would have cost a developer. Judge the NUMBER.
+
+                Read the same record. Would a competent Java developer, new to this code, recognise \
+                that figure for that work? Check that dead ends were charged and that nothing was \
+                charged twice. Check the itemisation adds up to the total.
+
+                Estimates drift high, because every step looks like work when you are describing it. \
+                Say so when it has.
+
+                Answer `sound` if the number stands, or `redo` and give the figure you would defend \
+                and why.
                 """);
     }
 

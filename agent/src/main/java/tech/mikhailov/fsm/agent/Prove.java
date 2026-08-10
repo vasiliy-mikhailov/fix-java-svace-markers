@@ -60,7 +60,7 @@ public final class Prove {
                 results.resolve("settlements.jsonl"), marker);
         try {
             String account = prove(checkout, marker,
-                    new Agents(model(), checkout, trace), Runner.of(checkout), trace);
+                    new Agents(model(), checkout, trace, Runner.of(checkout)), Runner.of(checkout), trace);
             String state = account.split("\n", 2)[0];
             trace.settled(marker, state, account);
         } catch (RuntimeException e) {
@@ -173,7 +173,7 @@ public final class Prove {
 
         // The skeptic CERTIFIES, and a certificate must be given to bite: silence enforces nothing.
         trace.progress(marker, "GREEN passed; fix-skeptic certifying");
-        String certificate = agents.fixSkeptic().run(brief + evidence + "\nGREEN:\n" + green.summary()
+        String certificate = agents.fixCritic().run(brief + evidence + "\nGREEN:\n" + green.summary()
                 + "\nThe patch it certifies:\n" + patch);
         if (rejects(certificate)) {
             for (int again = 0; again < REASK; again++) {
@@ -189,7 +189,7 @@ public final class Prove {
                     return priced("reproduced", "the defect is real; the replacement patch would "
                             + "not build:\n" + green.summary());
                 }
-                certificate = agents.fixSkeptic().run(brief + evidence + "\nGREEN:\n" + green.summary()
+                certificate = agents.fixCritic().run(brief + evidence + "\nGREEN:\n" + green.summary()
                         + "\nThe patch it certifies:\n" + patch);
             }
         }
@@ -201,8 +201,11 @@ public final class Prove {
         // The curator decides whether this reaches a stranger's repository, so it gets the whole
         // record rather than the patch alone.
         trace.progress(marker, "certified; pr-curator deciding");
-        String curation = agents.prCurator().run(brief + evidence + "\nGREEN:\n" + green.summary()
-                + "\nThe certified patch:\n" + patch + "\nThe certification:\n" + certificate);
+        String proposal = brief + evidence + "\nGREEN:\n" + green.summary()
+                + "\nThe certified patch:\n" + patch + "\nThe certification:\n" + certificate;
+        String curation = agents.prMaker().run(proposal);
+        curation = reviewed(agents.prCritic(), agents.prMaker(), proposal, curation,
+                "Your decision was rejected by a reviewer");
         return priced("make".equals(verdict(curation, "make", "reject"))
                 ? "verified/pr-ready" : "verified/pr-rejected", curation);
     }
@@ -287,8 +290,10 @@ public final class Prove {
     private String priced(String disposition, String because) {
         String estimate;
         try {
-            estimate = agents.estimator().run(brief
-                    + "\n\nIt settled as: " + disposition + "\n\nThe record:\n" + because);
+            String record = brief + "\n\nIt settled as: " + disposition + "\n\nThe record:\n" + because;
+            estimate = agents.estimator().run(record);
+            estimate = reviewed(agents.estimatorCritic(), agents.estimator(), record, estimate,
+                    "A reviewer disputed your figure");
         } catch (RuntimeException e) {
             // An unreachable estimator costs a number, never a settlement.
             estimate = "minutes: unknown (" + e.getClass().getSimpleName() + ")";
@@ -297,6 +302,35 @@ public final class Prove {
         // settled(), not priced(): this method IS the pricing step, and calling itself here prices
         // the estimate of the estimate until the stack runs out.
         return settled(disposition, because + "\n\n--- human-equivalent ---\n" + estimate);
+    }
+
+    /**
+     * ONE LOOPBACK, SHARED. A critic that only complains changes nothing; the point of asking is to
+     * hand the objection back to whoever can act on it.
+     *
+     * <p>Silence and an unreadable answer both mean {@code sound} here, and that is the safe
+     * direction for these two: an unreachable critic must not reopen a decision nobody faulted. It is
+     * the opposite of the fix critic, whose silence blocks a pull request — because there a
+     * certificate must be GIVEN to bite, and here an objection must be RAISED.
+     *
+     * @return the producer's second answer when the critic rejected the first, otherwise the first
+     */
+    private static String reviewed(Agents.Agent critic, Agents.Agent producer, String task,
+                                   String answer, String preface) {
+        String critique;
+        try {
+            critique = critic.run(task + "\n\nWhat they answered:\n" + answer);
+        } catch (RuntimeException unreachable) {
+            return answer;
+        }
+        if (!"redo".equals(verdict(critique, "sound", "redo"))) {
+            return answer;
+        }
+        for (int again = 0; again < REASK; again++) {
+            answer = producer.run(task + "\n\n" + preface + ":\n" + critique
+                    + "\n\nAnswer their objection. Do not simply restate what you said.");
+        }
+        return answer;
     }
 
     /** The leading {@code minutes: N}, or empty when it did not answer in the shape asked for. */

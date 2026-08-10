@@ -28,9 +28,14 @@ import dev.langchain4j.service.tool.ToolExecutor;
  * {@code write_file}, {@code edit_file}); each set below keeps only what that agent's job needs. A judge that cannot write cannot edit the thing it is
  * certifying; a critic that cannot run the build cannot manufacture the evidence it is judging.
  *
- * <p>NOBODY GETS THE RUNNER. {@link Prove} runs the build between stages and hands the result to the
- * next agent as text: a tool is something a model chooses to invoke, and whether RED runs before the
- * patch is not a choice.
+ * <p>NO JUDGE GETS THE RUNNER, and both producers do. The rule it protects is that a certification
+ * must not manufacture the evidence it certifies — not that a producer should work blind. A
+ * reproducer that can run what it wrote finds its own compile error in seconds instead of spending a
+ * round trip through the chain to be told; the same for a fixer whose patch does not build.
+ *
+ * <p>The invariant is unchanged: the RED and GREEN that COUNT are the ones {@link Prove} runs between
+ * stages. What a producer learns from its own run is feedback, not evidence, and a reproducer cannot
+ * edit source anyway — so it cannot make its own test pass by changing the subject.
  */
 final class Tools {
 
@@ -42,6 +47,28 @@ final class Tools {
         return only(root, Set.of("list_dir", "read_file"));
     }
 
+    /** Run a named test class and read the build back. Producers only. */
+    private static Map<ToolSpecification, ToolExecutor> runTest(Runner runner) {
+        ToolSpecification spec = ToolSpecification.builder()
+                .name("run_test")
+                .description("Compile and run one test class, and return what the build said. Use it "
+                        + "to check that what you wrote compiles and fails for the reason you intend. "
+                        + "This is for your own benefit; the run that decides the marker is made "
+                        + "elsewhere.")
+                .parameters(JsonObjectSchema.builder()
+                        .addStringProperty("test", "the test class to run, e.g. ServersTest")
+                        .required("test")
+                        .build())
+                .build();
+        ToolExecutor exec = (request, memoryId) -> {
+            Runner.Result r = runner.run("check", field(request.arguments(), "test"));
+            return (r.infra() ? "DID NOT RUN" : r.passed() ? "PASSED" : "FAILED") + "\n" + r.summary();
+        };
+        Map<ToolSpecification, ToolExecutor> one = new LinkedHashMap<>();
+        one.put(spec, exec);
+        return one;
+    }
+
     /**
      * Read, look around, and write ONE file.
      *
@@ -49,8 +76,11 @@ final class Tools {
      * reproducer that can edit source can make its own test pass, which is the one thing the whole
      * program exists to prevent.
      */
-    static Map<ToolSpecification, ToolExecutor> writing(Path root) {
-        return only(root, Set.of("list_dir", "read_file", "write_file"));
+    static Map<ToolSpecification, ToolExecutor> writing(Path root, Runner runner) {
+        Map<ToolSpecification, ToolExecutor> tools = only(root, Set.of("list_dir", "read_file",
+                "write_file"));
+        tools.putAll(runTest(runner));
+        return tools;
     }
 
     /**
@@ -60,8 +90,11 @@ final class Tools {
      * creating a new file is not patching a defect, and a fixer that "fixes" a marker by writing a
      * second test is then something a judge has to catch in prose.
      */
-    static Map<ToolSpecification, ToolExecutor> patching(Path root) {
-        return only(root, Set.of("list_dir", "read_file", "edit_file"));
+    static Map<ToolSpecification, ToolExecutor> patching(Path root, Runner runner) {
+        Map<ToolSpecification, ToolExecutor> tools = only(root, Set.of("list_dir", "read_file",
+                "edit_file"));
+        tools.putAll(runTest(runner));
+        return tools;
     }
 
     /**
