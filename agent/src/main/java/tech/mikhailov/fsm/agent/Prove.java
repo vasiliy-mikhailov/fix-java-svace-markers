@@ -285,7 +285,9 @@ public final class Prove {
             estimate = "minutes: unknown (" + e.getClass().getSimpleName() + ")";
         }
         trace.priced(marker, minutes(estimate), estimate);
-        return priced(disposition, because + "\n\n--- human-equivalent ---\n" + estimate);
+        // settled(), not priced(): this method IS the pricing step, and calling itself here prices
+        // the estimate of the estimate until the stack runs out.
+        return settled(disposition, because + "\n\n--- human-equivalent ---\n" + estimate);
     }
 
     /** The leading {@code minutes: N}, or empty when it did not answer in the shape asked for. */

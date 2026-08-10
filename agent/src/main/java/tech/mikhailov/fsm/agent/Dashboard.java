@@ -54,6 +54,7 @@ public final class Dashboard {
             .verified,.verified-pr-ready,.verified-pr-rejected{background:#132e1a;color:#3fb950}
             .reproduced,.needs-review{background:#2b2011;color:#d29922}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
+            .to-do{background:#0d1117;color:#6e7681;border:1px solid #21262d}
             .infra{background:#2d1618;color:#f85149}
             .proving{background:#122033;color:#58a6ff}
             .proving::before{content:"● ";animation:p 1.4s ease-in-out infinite}
@@ -146,14 +147,14 @@ public final class Dashboard {
         server.createContext("/trace", e -> send(e, "text/html; charset=utf-8",
                 events(trace, settlements, "", open(e))));
         server.createContext("/", e -> send(e, "text/html; charset=utf-8",
-                index(settlements, trace, lines(settlements.resolveSibling("markers.txt")).size())));
+                index(settlements, trace, lines(settlements.resolveSibling("markers.txt")))));
         server.start();
         System.out.println("dashboard on http://127.0.0.1:" + port + "  reading " + settlements);
     }
 
     // ------------------------------------------------------------------ index
 
-    private static String index(Path settlements, Path trace, int total) {
+    private static String index(Path settlements, Path trace, List<String> queued) {
         Map<String, String> latest = new LinkedHashMap<>();
         for (String line : lines(settlements)) {
             latest.put(field(line, "suspicion_key"), line);
@@ -183,21 +184,30 @@ public final class Dashboard {
         first.forEach((m, t0) -> span.put(m, last.getOrDefault(m, t0) - t0));
         int humanMinutes = priced.values().stream().mapToInt(Integer::intValue).sum();
 
-        int settled = (int) latest.values().stream()
-                .filter(r -> !field(r, "state").equals("proving")).count();
+        // EVERY MARKER THE RUN WAS GIVEN, not only the ones it has reached. A queue you cannot see
+        // is a queue you cannot plan around, and "to-do" is a state like any other.
+        Map<String, String> all = new LinkedHashMap<>();
+        for (String marker : queued) {
+            all.put(marker.trim(), "to-do");
+        }
+        latest.forEach((k, row) -> all.put(k, field(row, "state")));
+        int total = all.size();
+        int settled = (int) all.values().stream()
+                .filter(s -> !s.equals("proving") && !s.equals("to-do")).count();
         long began = first.values().stream().mapToLong(Long::longValue).min().orElse(0L);
         long elapsed = began == 0 ? 0 : System.currentTimeMillis() - began;
 
-        StringBuilder b = head("markers", latest.size() + " marker(s) · "
+        StringBuilder b = head("markers", all.size() + " marker(s) · "
                 + events.values().stream().mapToInt(Integer::intValue).sum() + " trace event(s)");
-        if (latest.isEmpty()) {
-            return b.append("<div class=empty>No prove has run yet.</div>").toString();
+        if (all.isEmpty()) {
+            return b.append("<div class=empty>No markers queued and no prove has run.</div>")
+                    .toString();
         }
         b.append(progress(total, settled, elapsed));
 
 
         Map<String, Integer> counts = new TreeMap<>();
-        latest.values().forEach(r -> counts.merge(field(r, "state"), 1, Integer::sum));
+        all.values().forEach(s -> counts.merge(s, 1, Integer::sum));
         b.append("<div class=counts>");
         counts.forEach((k, n) -> b.append("<div class=c><b>").append(n).append("</b><span>")
                 .append(esc(k)).append("</span></div>"));
@@ -208,14 +218,19 @@ public final class Dashboard {
         b.append("</div><table><tr><th>marker</th><th>state</th>"
                 + "<th>human-equiv</th><th>took</th><th>dialog</th></tr>");
 
-        latest.forEach((key, row) -> {
-            String file = field(row, "file");
-            String state = field(row, "state");
+        all.forEach((key, state) -> {
+            String row = latest.getOrDefault(key, "");
+            // A marker not yet reached has no settlement row, so its file and checker come from the
+            // key itself — which is repo|file|line|checker and always present.
+            String[] parts = key.split("\\|");
+            String file = row.isEmpty() ? (parts.length > 1 ? parts[1] : key) : field(row, "file");
+            String checker = row.isEmpty() ? (parts.length > 3 ? parts[3] : "")
+                    : field(row, "svace_checker");
             int mins = priced.getOrDefault(key, 0);
             long took = span.getOrDefault(key, 0L);
             b.append("<tr><td><a href='/marker?k=").append(enc(key)).append("'>")
                     .append(esc(file.substring(file.lastIndexOf('/') + 1))).append("</a><div class=k>")
-                    .append(esc(field(row, "svace_checker"))).append("</div></td><td><span class='s ")
+                    .append(esc(checker)).append("</div></td><td><span class='s ")
                     .append(esc(css(state))).append("'>").append(esc(state))
                     .append("</span></td><td>").append(mins > 0 ? hm(mins) : "<span class=k>—</span>")
                     .append("</td><td class=k>").append(took > 0 ? clock(took) : "—")
