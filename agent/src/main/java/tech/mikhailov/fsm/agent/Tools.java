@@ -1,6 +1,10 @@
 package tech.mikhailov.fsm.agent;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -9,6 +13,7 @@ import com.deepagents.langchain4j.files.FileToolFactory;
 import com.deepagents.langchain4j.files.WorkspaceFileOperations;
 
 import dev.langchain4j.agent.tool.ToolSpecification;
+import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
 import dev.langchain4j.service.tool.ToolExecutor;
 
 /**
@@ -59,7 +64,92 @@ final class Tools {
         return only(root, Set.of("list_dir", "read_file", "edit_file"));
     }
 
-    /** The four built-ins, filtered to the named subset. */
+    /**
+     * FIND A STRING ACROSS THE CHECKOUT — the tool every agent asks for and none of the built-ins is.
+     *
+     * <p>Absent, a model asking for it does not degrade: the runtime treats an unknown tool name as a
+     * hallucination and throws, which ends the prove. It is also the cheaper way to answer "where is
+     * this defined" — one call against a whole tree instead of a read per candidate, and the tool
+     * budget is a hardcoded 25.
+     */
+    private static Map<ToolSpecification, ToolExecutor> grep(Path root) {
+        ToolSpecification spec = ToolSpecification.builder()
+                .name("grep")
+                .description("Search the checkout for a literal string or regular expression. Returns "
+                        + "matching file:line pairs. Cheaper than reading files to find a definition.")
+                .parameters(JsonObjectSchema.builder()
+                        .addStringProperty("pattern", "a literal string or Java regular expression")
+                        .addStringProperty("glob", "optional filename filter, e.g. *.java")
+                        .required("pattern")
+                        .build())
+                .build();
+        ToolExecutor exec = (request, memoryId) -> search(root, request.arguments());
+        Map<ToolSpecification, ToolExecutor> one = new LinkedHashMap<>();
+        one.put(spec, exec);
+        return one;
+    }
+
+    /** Bounded: a pattern that matches everything must not return the repository. */
+    private static String search(Path root, String argumentsJson) {
+        String pattern = field(argumentsJson, "pattern");
+        String glob = field(argumentsJson, "glob");
+        if (pattern.isBlank()) {
+            return "no pattern given";
+        }
+        Pattern re;
+        try {
+            re = Pattern.compile(pattern);
+        } catch (PatternSyntaxException e) {
+            re = Pattern.compile(Pattern.quote(pattern));
+        }
+        StringBuilder hits = new StringBuilder();
+        int found = 0;
+        try (var files = Files.walk(root)) {
+            for (Path f : files.filter(Files::isRegularFile).toList()) {
+                if (found >= 60) {
+                    hits.append("… more matches suppressed; narrow the pattern\n");
+                    break;
+                }
+                String name = f.getFileName().toString();
+                if (!glob.isBlank() && !name.matches(glob.replace(".", "\\.").replace("*", ".*"))) {
+                    continue;
+                }
+                if (f.toString().contains("/.git/") || f.toString().contains("/target/")) {
+                    continue;
+                }
+                try {
+                    int line = 0;
+                    for (String text : Files.readAllLines(f)) {
+                        line++;
+                        if (re.matcher(text).find()) {
+                            hits.append(root.relativize(f)).append(':').append(line).append(": ")
+                                    .append(text.strip()).append('\n');
+                            if (++found >= 60) {
+                                break;
+                            }
+                        }
+                    }
+                } catch (IOException | java.io.UncheckedIOException binary) {
+                    // A file that is not text is not a match.
+                }
+            }
+        } catch (IOException e) {
+            return "search failed: " + e.getMessage();
+        }
+        return found == 0 ? "no matches" : hits.toString();
+    }
+
+    private static String field(String json, String key) {
+        int k = json.indexOf('"' + key + '"');
+        if (k < 0) {
+            return "";
+        }
+        int open = json.indexOf('"', json.indexOf(':', k + key.length()) + 1);
+        int close = open < 0 ? -1 : json.indexOf('"', open + 1);
+        return close < 0 ? "" : json.substring(open + 1, close);
+    }
+
+    /** The four built-ins, filtered to the named subset, plus grep. */
     private static Map<ToolSpecification, ToolExecutor> only(Path root, Set<String> names) {
         Map<ToolSpecification, ToolExecutor> kept = new LinkedHashMap<>();
         FileToolFactory.build(new WorkspaceFileOperations(root))
@@ -68,11 +158,12 @@ final class Tools {
                         kept.put(spec, executor);
                     }
                 });
-        if (kept.size() != names.size()) {
+        kept.putAll(grep(root));
+        if (kept.size() != names.size() + 1) {
             // The tool names are the library's, so a rename upstream silently strips a capability and
             // an agent quietly stops being able to do its job. Fail at construction instead.
             throw new IllegalStateException(
-                    "expected " + names + " but the file tool factory offers " + kept.keySet());
+                    "expected " + names + " plus grep but got " + kept.keySet());
         }
         return kept;
     }

@@ -309,10 +309,24 @@ public final class Prove {
         return m.find() ? m.group(1) : "";
     }
 
-    /** {@code repo|file|line|checker} — the file is the second field. */
+    /**
+     * {@code repo|file|line|checker} — the file is the second field, made repo-relative.
+     *
+     * <p>An analyser reports the path it compiled, which is wherever CI checked the project out:
+     * {@code /builds/gitlab/some-group/owasp-webgoat/src/main/java/...}. Resolving that against a
+     * checkout escapes it entirely and every marker in the report becomes infra. The source root is
+     * the first thing in the path that a repository actually has.
+     */
     private static String fileOf(String marker) {
         String[] parts = marker.split("\\|");
-        return parts.length > 1 ? parts[1] : "";
+        String file = parts.length > 1 ? parts[1] : "";
+        for (String root : new String[] {"src/main/java/", "src/test/java/", "src/main/", "src/"}) {
+            int at = file.indexOf(root);
+            if (at >= 0) {
+                return file.substring(at);
+            }
+        }
+        return file;
     }
 
     /**
