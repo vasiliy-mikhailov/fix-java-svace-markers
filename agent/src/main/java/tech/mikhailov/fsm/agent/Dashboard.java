@@ -314,6 +314,14 @@ public final class Dashboard {
             for (String who : AGENTS) {
                 List<String> said = asked(mine, who);
                 if (said.isEmpty()) {
+                    long busy = mine.stream().filter(e -> field(e, "kind").equals("tool")
+                            && field(e, "agent").endsWith(who)).count();
+                    if (busy > 0) {
+                        b.append("<div class='ev tool'><span class=who>").append(esc(who))
+                                .append("</span><span class=kind>working — ").append(busy)
+                                .append(" tool call(s) · <a href='/marker?k=").append(enc(key))
+                                .append("&a=").append(who).append("'>open</a></span></div>");
+                    }
                     continue;
                 }
                 String last = said.get(said.size() - 1);
@@ -327,10 +335,32 @@ public final class Dashboard {
             return b.toString();
         }
 
+        StringBuilder tools = new StringBuilder();
+        int calls = 0;
+        for (String e : mine) {
+            if (field(e, "kind").equals("tool") && field(e, "agent").endsWith(agent)) {
+                calls++;
+                tools.append(field(e, "tool")).append("  ").append(cut(field(e, "arguments"), 110))
+                        .append('\n').append("    → ")
+                        .append(cut(field(e, "result").replace("\n", "\n    "), 400))
+                        .append("\n\n");
+            }
+        }
+
         List<String> said = asked(mine, agent);
         if (said.isEmpty()) {
-            return b.append("<div class=empty>").append(esc(agent))
-                    .append(" did not run for this marker.</div>").toString();
+            // AN AGENT MID-ANSWER HAS NOT "NOT RUN". It reads and greps for minutes before its first
+            // token, and reporting that as nothing throws away the only view of what it is doing.
+            if (calls == 0) {
+                return b.append("<div class=empty>").append(esc(agent))
+                        .append(" has not run for this marker.</div>").toString();
+            }
+            return b.append("<div class='ev asked'><span class=who>").append(esc(agent))
+                    .append("</span><span class=kind>working — ").append(calls)
+                    .append(" tool call(s), no answer yet</span></div>")
+                    .append("<div class='ev tool'>")
+                    .append(fold("what it has reached for", tools.toString(), expand))
+                    .append("</div>").toString();
         }
         int i = mine.indexOf(said.get(said.size() - 1));
         String last = said.get(said.size() - 1);
@@ -351,18 +381,9 @@ public final class Dashboard {
                     .append(fold("the prompt", field(earlier, "prompt"), expand)).append("</div>");
         }
 
-        StringBuilder tools = new StringBuilder();
-        for (String e : mine) {
-            if (field(e, "kind").equals("tool") && field(e, "agent").endsWith(agent)) {
-                // WITH WHAT CAME BACK. A list of calls says what an agent looked for; only the
-                // results say what it found, and "it grepped for Serializable" and "it grepped for
-                // Serializable and got nothing" are different stories about the same answer.
-                tools.append(field(e, "tool")).append("  ").append(cut(field(e, "arguments"), 110))
-                        .append('\n').append("    → ")
-                        .append(cut(field(e, "result").replace("\n", "\n    "), 400))
-                        .append("\n\n");
-            }
-        }
+        // WITH WHAT CAME BACK. A list of calls says what an agent looked for; only the results say
+        // what it found, and "it grepped for Serializable" and "it grepped for Serializable and got
+        // nothing" are different stories about the same answer.
         if (tools.length() > 0) {
             b.append("<div class='ev tool'>")
                     .append(fold("what it reached for", tools.toString(), expand)).append("</div>");
