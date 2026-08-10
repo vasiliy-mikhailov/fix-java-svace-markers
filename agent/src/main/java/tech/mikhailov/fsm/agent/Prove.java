@@ -308,8 +308,20 @@ public final class Prove {
         try {
             String record = brief + "\n\nIt settled as: " + disposition + "\n\nThe record:\n" + because;
             estimate = agents.estimator().run(record);
+            // A MISSING NUMBER IS CAUGHT HERE, NOT BY THE CRITIC. Whether the reply contains
+            // `minutes: N` is a question a regex answers, and asking a model to check it spends a
+            // call to be told something less reliably — the critic passed an estimate with no figure
+            // in it, which is exactly the failure a parser cannot have.
+            for (int again = 0; again < REASK && minutes(estimate).isBlank(); again++) {
+                estimate = agents.estimator().run(record
+                        + "\n\nYour answer had no figure in it. Begin with exactly `minutes: N`.");
+            }
             estimate = reviewed(agents.estimatorCritic(), agents.estimator(), record, estimate,
                     "A reviewer disputed your figure");
+            // And again after the critic, because a re-ask can lose the shape the first answer had.
+            if (minutes(estimate).isBlank()) {
+                estimate = "minutes: unknown\n" + estimate;
+            }
         } catch (RuntimeException e) {
             // An unreachable estimator costs a number, never a settlement.
             estimate = "minutes: unknown (" + e.getClass().getSimpleName() + ")";
