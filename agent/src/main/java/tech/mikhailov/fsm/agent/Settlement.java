@@ -13,7 +13,11 @@ import java.util.Map;
  * <p>The column names below are a dashboard's: emit that shape and a viewer needs no mapping layer,
  * and every filter and counter written against it keeps working.
  *
- * <p>ONE LINE PER PROVE, appended. Not one file per marker: a marker legitimately proves more than
+ * <p>A LINE PER STAGE, not per prove. A prove takes tens of minutes and a record written only at the
+ * end leaves a reader with nothing to look at for all of it; appending as each stage concludes means
+ * the last line for a marker is always its current state. Readers group by marker and keep the last.
+ *
+ * <p>Appended, never rewritten. Not one file per marker: a marker legitimately proves more than
  * once, and a file named after the marker silently keeps only the last attempt.
  *
  * <p>THE FIELDS ARE NOT ALL FILLABLE, and the empty ones are the honest part. {@code value_score},
@@ -45,9 +49,31 @@ record Settlement(String markerKey, String repo, String file, String checker,
         return r;
     }
 
+    /** A stage boundary: what is true about this marker right now. */
+    static void note(Path results, String markerKey, String state, String text) {
+        try {
+            new Settlement(markerKey, markerKey.split("\\|")[0], fileOf(markerKey),
+                    markerKey.substring(markerKey.lastIndexOf('|') + 1),
+                    state, text, false, false, "", "", "", "").appendTo(results);
+        } catch (RuntimeException | IOException e) {
+            // A journal that cannot be written must not end a prove that is otherwise fine, and must
+            // never replace the failure it was called to record.
+            System.err.println("could not journal " + state + ": " + e);
+        }
+    }
+
+    private static String fileOf(String markerKey) {
+        String[] parts = markerKey.split("\\|");
+        return parts.length > 1 ? parts[1] : "";
+    }
+
     /** Append one line of JSON. The file IS the record — there is no database in this program. */
     void appendTo(Path results) throws IOException {
-        Files.createDirectories(results.getParent());
+        // A bare filename has no parent, and createDirectories(null) throws where a caller expects
+        // at worst an IOException — which on the failure path swallows the exception being reported.
+        if (results.getParent() != null) {
+            Files.createDirectories(results.getParent());
+        }
         Files.writeString(results, json(row()) + "\n",
                 StandardOpenOption.CREATE, StandardOpenOption.APPEND);
     }
@@ -76,7 +102,7 @@ record Settlement(String markerKey, String repo, String file, String checker,
         return b.append('}').toString();
     }
 
-    private static String escape(String s) {
+    static String escape(String s) {
         StringBuilder b = new StringBuilder(s.length() + 16);
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);

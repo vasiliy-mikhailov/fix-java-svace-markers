@@ -31,6 +31,15 @@ public final class Prove {
     /** Every agent, at zero: four of the six replies are branched on. */
     private static final double CERTIFYING = 0.0;
 
+    /**
+     * How long one call may take.
+     *
+     * <p>Generous because a reasoning model asked to read a file and write a JUnit test thinks for
+     * minutes before its first token, and this client does not stream — an idle connection and a slow
+     * answer are indistinguishable to it, so the budget has to cover the slow answer.
+     */
+    private static final Duration PATIENCE = Duration.ofMinutes(30);
+
     /** One re-ask per producer, quoting whoever objected. Two loops, one budget, stated once. */
     private static final int REASK = 1;
 
@@ -39,28 +48,33 @@ public final class Prove {
 
     public static void main(String[] args) throws IOException {
         if (args.length < 2) {
-            System.err.println("usage: Prove <checkout> <repo|file|line|checker>");
+            System.err.println("usage: Prove <checkout> <repo|file|line|checker> [results-dir]");
             System.exit(2);
         }
         Path checkout = Path.of(args[0]);
         String marker = args[1];
-        Path results = Path.of(args.length > 2 ? args[2] : "results/settlements.jsonl");
-        String account = prove(checkout, marker, new Agents(model(), checkout), Runner.of(checkout));
-        System.out.println(account);
-        // The dashboard reads bugs rows, so that is what a prove emits. Nothing else changes: the
-        // controller, the STOMP pushes and every filter are already built on these column names.
-        new Settlement(marker, marker.split("\\|")[0], fileOf(marker),
-                marker.substring(marker.lastIndexOf('|') + 1),
-                account.split("\\n", 2)[0], account,
-                account.contains("RED") || account.contains("red then green"),
-                account.contains("green then") || account.contains("verified/"),
-                "", "", "", account.startsWith("INFRA") ? account : "")
-                .appendTo(results);
-        System.out.println("→ " + results);
+        Path results = Path.of(args.length > 2 ? args[2] : "results");
+
+        // THE TRACE IS CONSTRUCTED HERE AND NOWHERE ELSE, then handed to the agents and to the prove.
+        // Nothing below prints or appends on its own: one object sees the whole run, in order.
+        JsonlTrace trace = new JsonlTrace(results.resolve("trace.jsonl"),
+                results.resolve("settlements.jsonl"), marker);
+        try {
+            String account = prove(checkout, marker,
+                    new Agents(model(), checkout, trace), Runner.of(checkout), trace);
+            String state = account.split("\n", 2)[0];
+            trace.settled(marker, state, account);
+        } catch (RuntimeException e) {
+            // A prove that dies still leaves a row: a dropped connection must not look like nothing
+            // having happened.
+            trace.failed(marker, e);
+            e.printStackTrace();
+            System.exit(1);
+        }
     }
 
     /** The whole prove. Read it top to bottom; that is the order, and nothing can reorder it. */
-    static String prove(Path checkout, String marker, Agents agents, Runner runner) {
+    static String prove(Path checkout, String marker, Agents agents, Runner runner, Trace trace) {
         // THE FLAGGED SOURCE IS HANDED OVER, NOT FETCHED. A runtime caps one agent at 25 sequential
         // tool calls, and fetching a file the caller already holds can spend most of them. File tools
         // are for reading what nobody anticipated.
@@ -68,7 +82,8 @@ public final class Prove {
                 + "\nThe checkout is your workspace; read further only if you need to.\n\n"
                 + "The flagged file, " + fileOf(marker) + ":\n" + source(checkout, marker);
 
-        Attempt a = reproduce(runner, agents, brief, "", agents.reproducer().run(brief));
+        trace.progress(marker, "reproducer: writing a failing test");
+        Attempt a = reproduce(runner, agents, brief, "", agents.reproducer().run(brief), trace);
         if (declined(a.test())) {
             return settled("not-a-bug", agents.verdict().run(brief
                     + "\nThe reproducer declined to write a test, saying:\n" + a.test()));
@@ -89,9 +104,10 @@ public final class Prove {
         String test = a.test();
         Runner.Result red = a.build();
 
+        trace.progress(marker, "RED reproduced; proof-critic reading the test");
         String critique = agents.proofCritic().run(brief + "\nThe test, which compiles and goes RED:\n"
                 + test + "\n" + red.summary());
-        if (says(critique, "reducible")) {
+        if ("reducible".equals(verdict(critique, "reducible", "necessary"))) {
             for (int again = 0; again < REASK; again++) {
                 // The critique travels WITH the compile retries: a reproducer being told to fix a
                 // build error mid-rewrite must still know what the reviewer asked it to change.
@@ -99,7 +115,7 @@ public final class Prove {
                         + "needs to:\n" + critique + "\nWrite it again. Keep only what the defect "
                         + "requires.";
                 Attempt rewrite = reproduce(runner, agents, brief, asked,
-                        agents.reproducer().run(brief + asked));
+                        agents.reproducer().run(brief + asked), trace);
                 if (rewrite.build().infra()) {
                     return settled("needs-review", "the original test reproduced; the rewrite the "
                             + "critic asked for would not build:\n" + rewrite.build().summary());
@@ -116,8 +132,9 @@ public final class Prove {
         // EVIDENCE, ASSEMBLED ONCE, so a retry can never be poorer than the call it replaces.
         String evidence = "\nThe failing test:\n" + test + "\nRED:\n" + red.summary();
 
+        trace.progress(marker, "fixer: patching");
         String patch = agents.fixer().run(brief + evidence);
-        Runner.Result green = patchUntilItBuilds(runner, agents, brief, evidence, test);
+        Runner.Result green = patchUntilItBuilds(runner, agents, brief, evidence, test, trace);
         if (green.infra()) {
             return settled("reproduced", "the defect is real; no patch of it would build:\n"
                     + green.summary());
@@ -127,6 +144,7 @@ public final class Prove {
         }
 
         // The skeptic CERTIFIES, and a certificate must be given to bite: silence enforces nothing.
+        trace.progress(marker, "GREEN passed; fix-skeptic certifying");
         String certificate = agents.fixSkeptic().run(brief + evidence + "\nGREEN:\n" + green.summary()
                 + "\nThe patch it certifies:\n" + patch);
         if (rejects(certificate)) {
@@ -137,7 +155,7 @@ public final class Prove {
                         + "\nYour previous patch was REJECTED and discarded:\n" + rejected
                         + "\nThe reviewer's objection:\n" + certificate
                         + "\nWrite a DIFFERENT patch answering it. Do not widen the test.");
-                green = patchUntilItBuilds(runner, agents, brief, evidence, test);
+                green = patchUntilItBuilds(runner, agents, brief, evidence, test, trace);
                 if (green.infra()) {
                     // A build that never ran is not a failed certification.
                     return settled("reproduced", "the defect is real; the replacement patch would "
@@ -154,9 +172,11 @@ public final class Prove {
 
         // The curator decides whether this reaches a stranger's repository, so it gets the whole
         // record rather than the patch alone.
+        trace.progress(marker, "certified; pr-curator deciding");
         String curation = agents.prCurator().run(brief + evidence + "\nGREEN:\n" + green.summary()
                 + "\nThe certified patch:\n" + patch + "\nThe certification:\n" + certificate);
-        return settled(says(curation, "make") ? "verified/pr-ready" : "verified/pr-rejected", curation);
+        return settled("make".equals(verdict(curation, "make", "reject"))
+                ? "verified/pr-ready" : "verified/pr-rejected", curation);
     }
 
     /** What the reproducer last said, and what the build made of it. @see #reproduce */
@@ -174,15 +194,15 @@ public final class Prove {
      *                request, when this is a rewrite. Empty otherwise.
      */
     private static Attempt reproduce(Runner runner, Agents agents, String brief, String context,
-                                     String reply) {
-        Runner.Result build = runner.run("red", testClass(reply));
+                                     String reply, Trace trace) {
+        Runner.Result build = built(runner, trace, "red", testClass(trace, reply));
         for (int again = 0; again < REASK && build.infra(); again++) {
             // Only a build that produced no test result is re-asked. A test that ran and FAILED is
             // the goal here, not a fault.
             reply = agents.reproducer().run(brief + context
                     + "\nYour test did not build. The compiler said:\n" + build.summary()
                     + "\nFix exactly that, write the file again, and end with the test class name.");
-            build = runner.run("red", testClass(reply));
+            build = built(runner, trace, "red", testClass(trace, reply));
         }
         return new Attempt(reply, build);
     }
@@ -193,15 +213,22 @@ public final class Prove {
      * patch that does not compile is not a rejected patch, it is an unfinished one.
      */
     private static Runner.Result patchUntilItBuilds(Runner runner, Agents agents, String brief,
-                                                    String evidence, String test) {
-        Runner.Result green = runner.run("green", testClass(test));
+                                                    String evidence, String test, Trace trace) {
+        Runner.Result green = built(runner, trace, "green", testClass(trace, test));
         for (int again = 0; again < REASK && green.infra(); again++) {
             agents.fixer().run(brief + evidence
                     + "\nYour patch did not build. The compiler said:\n" + green.summary()
                     + "\nFix exactly that. Do not change the test.");
-            green = runner.run("green", testClass(test));
+            green = built(runner, trace, "green", testClass(trace, test));
         }
         return green;
+    }
+
+    /** Run a build and report it. The one entry in the trace that is a fact. */
+    private static Runner.Result built(Runner runner, Trace trace, String phase, String test) {
+        Runner.Result r = runner.run(phase, test);
+        trace.built(phase, r);
+        return r;
     }
 
     /**
@@ -213,28 +240,61 @@ public final class Prove {
         return disposition + "\n\n" + because;
     }
 
+    /**
+     * THE VERDICT IS THE WORD THAT COMES FIRST, not any word that appears.
+     *
+     * <p>A judge asked to answer `sound` explains itself afterwards, and explaining why a patch is not
+     * over-fit puts "over-fit" in the reply. Searching the whole text for a rejection therefore reads
+     * every careful acquittal as a conviction. The agents are asked to lead with their verdict, so the
+     * earliest of the allowed words is the one they gave.
+     *
+     * @return the word, or empty when the reply contains none of them
+     */
+    private static String verdict(String reply, String... allowed) {
+        if (reply == null) {
+            return "";
+        }
+        String lower = reply.toLowerCase();
+        String earliest = "";
+        int at = Integer.MAX_VALUE;
+        for (String word : allowed) {
+            int i = lower.indexOf(word);
+            if (i >= 0 && i < at) {
+                at = i;
+                earliest = word;
+            }
+        }
+        return earliest;
+    }
+
     private static boolean says(String reply, String word) {
         return reply != null && reply.toLowerCase().contains(word);
     }
 
     /** A rejection, and ONLY a rejection. Silence and an unreadable answer both certify nothing. */
     private static boolean rejects(String certificate) {
-        return says(certificate, "over-fit") || says(certificate, "regression-risk")
-                || !says(certificate, "sound");
+        return !"sound".equals(verdict(certificate, "sound", "over-fit", "regression-risk"));
     }
 
     private static boolean declined(String reply) {
         return reply == null || reply.isBlank() || says(reply, "no test");
     }
 
-    /** The reproducer is asked to end with the test class name; this reads it back. */
-    private static String testClass(String reply) {
-        Matcher m = Pattern.compile("([A-Z][A-Za-z0-9_]*Test)\\b").matcher(reply == null ? "" : reply);
-        String last = "";
-        while (m.find()) {
-            last = m.group(1);
+    /**
+     * The test to run, taken from what the reproducer WROTE rather than from what it said.
+     *
+     * <p>Its prose names the harness it borrowed as readily as the test it wrote, so scraping a class
+     * name out of the reply picks whichever came last. The file it wrote is not ambiguous.
+     */
+    private static String testClass(Trace trace, String reply) {
+        String written = trace instanceof JsonlTrace j ? j.testWritten() : "";
+        if (!written.isBlank()) {
+            return written;
         }
-        return last;
+        // Nothing written under src/test: fall back to the reply so a decline still names something,
+        // and let the build report "no test executed" rather than guessing.
+        Matcher m = Pattern.compile("([A-Z][A-Za-z0-9_]*Test)\\b").matcher(reply == null ? "" : reply);
+        return m.find() ? m.group(1) : "";
     }
 
     /** {@code repo|file|line|checker} — the file is the second field. */
@@ -258,7 +318,7 @@ public final class Prove {
                 .apiKey(env("QWEN_API_KEY"))
                 .modelName(env("QWEN_MODEL"))
                 .temperature(CERTIFYING)
-                .timeout(Duration.ofMinutes(10))
+                .timeout(PATIENCE)
                 .build();
     }
 

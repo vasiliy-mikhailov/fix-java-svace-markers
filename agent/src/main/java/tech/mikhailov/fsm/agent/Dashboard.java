@@ -45,6 +45,9 @@ public final class Dashboard {
             .INFRA{background:#2d1618;color:#f85149}
             .why{color:#8b949e;font-size:12px;white-space:pre-wrap;max-width:70ch;margin-top:6px}
             .empty{padding:48px 24px;color:#7d8590}
+            .proving{background:#122033;color:#58a6ff}
+            .proving::before{content:"● ";animation:p 1.4s ease-in-out infinite}
+            @keyframes p{0%,100%{opacity:1}50%{opacity:.25}}
             """;
 
     private Dashboard() {
@@ -72,10 +75,18 @@ public final class Dashboard {
     }
 
     private static String page(Path results) {
-        List<String> rows = lines(results);
+        // GROUP BY MARKER, KEEP THE LAST. The journal appends a line per stage, so the last line
+        // for a marker is what is true about it now — in flight or settled.
+        java.util.Map<String, String> latest = new java.util.LinkedHashMap<>();
+        for (String line : lines(results)) {
+            latest.put(field(line, "suspicion_key"), line);
+        }
+        List<String> rows = List.copyOf(latest.values());
         StringBuilder b = new StringBuilder("<style>").append(CSS).append("</style>")
                 .append("<header><h1>settlements</h1><div class=sub>")
-                .append(results).append(" · ").append(rows.size()).append(" prove(s)</div></header>");
+                .append(results).append(" · ").append(rows.size()).append(" marker(s)</div></header>")
+                // In flight, so a reader watching a 20-minute prove sees it move.
+                .append("<meta http-equiv=refresh content=10>");
 
         if (rows.isEmpty()) {
             return b.append("<div class=empty>No prove has completed yet.<br><br>"

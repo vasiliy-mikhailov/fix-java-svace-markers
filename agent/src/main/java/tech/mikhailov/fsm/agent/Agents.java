@@ -2,6 +2,7 @@ package tech.mikhailov.fsm.agent;
 
 import java.nio.file.Path;
 
+import com.deepagents.langchain4j.logging.ToolInvocationLogMode;
 import com.deepagents.langchain4j.subagents.SubAgentRuntime;
 
 import dev.langchain4j.model.chat.ChatModel;
@@ -25,16 +26,24 @@ import dev.langchain4j.model.chat.ChatModel;
  */
 final class Agents {
 
+    /** One agent, already wired to the trace. Callers cannot reach a runtime that is not. */
+    @FunctionalInterface
+    interface Agent {
+        String run(String task);
+    }
+
     private final ChatModel model;
     private final Path root;
+    private final JsonlTrace trace;
 
-    Agents(ChatModel model, Path root) {
+    Agents(ChatModel model, Path root, JsonlTrace trace) {
         this.model = model;
         this.root = root;
+        this.trace = trace;
     }
 
     /** Writes ONE JUnit test that must fail because of the defect. May create files, never edit them. */
-    SubAgentRuntime reproducer() {
+    Agent reproducer() {
         return runtime("reproducer", Tools.writing(root), """
                 You write ONE JUnit test that fails because of the defect the marker names.
 
@@ -61,7 +70,7 @@ final class Agents {
      * <p>Asked ONLY after the build has agreed the test compiles and goes red: grading the mocking of
      * a test that never built spends a model call on nothing.
      */
-    SubAgentRuntime proofCritic() {
+    Agent proofCritic() {
         return runtime("proof-critic", Tools.reading(root), """
                 This test compiles and it goes RED for the right defect. Both facts are established; \
                 do not re-litigate them.
@@ -91,7 +100,7 @@ final class Agents {
     }
 
     /** Patches the defect. May edit existing files, never create them — a new file is not a patch. */
-    SubAgentRuntime fixer() {
+    Agent fixer() {
         return runtime("fixer", Tools.patching(root), """
                 You patch the defect the marker names, minimally.
 
@@ -107,7 +116,7 @@ final class Agents {
     }
 
     /** Certifies the patch. Its silence REFUSES: an absent certificate enforces nothing. */
-    SubAgentRuntime fixSkeptic() {
+    Agent fixSkeptic() {
         return runtime("fix-skeptic", Tools.reading(root), """
                 You judge ONE question: is this patch sound, or does it only satisfy the test?
 
@@ -126,7 +135,7 @@ final class Agents {
     }
 
     /** Decides whether to propose the patch. Its silence REFUSES. */
-    SubAgentRuntime prCurator() {
+    Agent prCurator() {
         return runtime("pr-curator", Tools.reading(root), """
                 You decide ONE thing: should this patch be proposed to the repository's maintainers?
 
@@ -150,7 +159,7 @@ final class Agents {
      * pipeline entered five of its eight dispositions that way, and routing them through a model would
      * turn five deterministic outcomes into sampled ones.
      */
-    SubAgentRuntime verdict() {
+    Agent verdict() {
         return runtime("verdict", Tools.reading(root), """
                 No test demonstrated this marker either way. You argue what it should be.
 
@@ -168,8 +177,20 @@ final class Agents {
                 """);
     }
 
-    private SubAgentRuntime runtime(String name, java.util.Map<dev.langchain4j.agent.tool.ToolSpecification,
+    /**
+     * THE ONLY PLACE A RUNTIME IS BUILT, so the trace cannot be forgotten at one of six call sites.
+     *
+     * <p>The listener catches the tool calls the library makes; the wrapper catches the pair the
+     * library truncates. Both go to the same instance, so one file holds a run in one order.
+     */
+    private Agent runtime(String name, java.util.Map<dev.langchain4j.agent.tool.ToolSpecification,
             dev.langchain4j.service.tool.ToolExecutor> tools, String prompt) {
-        return new SubAgentRuntime(model, prompt, tools, "agent:" + name);
+        SubAgentRuntime runtime = new SubAgentRuntime(model, prompt, tools, "agent:" + name,
+                ToolInvocationLogMode.NONE, trace);
+        return task -> {
+            String reply = runtime.run(task);
+            trace.asked(name, prompt + "\n\n---\n\n" + task, reply);
+            return reply;
+        };
     }
 }

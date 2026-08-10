@@ -16,7 +16,9 @@ final class Maven implements Runner {
         if (test == null || test.isBlank()) {
             return new Result(true, false, phase + ": no test class was named, so nothing ran");
         }
-        Shell.Output out = Shell.run(checkout, "mvn", "-B", "-q", "test",
+        Shell.Output out = // NOT -q: it suppresses the compiler error, leaving a build that failed and a summary
+        // that says only that lombok called a deprecated method.
+        Shell.run(checkout, "mvn", "-B", "test",
                 "-Dtest=" + test, "-Dsurefire.failIfNoSpecifiedTests=false");
         if (out.timedOut()) {
             return new Result(true, false, phase + ": the build did not finish in time\n" + out.text());
