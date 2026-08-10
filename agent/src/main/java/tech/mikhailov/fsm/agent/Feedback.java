@@ -5,7 +5,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -28,28 +27,9 @@ import java.util.Map;
  * and a training set whose inputs live somewhere else is one bad path away from being unlabelled.
  * It costs duplication, and duplication is the cheap half of that trade.
  *
- * <p>THE KINDS ARE A CLOSED SET, and deliberately short. Free text is what a reviewer wants to write
- * and is nearly useless for training — forty complaints that mean the same thing cannot be counted
- * unless they share a word. {@link #KINDS} is that word; {@link #note} is where the rest goes.
  */
-record Feedback(String marker, String agent, int event, String kind, String note, String at,
+record Feedback(String marker, String agent, int event, String note, String at,
                 String prompt, String reply) {
-
-    /**
-     * What can be wrong with an answer.
-     *
-     * <p>One is noise; forty against the same agent is evidence that its prompt should say so
-     * explicitly, which is the whole point of collecting them.
-     */
-    static final List<String> KINDS = List.of(
-            "excessive-mocking",     // stubbed what it could have driven for real
-            "proves-nothing",        // it passes, or it restates the marker instead of showing impact
-            "wrong-root-cause",      // the explanation does not match what the code does
-            "over-fit",              // satisfies the test rather than removing the defect
-            "missed-by-design",      // patched something the project means to be that way
-            "ignored-evidence",      // was given the build output or an objection and wrote past it
-            "too-long",              // right answer, buried
-            "good");                 // worth keeping as an example, not every label is a complaint
 
     /** Append. The file is the corpus; there is no database in this program. */
     void appendTo(Path file) throws IOException {
@@ -60,7 +40,6 @@ record Feedback(String marker, String agent, int event, String kind, String note
         row.put("marker", marker);
         row.put("agent", agent);
         row.put("event", event);
-        row.put("kind", kind);
         row.put("note", note);
         row.put("at", at);
         // Last, and in full: this is the example, the rest is provenance.

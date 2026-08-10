@@ -81,10 +81,8 @@ public final class Dashboard {
             .rate label{display:block;color:#c9d1d9;font-size:12px;margin-bottom:5px}
             .rate textarea{width:100%;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;
             border-radius:6px;padding:8px;font:inherit;font-size:12px;resize:vertical}
-            .rate .tag{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
-            .rate .tag span{color:#7d8590;font-size:11px;flex:1;min-width:240px}
-            .rate select,.rate button{background:#0d1117;color:#c9d1d9;border:1px solid #30363d;
-            border-radius:6px;padding:5px 9px;font:inherit;font-size:11px}
+            .rate button{background:#0d1117;border:1px solid #30363d;
+            border-radius:6px;padding:5px 12px;font:inherit;font-size:11px;margin-top:6px}
             .rate button{cursor:pointer;border-color:#1f6feb;color:#58a6ff}
             """;
 
@@ -512,16 +510,11 @@ public final class Dashboard {
                 .append(hidden("event", String.valueOf(event))).append(hidden("back", back))
                 .append(hidden("prompt", prompt)).append(hidden("reply", reply))
                 .append("<label>Tell this agent what it should have done</label>")
-                .append("<textarea name=note rows=3 placeholder='")
-                .append("Write it as you would say it to the person who wrote this answer. ")
-                .append("This text and the prompt above become one training example.'></textarea>")
-                .append("<div class=tag><span>Tag it so complaints can be counted — forty of the ")
-                .append("same one is evidence its prompt should say so explicitly:</span>")
-                .append("<select name=kind>");
-        for (String k : Feedback.KINDS) {
-            f.append("<option>").append(esc(k)).append("</option>");
-        }
-        return f.append("</select><button>save</button></div></form>").toString();
+                .append("<textarea name=note rows=4 placeholder='")
+                .append("Write it as you would say it to whoever wrote this answer. This text, the ")
+                .append("prompt above and the reply become one training example.'></textarea>")
+                .append("<button>save</button>");
+        return f.append("</form>").toString();
     }
 
     private static String hidden(String name, String value) {
@@ -532,7 +525,7 @@ public final class Dashboard {
     private static void record(Path file, Map<String, String> form) {
         try {
             new Feedback(form.getOrDefault("marker", ""), form.getOrDefault("agent", ""),
-                    (int) num(form.getOrDefault("event", "0")), form.getOrDefault("kind", ""),
+                    (int) num(form.getOrDefault("event", "0")),
                     form.getOrDefault("note", ""), String.valueOf(System.currentTimeMillis()),
                     form.getOrDefault("prompt", ""), form.getOrDefault("reply", "")).appendTo(file);
         } catch (IOException e) {
