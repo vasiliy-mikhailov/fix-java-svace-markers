@@ -61,6 +61,7 @@ public final class Dashboard {
             .ev{border-left:2px solid #21262d;margin:0 24px;padding:12px 0 12px 16px}
             .ev.asked{border-color:#58a6ff}.ev.built{border-color:#d29922}.ev.settled{border-color:#3fb950}
             .ev.failed{border-color:#f85149}.ev.tool{border-color:#30363d}
+            .ev.priced{border-color:#a371f7}
             .who{color:#58a6ff;font-weight:600}.kind{color:#7d8590;font-size:11px;text-transform:uppercase;
             letter-spacing:.06em;margin-left:8px}
             pre{white-space:pre-wrap;word-break:break-word;background:#161b22;border:1px solid #21262d;
@@ -144,11 +145,27 @@ public final class Dashboard {
             return b.append("<div class=empty>No prove has run yet.</div>").toString();
         }
 
+        // THE ONE NUMBER THE WHOLE THING EXISTS TO MOVE, summed over markers that were priced.
+        int humanMinutes = 0;
+        for (String line : lines(trace)) {
+            if (field(line, "kind").equals("priced")) {
+                try {
+                    humanMinutes += Integer.parseInt(field(line, "minutes"));
+                } catch (NumberFormatException notANumber) {
+                    // An estimator that answered in prose contributes nothing rather than a guess.
+                }
+            }
+        }
+
         Map<String, Integer> counts = new TreeMap<>();
         latest.values().forEach(r -> counts.merge(field(r, "state"), 1, Integer::sum));
         b.append("<div class=counts>");
         counts.forEach((k, n) -> b.append("<div class=c><b>").append(n).append("</b><span>")
                 .append(esc(k)).append("</span></div>"));
+        if (humanMinutes > 0) {
+            b.append("<div class=c><b>").append(humanMinutes / 60).append("h ")
+                    .append(humanMinutes % 60).append("m</b><span>human-equivalent</span></div>");
+        }
         b.append("</div><table><tr><th>marker</th><th>state</th><th>dialog</th></tr>");
 
         latest.forEach((key, row) -> {
@@ -227,6 +244,10 @@ public final class Dashboard {
                 case "settled" -> b.append("<span class='s ").append(esc(css(field(e, "state"))))
                         .append("'>").append(esc(field(e, "state"))).append("</span>")
                         .append("<pre>").append(esc(field(e, "because"))).append("</pre>");
+                case "priced" -> b.append("<span class=who>")
+                        .append(esc(field(e, "minutes"))).append(" min</span>")
+                        .append("<span class=kind>human-equivalent</span><pre>")
+                        .append(esc(field(e, "itemisation"))).append("</pre>");
                 case "failed" -> b.append("<span class=who>failed</span><pre>")
                         .append(esc(field(e, "cause"))).append("</pre>");
                 default -> b.append("<span class=kind>").append(esc(kind)).append("</span>");

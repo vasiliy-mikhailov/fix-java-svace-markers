@@ -45,9 +45,6 @@ public final class Prove {
     /** One re-ask per producer, quoting whoever objected. Two loops, one budget, stated once. */
     private static final int REASK = 1;
 
-    private Prove() {
-    }
-
     public static void main(String[] args) throws IOException {
         if (args.length < 2) {
             System.err.println("usage: Prove <checkout> <repo|file|line|checker> [results-dir]");
@@ -75,12 +72,31 @@ public final class Prove {
         }
     }
 
+    private final Path checkout;
+    private final String marker;
+    private final Agents agents;
+    private final Runner runner;
+    private final Trace trace;
+    private String brief = "";
+
+    private Prove(Path checkout, String marker, Agents agents, Runner runner, Trace trace) {
+        this.checkout = checkout;
+        this.marker = marker;
+        this.agents = agents;
+        this.runner = runner;
+        this.trace = trace;
+    }
+
     /** The whole prove. Read it top to bottom; that is the order, and nothing can reorder it. */
     static String prove(Path checkout, String marker, Agents agents, Runner runner, Trace trace) {
+        return new Prove(checkout, marker, agents, runner, trace).run();
+    }
+
+    private String run() {
         // THE FLAGGED SOURCE IS HANDED OVER, NOT FETCHED. A runtime caps one agent at 25 sequential
         // tool calls, and fetching a file the caller already holds can spend most of them. File tools
         // are for reading what nobody anticipated.
-        String brief = "Marker: " + marker
+        brief = "Marker: " + marker
                 + "\nThe checkout is your workspace; read further only if you need to.\n\n"
                 + "The flagged file, " + fileOf(marker) + ":\n" + source(checkout, marker)
                 + siblingTests(checkout, marker);
@@ -95,7 +111,7 @@ public final class Prove {
         // drops javac's output tells whoever reads it nothing they can act on, and throws away the
         // one piece of feedback in this program guaranteed to be correct.
         if (a.build().infra()) {
-            return settled("unprovable", "the test never built, after "
+            return priced("unprovable", "the test never built, after "
                     + REASK + " re-ask(s) with the compiler's own words:\n" + a.build().summary());
         }
         if (a.build().passed()) {
@@ -120,11 +136,11 @@ public final class Prove {
                 Attempt rewrite = reproduce(runner, agents, brief, asked,
                         agents.reproducer().run(brief + asked), trace);
                 if (rewrite.build().infra()) {
-                    return settled("needs-review", "the original test reproduced; the rewrite the "
+                    return priced("needs-review", "the original test reproduced; the rewrite the "
                             + "critic asked for would not build:\n" + rewrite.build().summary());
                 }
                 if (rewrite.build().passed()) {
-                    return settled("needs-review", "the original test reproduced; the rewrite the "
+                    return priced("needs-review", "the original test reproduced; the rewrite the "
                             + "critic asked for no longer does:\n" + rewrite.build().summary());
                 }
                 test = rewrite.test();
@@ -139,11 +155,11 @@ public final class Prove {
         String patch = agents.fixer().run(brief + evidence);
         Runner.Result green = patchUntilItBuilds(runner, agents, brief, evidence, test, trace);
         if (green.infra()) {
-            return settled("reproduced", "the defect is real; no patch of it would build:\n"
+            return priced("reproduced", "the defect is real; no patch of it would build:\n"
                     + green.summary());
         }
         if (!green.passed()) {
-            return settled("reproduced", "the defect is real and no patch held:\n" + green.summary());
+            return priced("reproduced", "the defect is real and no patch held:\n" + green.summary());
         }
 
         // The skeptic CERTIFIES, and a certificate must be given to bite: silence enforces nothing.
@@ -161,7 +177,7 @@ public final class Prove {
                 green = patchUntilItBuilds(runner, agents, brief, evidence, test, trace);
                 if (green.infra()) {
                     // A build that never ran is not a failed certification.
-                    return settled("reproduced", "the defect is real; the replacement patch would "
+                    return priced("reproduced", "the defect is real; the replacement patch would "
                             + "not build:\n" + green.summary());
                 }
                 certificate = agents.fixSkeptic().run(brief + evidence + "\nGREEN:\n" + green.summary()
@@ -169,7 +185,7 @@ public final class Prove {
             }
         }
         if (!green.passed() || rejects(certificate)) {
-            return settled("needs-review", "red then green, but the patch was not certified:\n"
+            return priced("needs-review", "red then green, but the patch was not certified:\n"
                     + certificate);
         }
 
@@ -178,7 +194,7 @@ public final class Prove {
         trace.progress(marker, "certified; pr-curator deciding");
         String curation = agents.prCurator().run(brief + evidence + "\nGREEN:\n" + green.summary()
                 + "\nThe certified patch:\n" + patch + "\nThe certification:\n" + certificate);
-        return settled("make".equals(verdict(curation, "make", "reject"))
+        return priced("make".equals(verdict(curation, "make", "reject"))
                 ? "verified/pr-ready" : "verified/pr-rejected", curation);
     }
 
@@ -196,7 +212,7 @@ public final class Prove {
      * @param context what else the reproducer must not forget while fixing the build — the critic's
      *                request, when this is a rewrite. Empty otherwise.
      */
-    private static Attempt reproduce(Runner runner, Agents agents, String brief, String context,
+    private Attempt reproduce(Runner runner, Agents agents, String brief, String context,
                                      String reply, Trace trace) {
         Runner.Result build = built(runner, trace, "red", testClass(trace, reply));
         for (int again = 0; again < REASK && build.infra(); again++) {
@@ -215,7 +231,7 @@ public final class Prove {
      * build — the same courtesy {@link #reproduce} gives the reproducer, and for the same reason: a
      * patch that does not compile is not a rejected patch, it is an unfinished one.
      */
-    private static Runner.Result patchUntilItBuilds(Runner runner, Agents agents, String brief,
+    private Runner.Result patchUntilItBuilds(Runner runner, Agents agents, String brief,
                                                     String evidence, String test, Trace trace) {
         Runner.Result green = built(runner, trace, "green", testClass(trace, test));
         for (int again = 0; again < REASK && green.infra(); again++) {
@@ -240,9 +256,9 @@ public final class Prove {
      * marker argued by-design as false-positive, and those mean opposite things to whoever reads the
      * row: one says the code is deliberately that way, the other says the claim is untrue.
      */
-    private static String argued(String argument) {
+    private String argued(String argument) {
         String kind = verdict(argument, "false-positive", "by-design", "unprovable");
-        return settled(kind.isEmpty() ? "unprovable" : kind, argument);
+        return priced(kind.isEmpty() ? "unprovable" : kind, argument);
     }
 
     /**
@@ -252,6 +268,30 @@ public final class Prove {
      */
     private static String settled(String disposition, String because) {
         return disposition + "\n\n" + because;
+    }
+
+    /**
+     * THE LAST AGENT, ON EVERY PATH. A marker the reproducer declined still cost a person the read
+     * that decided it, so pricing only the ones that reach a pull request would measure how often
+     * this program succeeds rather than what it saved.
+     */
+    private String priced(String disposition, String because) {
+        String estimate;
+        try {
+            estimate = agents.estimator().run(brief
+                    + "\n\nIt settled as: " + disposition + "\n\nThe record:\n" + because);
+        } catch (RuntimeException e) {
+            // An unreachable estimator costs a number, never a settlement.
+            estimate = "minutes: unknown (" + e.getClass().getSimpleName() + ")";
+        }
+        trace.priced(marker, minutes(estimate), estimate);
+        return priced(disposition, because + "\n\n--- human-equivalent ---\n" + estimate);
+    }
+
+    /** The leading {@code minutes: N}, or empty when it did not answer in the shape asked for. */
+    private static String minutes(String estimate) {
+        Matcher m = Pattern.compile("minutes\\s*:\\s*(\\d+)").matcher(estimate);
+        return m.find() ? m.group(1) : "";
     }
 
     /**

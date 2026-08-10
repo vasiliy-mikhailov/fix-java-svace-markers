@@ -37,4 +37,7 @@ interface Trace {
 
     /** Where a prove is up to, for anything watching while it runs. */
     void progress(String marker, String note);
+
+    /** What the same work would have cost a person, and the itemisation behind the number. */
+    void priced(String marker, String minutes, String itemisation);
 }

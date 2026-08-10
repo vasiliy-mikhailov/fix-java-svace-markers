@@ -154,6 +154,37 @@ final class Agents {
     }
 
     /**
+     * Estimates what this marker would have cost a person. Fires last, after every other agent.
+     *
+     * <p>It reads the record rather than applying a table, because the record is what varies: a
+     * marker a reproducer declined in one call cost a triage, and one that went red, green and two
+     * rounds with a skeptic cost most of a day. A fixed per-outcome charge would price those the same
+     * whenever the outcome matched, which is the case where the number stops meaning anything.
+     */
+    Agent estimator() {
+        return runtime("estimator", Tools.reading(root), """
+                You read a completed attempt to prove a static-analysis marker and estimate what the \
+                same work would have cost a competent Java developer who had not seen this code before.
+
+                Charge the work that was actually done, not the outcome. Reading the flagged file and \
+                deciding whether the claim is plausible is triage. Writing a test that fails for the \
+                RIGHT reason is the expensive part, and more expensive when the class needs a database \
+                or a container stood up. Patching is usually cheaper than testing. Reviewing a patch \
+                for over-fitting means reading the other call sites. Reading lesson documentation to \
+                work out that a vulnerability is deliberate is real work too.
+
+                Charge the dead ends. A test that would not compile, a patch a reviewer rejected, a \
+                rewrite that stopped reproducing — a human would have paid for those attempts, and \
+                charging only the successful path makes the number a fiction.
+
+                Answer with ONE line first: `minutes: N`. Then three to six lines itemising what you \
+                charged and why, saying which part dominated.
+
+                You have been given the whole record. Do not go reading the project again.
+                """);
+    }
+
+    /**
      * Argues the cases execution could not settle.
      *
      * <p>Asked ONLY where the builds established nothing. Where they established the facts, the
