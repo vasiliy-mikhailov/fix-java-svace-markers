@@ -77,10 +77,15 @@ public final class Dashboard {
             .empty{padding:48px 24px;color:#7d8590}.back{padding:14px 24px;display:block}
             .bar{height:4px;background:#161b22;margin:0}
             .bar i{display:block;height:100%;background:linear-gradient(90deg,#1f6feb,#3fb950)}
-            .rate{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
-            .rate select,.rate input,.rate button{background:#0d1117;color:#c9d1d9;border:1px solid #30363d;
-            border-radius:6px;padding:4px 8px;font:inherit;font-size:11px}
-            .rate input{flex:1;min-width:180px}.rate button{cursor:pointer;border-color:#1f6feb;color:#58a6ff}
+            .rate{margin-top:12px;border-top:1px dashed #21262d;padding-top:10px}
+            .rate label{display:block;color:#c9d1d9;font-size:12px;margin-bottom:5px}
+            .rate textarea{width:100%;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;
+            border-radius:6px;padding:8px;font:inherit;font-size:12px;resize:vertical}
+            .rate .tag{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
+            .rate .tag span{color:#7d8590;font-size:11px;flex:1;min-width:240px}
+            .rate select,.rate button{background:#0d1117;color:#c9d1d9;border:1px solid #30363d;
+            border-radius:6px;padding:5px 9px;font:inherit;font-size:11px}
+            .rate button{cursor:pointer;border-color:#1f6feb;color:#58a6ff}
             """;
 
     /**
@@ -506,12 +511,17 @@ public final class Dashboard {
                 .append(hidden("marker", marker)).append(hidden("agent", agent))
                 .append(hidden("event", String.valueOf(event))).append(hidden("back", back))
                 .append(hidden("prompt", prompt)).append(hidden("reply", reply))
+                .append("<label>Tell this agent what it should have done</label>")
+                .append("<textarea name=note rows=3 placeholder='")
+                .append("Write it as you would say it to the person who wrote this answer. ")
+                .append("This text and the prompt above become one training example.'></textarea>")
+                .append("<div class=tag><span>Tag it so complaints can be counted — forty of the ")
+                .append("same one is evidence its prompt should say so explicitly:</span>")
                 .append("<select name=kind>");
         for (String k : Feedback.KINDS) {
             f.append("<option>").append(esc(k)).append("</option>");
         }
-        return f.append("</select><input name=note placeholder='what a reviewer would say'>")
-                .append("<button>label</button></form>").toString();
+        return f.append("</select><button>save</button></div></form>").toString();
     }
 
     private static String hidden(String name, String value) {
