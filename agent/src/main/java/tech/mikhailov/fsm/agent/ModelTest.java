@@ -12,11 +12,21 @@ import java.util.List;
  *
  * <p>{@code java … ModelTest <checkout> <cases.jsonl> [results-dir]}
  *
- * <p>WHY A PROPERTY AND NOT AN ANSWER. Two runs of the same prompt at temperature 0 usually agree
- * word for word and occasionally do not, and a case that pins the words fails on a rewording that
- * changed nothing. What matters is that the fix critic still says {@code over-fit} about a patch that
- * over-fits, and that the reproducer still writes a file rather than an essay. Those survive a
- * rewording and break on the drift worth catching.
+ * <p>WHAT IS ASSERTED IS WHAT THE CHAIN DOES WITH THE REPLY, not the reply. Every agent here has a
+ * verifiable part to its answer — a routing decision or a number — and the prose around it is where
+ * two runs at temperature 0 legitimately differ. A case that pins the words fails on a rewording that
+ * changed nothing; a case that pins the ROUTING fails exactly when the marker would have gone
+ * somewhere else, which is the drift worth reporting.
+ *
+ * <p>Three rewards, and they cover every agent:
+ * <ul>
+ *   <li>{@code loopback:yes|no} — did this critic send the work back? Read by the same rule
+ *       {@code Prove} reads it by, so the case is testing the decision the chain would actually make.
+ *   <li>{@code number:N} or {@code number:N±T} — the estimator's minutes, within tolerance.
+ *   <li>{@code verdict:<word>} — the disposition or decision that routes the marker.
+ * </ul>
+ * {@code contains} and {@code absent} remain for the rare claim none of those can express, and should
+ * be rare: they are the ones that break on a rewording.
  *
  * <p>WHERE CASES COME FROM. {@code --seed} turns a recorded trace into cases: every answer an agent
  * gave becomes an input plus the verdict it reached, which is a claim that the same input still
@@ -99,6 +109,10 @@ public final class ModelTest {
                 // The SAME rule the chain reads verdicts by: the earliest of the allowed words, so a
                 // judge that answers `sound` and then explains why it is not over-fit still passes.
                 case "verdict" -> want.equals(leading(lower, want));
+                // THE ROUTING DECISION, which is what the reply is FOR. A critic whose wording drifts
+                // costs nothing; one whose loopback flips sends the marker somewhere else.
+                case "loopback" -> want.equals(loopsBack(lower) ? "yes" : "no");
+                case "number" -> withinTolerance(lower, want);
                 case "contains" -> lower.contains(want);
                 case "absent" -> !lower.contains(want);
                 default -> false;
@@ -108,6 +122,40 @@ public final class ModelTest {
             }
         }
         return broke;
+    }
+
+    /**
+     * Would the chain send this back to its producer?
+     *
+     * <p>Every rejection word across the four critics, read by the earliest-word rule. A reply that
+     * names none of them does not loop back — which matches the chain, where silence and an
+     * unreadable answer both leave the work standing.
+     */
+    private static boolean loopsBack(String reply) {
+        String word = leading(reply, "");
+        return word.equals("redo") || word.equals("reducible") || word.equals("over-fit")
+                || word.equals("regression-risk");
+    }
+
+    /**
+     * A number within tolerance — {@code number:15} or {@code number:15±5}.
+     *
+     * <p>An estimate is a judgement, so an exact match would be a test of luck. The default tolerance
+     * is a third, because what matters is that fifteen minutes has not quietly become ninety.
+     */
+    private static boolean withinTolerance(String reply, String want) {
+        String[] parts = want.split("±");
+        double target;
+        double tolerance;
+        try {
+            target = Double.parseDouble(parts[0].trim());
+            tolerance = parts.length > 1 ? Double.parseDouble(parts[1].trim()) : target / 3;
+        } catch (NumberFormatException notANumber) {
+            return false;
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(\\d+(?:\\.\\d+)?)").matcher(reply);
+        return m.find() && Math.abs(Double.parseDouble(m.group(1)) - target) <= tolerance;
     }
 
     /** The earliest of the known verdict words in the reply. */
@@ -176,10 +224,15 @@ public final class ModelTest {
             if (word.isEmpty()) {
                 continue;
             }
+            // The reward, not the wording: for a critic the routing decision, for anything else the
+            // word that routes the marker.
+            String reward = agent.endsWith("critic")
+                    ? "loopback:" + (loopsBack(reply.toLowerCase()) ? "yes" : "no")
+                    : "verdict:" + word;
             out.append("{\"agent\":\"").append(agent).append("\",\"task\":\"")
                     .append(Settlement.escape(Json.field(line, "prompt")))
-                    .append("\",\"expect\":\"verdict:").append(word)
-                    .append("\",\"why\":\"seeded: ").append(agent).append(" answered ").append(word)
+                    .append("\",\"expect\":\"").append(reward)
+                    .append("\",\"why\":\"seeded: ").append(agent).append(" → ").append(reward)
                     .append("\"}\n");
             n++;
         }
