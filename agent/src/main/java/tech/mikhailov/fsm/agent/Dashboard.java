@@ -55,6 +55,7 @@ public final class Dashboard {
             .reproduced,.needs-review{background:#2b2011;color:#d29922}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
             .to-do{background:#0d1117;color:#6e7681;border:1px solid #21262d}
+            td.latest{color:#8b949e;font-size:12px;max-width:46ch}
             .infra{background:#2d1618;color:#f85149}
             .proving{background:#122033;color:#58a6ff}
             .proving::before{content:"● ";animation:p 1.4s ease-in-out infinite}
@@ -180,6 +181,19 @@ public final class Dashboard {
                 priced.merge(m, (int) num(field(line, "minutes")), Integer::sum);
             }
         }
+        // The last thing said about each marker — its stage while in flight, its argument once
+        // settled. A row that shows only a state makes every proving marker look identical.
+        Map<String, String> saidLast = new LinkedHashMap<>();
+        for (String line : lines(trace)) {
+            String kind = field(line, "kind");
+            if (kind.equals("progress")) {
+                saidLast.put(field(line, "marker"), field(line, "note"));
+            } else if (kind.equals("settled")) {
+                saidLast.put(field(line, "marker"), field(line, "because"));
+            } else if (kind.equals("failed")) {
+                saidLast.put(field(line, "marker"), field(line, "cause"));
+            }
+        }
         Map<String, Long> span = new LinkedHashMap<>();
         first.forEach((m, t0) -> span.put(m, last.getOrDefault(m, t0) - t0));
         int humanMinutes = priced.values().stream().mapToInt(Integer::intValue).sum();
@@ -215,8 +229,8 @@ public final class Dashboard {
             b.append("<div class=c><b>").append(humanMinutes / 60).append("h ")
                     .append(humanMinutes % 60).append("m</b><span>human-equivalent</span></div>");
         }
-        b.append("</div><table><tr><th>marker</th><th>state</th>"
-                + "<th>human-equiv</th><th>took</th><th>dialog</th></tr>");
+        b.append("</div><table><tr><th>marker</th><th>where</th><th>state</th>"
+                + "<th>human-equiv</th><th>took</th><th>latest</th></tr>");
 
         all.forEach((key, state) -> {
             String row = latest.getOrDefault(key, "");
@@ -228,14 +242,23 @@ public final class Dashboard {
                     : field(row, "svace_checker");
             int mins = priced.getOrDefault(key, 0);
             long took = span.getOrDefault(key, 0L);
+            String line = parts.length > 2 ? parts[2] : "";
+            String dir = file.contains("/") ? file.substring(0, file.lastIndexOf('/')) : "";
+            // The package tail, because two markers in the same run are routinely both LessonPage.java.
+            dir = dir.replace("src/main/java/", "").replace("src/test/java/", "");
             b.append("<tr><td><a href='/marker?k=").append(enc(key)).append("'>")
-                    .append(esc(file.substring(file.lastIndexOf('/') + 1))).append("</a><div class=k>")
-                    .append(esc(checker)).append("</div></td><td><span class='s ")
-                    .append(esc(css(state))).append("'>").append(esc(state))
-                    .append("</span></td><td>").append(mins > 0 ? hm(mins) : "<span class=k>—</span>")
+                    .append(esc(file.substring(file.lastIndexOf('/') + 1)))
+                    .append(line.isEmpty() ? "" : ":" + esc(line)).append("</a><div class=k>")
+                    .append(esc(checker)).append("</div></td>")
+                    .append("<td class=k>").append(esc(dir)).append("</td>")
+                    .append("<td><span class='s ").append(esc(css(state))).append("'>").append(esc(state))
+                    .append("</span>").append(flags(row)).append("</td>")
+                    .append("<td>").append(mins > 0 ? hm(mins) : "<span class=k>—</span>")
                     .append("</td><td class=k>").append(took > 0 ? clock(took) : "—")
-                    .append("</td><td class=k>")
-                    .append(events.getOrDefault(key, 0)).append(" event(s)</td></tr>");
+                    .append("<div class=k>").append(events.getOrDefault(key, 0)).append(" event(s)</div>")
+                    .append("</td><td class=latest>")
+                    .append(esc(cut(oneLine(saidLast.getOrDefault(key, "")), 150)))
+                    .append("</td></tr>");
         });
         return b.append("</table><a class=back href='/trace'>the whole trace, every marker →</a>")
                 .toString();
@@ -400,6 +423,31 @@ public final class Dashboard {
             // An unreadable body is an empty form, and record() writes a row that says so.
         }
         return out;
+    }
+
+    /** RED and GREEN as they were recorded — the two facts a state alone does not carry. */
+    private static String flags(String row) {
+        if (row.isEmpty()) {
+            return "";
+        }
+        String red = field(row, "red_verified");
+        String green = field(row, "green_verified");
+        if (red.isEmpty() && green.isEmpty()) {
+            return "";
+        }
+        return "<div class=k>" + ("true".equals(red) ? "red ✓" : "red ·")
+                + " " + ("true".equals(green) ? "green ✓" : "green ·") + "</div>";
+    }
+
+    /** The first line worth showing: agents answer with their verdict first and reasoning after. */
+    private static String oneLine(String text) {
+        for (String line : text.split("\n")) {
+            String t = line.strip();
+            if (!t.isEmpty() && !t.equals("---")) {
+                return t;
+            }
+        }
+        return "";
     }
 
     private static String hm(int minutes) {
