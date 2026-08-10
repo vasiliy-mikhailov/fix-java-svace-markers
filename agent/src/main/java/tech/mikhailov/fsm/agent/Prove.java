@@ -103,6 +103,15 @@ public final class Prove {
 
         trace.progress(marker, "reproducer: writing a failing test");
         Attempt a = reproduce(runner, agents, brief, "", agents.reproducer().run(brief), trace);
+        // AN ANSWER WITH NO FILE IS NOT A DECLINE. A reproducer that explains the marker at length
+        // and writes nothing leaves the runner with no test to name, and reporting that as infra
+        // blames the build for an agent that did not do the work. Ask once, plainly.
+        if (!declined(a.test()) && testClass(trace, a.test()).isBlank()) {
+            a = reproduce(runner, agents, brief, "",
+                    agents.reproducer().run(brief + "\n\nYou explained the marker but wrote no file. "
+                            + "Use write_file to create the test, then name its class. If you believe "
+                            + "there is no defect to demonstrate, say exactly: no test."), trace);
+        }
         if (declined(a.test())) {
             return argued(agents.verdict().run(brief
                     + "\nThe reproducer declined to write a test, saying:\n" + a.test()));

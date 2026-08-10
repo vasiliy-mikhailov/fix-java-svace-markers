@@ -112,7 +112,13 @@ final class JsonlTrace implements Trace, DeepAgentFlowListener {
             return;
         }
         String path = argumentsJson.substring(open + 1, close);
-        if (path.contains("src/test/") && path.endsWith("Test.java")) {
+        // ANY TEST SOURCE ROOT, not just src/test. A project puts integration tests under src/it,
+        // and a marker raised in one of those is answered by a test written beside it — which this
+        // rejected, so the runner was told no test had been named and reported infra for a file that
+        // was sitting on disk.
+        boolean underTests = path.contains("src/test/") || path.contains("src/it/")
+                || path.contains("src/integrationTest/");
+        if (underTests && path.endsWith("Test.java")) {
             testWritten = path.substring(path.lastIndexOf('/') + 1, path.length() - ".java".length());
         }
     }
