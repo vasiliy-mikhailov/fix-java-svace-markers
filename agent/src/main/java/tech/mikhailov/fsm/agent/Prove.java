@@ -34,13 +34,23 @@ public final class Prove {
     private static final double CERTIFYING = 0.0;
 
     /**
+     * How much one answer may be.
+     *
+     * <p>UNSET, A REASONING MODEL GENERATES UNTIL IT RUNS OUT OF CONTEXT. On a local GPU at ~60
+     * tokens a second that is half an hour of thinking for a test that is forty lines long, and the
+     * only thing that ends it is {@link #PATIENCE} — which reports a timeout for a model that was
+     * working the whole time. A cap turns "how long will this take" into arithmetic.
+     */
+    private static final int MAX_TOKENS = 16_000;
+
+    /**
      * How long one call may take.
      *
-     * <p>Generous because a reasoning model asked to read a file and write a JUnit test thinks for
-     * minutes before its first token, and this client does not stream — an idle connection and a slow
-     * answer are indistinguishable to it, so the budget has to cover the slow answer.
+     * <p>Enough for {@link #MAX_TOKENS} at the rate a local GPU sustains, plus the pause before the
+     * first token. This client does not stream, so an idle connection and a slow answer look the
+     * same to it — but with the answer bounded, so is the wait.
      */
-    private static final Duration PATIENCE = Duration.ofMinutes(30);
+    private static final Duration PATIENCE = Duration.ofMinutes(12);
 
     /** One re-ask per producer, quoting whoever objected. Two loops, one budget, stated once. */
     private static final int REASK = 1;
@@ -508,6 +518,7 @@ public final class Prove {
                 .apiKey(env("QWEN_API_KEY"))
                 .modelName(env("QWEN_MODEL"))
                 .temperature(CERTIFYING)
+                .maxTokens(MAX_TOKENS)
                 .timeout(PATIENCE)
                 .build();
     }
