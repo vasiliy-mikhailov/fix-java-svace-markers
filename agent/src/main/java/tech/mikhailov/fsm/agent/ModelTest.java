@@ -164,6 +164,11 @@ public final class ModelTest {
         int at = Integer.MAX_VALUE;
         for (String word : List.of(candidate, "sound", "redo", "necessary", "reducible", "over-fit",
                 "regression-risk", "make", "reject", "false-positive", "by-design", "unprovable")) {
+            // An empty candidate is not a word. indexOf("") is 0, so leaving it in makes the empty
+            // string win every comparison and every reply look like it named nothing.
+            if (word.isEmpty()) {
+                continue;
+            }
             int i = reply.indexOf(word);
             if (i >= 0 && i < at) {
                 at = i;
