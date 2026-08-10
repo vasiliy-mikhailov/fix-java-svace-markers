@@ -1,31 +1,31 @@
-# secrets & runtime — never commit
-.env
-*.env
+
 !.env.example
-
-# THE DEPLOYMENT HOST'S HALF OF THE COMPOSE FILE. Compose merges docker-compose.override.yml
-# automatically, which is exactly what makes it the right home for a host's private wiring — an
-# `external: true` network, a reverse proxy, a published port — and exactly what makes committing one
-# dangerous: it would apply to everyone, and a network that exists on one machine stops
-# `docker compose up -d` dead on every other. The committed example is the template.
+!feedback/.gitkeep
+# (gigabytes over a few runs), and it contains verbatim third-party source. The directory itself is
 # See pipeline/deploy/docker-compose.override.yml.example.
-docker-compose.override.yml
-
-pipeline/deploy/n8n-data/
-pipeline/**/node_modules/
+# THE DEPLOYMENT HOST'S HALF OF THE COMPOSE FILE. Compose merges docker-compose.override.yml
+# THE FEEDBACK STORE — full model prompts, full model replies and source excerpts from the
+# `docker compose up -d` dead on every other. The committed example is the template.
+# `external: true` network, a reverse proxy, a published port — and exactly what makes committing one
+# across runs. Kept out of git for the same reason the H2 store is: it is run data, it is large
+# automatically, which is exactly what makes it the right home for a host's private wiring — an
+# dangerous: it would apply to everyone, and a network that exists on one machine stops
+# orchestrator runs unprivileged. See orchestrator/README.md, "The feedback store".
+# runtime outputs & caches
+# secrets & runtime — never commit
+# third-party repositories under analysis, appended one line per settled marker and accumulated
+# tracked via feedback/.gitkeep — Docker creates a missing bind-mount source as root and the
 **/__pycache__/
+*.class
+*.env
+*.log
 *.pyc
 .DS_Store
-# runtime outputs & caches
-results_n8n/
-pipeline/**/*cache*/
-*.log
-
-# THE FEEDBACK STORE — full model prompts, full model replies and source excerpts from the
-# third-party repositories under analysis, appended one line per settled marker and accumulated
-# across runs. Kept out of git for the same reason the H2 store is: it is run data, it is large
-# (gigabytes over a few runs), and it contains verbatim third-party source. The directory itself is
-# tracked via feedback/.gitkeep — Docker creates a missing bind-mount source as root and the
-# orchestrator runs unprivileged. See orchestrator/README.md, "The feedback store".
+.env
+docker-compose.override.yml
 feedback/*
-!feedback/.gitkeep
+pipeline/**/*cache*/
+pipeline/**/node_modules/
+pipeline/deploy/n8n-data/
+results_n8n/
+target/

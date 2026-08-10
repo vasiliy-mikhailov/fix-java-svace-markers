@@ -1,8 +1,0 @@
-# Registered HERE and not as a @Component, because both of H2Exposure's jobs happen before the
-# application context exists: h2.bindAddress has to be set before org.h2.engine.SysProperties
-# initialises (it reads the property into a static final), and a refusal has to land before
-# spring.sql.init has opened the database file. An EnvironmentPostProcessor is the only hook early
-# enough, and spring.factories is still how Boot 3 discovers them — this key was NOT migrated to the
-# META-INF/spring/*.imports files, which cover auto-configuration only.
-org.springframework.boot.env.EnvironmentPostProcessor=\
-tech.mikhailov.fsm.orch.H2Exposure
