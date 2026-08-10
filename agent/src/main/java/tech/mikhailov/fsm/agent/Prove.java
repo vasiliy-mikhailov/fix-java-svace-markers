@@ -1,6 +1,7 @@
 package tech.mikhailov.fsm.agent;
 
 import java.io.IOException;
+import java.net.http.HttpClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -9,6 +10,7 @@ import java.util.regex.Pattern;
 
 import com.deepagents.langchain4j.subagents.SubAgentRuntime;
 
+import dev.langchain4j.http.client.jdk.JdkHttpClientBuilder;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 
@@ -367,9 +369,29 @@ public final class Prove {
         }
     }
 
+    /**
+     * HTTP/2 EVERYWHERE IT NEGOTIATES CLEANLY, which is over TLS.
+     *
+     * <p>Under {@code https} the JDK settles the version by ALPN inside the handshake: no upgrade
+     * request, and h2's multiplexing and header compression are worth having. Under cleartext there
+     * is no ALPN, so the client offers {@code Upgrade: h2c} and holds the body back pending the
+     * answer — and a server that neither speaks h2c nor ignores the offer replies "field required:
+     * body" to a request whose Content-Length was right all along. curl never offers the upgrade,
+     * which is why a hand-rolled request to the same endpoint succeeds and makes this look like a
+     * credentials problem.
+     *
+     * <p>So the version follows the scheme rather than a global preference: h2 for the hosted
+     * endpoints, 1.1 for a vLLM on the other end of a container network.
+     */
     private static ChatModel model() {
+        String base = env("QWEN_BASE_URL");
+        HttpClient.Version version = base.startsWith("https://")
+                ? HttpClient.Version.HTTP_2
+                : HttpClient.Version.HTTP_1_1;
         return OpenAiChatModel.builder()
-                .baseUrl(env("QWEN_BASE_URL"))
+                .httpClientBuilder(new JdkHttpClientBuilder()
+                        .httpClientBuilder(HttpClient.newBuilder().version(version)))
+                .baseUrl(base)
                 .apiKey(env("QWEN_API_KEY"))
                 .modelName(env("QWEN_MODEL"))
                 .temperature(CERTIFYING)
