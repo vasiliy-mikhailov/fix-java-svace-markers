@@ -124,6 +124,9 @@ final class JsonlTrace implements Trace, DeepAgentFlowListener {
 
     private void write(String kind, Map<String, String> fields) {
         Map<String, Object> row = new LinkedHashMap<>();
+        // WHEN, on every event. Without it the record can say what happened and never how long it
+        // took, and "how long" is half of what anyone reads a trace for.
+        row.put("at", String.valueOf(System.currentTimeMillis()));
         row.put("marker", marker);
         row.put("kind", kind);
         row.putAll(fields);
