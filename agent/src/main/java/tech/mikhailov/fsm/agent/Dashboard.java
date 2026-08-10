@@ -28,9 +28,13 @@ import com.sun.net.httpserver.HttpServer;
  * <p>It reads both files on every request and holds nothing. A prove appends; a refresh shows it.
  *
  * <p>Prompts, tool arguments and build logs are long and mostly uninteresting until they are the only
- * thing that matters, so they sit inside {@code <details>} — collapsed, one click away, and no
- * JavaScript. What is never collapsed is what an agent ANSWERED, because that is the part a reader is
- * here to judge.
+ * thing that matters, so they sit inside {@code <details>} — collapsed, one click away. What is never
+ * collapsed is what an agent ANSWERED, because that is the part a reader is here to judge.
+ *
+ * <p>A LIVE PAGE MUST NOT UNDO ITS READER. The refresh that keeps an in-flight prove moving would
+ * otherwise snap every fold shut and jump to the top on a fifteen-second timer, so what is open and
+ * where the page is scrolled survive the reload — see {@link #KEEP_OPEN}. That is the whole of the
+ * JavaScript here, and it exists because without it the page fights whoever is reading it.
  */
 public final class Dashboard {
 
@@ -64,6 +68,34 @@ public final class Dashboard {
             details{margin:6px 0}summary{cursor:pointer;color:#7d8590;font-size:11px;user-select:none}
             summary:hover{color:#c9d1d9}
             .empty{padding:48px 24px;color:#7d8590}.back{padding:14px 24px;display:block}
+            """;
+
+    /**
+     * Remember which folds are open and where the page is scrolled, across the refresh.
+     *
+     * <p>Keyed by the fold's index within the page, which is stable because events are appended: an
+     * event arriving later cannot renumber the ones already rendered. Session storage rather than
+     * local, so opening a second marker in another tab does not inherit this one's state.
+     */
+    private static final String KEEP_OPEN = """
+            <script>
+            (function(){
+              var K='open:'+location.pathname+location.search, S=sessionStorage;
+              function all(){return [].slice.call(document.querySelectorAll('details'))}
+              try{
+                var open=JSON.parse(S.getItem(K)||'[]');
+                all().forEach(function(d,i){ if(open.indexOf(i)>=0) d.open=true });
+                var y=+S.getItem(K+':y'); if(y) window.scrollTo(0,y);
+              }catch(e){}
+              document.addEventListener('toggle',function(){
+                try{
+                  var open=[]; all().forEach(function(d,i){ if(d.open) open.push(i) });
+                  S.setItem(K,JSON.stringify(open));
+                }catch(e){}
+              },true);
+              addEventListener('scroll',function(){ try{S.setItem(K+':y',window.scrollY)}catch(e){} },{passive:true});
+            })();
+            </script>
             """;
 
     private Dashboard() {
@@ -218,7 +250,7 @@ public final class Dashboard {
 
     private static StringBuilder head(String title, String sub) {
         return new StringBuilder("<style>").append(CSS).append("</style>")
-                .append("<meta http-equiv=refresh content=15>")
+                .append("<meta http-equiv=refresh content=15>").append(KEEP_OPEN)
                 .append("<header><h1>").append(esc(title)).append("</h1><div class=sub>")
                 .append(sub).append("</div></header>");
     }
