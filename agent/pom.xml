@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  THE PROVE, AS A DEEP AGENT. See SPEC.md.
+
+  A module of its own, and not part of pipeline/: it shares no code with the old chain on purpose.
+  This is the from-scratch expression, so it inherits none of engine's zero-runtime-dependency policy
+  and none of orchestrator's Spring.
+
+  langchain4j-deepagents IS NOT ON MAVEN CENTRAL. Build it first:
+      git clone https://github.com/udayogra/langchain4j-deepagents && (cd langchain4j-deepagents && mvn -DskipTests install)
+  Deploying this needs that artifact in the shared Nexus, because java-runner/settings.xml sets
+  mirrorOf=* and an unmirrored artifact is a build that does not run.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>tech.mikhailov.fsm</groupId>
+  <artifactId>agent</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.deepagents</groupId>
+      <artifactId>langchain4j-deepagents</artifactId>
+      <version>0.1.0-SNAPSHOT</version>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <version>2.0.16</version>
+      <scope>runtime</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.14.1</version>
+      </plugin>
+    </plugins>
+  </build>
+</project>

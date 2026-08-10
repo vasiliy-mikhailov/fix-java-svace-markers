@@ -201,6 +201,19 @@
       <version>${playwright.version}</version>
       <scope>test</scope>
     </dependency>
+    <!--
+      DEEP AGENTS, IN THE ORCHESTRATOR ONLY. `engine` keeps its zero-runtime-dependency policy: every
+      Llm.chat call site there stays as it is, and this module is where the composition moves.
+
+      NOT ON MAVEN CENTRAL. 0.1.0-SNAPSHOT exists only after `mvn install` of
+      github.com/udayogra/langchain4j-deepagents. Deploying this image needs that artifact in the
+      shared Nexus first — `mirrorOf=*` means an unmirrored artifact is a build that does not run.
+    -->
+    <dependency>
+      <groupId>com.deepagents</groupId>
+      <artifactId>langchain4j-deepagents</artifactId>
+      <version>0.1.0-SNAPSHOT</version>
+    </dependency>
   </dependencies>
 
   <build>
