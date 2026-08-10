@@ -349,8 +349,8 @@ public final class Dashboard {
             String earlier = said.get(n);
             b.append("<div class='ev tool'><span class=kind>attempt ").append(n + 1)
                     .append(", superseded</span>")
-                    .append(fold("what it said", field(earlier, "reply"), false))
-                    .append(fold("the prompt", field(earlier, "prompt"), false)).append("</div>");
+                    .append(fold("what it said", field(earlier, "reply"), expand))
+                    .append(fold("the prompt", field(earlier, "prompt"), expand)).append("</div>");
         }
 
         StringBuilder tools = new StringBuilder();
@@ -419,10 +419,10 @@ public final class Dashboard {
         StringBuilder b = head(title, where + " · " + mine.size() + " event(s)"
                 + (state.isEmpty() ? "" : " · <span class='s " + css(state) + "'>"
                 + esc(state) + "</span>"));
-        b.append(nav).append("<a class=back href='/'>← all markers</a> ")
-                .append("<a class=back href='").append(key.isEmpty() ? "/trace" : "/marker?k=" + enc(key))
-                .append(expand ? "" : (key.isEmpty() ? "?raw=1" : "&raw=1"))
-                .append("'>").append(expand ? "collapse" : "expand everything").append("</a>");
+        b.append(nav).append("<a class=back href='")
+                .append(key.isEmpty() ? "/trace" : "/marker?k=" + enc(key) + "&a=trace")
+                .append(expand ? (key.isEmpty() ? "?fold=1" : "&fold=1") : "")
+                .append("'>").append(expand ? "fold the long parts" : "open everything").append("</a>");
         if (mine.isEmpty()) {
             return b.append("<div class=empty>Nothing traced for this marker.</div>").toString();
         }
@@ -608,8 +608,13 @@ public final class Dashboard {
                 + body.length() + " chars)</summary><pre>" + esc(body) + "</pre></details>";
     }
 
+    /**
+     * OPEN UNLESS ASKED TO FOLD. A fold saves scrolling and costs a click on every single thing a
+     * reader came to look at, and reading a prove is reading the prompts. {@code ?fold=1} collapses
+     * them for anyone skimming a long record instead.
+     */
     private static boolean open(HttpExchange e) {
-        return !query(e, "raw").isEmpty();
+        return query(e, "fold").isEmpty();
     }
 
     // ------------------------------------------------------------------ plumbing
