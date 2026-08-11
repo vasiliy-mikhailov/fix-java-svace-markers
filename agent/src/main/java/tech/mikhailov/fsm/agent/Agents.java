@@ -46,7 +46,7 @@ final class Agents {
 
     /** Writes ONE JUnit test that must fail because of the defect. May create files, never edit them. */
     Agent reproducer() {
-        return runtime("reproducer", Tools.writing(root, runner), """
+        return runtime("reproducer", Tools.writing(root, runner, trace, "reproducer"), """
                 You write ONE JUnit test that fails because of the defect the marker names.
 
                 Read the flagged file first. Read whatever else you need to understand it — the classes \
@@ -75,7 +75,7 @@ final class Agents {
      * a test that never built spends a model call on nothing.
      */
     Agent proofCritic() {
-        return runtime("proof-critic", Tools.reading(root), """
+        return runtime("proof-critic", Tools.reading(root, trace, "proof-critic"), """
                 This test compiles and it goes RED for the right defect. Both facts are established; \
                 do not re-litigate them.
 
@@ -105,7 +105,7 @@ final class Agents {
 
     /** Patches the defect. May edit existing files, never create them — a new file is not a patch. */
     Agent fixer() {
-        return runtime("fixer", Tools.patching(root, runner), """
+        return runtime("fixer", Tools.patching(root, runner, trace, "fixer"), """
                 You patch the defect the marker names, minimally.
 
                 Edit the source so the failing test passes. The smallest edit that removes the defect, \
@@ -121,7 +121,7 @@ final class Agents {
 
     /** Criticises the patch. Its silence REFUSES: an absent certificate enforces nothing. */
     Agent fixCritic() {
-        return runtime("fix-critic", Tools.reading(root), """
+        return runtime("fix-critic", Tools.reading(root, trace, "fix-critic"), """
                 You judge ONE question: is this patch sound, or does it only satisfy the test?
 
                 Read the patch, the test, and the source around both. Ask whether the patch removes \
@@ -140,7 +140,7 @@ final class Agents {
 
     /** Decides whether to propose the patch. Its silence REFUSES. */
     Agent prMaker() {
-        return runtime("pr-maker", Tools.reading(root), """
+        return runtime("pr-maker", Tools.reading(root, trace, "pr-maker"), """
                 You decide ONE thing: should this patch be proposed to the repository's maintainers?
 
                 Before you answer, look for evidence that the code is deliberately this way. Read the \
@@ -163,7 +163,7 @@ final class Agents {
      * anyone notices. So it is asked to be hardest on `make`.
      */
     Agent prCritic() {
-        return runtime("pr-critic", Tools.reading(root), """
+        return runtime("pr-critic", Tools.reading(root, trace, "pr-critic"), """
                 A colleague decided whether to propose this patch upstream. Judge the DECISION.
 
                 If they said `make`: is this a change a maintainer would actually merge, unsolicited, \
@@ -188,7 +188,7 @@ final class Agents {
      * developer would recognise.
      */
     Agent estimatorCritic() {
-        return runtime("estimator-critic", Tools.reading(root), """
+        return runtime("estimator-critic", Tools.reading(root, trace, "estimator-critic"), """
                 A colleague estimated what this marker would have cost a developer. Judge the NUMBER.
 
                 Read the same record. Would a competent Java developer, new to this code, recognise \
@@ -212,7 +212,7 @@ final class Agents {
      * whenever the outcome matched, which is the case where the number stops meaning anything.
      */
     Agent estimator() {
-        return runtime("estimator", Tools.reading(root), """
+        return runtime("estimator", Tools.reading(root, trace, "estimator"), """
                 You read a completed attempt to prove a static-analysis marker and estimate what the \
                 same work would have cost a competent Java developer who had not seen this code before.
 
@@ -243,7 +243,7 @@ final class Agents {
      * turn five deterministic outcomes into sampled ones.
      */
     Agent verdict() {
-        return runtime("verdict", Tools.reading(root), """
+        return runtime("verdict", Tools.reading(root, trace, "verdict"), """
                 No test demonstrated this marker either way. You argue what it should be.
 
                 Read the flagged file and whatever explains it — callers, tests, lesson documentation. \

@@ -25,7 +25,13 @@ import dev.langchain4j.service.tool.ToolExecutor;
  * including a judge running the build whose output it is meant to be reading.
  *
  * <p>{@link FileToolFactory} builds all four ({@code list_dir}, {@code read_file},
- * {@code write_file}, {@code edit_file}); each set below keeps only what that agent's job needs. A judge that cannot write cannot edit the thing it is
+ * {@code write_file}, {@code edit_file}); each set below keeps only what that agent's job needs.
+ *
+ * <p>EVERY EXECUTOR IS WRAPPED SO THE TRACE SEES IT WHOLE. The library reports tool calls through
+ * {@code DeepAgentFlowListener} with {@code truncateForLog} already applied, which is fine for
+ * watching and useless for reading: the argument to {@code write_file} IS the test, and it is
+ * precisely the field the cut removes. Recording here, at the executor, catches the payload before
+ * anything shortens it. A judge that cannot write cannot edit the thing it is
  * certifying; a critic that cannot run the build cannot manufacture the evidence it is judging.
  *
  * <p>NO JUDGE GETS THE RUNNER, and both producers do. The rule it protects is that a certification
@@ -43,8 +49,31 @@ final class Tools {
     }
 
     /** Read and look around: what a judge needs to check a claim against the source. */
-    static Map<ToolSpecification, ToolExecutor> reading(Path root) {
-        return only(root, Set.of("list_dir", "read_file"));
+    static Map<ToolSpecification, ToolExecutor> reading(Path root, Trace trace, String agent) {
+        return recorded(only(root, Set.of("list_dir", "read_file")), trace, agent);
+    }
+
+    /**
+     * The same tools, reporting themselves in full.
+     *
+     * <p>A tool that throws is recorded as having thrown and then rethrown: an agent must still see
+     * its own failure, and a reader must still see that it happened.
+     */
+    private static Map<ToolSpecification, ToolExecutor> recorded(
+            Map<ToolSpecification, ToolExecutor> tools, Trace trace, String agent) {
+        Map<ToolSpecification, ToolExecutor> wrapped = new LinkedHashMap<>();
+        tools.forEach((spec, executor) -> wrapped.put(spec, (request, memoryId) -> {
+            try {
+                String result = executor.execute(request, memoryId);
+                trace.tool(agent, spec.name(), request.arguments(), result);
+                return result;
+            } catch (RuntimeException e) {
+                trace.tool(agent, spec.name(), request.arguments(),
+                        "threw " + e.getClass().getSimpleName() + ": " + e.getMessage());
+                throw e;
+            }
+        }));
+        return wrapped;
     }
 
     /** Run a named test class and read the build back. Producers only. */
@@ -76,11 +105,12 @@ final class Tools {
      * reproducer that can edit source can make its own test pass, which is the one thing the whole
      * program exists to prevent.
      */
-    static Map<ToolSpecification, ToolExecutor> writing(Path root, Runner runner) {
+    static Map<ToolSpecification, ToolExecutor> writing(Path root, Runner runner, Trace trace,
+                                                       String agent) {
         Map<ToolSpecification, ToolExecutor> tools = only(root, Set.of("list_dir", "read_file",
                 "write_file"));
         tools.putAll(runTest(runner));
-        return tools;
+        return recorded(tools, trace, agent);
     }
 
     /**
@@ -90,11 +120,12 @@ final class Tools {
      * creating a new file is not patching a defect, and a fixer that "fixes" a marker by writing a
      * second test is then something a judge has to catch in prose.
      */
-    static Map<ToolSpecification, ToolExecutor> patching(Path root, Runner runner) {
+    static Map<ToolSpecification, ToolExecutor> patching(Path root, Runner runner, Trace trace,
+                                                        String agent) {
         Map<ToolSpecification, ToolExecutor> tools = only(root, Set.of("list_dir", "read_file",
                 "edit_file"));
         tools.putAll(runTest(runner));
-        return tools;
+        return recorded(tools, trace, agent);
     }
 
     /**

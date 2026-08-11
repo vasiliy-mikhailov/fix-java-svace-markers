@@ -80,10 +80,17 @@ final class JsonlTrace implements Trace, DeepAgentFlowListener {
 
     // --- DeepAgentFlowListener. The library truncates these; see Trace#tool. ---
 
+    /**
+     * The library's own report, kept ONLY for what it alone knows.
+     *
+     * <p>Its payloads arrive with {@code truncateForLog} already applied, and {@code Tools} now
+     * records every call in full at the executor — so recording here too would put a shortened
+     * duplicate of every event in the file. What it is still needed for is the write path: it fires
+     * for a tool this program did not have to wrap, and it is where the written test's name is read.
+     */
     @Override
     public void onToolInvocation(String context, String toolName, Object memoryId,
                                  String argumentsJsonTruncated, String resultTruncated) {
-        tool(context, toolName, argumentsJsonTruncated, resultTruncated);
         if ("write_file".equals(toolName)) {
             remember(argumentsJsonTruncated);
         }

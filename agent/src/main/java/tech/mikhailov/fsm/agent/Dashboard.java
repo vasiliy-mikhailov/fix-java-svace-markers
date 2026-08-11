@@ -340,9 +340,11 @@ public final class Dashboard {
         for (String e : mine) {
             if (field(e, "kind").equals("tool") && field(e, "agent").endsWith(agent)) {
                 calls++;
-                tools.append(field(e, "tool")).append("  ").append(cut(field(e, "arguments"), 110))
+                // IN FULL. The argument to write_file IS the test, and cutting it at 110 characters
+                // shows the path and hides the only thing worth reading.
+                tools.append(field(e, "tool")).append("  ").append(field(e, "arguments"))
                         .append('\n').append("    → ")
-                        .append(cut(field(e, "result").replace("\n", "\n    "), 400))
+                        .append(field(e, "result").replace("\n", "\n    "))
                         .append("\n\n");
             }
         }
@@ -471,8 +473,9 @@ public final class Dashboard {
                                 field(e, "prompt"), field(e, "reply")));
                 case "tool" -> b.append("<span class=who>").append(esc(field(e, "agent")))
                         .append("</span><span class=kind>").append(esc(field(e, "tool")))
-                        .append("</span><div class=k>").append(esc(cut(field(e, "arguments"), 160)))
-                        .append("</div>").append(fold("what it returned", field(e, "result"), expand));
+                        .append("</span>")
+                        .append(fold("arguments", field(e, "arguments"), expand))
+                        .append(fold("what it returned", field(e, "result"), expand));
                 case "built" -> b.append("<span class=who>").append(esc(field(e, "phase").toUpperCase()))
                         .append("</span><span class=kind>")
                         .append("true".equals(field(e, "infra")) ? "never ran"
