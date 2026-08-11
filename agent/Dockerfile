@@ -51,7 +51,12 @@ ENV RESULTS=/results \
 
 # The trace and the settlements are the whole record; a run that keeps neither has proved nothing
 # anybody can read. Mount this.
-VOLUME ["/results"]
+#
+# AND MOUNT THE MAVEN CACHE. It lives in the container filesystem otherwise, so every recreation
+# starts from an empty local repository and the next build re-downloads WebGoat's whole dependency
+# tree — minutes per marker, paid again on every redeploy, and invisible in the trace because the
+# build simply takes longer.
+VOLUME ["/results", "/home/prover/.m2"]
 
 EXPOSE 8087
 ENTRYPOINT ["/opt/agent/entrypoint.sh"]
