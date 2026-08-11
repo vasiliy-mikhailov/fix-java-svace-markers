@@ -1,5 +1,8 @@
-#!/bin/sh
-# prove | slice | dashboard. See SPEC.md.
+#!/bin/bash
+# prove | slice | test | seed | dashboard. See SPEC.md.
+#
+# bash, not sh: the worker pool waits on `wait -n` and counts with `jobs -p`, neither of which is
+# POSIX. A pool built without them either polls on a sleep or spawns everything at once.
 set -eu
 
 CP="/opt/agent/agent.jar:/opt/agent/lib/*"
@@ -13,7 +16,7 @@ checkout() {
     repo="$1"
     # ONE CHECKOUT PER WORKER. Four provers resetting and cleaning one tree would delete each
     # other's test between the write and the build.
-    dir="$CHECKOUTS/$(echo "$repo" | sed 's|.*/||; s|\.git$||')${WORKER:+-$WORKER}"
+    dir="$CHECKOUTS/$(echo "$repo" | sed 's|.*/||; s|\.git$||')"
     if [ -d "$dir/.git" ]; then
         # -x, NOT just -fd. clean skips ignored files by default, and target/ is ignored — so a
         # class compiled from the previous marker's PATCH survives a reset that restored its source,
@@ -43,73 +46,62 @@ case "${1:-dashboard}" in
         exec java -cp "$CP" tech.mikhailov.fsm.agent.Prove "$dir" "$marker" "$RESULTS"
         ;;
 
-    slice)
-        # slice <markers> [worker] [of] — one marker per line, each on a clean tree.
+    slice|parallel)
+        # slice <markers> [n] — prove every marker, at most n at a time.
         #
-        # IT RESUMES. A settled marker is skipped, because a restart that re-proves what is already
-        # done spends the endpoint twice and writes a second settlement for a marker that has one —
-        # and a run interrupted at marker 30 of 40 should cost ten proves to finish, not forty.
+        # A POOL, NOT A PARTITION. Striping markers across fixed workers means the one that drew the
+        # slow half is still going while the others idle; a pool hands the next marker to whichever
+        # prover is free, and the run finishes when the work does rather than when the unluckiest
+        # slice does.
         #
-        # IT STRIPES. With `worker` of `of`, this process takes every `of`-th marker starting at
-        # `worker`. No claim, no lock: the partition is arithmetic, so two workers cannot pick the
-        # same marker and none is left for nobody.
-        WORKER="${3:-}"
-        OF="${4:-1}"
-        MINE="${WORKER:-1}"
-        OUT="$RESULTS${WORKER:+/w$WORKER}"
-        mkdir -p "$OUT"
-        export WORKER
+        # THE CLAIM IS A MKDIR. It is the one filesystem operation that is atomic and tells the
+        # loser it lost, so two provers cannot take the same marker and no lock file is left behind
+        # by a process that died holding it.
+        limit="${3:-4}"
+        mkdir -p "$RESULTS/claims" "$RESULTS/m"
 
-        # Settled anywhere counts, not settled by me: the resume must see every worker's file or a
-        # marker one of them finished is proved again by the next run.
         settled() {
-            grep -lF "\"suspicion_key\":\"$1\"" "$RESULTS"/settlements.jsonl \
-                "$RESULTS"/w*/settlements.jsonl 2>/dev/null | while read -r f; do
-                grep -F "\"suspicion_key\":\"$1\"" "$f" | grep -qv "\"state\":\"proving\"" && echo hit
-            done | grep -q hit
+            grep -rlF "\"suspicion_key\":\"$1\"" "$RESULTS"/m/*/settlements.jsonl 2>/dev/null \
+                | while read -r f; do
+                    grep -F "\"suspicion_key\":\"$1\"" "$f" \
+                        | grep -qv "\"state\":\"proving\"" && echo hit
+                  done | grep -q hit
         }
 
-        n=0; done_already=0; skipped=0
+        # A directory named for the marker, so a reader finds a prove by what it proved.
+        slug() { echo "$1" | sed 's|.*/||; s|[^A-Za-z0-9._-]|_|g' | cut -c1-80; }
+
+        n=0
         while IFS= read -r marker; do
             [ -z "$marker" ] && continue
             n=$((n + 1))
-            if [ "$OF" -gt 1 ] && [ $(( (n - 1) % OF + 1 )) -ne "$MINE" ]; then
-                skipped=$((skipped + 1))
-                continue
-            fi
-            if settled "$marker"; then
-                done_already=$((done_already + 1))
-                continue
-            fi
-            echo "=== [$n] ${WORKER:+w$WORKER }$marker" | tee -a "$OUT/slice.log"
-            dir=$(checkout "$(repo_of "$marker")")
-            # A prove that dies must not end the slice: it records its own infra row and the next
-            # marker is still worth attempting.
-            java -cp "$CP" tech.mikhailov.fsm.agent.Prove "$dir" "$marker" "$OUT" \
-                >> "$OUT/slice.log" 2>&1 || true
-        done < "$2"
-        echo "SLICE DONE ($n marker(s), $done_already already settled, $skipped другому)" \
-            | sed "s/ другому/ not mine/" | tee -a "$OUT/slice.log"
-        ;;
+            id=$(slug "$marker")
 
-    parallel)
-        # parallel <markers> [n] — n workers, n checkouts, one striped queue.
-        #
-        # The dependency cache is warmed FIRST, once. Four cold Maven builds racing to populate one
-        # local repository is how a repo gets a half-written jar in it, and every worker then fails
-        # on a corrupt artifact nobody wrote deliberately.
-        n="${3:-4}"
-        first=$(head -1 "$2")
-        warm=$(checkout "$(repo_of "$first")")
-        echo "warming the dependency cache in $warm"
-        (cd "$warm" && mvn -B -q -DskipTests test-compile >/dev/null 2>&1) || true
-        i=1
-        while [ "$i" -le "$n" ]; do
-            "$0" slice "$2" "$i" "$n" &
-            i=$((i + 1))
-        done
+            # Wait for a free slot before claiming, so a claim always becomes a prove.
+            while [ "$(jobs -p | wc -l)" -ge "$limit" ]; do wait -n 2>/dev/null || sleep 2; done
+
+            settled "$marker" && continue
+            mkdir "$RESULTS/claims/$id" 2>/dev/null || continue
+
+            (
+                out="$RESULTS/m/$id"
+                mkdir -p "$out"
+                echo "=== [$n] $marker" | tee -a "$out/slice.log"
+                # A WORKTREE PER MARKER. It shares the reference clone's objects, so this costs a
+                # file copy and no network, and it is thrown away afterwards — which is a stronger
+                # isolation than resetting a tree, because nothing ignored survives it either.
+                tree="$CHECKOUTS/tree-$id"
+                repo=$(repo_of "$marker")
+                ref=$(WORKER= checkout "$repo")
+                git -C "$ref" worktree add --detach -f "$tree" HEAD >/dev/null 2>&1 \
+                    || cp -a "$ref" "$tree"
+                java -cp "$CP" tech.mikhailov.fsm.agent.Prove "$tree" "$marker" "$out" \
+                    >> "$out/slice.log" 2>&1 || true
+                git -C "$ref" worktree remove --force "$tree" >/dev/null 2>&1 || rm -rf "$tree"
+            ) &
+        done < "$2"
         wait
-        echo "ALL WORKERS DONE"
+        echo "SLICE DONE ($n marker(s))"
         ;;
 
     seed)
@@ -131,7 +123,7 @@ case "${1:-dashboard}" in
         ;;
 
     *)
-        echo "usage: prove 'repo|file|line|checker' | slice <markers> [w] [of] | parallel <markers> [n] | test [cases] | seed [cases] | dashboard" >&2
+        echo "usage: prove 'repo|file|line|checker' | slice <markers> [concurrency] | test [cases] | seed [cases] | dashboard" >&2
         exit 2
         ;;
 esac

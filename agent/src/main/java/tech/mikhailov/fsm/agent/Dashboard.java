@@ -654,11 +654,11 @@ public final class Dashboard {
     /**
      * Every worker's copy of one file, concatenated.
      *
-     * <p>PARALLEL WORKERS DO NOT SHARE A FILE. Appending from four processes looks safe — O_APPEND
+     * <p>PARALLEL PROVERS DO NOT SHARE A FILE. Appending from four processes looks safe — O_APPEND
      * makes the offset update atomic — but a line here can be sixty kilobytes of prompt, and a write
      * that large is not one syscall. Two workers interleave mid-line and both records are lost, in a
-     * corpus whose whole purpose is to be read later. So each writes {@code results/wN/trace.jsonl}
-     * and this reads them all.
+     * corpus whose whole purpose is to be read later. So each prove writes
+     * {@code results/m/<marker>/trace.jsonl} and this reads them all.
      *
      * <p>Absent is not an error: a run that has settled nothing yet is the normal first state.
      */
@@ -666,14 +666,15 @@ public final class Dashboard {
         List<String> all = new ArrayList<>(read(file));
         Path root = file.getParent();
         String name = file.getFileName().toString();
-        if (root != null) {
-            try (var dirs = Files.list(root)) {
-                dirs.filter(Files::isDirectory)
-                        .filter(p -> p.getFileName().toString().startsWith("w"))
-                        .sorted()
+        // One directory per MARKER, not per worker: a pool hands the next marker to whichever
+        // prover is free, so a worker index names nothing a reader wants and changes run to run.
+        Path perMarker = root == null ? null : root.resolve("m");
+        if (perMarker != null && Files.isDirectory(perMarker)) {
+            try (var dirs = Files.list(perMarker)) {
+                dirs.filter(Files::isDirectory).sorted()
                         .forEach(w -> all.addAll(read(w.resolve(name))));
-            } catch (IOException noWorkers) {
-                // A single-worker run has no wN directories, which is not a problem.
+            } catch (IOException none) {
+                // A run that has proved nothing yet has no per-marker directories.
             }
         }
         return all;
