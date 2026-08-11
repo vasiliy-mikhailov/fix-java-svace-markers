@@ -48,6 +48,11 @@ class TheReasoningIsNotThrownAwayTest {
         @Override public void priced(String marker, String minutes, String itemisation) { }
     }
 
+    /** An HTTP layer that heard nothing, for the cases that test the other two sources. */
+    private static Overheard nothing() {
+        return new Overheard(new dev.langchain4j.http.client.jdk.JdkHttpClientBuilder());
+    }
+
     /** An endpoint that says exactly what the test tells it to, on the calling thread. */
     private static StreamingChatModel saying(String thinking, List<String> partials, String answer) {
         return new StreamingChatModel() {
@@ -65,7 +70,7 @@ class TheReasoningIsNotThrownAwayTest {
 
     private static Kept run(StreamingChatModel model) {
         Kept trace = new Kept();
-        ChatResponse got = new Thinking(model, trace, "reproducer", Duration.ofSeconds(5))
+        ChatResponse got = new Thinking(model, nothing(), trace, "reproducer", Duration.ofSeconds(5))
                 .chat(ChatRequest.builder().messages(dev.langchain4j.data.message.UserMessage
                         .from("is 17 prime?")).build());
         assertTrue(got.aiMessage().text().contains("Yes"), "the answer still comes back");
@@ -99,13 +104,92 @@ class TheReasoningIsNotThrownAwayTest {
     }
 
     @Test
+    @DisplayName("the field this endpoint actually uses is read, and drained once")
+    void theNameItArrivesUnder() {
+        // A chunk as vLLM sends it: `reasoning`, not the `reasoning_content` the client knows.
+        Overheard overheard = streamed(
+                "{\"choices\":[{\"index\":0,\"delta\":{\"reasoning\":\"Here\"},\"finish_reason\":null}]}",
+                "{\"choices\":[{\"index\":0,\"delta\":{\"reasoning\":\"'s a thinking\"}}]}",
+                "{\"choices\":[{\"index\":0,\"delta\":{\"reasoning\":\" process:\\n\\n1. Check 17.\"}}]}");
+        assertEquals("Here's a thinking process:\n\n1. Check 17.", overheard.drain(),
+                "reassembled across chunks, with the escapes read");
+        assertEquals("", overheard.drain(), "and emptied, so the next call does not inherit it");
+    }
+
+    @Test
+    @DisplayName("a chunk with no reasoning in it leaves nothing behind")
+    void ordinaryChunk() {
+        Overheard overheard = streamed(
+                "{\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Yes.\"}}]}", "[DONE]");
+        assertEquals("", overheard.drain(), "content is not reasoning");
+    }
+
+    /**
+     * Feeds events through the REAL decorator, by standing in for the client underneath it.
+     *
+     * <p>Reproducing the field-reading here instead would give a test that passes with
+     * {@code onEvent} deleted, which is the one thing it exists to hold.
+     */
+    private static Overheard hearing(String... data) {
+        return new Overheard(new dev.langchain4j.http.client.HttpClientBuilder() {
+            @Override
+            public dev.langchain4j.http.client.HttpClient build() {
+                return new dev.langchain4j.http.client.HttpClient() {
+                    @Override
+                    public dev.langchain4j.http.client.SuccessfulHttpResponse execute(
+                            dev.langchain4j.http.client.HttpRequest request) {
+                        throw new UnsupportedOperationException();
+                    }
+
+                    @Override
+                    public void execute(dev.langchain4j.http.client.HttpRequest request,
+                            dev.langchain4j.http.client.sse.ServerSentEventParser parser,
+                            dev.langchain4j.http.client.sse.ServerSentEventListener listener) {
+                        for (String d : data) {
+                            listener.onEvent(new dev.langchain4j.http.client.sse.ServerSentEvent(
+                                    "message", d));
+                        }
+                        listener.onClose();
+                    }
+                };
+            }
+
+            @Override public Duration connectTimeout() { return Duration.ofSeconds(5); }
+            @Override public dev.langchain4j.http.client.HttpClientBuilder connectTimeout(
+                    Duration t) { return this; }
+            @Override public Duration readTimeout() { return Duration.ofSeconds(5); }
+            @Override public dev.langchain4j.http.client.HttpClientBuilder readTimeout(
+                    Duration t) { return this; }
+        });
+    }
+
+    /** Runs one stream through the decorator the way OpenAiStreamingChatModel would. */
+    private static Overheard streamed(String... data) {
+        Overheard overheard = hearing(data);
+        List<String> passedOn = new ArrayList<>();
+        overheard.build().execute(null, null,
+                new dev.langchain4j.http.client.sse.ServerSentEventListener() {
+                    @Override
+                    public void onEvent(dev.langchain4j.http.client.sse.ServerSentEvent e) {
+                        passedOn.add(e.data());
+                    }
+
+                    @Override public void onError(Throwable t) { }
+                });
+        assertEquals(List.of(data), passedOn,
+                "every event reaches the client untouched — one dropped here is a token the answer "
+                        + "never sees");
+        return overheard;
+    }
+
+    @Test
     @DisplayName("an endpoint that stops speaking fails as a model call, naming the agent")
     void silence() {
         StreamingChatModel mute = new StreamingChatModel() {
             @Override
             public void doChat(ChatRequest request, StreamingChatResponseHandler handler) { }
         };
-        Thinking thinking = new Thinking(mute, new Kept(), "fix-critic", Duration.ofMillis(120));
+        Thinking thinking = new Thinking(mute, nothing(), new Kept(), "fix-critic", Duration.ofMillis(120));
         RuntimeException died = assertThrows(RuntimeException.class, () -> thinking.chat(
                 ChatRequest.builder().messages(dev.langchain4j.data.message.UserMessage.from("?"))
                         .build()));
@@ -124,7 +208,7 @@ class TheReasoningIsNotThrownAwayTest {
             }
         };
         RuntimeException died = assertThrows(RuntimeException.class,
-                () -> new Thinking(refuses, new Kept(), "fixer", Duration.ofSeconds(5))
+                () -> new Thinking(refuses, nothing(), new Kept(), "fixer", Duration.ofSeconds(5))
                         .chat(ChatRequest.builder().messages(
                                 dev.langchain4j.data.message.UserMessage.from("?")).build()));
         assertTrue(died.getMessage().contains("context length exceeded"),

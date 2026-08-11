@@ -693,10 +693,11 @@ public final class Prove {
         HttpClient.Version version = base.startsWith("https://")
                 ? HttpClient.Version.HTTP_2
                 : HttpClient.Version.HTTP_1_1;
+        Overheard overheard = new Overheard(new JdkHttpClientBuilder()
+                .httpClientBuilder(HttpClient.newBuilder().version(version)));
         return new Thinking(
                 OpenAiStreamingChatModel.builder()
-                        .httpClientBuilder(new JdkHttpClientBuilder()
-                                .httpClientBuilder(HttpClient.newBuilder().version(version)))
+                        .httpClientBuilder(overheard)
                         .baseUrl(base)
                         .apiKey(env("QWEN_API_KEY"))
                         .modelName(env("QWEN_MODEL"))
@@ -704,7 +705,7 @@ public final class Prove {
                         .returnThinking(true)
                         .timeout(PATIENCE)
                         .build(),
-                trace, agent, PATIENCE);
+                overheard, trace, agent, PATIENCE);
     }
 
     private static String env(String name) {

@@ -21,10 +21,12 @@ import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
  *
  * <p>THE THINKING WAS NEVER OFF. vLLM runs Qwen with {@code --reasoning-parser qwen3}, so the server
  * splits the reasoning out of the content and returns it in its own field. LangChain4j does not read
- * that field unless asked, so every reply this program recorded arrived already stripped — which is
- * why every recorded reply in the old traces begins with a blank line where the thinking had been cut
- * away. The reasoning was generated, paid for, and dropped on the floor. {@code returnThinking} asks
- * for it and {@link Trace#thought} keeps it.
+ * that field unless asked — and against this endpoint it cannot read it even when asked, because the
+ * field is called {@code reasoning} and the client only knows {@code reasoning_content}. So every
+ * reply this program ever recorded arrived already stripped, which is what the blank line at the top
+ * of each one is: the gap where the reasoning had been cut away. It was generated on every call,
+ * charged for on every call, and dropped on every call. {@link Overheard} reads it under the name it
+ * arrives under and {@link Trace#thought} keeps it.
  *
  * <p>THE STREAM IS NOT A FEATURE, IT IS THE TIMEOUT. A blocking call holds one socket open with
  * nothing crossing it until the last token is generated, so a long answer and a dead endpoint look
@@ -37,21 +39,22 @@ import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
  * and this is one. The stream is an implementation detail of getting the answer, and it is not the
  * dashboard's live feed — {@link Trace} is.
  */
-record Thinking(StreamingChatModel model, Trace trace, String agent, Duration patience)
-        implements ChatModel {
+record Thinking(StreamingChatModel model, Overheard overheard, Trace trace, String agent,
+        Duration patience) implements ChatModel {
 
     @Override
     public ChatResponse chat(ChatRequest request) {
         CompletableFuture<ChatResponse> answer = new CompletableFuture<>();
+        overheard.drain();
         // THE PARTIALS ARE A FALLBACK, not the source. A server that streams thinking but does not
         // set it on the finished message would otherwise record nothing, and the difference is
         // invisible until someone opens a trace looking for a reasoning that is not there.
-        StringBuilder overheard = new StringBuilder();
+        StringBuilder partial = new StringBuilder();
         model.chat(request, new StreamingChatResponseHandler() {
 
             @Override
             public void onPartialThinking(PartialThinking thinking) {
-                overheard.append(thinking.text());
+                partial.append(thinking.text());
             }
 
             @Override
@@ -66,9 +69,16 @@ record Thinking(StreamingChatModel model, Trace trace, String agent, Duration pa
         });
 
         ChatResponse response = await(answer);
+        // THREE PLACES, IN ORDER OF HOW MUCH THEY ARE TRUSTED. What the client parsed, then what it
+        // streamed, then what this endpoint's own field name carried — the last is where the answer
+        // actually is against vLLM, and the first two are here so that a different endpoint, or a
+        // client release that learns the name, keeps working without anyone noticing this file.
         String thought = response.aiMessage().thinking();
         if (thought == null || thought.isBlank()) {
-            thought = overheard.toString();
+            thought = partial.toString();
+        }
+        if (thought.isBlank()) {
+            thought = overheard.drain();
         }
         if (!thought.isBlank()) {
             trace.thought(agent, thought);
