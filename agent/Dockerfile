@@ -16,6 +16,19 @@ FROM maven:3.9-eclipse-temurin-25 AS builder
 ARG DEEPAGENTS_REPO=https://github.com/udayogra/langchain4j-deepagents.git
 ARG DEEPAGENTS_REF=main
 RUN git clone --depth 1 --branch ${DEEPAGENTS_REF} ${DEEPAGENTS_REPO} /src/deepagents \
+    # THE TOOL CEILING IS A LITERAL IN SubAgentRuntime, not a setting: `bipush 25`. Twenty-five
+    # sequential calls is not many for an agent reading a class, its callers and its tests before
+    # writing anything, and hitting it is a thrown RuntimeException that ends the prove — a marker
+    # lost to a budget rather than to anything about the marker.
+    #
+    # Patched here rather than worked around in our code, because the alternative is to stop using
+    # SubAgentRuntime and rebuild the tool loop, which is the thing this program exists not to do.
+    # The sed is in the build so it is visible in the build; if upstream makes it a parameter this
+    # line stops matching and the build fails loudly rather than silently reverting.
+    && sed -i 's/\.maxSequentialToolsInvocations(25)/.maxSequentialToolsInvocations(Integer.MAX_VALUE)/' \
+        /src/deepagents/src/main/java/com/deepagents/langchain4j/subagents/SubAgentRuntime.java \
+    && grep -q 'maxSequentialToolsInvocations(Integer.MAX_VALUE)' \
+        /src/deepagents/src/main/java/com/deepagents/langchain4j/subagents/SubAgentRuntime.java \
     && mvn -q -f /src/deepagents -DskipTests install
 
 WORKDIR /src/agent

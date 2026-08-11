@@ -54,6 +54,13 @@ of a guess an agent makes silently.
 manufacture the evidence it certifies — not that a producer should work blind. The RED and GREEN that
 *decide* a marker are still the ones `Prove` runs between stages.
 
+**No tool ceiling.** `SubAgentRuntime` hardcodes twenty-five sequential tool calls as a literal, and
+twenty-five is not many for an agent reading a class, its callers and its tests before writing
+anything — hitting it throws and ends the prove, losing a marker to a budget rather than to anything
+about the marker. The Dockerfile patches the literal where it can be seen, with a `grep` that fails
+the build if upstream changes the line. What stops a tool loop now is the supervisor, which counts
+calls per agent.
+
 **Two write, seven judge**, and the split decides the tools. The reproducer gets `write_file` but not
 `edit_file`, so it can never make its own test pass; the fixer gets `edit_file` but not `write_file`,
 because a new file is not a patch. Everyone gets `grep` and `glob`: a model asking for a tool that

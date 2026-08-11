@@ -146,7 +146,8 @@ final class Overwatch {
                 .append(" marker(s) started. Settlements so far: ");
         states.forEach((state, n) -> head.append(state).append('=').append(n).append(' '));
         head.append("\n\nOne line per marker. Fields: id | state | builds(phase:outcome) | ")
-                .append("agent=answers/chars-of-last (empty answers marked !) | test? | ")
+                .append("agent=answers/chars-of-last (empty marked !, tool calls marked t) | ")
+                .append("test? | ")
                 .append("idle=minutes since its last event.\nThe traces are under ")
                 .append(results.resolve("m")).append("/<id>/trace.jsonl — read the ones that look ")
                 .append("wrong.\n\n");
@@ -173,6 +174,7 @@ final class Overwatch {
         StringBuilder builds = new StringBuilder();
         Map<String, int[]> answers = new LinkedHashMap<>();
         Map<String, Integer> lastLength = new LinkedHashMap<>();
+        Map<String, Integer> tools = new LinkedHashMap<>();
         boolean test = false;
         String died = "";
         long last = 0;
@@ -204,7 +206,15 @@ final class Overwatch {
                             }
                             lastLength.put(who, reply.length());
                         }
-                        case "tool" -> test |= Json.field(line, "tool").equals("write_file");
+                        case "tool" -> {
+                            // COUNTED PER AGENT, because the ceiling that used to stop a tool loop
+                            // is gone. Twenty-five sequential calls was not many for an agent
+                            // reading a class, its callers and its tests, and a prove lost to that
+                            // budget was lost to nothing about its marker — but with no ceiling a
+                            // loop has nothing to end it except this being visible.
+                            tools.merge(Json.field(line, "agent"), 1, Integer::sum);
+                            test |= Json.field(line, "tool").equals("write_file");
+                        }
                         case "failed" -> {
                             // A PROVE THAT DIED MUST NOT READ AS ONE STILL WORKING. Without this the
                             // state stayed "proving" and the marker looked merely quiet, which is
@@ -239,9 +249,19 @@ final class Overwatch {
             }
         }
         StringBuilder said = new StringBuilder();
-        answers.forEach((who, n) -> said.append(who).append('=').append(n[0]).append('/')
-                .append(lastLength.getOrDefault(who, 0))
-                .append(n[1] > 0 ? "!" + n[1] : "").append(' '));
+        java.util.Set<String> everyone = new java.util.LinkedHashSet<>(answers.keySet());
+        everyone.addAll(tools.keySet());
+        for (String who : everyone) {
+            int[] n = answers.getOrDefault(who, new int[2]);
+            said.append(who).append('=').append(n[0]).append('/')
+                    .append(lastLength.getOrDefault(who, 0))
+                    .append(n[1] > 0 ? "!" + n[1] : "");
+            int calls = tools.getOrDefault(who, 0);
+            if (calls > 0) {
+                said.append('t').append(calls);
+            }
+            said.append(' ');
+        }
         long idle = last == 0 ? 0 : (now - last) / 60_000;
         boolean claimed = Files.isDirectory(results.resolve("claims").resolve(id));
         return new Marker(id, died.isBlank() ? state : "FAILED", builds.toString().trim(),

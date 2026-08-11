@@ -95,6 +95,34 @@ class ADeadProveDoesNotReadAsAWorkingOneTest {
     }
 
     @Test
+    @DisplayName("tool calls are counted per agent, since nothing else now stops a loop")
+    void toolLoop(@TempDir Path results) throws Exception {
+        StringBuilder trace = new StringBuilder();
+        for (int i = 0; i < 140; i++) {
+            trace.append("{\"at\":\"").append(i + 1)
+                    .append("\",\"kind\":\"tool\",\"agent\":\"reproducer\",\"tool\":\"grep\"}\n");
+        }
+        Path dir = results.resolve("m").resolve("looping");
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve("trace.jsonl"), trace.toString());
+        String d = digest(results);
+        assertTrue(d.contains("reproducer=0/0t140"),
+                "an agent that has called tools 140 times and answered nothing is the shape of a "
+                        + "loop, and with the ceiling gone this is the only thing that shows it: "
+                        + d);
+    }
+
+    @Test
+    @DisplayName("an agent that only used tools still appears")
+    void toolsOnly(@TempDir Path results) throws Exception {
+        marker(results, "quiet",
+                "{\"at\":\"1\",\"kind\":\"tool\",\"agent\":\"fixer\",\"tool\":\"read_file\"}");
+        assertTrue(digest(results).contains("fixer="),
+                "it used to be listed only if it had answered, so an agent stuck before its first "
+                        + "answer was invisible: " + digest(results));
+    }
+
+    @Test
     @DisplayName("a marker with no test at all is named as such")
     void noTest(@TempDir Path results) throws Exception {
         marker(results, "m2", "{\"at\":\"1\",\"kind\":\"asked\",\"agent\":\"verdict\",\"reply\":\"x\"}");
