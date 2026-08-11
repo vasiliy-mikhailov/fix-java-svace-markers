@@ -60,6 +60,13 @@ case "${1:-dashboard}" in
         limit="${3:-4}"
         mkdir -p "$RESULTS/claims" "$RESULTS/m"
 
+        # THE REFERENCE IS PREPARED ONCE AND THEN READ ONLY. Every prove used to reset and clean it
+        # on the way past, which meant four subshells mutating the repository the others were adding
+        # worktrees from — and a worktree taken mid-clean is a directory with no pom.xml in it, which
+        # this program reports as "nothing can run the test" for a marker that was fine.
+        reference=$(checkout "$(repo_of "$(head -1 "$2")")")
+        echo "reference clone ready at $reference; worktrees are per marker"
+
         settled() {
             grep -rlF "\"suspicion_key\":\"$1\"" "$RESULTS"/m/*/settlements.jsonl 2>/dev/null \
                 | while read -r f; do
@@ -91,13 +98,18 @@ case "${1:-dashboard}" in
                 # file copy and no network, and it is thrown away afterwards — which is a stronger
                 # isolation than resetting a tree, because nothing ignored survives it either.
                 tree="$CHECKOUTS/tree-$id"
-                repo=$(repo_of "$marker")
-                ref=$(WORKER= checkout "$repo")
-                git -C "$ref" worktree add --detach -f "$tree" HEAD >/dev/null 2>&1 \
-                    || cp -a "$ref" "$tree"
-                java -cp "$CP" tech.mikhailov.fsm.agent.Prove "$tree" "$marker" "$out" \
-                    >> "$out/slice.log" 2>&1 || true
-                git -C "$ref" worktree remove --force "$tree" >/dev/null 2>&1 || rm -rf "$tree"
+                rm -rf "$tree"
+                git -C "$reference" worktree add --detach -f "$tree" HEAD >> "$out/slice.log" 2>&1 \
+                    || cp -a "$reference/." "$tree/"
+                # A tree with no build file cannot prove anything, and saying so here names the
+                # cause; letting it through reports it as a marker that could not be built.
+                if [ ! -f "$tree/pom.xml" ] && [ ! -f "$tree/build.gradle" ]; then
+                    echo "WORKTREE FAILED for $marker — no build file in $tree" >> "$out/slice.log"
+                else
+                    java -cp "$CP" tech.mikhailov.fsm.agent.Prove "$tree" "$marker" "$out" \
+                        >> "$out/slice.log" 2>&1 || true
+                fi
+                git -C "$reference" worktree remove --force "$tree" >/dev/null 2>&1 || rm -rf "$tree"
             ) &
         done < "$2"
         wait
