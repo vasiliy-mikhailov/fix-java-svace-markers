@@ -36,8 +36,26 @@ final class Overheard implements HttpClientBuilder {
     private final HttpClientBuilder delegate;
     private final StringBuilder heard = new StringBuilder();
 
+    /**
+     * WHEN THIS CONNECTION LAST SAID ANYTHING, which is the only thing that distinguishes a model
+     * taking its time from an endpoint that has died — and the distinction the caller's timeout
+     * claimed to make while actually measuring total elapsed time. Every event counts, not only the
+     * reasoning ones: a stream delivering content tokens is speaking.
+     */
+    private volatile long lastHeard = System.nanoTime();
+
     Overheard(HttpClientBuilder delegate) {
         this.delegate = delegate;
+    }
+
+    /** How long this connection has been silent. Nanoseconds, monotonic. */
+    long silentFor() {
+        return System.nanoTime() - lastHeard;
+    }
+
+    /** Starts the clock for a call that is about to be made, so the last one's silence is not this one's. */
+    void listening() {
+        lastHeard = System.nanoTime();
     }
 
     /** Everything reasoned since the last drain, and empties the buffer for the next call. */
@@ -70,11 +88,13 @@ final class Overheard implements HttpClientBuilder {
 
                     @Override
                     public void onOpen(SuccessfulHttpResponse response) {
+                        lastHeard = System.nanoTime();
                         listener.onOpen(response);
                     }
 
                     @Override
                     public void onEvent(ServerSentEvent event) {
+                        lastHeard = System.nanoTime();
                         String data = event.data();
                         if (data != null && data.contains("\"" + FIELD + "\"")) {
                             add(Json.field(data, FIELD));

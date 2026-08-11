@@ -70,7 +70,8 @@ class TheReasoningIsNotThrownAwayTest {
 
     private static Kept run(StreamingChatModel model) {
         Kept trace = new Kept();
-        ChatResponse got = new Thinking(model, nothing(), trace, "reproducer", Duration.ofSeconds(5))
+        ChatResponse got = new Thinking(model, nothing(), trace, "reproducer", Duration.ofSeconds(5),
+                Duration.ofSeconds(30))
                 .chat(ChatRequest.builder().messages(dev.langchain4j.data.message.UserMessage
                         .from("is 17 prime?")).build());
         assertTrue(got.aiMessage().text().contains("Yes"), "the answer still comes back");
@@ -189,13 +190,88 @@ class TheReasoningIsNotThrownAwayTest {
             @Override
             public void doChat(ChatRequest request, StreamingChatResponseHandler handler) { }
         };
-        Thinking thinking = new Thinking(mute, nothing(), new Kept(), "fix-critic", Duration.ofMillis(120));
+        Thinking thinking = new Thinking(mute, nothing(), new Kept(), "fix-critic", Duration.ofMillis(120),
+                Duration.ofSeconds(30));
         RuntimeException died = assertThrows(RuntimeException.class, () -> thinking.chat(
                 ChatRequest.builder().messages(dev.langchain4j.data.message.UserMessage.from("?"))
                         .build()));
         assertTrue(died.getMessage().contains("fix-critic"),
                 "a prove that dies without naming who was waiting is the one failure this program "
                         + "cannot explain afterwards: " + died.getMessage());
+    }
+
+    @Test
+    @DisplayName("a model still speaking is not killed for taking longer than the silence bound")
+    void slowButAlive() throws Exception {
+        // THE BUG THIS EXISTS FOR. The bound was twelve minutes of ELAPSED time reported as twelve
+        // minutes of silence, and with the token cap removed it killed ten live calls in the first
+        // five markers of a full run — five requests sharing one GPU generate at about twenty-four
+        // tokens a second each, and twelve minutes of that is seventeen thousand tokens.
+        Overheard overheard = nothing();
+        Kept trace = new Kept();
+        java.util.concurrent.CountDownLatch answered = new java.util.concurrent.CountDownLatch(1);
+        StreamingChatModel slow = new StreamingChatModel() {
+            @Override
+            public void doChat(ChatRequest request, StreamingChatResponseHandler handler) {
+                Thread talking = new Thread(() -> {
+                    try {
+                        // Speaks for longer than one glance, in breaths far shorter than the
+                        // silence bound — the shape of a real slow generation. Shorter than a
+                        // glance and the future completes before the check ever runs, which is
+                        // how the first version of this test passed against the bug.
+                        for (int i = 0; i < 160; i++) {
+                            Thread.sleep(20);
+                            overheard.listening();
+                        }
+                        handler.onCompleteResponse(ChatResponse.builder()
+                                .aiMessage(AiMessage.from("Yes.")).build());
+                        answered.countDown();
+                    } catch (InterruptedException killed) {
+                        Thread.currentThread().interrupt();
+                    }
+                });
+                talking.setDaemon(true);
+                talking.start();
+            }
+        };
+        ChatResponse got = new Thinking(slow, overheard, trace, "reproducer",
+                Duration.ofMillis(200), Duration.ofSeconds(30))
+                .chat(ChatRequest.builder().messages(
+                        dev.langchain4j.data.message.UserMessage.from("?")).build());
+        assertTrue(got.aiMessage().text().contains("Yes"),
+                "three seconds of steady speech against a 200ms silence bound is not a timeout");
+        assertTrue(answered.await(1, java.util.concurrent.TimeUnit.SECONDS), "it finished");
+    }
+
+    @Test
+    @DisplayName("a model that answers forever fails as answering, not as silence")
+    void neverFinishes() {
+        Overheard overheard = nothing();
+        StreamingChatModel endless = new StreamingChatModel() {
+            @Override
+            public void doChat(ChatRequest request, StreamingChatResponseHandler handler) {
+                Thread talking = new Thread(() -> {
+                    while (!Thread.currentThread().isInterrupted()) {
+                        overheard.listening();
+                        try {
+                            Thread.sleep(10);
+                        } catch (InterruptedException stop) {
+                            return;
+                        }
+                    }
+                });
+                talking.setDaemon(true);
+                talking.start();
+            }
+        };
+        RuntimeException died = assertThrows(RuntimeException.class,
+                () -> new Thinking(endless, overheard, new Kept(), "verdict",
+                        Duration.ofSeconds(10), Duration.ofMillis(300))
+                        .chat(ChatRequest.builder().messages(
+                                dev.langchain4j.data.message.UserMessage.from("?")).build()));
+        assertTrue(died.getMessage().contains("still generating"),
+                "the endpoint is not at fault and the record must not say it was: "
+                        + died.getMessage());
     }
 
     @Test
@@ -208,7 +284,8 @@ class TheReasoningIsNotThrownAwayTest {
             }
         };
         RuntimeException died = assertThrows(RuntimeException.class,
-                () -> new Thinking(refuses, nothing(), new Kept(), "fixer", Duration.ofSeconds(5))
+                () -> new Thinking(refuses, nothing(), new Kept(), "fixer", Duration.ofSeconds(5),
+                        Duration.ofSeconds(30))
                         .chat(ChatRequest.builder().messages(
                                 dev.langchain4j.data.message.UserMessage.from("?")).build()));
         assertTrue(died.getMessage().contains("context length exceeded"),

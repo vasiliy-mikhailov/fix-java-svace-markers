@@ -32,20 +32,24 @@ import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
  * nothing crossing it until the last token is generated, so a long answer and a dead endpoint look
  * identical from here — and a reasoning model on a busy GPU generates for a long time. Earlier runs
  * capped output at sixteen thousand tokens for exactly this reason, which bounded the stall by
- * truncating the thinking that caused it. Streaming makes the connection speak continuously, so the
- * wall-clock bound below is a bound on real silence rather than on how much the model has to say.
+ * truncating the thinking that caused it. Streaming lets {@link #await} measure silence instead of
+ * elapsed time, which is what the cap was standing in for.
  *
  * <p>The rest of the program is unaffected: {@code SubAgentRuntime} takes a blocking {@link ChatModel}
  * and this is one. The stream is an implementation detail of getting the answer, and it is not the
  * dashboard's live feed — {@link Trace} is.
  */
 record Thinking(StreamingChatModel model, Overheard overheard, Trace trace, String agent,
-        Duration patience) implements ChatModel {
+        Duration patience, Duration ceiling) implements ChatModel {
+
+    /** How often to look, while waiting. Short enough to be prompt, long enough to cost nothing. */
+    private static final Duration GLANCE = Duration.ofSeconds(2);
 
     @Override
     public ChatResponse chat(ChatRequest request) {
         CompletableFuture<ChatResponse> answer = new CompletableFuture<>();
         overheard.drain();
+        overheard.listening();
         // THE PARTIALS ARE A FALLBACK, not the source. A server that streams thinking but does not
         // set it on the finished message would otherwise record nothing, and the difference is
         // invisible until someone opens a trace looking for a reasoning that is not there.
@@ -87,26 +91,46 @@ record Thinking(StreamingChatModel model, Overheard overheard, Trace trace, Stri
     }
 
     /**
-     * The wall-clock bound, restated as an exception the caller already handles.
+     * WAITS WHILE THE STREAM IS STILL SPEAKING, and this is the whole point of streaming.
      *
-     * <p>A model call that never returns must fail as a model call, not as an interrupt escaping into
-     * whichever stage happened to be running — a prove that dies without a reason recorded is the one
-     * failure this program cannot explain afterwards.
+     * <p>The first version of this waited a fixed twelve minutes in total and then reported "no token
+     * in 12 minutes" — a sentence about idleness, measured against elapsed time. Five markers into a
+     * full run it had killed ten calls, every one of them a model that was answering: with the token
+     * cap gone and five requests sharing one GPU at about twenty-four tokens a second each, twelve
+     * minutes buys roughly seventeen thousand tokens, and a reasoning turn can want more. The
+     * endpoint was blamed in the record for the caller's arithmetic.
+     *
+     * <p>{@link Overheard} sees every server-sent event, so silence is now a measurement rather than
+     * an inference. {@link #ceiling} remains as a backstop, because a generation that never ends is
+     * still a prove that never ends — but it is a different failure and says so.
      */
     private ChatResponse await(CompletableFuture<ChatResponse> answer) {
-        try {
-            return answer.get(patience.toSeconds(), TimeUnit.SECONDS);
-        } catch (TimeoutException silence) {
-            answer.cancel(true);
-            throw new RuntimeException(agent + ": no token in " + patience.toMinutes()
-                    + " minutes — the endpoint stopped speaking mid-answer", silence);
-        } catch (ExecutionException failed) {
-            Throwable cause = failed.getCause() == null ? failed : failed.getCause();
-            throw cause instanceof RuntimeException already ? already : new RuntimeException(cause);
-        } catch (InterruptedException stopped) {
-            Thread.currentThread().interrupt();
-            answer.cancel(true);
-            throw new RuntimeException(agent + ": interrupted waiting for the model", stopped);
+        long start = System.nanoTime();
+        while (true) {
+            try {
+                return answer.get(GLANCE.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (TimeoutException stillGoing) {
+                if (overheard.silentFor() > patience.toNanos()) {
+                    answer.cancel(true);
+                    throw new RuntimeException(agent + ": nothing on the wire for "
+                            + patience.toMinutes() + " minutes — the endpoint stopped speaking "
+                            + "mid-answer", stillGoing);
+                }
+                if (System.nanoTime() - start > ceiling.toNanos()) {
+                    answer.cancel(true);
+                    throw new RuntimeException(agent + ": still generating after "
+                            + ceiling.toMinutes() + " minutes — answering, but not finishing",
+                            stillGoing);
+                }
+            } catch (ExecutionException failed) {
+                Throwable cause = failed.getCause() == null ? failed : failed.getCause();
+                throw cause instanceof RuntimeException already ? already
+                        : new RuntimeException(cause);
+            } catch (InterruptedException stopped) {
+                Thread.currentThread().interrupt();
+                answer.cancel(true);
+                throw new RuntimeException(agent + ": interrupted waiting for the model", stopped);
+            }
         }
     }
 }

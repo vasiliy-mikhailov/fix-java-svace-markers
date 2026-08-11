@@ -44,7 +44,16 @@ public final class Prove {
      * thinking mid-thought. {@link Thinking} streams, so the connection speaks continuously and this
      * measures what it was always meant to: an endpoint that has stopped answering.
      */
-    private static final Duration PATIENCE = Duration.ofMinutes(12);
+    private static final Duration PATIENCE = Duration.ofMinutes(4);
+
+    /**
+     * How long one call may go on ANSWERING.
+     *
+     * <p>A different failure from {@link #PATIENCE} and it must not be reported as the same one. A
+     * generation that streams steadily and never stops is still a prove that never finishes, but the
+     * endpoint is not at fault and the record should not say it was.
+     */
+    private static final Duration CEILING = Duration.ofMinutes(45);
 
     /** One re-ask per producer, quoting whoever objected. Two loops, one budget, stated once. */
     private static final int REASK = 1;
@@ -705,7 +714,7 @@ public final class Prove {
                         .returnThinking(true)
                         .timeout(PATIENCE)
                         .build(),
-                overheard, trace, agent, PATIENCE);
+                overheard, trace, agent, PATIENCE, CEILING);
     }
 
     private static String env(String name) {
