@@ -11,7 +11,9 @@ CHECKOUTS="${CHECKOUTS:-/work/checkouts}"
 # marker be "reproduced" by the fix for the marker before it.
 checkout() {
     repo="$1"
-    dir="$CHECKOUTS/$(echo "$repo" | sed 's|.*/||; s|\.git$||')"
+    # ONE CHECKOUT PER WORKER. Four provers resetting and cleaning one tree would delete each
+    # other's test between the write and the build.
+    dir="$CHECKOUTS/$(echo "$repo" | sed 's|.*/||; s|\.git$||')${WORKER:+-$WORKER}"
     if [ -d "$dir/.git" ]; then
         # -x, NOT just -fd. clean skips ignored files by default, and target/ is ignored — so a
         # class compiled from the previous marker's PATCH survives a reset that restored its source,
@@ -42,35 +44,72 @@ case "${1:-dashboard}" in
         ;;
 
     slice)
-        # slice /markers.txt — one marker per line, each on a clean tree.
+        # slice <markers> [worker] [of] — one marker per line, each on a clean tree.
         #
         # IT RESUMES. A settled marker is skipped, because a restart that re-proves what is already
         # done spends the endpoint twice and writes a second settlement for a marker that has one —
         # and a run interrupted at marker 30 of 40 should cost ten proves to finish, not forty.
+        #
+        # IT STRIPES. With `worker` of `of`, this process takes every `of`-th marker starting at
+        # `worker`. No claim, no lock: the partition is arithmetic, so two workers cannot pick the
+        # same marker and none is left for nobody.
+        WORKER="${3:-}"
+        OF="${4:-1}"
+        MINE="${WORKER:-1}"
+        OUT="$RESULTS${WORKER:+/w$WORKER}"
+        mkdir -p "$OUT"
+        export WORKER
+
+        # Settled anywhere counts, not settled by me: the resume must see every worker's file or a
+        # marker one of them finished is proved again by the next run.
         settled() {
-            [ -f "$RESULTS/settlements.jsonl" ] || return 1
-            grep -F "\"suspicion_key\":\"$1\"" "$RESULTS/settlements.jsonl" 2>/dev/null \
-                | grep -qv "\"state\":\"proving\""
+            grep -lF "\"suspicion_key\":\"$1\"" "$RESULTS"/settlements.jsonl \
+                "$RESULTS"/w*/settlements.jsonl 2>/dev/null | while read -r f; do
+                grep -F "\"suspicion_key\":\"$1\"" "$f" | grep -qv "\"state\":\"proving\"" && echo hit
+            done | grep -q hit
         }
-        n=0; done_already=0
+
+        n=0; done_already=0; skipped=0
         while IFS= read -r marker; do
             [ -z "$marker" ] && continue
             n=$((n + 1))
+            if [ "$OF" -gt 1 ] && [ $(( (n - 1) % OF + 1 )) -ne "$MINE" ]; then
+                skipped=$((skipped + 1))
+                continue
+            fi
             if settled "$marker"; then
                 done_already=$((done_already + 1))
                 continue
             fi
-            echo "=== [$n] $marker" | tee -a "$RESULTS/slice.log"
+            echo "=== [$n] ${WORKER:+w$WORKER }$marker" | tee -a "$OUT/slice.log"
             dir=$(checkout "$(repo_of "$marker")")
             # A prove that dies must not end the slice: it records its own infra row and the next
             # marker is still worth attempting.
-            # STDERR TO A FILE. A slice started with `docker exec -d` sends its output nowhere,
-            # so every stack trace this program printed has been discarded — which is why a
-            # NullPointerException in the record had no line number anywhere to find it.
-            java -cp "$CP" tech.mikhailov.fsm.agent.Prove "$dir" "$marker" "$RESULTS" \
-                >> "$RESULTS/slice.log" 2>&1 || true
+            java -cp "$CP" tech.mikhailov.fsm.agent.Prove "$dir" "$marker" "$OUT" \
+                >> "$OUT/slice.log" 2>&1 || true
         done < "$2"
-        echo "SLICE DONE ($n marker(s), $done_already already settled)"
+        echo "SLICE DONE ($n marker(s), $done_already already settled, $skipped другому)" \
+            | sed "s/ другому/ not mine/" | tee -a "$OUT/slice.log"
+        ;;
+
+    parallel)
+        # parallel <markers> [n] — n workers, n checkouts, one striped queue.
+        #
+        # The dependency cache is warmed FIRST, once. Four cold Maven builds racing to populate one
+        # local repository is how a repo gets a half-written jar in it, and every worker then fails
+        # on a corrupt artifact nobody wrote deliberately.
+        n="${3:-4}"
+        first=$(head -1 "$2")
+        warm=$(checkout "$(repo_of "$first")")
+        echo "warming the dependency cache in $warm"
+        (cd "$warm" && mvn -B -q -DskipTests test-compile >/dev/null 2>&1) || true
+        i=1
+        while [ "$i" -le "$n" ]; do
+            "$0" slice "$2" "$i" "$n" &
+            i=$((i + 1))
+        done
+        wait
+        echo "ALL WORKERS DONE"
         ;;
 
     seed)
@@ -92,7 +131,7 @@ case "${1:-dashboard}" in
         ;;
 
     *)
-        echo "usage: prove 'repo|file|line|checker' | slice <markers> | test [cases] | seed [cases] | dashboard" >&2
+        echo "usage: prove 'repo|file|line|checker' | slice <markers> [w] [of] | parallel <markers> [n] | test [cases] | seed [cases] | dashboard" >&2
         exit 2
         ;;
 esac

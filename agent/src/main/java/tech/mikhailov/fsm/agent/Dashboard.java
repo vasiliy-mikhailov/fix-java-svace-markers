@@ -433,6 +433,9 @@ public final class Dashboard {
                 mine.add(line);
             }
         }
+        // Concatenating four workers' files gives four ordered runs, not one. The stamp is what
+        // makes them a single story again.
+        mine.sort((a, b) -> Long.compare(num(field(a, "at")), num(field(b, "at"))));
         String state = "";
         for (String line : lines(settlements)) {
             if (field(line, "suspicion_key").equals(key)) {
@@ -648,8 +651,35 @@ public final class Dashboard {
                 .append(sub).append("</div></header>");
     }
 
-    /** Absent is not an error: a run that has settled nothing yet is the normal first state. */
+    /**
+     * Every worker's copy of one file, concatenated.
+     *
+     * <p>PARALLEL WORKERS DO NOT SHARE A FILE. Appending from four processes looks safe — O_APPEND
+     * makes the offset update atomic — but a line here can be sixty kilobytes of prompt, and a write
+     * that large is not one syscall. Two workers interleave mid-line and both records are lost, in a
+     * corpus whose whole purpose is to be read later. So each writes {@code results/wN/trace.jsonl}
+     * and this reads them all.
+     *
+     * <p>Absent is not an error: a run that has settled nothing yet is the normal first state.
+     */
     private static List<String> lines(Path file) {
+        List<String> all = new ArrayList<>(read(file));
+        Path root = file.getParent();
+        String name = file.getFileName().toString();
+        if (root != null) {
+            try (var dirs = Files.list(root)) {
+                dirs.filter(Files::isDirectory)
+                        .filter(p -> p.getFileName().toString().startsWith("w"))
+                        .sorted()
+                        .forEach(w -> all.addAll(read(w.resolve(name))));
+            } catch (IOException noWorkers) {
+                // A single-worker run has no wN directories, which is not a problem.
+            }
+        }
+        return all;
+    }
+
+    private static List<String> read(Path file) {
         try {
             return Files.readAllLines(file).stream().filter(l -> !l.isBlank()).toList();
         } catch (IOException e) {
