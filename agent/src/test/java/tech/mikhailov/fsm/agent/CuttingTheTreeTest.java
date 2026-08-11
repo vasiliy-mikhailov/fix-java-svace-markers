@@ -69,10 +69,18 @@ class CuttingTheTreeTest {
     void keptAside(@TempDir Path dir) throws Exception {
         Path results = proving(dir);
         new Supervisor(results, quiet()).restart(MARKER, "stuck");
-        Path kept = results.resolve("m").resolve(Supervisor.slug(MARKER) + ".restart-1");
+        Path kept = results.resolve("dead").resolve(Supervisor.slug(MARKER) + ".restart-1");
         assertTrue(Files.exists(kept.resolve("trace.jsonl")),
                 "the restart was ordered on this evidence; deleting it leaves a marker that was "
                         + "proved twice with no account of why");
+        // THE ONE PLACE IT MUST NOT BE. The pool asks "has this marker settled" by grepping every
+        // m/*/settlements.jsonl for its key, so a record kept in there answers on the dead prove's
+        // behalf and the restart becomes a no-op that reports success.
+        try (var under = Files.list(results.resolve("m"))) {
+            assertEquals(0, under.count(),
+                    "nothing of a restarted prove may remain under m/, or the pool will skip the "
+                            + "marker the restart exists to re-queue");
+        }
         assertTrue(Files.readString(results.resolve("restarts.jsonl")).contains("stuck"),
                 "and the reason is written down, in the words the agent gave");
     }

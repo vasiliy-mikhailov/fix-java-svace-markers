@@ -110,12 +110,23 @@ final class Supervisor {
         }
     }
 
+    /**
+     * OUT OF {@code m/}, WHICH IS THE ONLY PLACE IT MUST NOT GO.
+     *
+     * <p>This kept the record beside the live ones, as {@code m/<id>.restart-1}, and the pool decides
+     * whether a marker still needs proving by grepping every {@code m/*}{@code /settlements.jsonl}
+     * for its key. So the kept record answered on the dead prove's behalf: the claim was released,
+     * the marker was skipped, and the restart did nothing at all while reporting that it had. A
+     * supervisor whose one action is silently a no-op is worse than one with no actions.
+     */
     private void keep(Path out, String id, int attempt) {
         if (!Files.isDirectory(out)) {
             return;
         }
         try {
-            Files.move(out, out.resolveSibling(id + ".restart-" + attempt));
+            Path dead = results.resolve("dead");
+            Files.createDirectories(dead);
+            Files.move(out, dead.resolve(id + ".restart-" + attempt));
         } catch (IOException couldNotKeep) {
             trace.progress(id, "could not keep the record of attempt " + attempt + ": "
                     + couldNotKeep.getMessage());

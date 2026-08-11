@@ -67,11 +67,20 @@ case "${1:-dashboard}" in
         reference=$(checkout "$(repo_of "$(head -1 "$2")")")
         echo "reference clone ready at $reference; worktrees are per marker"
 
+        # WHAT COUNTS AS SETTLED IS A DISPOSITION, NOT "ANYTHING THAT IS NOT PROVING".
+        #
+        # This used to skip a marker whose settlements file held any state but `proving`, which
+        # meant `infra` — the state a prove writes when it THROWS — counted as an answer. A prove
+        # killed by the tool ceiling therefore retired its own marker, and nothing would revisit it.
+        # These seven are the states this program actually decides; everything else is a prove that
+        # did not finish, and a marker that did not finish goes back in the queue.
+        DISPOSITIONS='"state":"(false-positive|by-design|unprovable|reproduced|needs-review|verified/pr-ready|verified/pr-rejected)"'
+
         settled() {
             grep -rlF "\"suspicion_key\":\"$1\"" "$RESULTS"/m/*/settlements.jsonl 2>/dev/null \
                 | while read -r f; do
                     grep -F "\"suspicion_key\":\"$1\"" "$f" \
-                        | grep -qv "\"state\":\"proving\"" && echo hit
+                        | grep -qE "$DISPOSITIONS" && echo hit
                   done | grep -q hit
         }
 
