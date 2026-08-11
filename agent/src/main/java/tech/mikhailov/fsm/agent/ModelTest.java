@@ -67,7 +67,7 @@ public final class ModelTest {
         Path results = Path.of(args.length > 2 ? args[2] : "results");
         JsonlTrace trace = new JsonlTrace(results.resolve("model-test-trace.jsonl"),
                 results.resolve("model-test.jsonl"), "model-test");
-        Agents agents = new Agents(Prove.model(), checkout, trace, Runner.of(checkout));
+        Agents agents = new Agents(checkout, trace, Runner.of(checkout));
 
         int ran = 0;
         int failed = 0;

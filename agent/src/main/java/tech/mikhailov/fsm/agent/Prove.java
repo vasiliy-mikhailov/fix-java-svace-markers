@@ -3,7 +3,7 @@ package tech.mikhailov.fsm.agent;
 import com.deepagents.langchain4j.subagents.SubAgentRuntime;
 import dev.langchain4j.http.client.jdk.JdkHttpClientBuilder;
 import dev.langchain4j.model.chat.ChatModel;
-import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import java.io.IOException;
 import java.net.http.HttpClient;
 import java.nio.file.Files;
@@ -34,22 +34,15 @@ public final class Prove {
     /** Every agent, at zero: four of the six replies are branched on. */
     private static final double CERTIFYING = 0.0;
 
-    /**
-     * How much one answer may be.
+      /**
+     * How long one call may go without a token.
      *
-     * <p>UNSET, A REASONING MODEL GENERATES UNTIL IT RUNS OUT OF CONTEXT. On a local GPU at ~60
-     * tokens a second that is half an hour of thinking for a test that is forty lines long, and the
-     * only thing that ends it is {@link #PATIENCE} — which reports a timeout for a model that was
-     * working the whole time. A cap turns "how long will this take" into arithmetic.
-     */
-    private static final int MAX_TOKENS = 16_000;
-
-    /**
-     * How long one call may take.
-     *
-     * <p>Enough for {@link #MAX_TOKENS} at the rate a local GPU sustains, plus the pause before the
-     * first token. This client does not stream, so an idle connection and a slow answer look the
-     * same to it — but with the answer bounded, so is the wait.
+     * <p>THIS IS A BOUND ON SILENCE, NOT ON LENGTH, and it used to be neither. The client did not
+     * stream, so an idle connection and a model still working looked identical from here, and the
+     * answer was a sixteen-thousand-token cap that bounded the wait by truncating the reasoning that
+     * caused it — a reasoning model told to stop thinking after sixteen thousand tokens stops
+     * thinking mid-thought. {@link Thinking} streams, so the connection speaks continuously and this
+     * measures what it was always meant to: an endpoint that has stopped answering.
      */
     private static final Duration PATIENCE = Duration.ofMinutes(12);
 
@@ -75,7 +68,7 @@ public final class Prove {
         try {
             Runner runner = Runner.of(checkout);
             Prove prove = new Prove(checkout, marker,
-                    new Agents(model(), checkout, trace, runner), runner, trace);
+                    new Agents(checkout, trace, runner), runner, trace);
             String account = prove.run();
             String state = account.split("\n", 2)[0];
             // The flags come from the prove that ran, not from what the disposition implies.
@@ -680,21 +673,38 @@ public final class Prove {
      * <p>So the version follows the scheme rather than a global preference: h2 for the hosted
      * endpoints, 1.1 for a vLLM on the other end of a container network.
      */
-    static ChatModel model() {
+    /**
+     * ONE MODEL PER AGENT, streamed, with the thinking asked for and kept.
+     *
+     * <p>Per agent because {@link Thinking} records who was thinking, and a single shared instance
+     * could only file every thought under one name. They share the HTTP client and cost nothing but
+     * a builder.
+     *
+     * <p>NO TOKEN CAP. There was one, at sixteen thousand, and it was a workaround for a blocking
+     * call that looked hung whenever a reasoning model took its time; it cut off the reasoning that
+     * caused the wait. Streaming removes the reason for it, and {@link Thinking} bounds real silence
+     * instead. The model still stops when it has finished, and the server's own context is the
+     * ceiling.
+     */
+    static ChatModel model(String agent, Trace trace) {
         String base = env("QWEN_BASE_URL");
+        // The scheme decides the protocol. Offering `Upgrade: h2c` on a cleartext endpoint gets it
+        // accepted by vLLM, which then loses the body.
         HttpClient.Version version = base.startsWith("https://")
                 ? HttpClient.Version.HTTP_2
                 : HttpClient.Version.HTTP_1_1;
-        return OpenAiChatModel.builder()
-                .httpClientBuilder(new JdkHttpClientBuilder()
-                        .httpClientBuilder(HttpClient.newBuilder().version(version)))
-                .baseUrl(base)
-                .apiKey(env("QWEN_API_KEY"))
-                .modelName(env("QWEN_MODEL"))
-                .temperature(CERTIFYING)
-                .maxTokens(MAX_TOKENS)
-                .timeout(PATIENCE)
-                .build();
+        return new Thinking(
+                OpenAiStreamingChatModel.builder()
+                        .httpClientBuilder(new JdkHttpClientBuilder()
+                                .httpClientBuilder(HttpClient.newBuilder().version(version)))
+                        .baseUrl(base)
+                        .apiKey(env("QWEN_API_KEY"))
+                        .modelName(env("QWEN_MODEL"))
+                        .temperature(CERTIFYING)
+                        .returnThinking(true)
+                        .timeout(PATIENCE)
+                        .build(),
+                trace, agent, PATIENCE);
     }
 
     private static String env(String name) {

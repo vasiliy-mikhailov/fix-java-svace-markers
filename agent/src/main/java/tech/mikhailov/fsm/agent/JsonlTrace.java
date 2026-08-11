@@ -41,6 +41,13 @@ final class JsonlTrace implements Trace, DeepAgentFlowListener {
         write("asked", of("agent", agent, "prompt", prompt, "reply", reply));
     }
 
+    @Override
+    public void thought(String agent, String text) {
+        // In full, like the pair. The reasoning is the only record of why an answer is what it is,
+        // and it is exactly what a reader reaches for when a settlement looks wrong.
+        write("thought", of("agent", agent, "text", text));
+    }
+
     /**
      * A map that tolerates a null value, because {@link Map#of} does not.
      *

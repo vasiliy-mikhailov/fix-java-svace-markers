@@ -5,7 +5,6 @@ import java.nio.file.Path;
 import com.deepagents.langchain4j.logging.ToolInvocationLogMode;
 import com.deepagents.langchain4j.subagents.SubAgentRuntime;
 
-import dev.langchain4j.model.chat.ChatModel;
 
 /**
  * THE SIX, EACH WITH ITS OWN TOOLS AND ITS OWN CLOSED SET OF ANSWERS.
@@ -32,13 +31,11 @@ final class Agents {
         String run(String task);
     }
 
-    private final ChatModel model;
     private final Path root;
     private final JsonlTrace trace;
     private final Runner runner;
 
-    Agents(ChatModel model, Path root, JsonlTrace trace, Runner runner) {
-        this.model = model;
+    Agents(Path root, JsonlTrace trace, Runner runner) {
         this.root = root;
         this.trace = trace;
         this.runner = runner;
@@ -278,7 +275,8 @@ final class Agents {
      */
     private Agent runtime(String name, java.util.Map<dev.langchain4j.agent.tool.ToolSpecification,
             dev.langchain4j.service.tool.ToolExecutor> tools, String prompt) {
-        SubAgentRuntime runtime = new SubAgentRuntime(model, prompt, tools, "agent:" + name,
+        SubAgentRuntime runtime = new SubAgentRuntime(Prove.model(name, trace), prompt, tools,
+                "agent:" + name,
                 ToolInvocationLogMode.NONE, trace);
         return task -> {
             // An agent that answers with tool calls and no content returns null. That is an empty

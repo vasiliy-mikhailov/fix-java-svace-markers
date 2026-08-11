@@ -53,6 +53,8 @@ public final class Dashboard {
             .s{padding:2px 9px;border-radius:20px;font-size:11px;white-space:nowrap;display:inline-block}
             .verified,.verified-pr-ready,.verified-pr-rejected{background:#132e1a;color:#3fb950}
             .reproduced,.needs-review{background:#2b2011;color:#d29922}
+            .ev.thought{border-left-color:#6e5494}
+            .ev.thought .who{color:#a371f7}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
             .queued{background:#0d1117;color:#6e7681;border:1px solid #21262d}
             .sema{display:flex;gap:5px;margin-top:5px}
@@ -544,6 +546,25 @@ public final class Dashboard {
                     .append(fold("the prompt", field(earlier, "prompt"), expand)).append("</div>");
         }
 
+        // THE REASONING BELONGS BESIDE THE ANSWER, not only in the whole-trace view, because the
+        // question a reader brings to this page is "why did it say that" and the reply is the one
+        // place that never contains the answer. Newest first: the last thought is the one that
+        // produced the final answer above it.
+        StringBuilder thinking = new StringBuilder();
+        List<String> thoughts = new ArrayList<>();
+        for (String e : mine) {
+            if (field(e, "kind").equals("thought") && field(e, "agent").equals(agent)) {
+                thoughts.add(field(e, "text"));
+            }
+        }
+        for (int n = thoughts.size() - 1; n >= 0; n--) {
+            thinking.append(fold(thoughts.size() == 1 ? "what it worked through"
+                    : "what it worked through, turn " + (n + 1), thoughts.get(n), expand));
+        }
+        if (thinking.length() > 0) {
+            b.append("<div class='ev thought'>").append(thinking).append("</div>");
+        }
+
         // WITH WHAT CAME BACK. A list of calls says what an agent looked for; only the results say
         // what it found, and "it grepped for Serializable" and "it grepped for Serializable and got
         // nothing" are different stories about the same answer.
@@ -660,6 +681,9 @@ public final class Dashboard {
                         .append(fold("the prompt it was given", field(e, "prompt"), expand))
                         .append(rate(field(e, "marker"), field(e, "agent"), i, self,
                                 field(e, "prompt"), field(e, "reply")));
+                case "thought" -> b.append("<span class=who>").append(esc(field(e, "agent")))
+                        .append("</span><span class=kind>thought</span>")
+                        .append(fold("what it worked through", field(e, "text"), expand));
                 case "tool" -> b.append("<span class=who>").append(esc(field(e, "agent")))
                         .append("</span><span class=kind>").append(esc(field(e, "tool")))
                         .append("</span>")

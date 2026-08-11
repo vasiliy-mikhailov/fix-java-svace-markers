@@ -23,6 +23,20 @@ interface Trace {
     /** A model call and its answer, both in full. The unit prompt training replays. */
     void asked(String agent, String prompt, String reply);
 
+    /**
+     * WHAT THE MODEL WORKED THROUGH BEFORE IT ANSWERED, once per model call.
+     *
+     * <p>Separate from {@link #asked} because it is a different thing and belongs in a different
+     * column: the reply is what the agent committed to and what the next stage branches on, and the
+     * reasoning is how it got there. A prove that settles wrongly is usually one whose reply looks
+     * fine and whose reasoning does not, and until this existed the reasoning was generated on every
+     * call, charged for on every call, and thrown away on every call.
+     *
+     * <p>Fires several times per {@link #asked}: an agent working through its tools makes a model
+     * call per turn, and each thinks.
+     */
+    void thought(String agent, String text);
+
     /** A tool the library ran on an agent's behalf. Payloads arrive truncated; that is upstream. */
     void tool(String agent, String tool, String arguments, String result);
 
