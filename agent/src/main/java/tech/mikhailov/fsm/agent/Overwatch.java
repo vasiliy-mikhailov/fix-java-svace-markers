@@ -63,8 +63,15 @@ final class Overwatch {
         JsonlTrace trace = new JsonlTrace(results.resolve("overwatch-trace.jsonl"),
                 results.resolve("overwatch-settlements.jsonl"), "overwatch");
         Supervisor supervisor = new Supervisor(results, trace);
+        // THE SUPERVISOR HAS NO CHECKOUT AND NEITHER OF ITS AGENTS CAN BUILD ANYTHING — their tools
+        // are read-only over the results directory. Runner.of refuses a tree with no build file,
+        // correctly, and handing it a checkout instead would give a watcher a build it has no
+        // business running: a supervisor that can run tests can manufacture the evidence it
+        // supervises. This refuses in the same words, from the same place, for the same reason.
+        Runner nothingToBuild = (phase, test) -> new Runner.Result(true, false,
+                "the supervisor does not build; it reads what the provers built");
         Overwatch overwatch = new Overwatch(results,
-                new Agents(results, trace, Runner.of(results)), trace);
+                new Agents(results, trace, nothingToBuild), trace);
         while (true) {
             try {
                 overwatch.pass(supervisor);
