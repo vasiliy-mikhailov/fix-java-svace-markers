@@ -13,8 +13,15 @@ checkout() {
     repo="$1"
     dir="$CHECKOUTS/$(echo "$repo" | sed 's|.*/||; s|\.git$||')"
     if [ -d "$dir/.git" ]; then
+        # -x, NOT just -fd. clean skips ignored files by default, and target/ is ignored — so a
+        # class compiled from the previous marker's PATCH survives a reset that restored its source,
+        # and Maven decides by timestamp whether to recompile. The next marker's RED then runs
+        # against the last marker's fix, which is a green that belongs to somebody else.
+        #
+        # The dependency cache lives in ~/.m2, outside the checkout, so this costs a recompile and
+        # not a re-download.
         git -C "$dir" reset --hard -q
-        git -C "$dir" clean -fdq
+        git -C "$dir" clean -xfdq
     else
         mkdir -p "$CHECKOUTS"
         git clone --depth 1 "$repo" "$dir" >/dev/null 2>&1
