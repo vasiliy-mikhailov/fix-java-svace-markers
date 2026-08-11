@@ -271,7 +271,10 @@ final class Agents {
         SubAgentRuntime runtime = new SubAgentRuntime(model, prompt, tools, "agent:" + name,
                 ToolInvocationLogMode.NONE, trace);
         return task -> {
+            // An agent that answers with tool calls and no content returns null. That is an empty
+            // judgement, not a failure, and everything downstream already reads it as one.
             String reply = runtime.run(task);
+            reply = reply == null ? "" : reply;
             trace.asked(name, prompt + "\n\n---\n\n" + task, reply);
             return reply;
         };

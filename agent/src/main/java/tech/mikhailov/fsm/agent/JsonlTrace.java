@@ -38,24 +38,40 @@ final class JsonlTrace implements Trace, DeepAgentFlowListener {
     @Override
     public void asked(String agent, String prompt, String reply) {
         // IN FULL, both of them. Truncating here would save disk and cost the corpus.
-        write("asked", Map.of("agent", agent, "prompt", prompt, "reply", reply));
+        write("asked", of("agent", agent, "prompt", prompt, "reply", reply));
+    }
+
+    /**
+     * A map that tolerates a null value, because {@link Map#of} does not.
+     *
+     * <p>An agent that answers with tool calls and no content returns null, and Map.of then throws a
+     * NullPointerException carrying no message — which the prove records as an infra failure for a
+     * marker whose model was working perfectly. An empty answer is a judgement ("it had nothing to
+     * say") and the stages that read it already treat it as one; killing the prove over it is not.
+     */
+    private static Map<String, String> of(String... pairs) {
+        Map<String, String> m = new LinkedHashMap<>();
+        for (int i = 0; i + 1 < pairs.length; i += 2) {
+            m.put(pairs[i], pairs[i + 1] == null ? "" : pairs[i + 1]);
+        }
+        return m;
     }
 
     @Override
     public void tool(String agent, String tool, String arguments, String result) {
-        write("tool", Map.of("agent", agent, "tool", tool,
+        write("tool", of("agent", agent, "tool", tool,
                 "arguments", arguments, "result", result));
     }
 
     @Override
     public void built(String phase, Runner.Result result) {
-        write("built", Map.of("phase", phase, "infra", String.valueOf(result.infra()),
+        write("built", of("phase", phase, "infra", String.valueOf(result.infra()),
                 "passed", String.valueOf(result.passed()), "summary", result.summary()));
     }
 
     @Override
     public void settled(String markerKey, String state, String because, boolean red, boolean green) {
-        write("settled", Map.of("state", state, "because", because,
+        write("settled", of("state", state, "because", because,
                 "red", String.valueOf(red), "green", String.valueOf(green)));
         Settlement.note(settlements, markerKey, state, because, red, green);
     }
@@ -63,18 +79,27 @@ final class JsonlTrace implements Trace, DeepAgentFlowListener {
     @Override
     public void failed(String markerKey, Throwable cause) {
         String what = cause.getClass().getSimpleName() + ": " + cause.getMessage();
-        write("failed", Map.of("cause", what));
+        // WITH THE STACK. "NullPointerException: null" names no line and no cause, and a record that
+        // cannot locate its own failure sends a reader to a container log that does not have it.
+        StringBuilder where = new StringBuilder(what);
+        for (StackTraceElement s : cause.getStackTrace()) {
+            where.append("\n  at ").append(s);
+        }
+        if (cause.getCause() != null) {
+            where.append("\ncaused by ").append(cause.getCause());
+        }
+        write("failed", of("cause", what, "stack", where.toString()));
         Settlement.note(settlements, markerKey, "infra", what);
     }
 
     @Override
     public void priced(String markerKey, String minutes, String itemisation) {
-        write("priced", Map.of("minutes", minutes, "itemisation", itemisation));
+        write("priced", of("minutes", minutes, "itemisation", itemisation));
     }
 
     @Override
     public void progress(String markerKey, String note) {
-        write("progress", Map.of("note", note));
+        write("progress", of("note", note));
         Settlement.note(settlements, markerKey, "proving", note);
     }
 
@@ -133,7 +158,7 @@ final class JsonlTrace implements Trace, DeepAgentFlowListener {
 
     @Override
     public void onOrchestratorSystemReady(String assembledSystemPrompt) {
-        write("system", Map.of("prompt", assembledSystemPrompt));
+        write("system", of("prompt", assembledSystemPrompt));
     }
 
     private void write(String kind, Map<String, String> fields) {

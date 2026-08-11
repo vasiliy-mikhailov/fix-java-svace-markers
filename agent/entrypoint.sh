@@ -53,11 +53,15 @@ case "${1:-dashboard}" in
                 done_already=$((done_already + 1))
                 continue
             fi
-            echo "=== [$n] $marker"
+            echo "=== [$n] $marker" | tee -a "$RESULTS/slice.log"
             dir=$(checkout "$(repo_of "$marker")")
             # A prove that dies must not end the slice: it records its own infra row and the next
             # marker is still worth attempting.
-            java -cp "$CP" tech.mikhailov.fsm.agent.Prove "$dir" "$marker" "$RESULTS" || true
+            # STDERR TO A FILE. A slice started with `docker exec -d` sends its output nowhere,
+            # so every stack trace this program printed has been discarded — which is why a
+            # NullPointerException in the record had no line number anywhere to find it.
+            java -cp "$CP" tech.mikhailov.fsm.agent.Prove "$dir" "$marker" "$RESULTS" \
+                >> "$RESULTS/slice.log" 2>&1 || true
         done < "$2"
         echo "SLICE DONE ($n marker(s), $done_already already settled)"
         ;;

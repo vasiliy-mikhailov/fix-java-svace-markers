@@ -139,11 +139,15 @@ final class Tools {
     private static Map<ToolSpecification, ToolExecutor> grep(Path root) {
         ToolSpecification spec = ToolSpecification.builder()
                 .name("grep")
-                .description("Search the checkout for a literal string or regular expression. Returns "
-                        + "matching file:line pairs. Cheaper than reading files to find a definition.")
+                .description("Search the checkout for a literal string or regular expression, "
+                        + "optionally filtered by filename. Returns matching file:line pairs, and is "
+                        + "cheaper than reading files to find a definition. This is also the ONLY "
+                        + "search tool: there is no glob, find or ls beyond list_dir.")
                 .parameters(JsonObjectSchema.builder()
                         .addStringProperty("pattern", "a literal string or Java regular expression")
-                        .addStringProperty("glob", "optional filename filter, e.g. *.java")
+                                .addStringProperty("glob", "optional filename filter, e.g. *.java or "
+                                + "**/pages/*.java. Give it here rather than calling a separate glob "
+                                + "tool; there is not one.")
                         .required("pattern")
                         .build())
                 .build();
