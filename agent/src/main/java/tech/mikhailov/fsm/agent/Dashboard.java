@@ -512,17 +512,39 @@ public final class Dashboard {
             }
         }
 
+        // THE REASONING IS MOST WANTED WHILE THE AGENT IS STILL WORKING, so it is gathered before
+        // the paths below return — an agent seven tool calls in has said nothing yet, and its
+        // thinking is the only account of what it is doing. Newest turn first: the last thought is
+        // the one that produced whatever answer sits above it.
+        StringBuilder thinking = new StringBuilder();
+        List<String> thoughts = new ArrayList<>();
+        for (String e : mine) {
+            if (field(e, "kind").equals("thought") && field(e, "agent").equals(agent)) {
+                thoughts.add(field(e, "text"));
+            }
+        }
+        for (int n = thoughts.size() - 1; n >= 0; n--) {
+            thinking.append(fold(thoughts.size() == 1 ? "what it worked through"
+                    : "what it worked through, turn " + (n + 1), thoughts.get(n), expand));
+        }
+        String reasoned = thinking.length() == 0 ? ""
+                : "<div class='ev thought'>" + thinking + "</div>";
+
         List<String> said = asked(mine, agent);
         if (said.isEmpty()) {
             // AN AGENT MID-ANSWER HAS NOT "NOT RUN". It reads and greps for minutes before its first
             // token, and reporting that as nothing throws away the only view of what it is doing.
             if (calls == 0) {
-                return b.append("<div class=empty>").append(esc(agent))
-                        .append(" has not run for this marker.</div>").toString();
+                return b.append(reasoned.isEmpty()
+                        ? "<div class=empty>" + esc(agent) + " has not run for this marker.</div>"
+                        : "<div class='ev asked'><span class=who>" + esc(agent)
+                                + "</span><span class=kind>thinking</span></div>" + reasoned)
+                        .toString();
             }
             return b.append("<div class='ev asked'><span class=who>").append(esc(agent))
                     .append("</span><span class=kind>working — ").append(calls)
                     .append(" tool call(s), no answer yet</span></div>")
+                    .append(reasoned)
                     .append("<div class='ev tool'>")
                     .append(fold("what it has reached for", tools.toString(), expand))
                     .append("</div>").toString();
@@ -546,24 +568,7 @@ public final class Dashboard {
                     .append(fold("the prompt", field(earlier, "prompt"), expand)).append("</div>");
         }
 
-        // THE REASONING BELONGS BESIDE THE ANSWER, not only in the whole-trace view, because the
-        // question a reader brings to this page is "why did it say that" and the reply is the one
-        // place that never contains the answer. Newest first: the last thought is the one that
-        // produced the final answer above it.
-        StringBuilder thinking = new StringBuilder();
-        List<String> thoughts = new ArrayList<>();
-        for (String e : mine) {
-            if (field(e, "kind").equals("thought") && field(e, "agent").equals(agent)) {
-                thoughts.add(field(e, "text"));
-            }
-        }
-        for (int n = thoughts.size() - 1; n >= 0; n--) {
-            thinking.append(fold(thoughts.size() == 1 ? "what it worked through"
-                    : "what it worked through, turn " + (n + 1), thoughts.get(n), expand));
-        }
-        if (thinking.length() > 0) {
-            b.append("<div class='ev thought'>").append(thinking).append("</div>");
-        }
+        b.append(reasoned);
 
         // WITH WHAT CAME BACK. A list of calls says what an agent looked for; only the results say
         // what it found, and "it grepped for Serializable" and "it grepped for Serializable and got
