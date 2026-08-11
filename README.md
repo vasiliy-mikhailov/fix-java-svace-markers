@@ -14,8 +14,8 @@ QWEN_BASE_URL=… QWEN_API_KEY=… QWEN_MODEL=… \
 
 ## The chain
 
-Nine agents. Four producer/critic pairs and a verdict writer, called in a fixed order by
-`Prove.prove()` — the order is Java, not a paragraph an agent can rewrite.
+Ten agents. Five producer/critic pairs, called in a fixed order by `Prove.prove()` — the order is
+Java, not a paragraph an agent can rewrite.
 
 ```
 reproducer  → RED ──→ proof-critic ─┐   (reducible → reproducer, once)
@@ -23,7 +23,8 @@ reproducer  → RED ──→ proof-critic ─┐   (reducible → reproducer, o
 fixer       → GREEN → fix-critic ───┤   (over-fit | regression-risk → fixer, once)
                                     ↓
                       pr-maker  → pr-critic        (redo → pr-maker, once)
-                      verdict                      (only where execution settled nothing)
+                      verdict   → verdict-critic   (redo → verdict, once — only where execution
+                                                    settled nothing)
                       estimator → estimator-critic (redo → estimator, once)
 ```
 
@@ -65,6 +66,13 @@ calls per agent.
 `edit_file`, so it can never make its own test pass; the fixer gets `edit_file` but not `write_file`,
 because a new file is not a patch. Everyone gets `grep` and `glob`: a model asking for a tool that
 does not exist does not degrade, it throws and the prove ends.
+
+**A red that passes is not a reproduction, and the reproducer is the one told.** A first RED build
+runs against the revision the marker was raised against — the reproducer holds no `edit_file` and no
+fixer has run — so a test that is green there has documented the defect rather than observed it. In
+one run 16 of the 33 markers that reached a build had their first RED pass, and 13 settled on it.
+The chain re-asks the reproducer once; `run_test` says the same thing at the moment it happens,
+because the bare word `PASSED` reads as success and means its opposite here.
 
 **Silence has a direction.** An objection must be raised to bite, so an unreachable proof-critic
 waives and the test stands. A certificate must be given to bite, so an unreachable fix-critic or

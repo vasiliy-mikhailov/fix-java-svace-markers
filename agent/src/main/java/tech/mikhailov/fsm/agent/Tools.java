@@ -96,7 +96,13 @@ final class Tools {
                 .build();
         ToolExecutor exec = (request, memoryId) -> {
             Runner.Result r = runner.run("check", field(request.arguments(), "test"));
-            return (r.infra() ? "DID NOT RUN" : r.passed() ? "PASSED" : "FAILED") + "\n" + r.summary();
+            // "PASSED" MEANS ITS OPPOSITE HERE and the word reached the agent bare. A reproducer
+            // reading PASSED after running the test it just wrote reads success; what happened is
+            // that its test is green on the defect. Told at the moment it happens, the agent can
+            // still fix it — a round trip later, only the verdict agent hears, and it cannot.
+            return (r.infra() ? "DID NOT RUN" : r.passed()
+                    ? "PASSED — WHICH IS A FAILURE HERE." + Prove.GREEN_RED
+                    : "FAILED") + "\n" + r.summary();
         };
         Map<ToolSpecification, ToolExecutor> one = new LinkedHashMap<>();
         one.put(spec, exec);

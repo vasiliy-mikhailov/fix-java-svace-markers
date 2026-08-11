@@ -11,6 +11,7 @@ import java.nio.file.Path;
 
 import java.time.Duration;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -61,6 +62,32 @@ public final class Prove {
     /** What a reproducer says when there is nothing to demonstrate. Named in its prompt, verbatim. */
     private static final String DECLINE = "no test";
 
+    /**
+     * WHAT A PASSING RED MEANS, said to the only agent that can do anything about it.
+     *
+     * <p>Shared with {@code Tools.runTest}, so a reproducer running its own test is told the same
+     * thing at the same moment rather than reading the bare word PASSED, which means its opposite
+     * here.
+     */
+    static final String GREEN_RED = """
+
+
+            YOUR TEST COMPILED AND PASSED against the code as it stands. Nothing you write can pass \
+            here unless it is green on the defect: you cannot edit source and no patch has been \
+            applied, so this is the revision the marker was raised against.
+
+            A test that passes before the fix has DOCUMENTED the defect, not observed it. \
+            `assertThrows` for the very exception the marker names is satisfied BY the defect and \
+            would go red the moment it was fixed — which is backwards.
+
+            Write it again so it FAILS on this code and would pass once the defect is gone: assert \
+            what the method should RETURN or leave behind, not that it throws.
+
+            If nothing can do that — because the flagged state is unreachable from any caller, or \
+            because the checker names a code shape whose fix changes nothing observable — answer \
+            with exactly `no test` and one line of why. That answer is worth more than this build \
+            was.""";
+
     public static void main(String[] args) throws IOException {
         if (args.length < 2) {
             System.err.println("usage: Prove <checkout> <repo|file|line|checker> [results-dir]");
@@ -90,6 +117,17 @@ public final class Prove {
             System.exit(1);
         }
     }
+
+    /**
+     * WHAT EACH BUILD DID, one line each, in the order they ran.
+     *
+     * <p>{@code Runner} already writes the first line of every summary as a plain verdict — "red:
+     * FAILED", "green: PASSED", "red: no test class was named, so nothing ran" — so this is a list
+     * of facts and not a description of them. It is what {@link #whatExecutionProduced} hands to the
+     * agents who argue about a marker nothing demonstrated, and what the estimator needs to price
+     * what the run did rather than what its last speaker said about its own step.
+     */
+    private final List<String> builds = new ArrayList<>();
 
     private final Path checkout;
     private final String marker;
@@ -139,9 +177,9 @@ public final class Prove {
         if (testClass(trace, reply).isBlank()) {
             // No file, after being asked plainly. That is an argument to be made, not a build to be
             // spent — and the verdict agent is the one that makes it.
-            return argued(agents.verdict().run(whatThisRunMade() + brief
+            return argued(whatThisRunMade() + brief
                     + "\nNo test was written for this marker. The reproducer said:\n"
-                    + (reply.isBlank() ? "(nothing at all)" : reply)));
+                    + (reply.isBlank() ? "(nothing at all)" : reply));
         }
 
         Attempt a = reproduce(runner, agents, brief, "", reply, trace);
@@ -152,10 +190,25 @@ public final class Prove {
             return priced("unprovable", "the test never built, after "
                     + REASK + " re-ask(s) with the compiler's own words:\n" + a.build().summary());
         }
-        if (a.build().passed()) {
-            return argued(agents.verdict().run(whatThisRunMade() + brief
-                    + "\nA test written for this defect PASSED before any patch:\n"
-                    + a.build().summary()));
+        // A GREEN RED IS NOT A REPRODUCTION, AND THE ONLY AGENT THAT CAN ACT ON THAT WAS NEVER
+        // TOLD. This fact is certain rather than heuristic: the reproducer holds no `edit_file` and
+        // no fixer has run, so the tree this build ran against IS the revision the marker was
+        // raised against, and a test that is green on it has documented the defect instead of
+        // observing it. Across one run, 16 of the 33 markers that reached a build had their first
+        // RED pass, and 13 of them settled on it — six `by-design`, seven `false-positive`, every
+        // one argued from a build that showed nothing. The verdict agent cannot fix a test.
+        for (int again = 0; again < REASK && !a.build().infra() && a.build().passed(); again++) {
+            trace.progress(marker, "RED passed before any patch; asking for a test that fails");
+            String rewrite = agents.reproducer().run(brief + GREEN_RED);
+            if (declined(rewrite) || testClass(trace, rewrite).isBlank()) {
+                break;
+            }
+            a = reproduce(runner, agents, brief, "", rewrite, trace);
+        }
+        if (a.build().infra() || a.build().passed()) {
+            return argued(whatThisRunMade() + brief
+                    + "\nNO TEST COULD BE MADE TO FAIL ON THIS CODE. The reproducer was asked "
+                    + "twice; the last build was:\n" + a.build().summary());
         }
 
         String test = a.test();
@@ -291,6 +344,11 @@ public final class Prove {
     private Runner.Result built(Runner runner, Trace trace, String phase, String test) {
         Runner.Result r = runner.run(phase, test);
         trace.built(phase, r);
+        // THE FIRST LINE IS ALREADY A VERDICT. Runner writes "red: FAILED", "green: PASSED",
+        // "red: no test class was named, so nothing ran" — so the ledger is a list of facts rather
+        // than a summary of them, and the agents that argue about a marker nothing demonstrated
+        // read what happened instead of what the last speaker said about its own step.
+        builds.add(r.summary().split("\\R", 2)[0]);
         if (!r.infra()) {
             // RED counts when the test FAILED; GREEN when it passed. Anything else is not evidence.
             if (phase.equals("red")) {
@@ -308,9 +366,44 @@ public final class Prove {
      * marker argued by-design as false-positive, and those mean opposite things to whoever reads the
      * row: one says the code is deliberately that way, the other says the claim is untrue.
      */
-    private String argued(String argument) {
+    /**
+     * THE ARGUED DISPOSITIONS, NOW WITH A READER BETWEEN THEM AND THE RECORD.
+     *
+     * <p>This took a finished argument, which is why the verdict agent was the one producer here
+     * answerable to nobody: by the time the argument arrived there was no task left to re-ask with.
+     * Taking the task instead costs one parameter and buys the missing half of the only
+     * producer/critic pair the chain was short of.
+     */
+    private String argued(String task) {
+        String record = task + "\n\n" + whatExecutionProduced();
+        String argument = agents.verdict().run(record);
+        argument = reviewed(agents.verdictCritic(), agents.verdict(), record, argument,
+                "A reviewer read your verdict and judged that your argument reaches a weaker state "
+                        + "than the word you named");
         String kind = verdict(argument, "false-positive", "by-design", "unprovable");
         return priced(kind.isEmpty() ? "unprovable" : kind, argument);
+    }
+
+    /**
+     * WHAT THIS RUN ACTUALLY OBSERVED, computed rather than described.
+     *
+     * <p>The three states an argument may name are not peers — one asserts the checker is wrong, one
+     * asserts intent, one admits neither was shown — and which of them is even available depends on
+     * what executed. An agent told nothing about that reaches for whichever is cheapest to argue,
+     * and in a repository framed as deliberately vulnerable the cheapest is always `by-design`.
+     */
+    private String whatExecutionProduced() {
+        if (builds.isEmpty()) {
+            return "WHAT THIS RUN OBSERVED: NOTHING EXECUTED FOR THIS MARKER. No test was written, "
+                    + "so no build ran. `false-positive` is a claim about how this code BEHAVES and "
+                    + "nothing here watched it behave; `by-design` is a claim about what somebody "
+                    + "INTENDED and needs an artefact older than this run. Absent either, the "
+                    + "honest state is `unprovable`.";
+        }
+        return "WHAT THIS RUN OBSERVED, in order: " + String.join("; ", builds)
+                + ". A build that never ran is not evidence, and a red build that PASSED observed "
+                + "the code behaving correctly on the inputs that test used — and nothing more than "
+                + "that.";
     }
 
     /**

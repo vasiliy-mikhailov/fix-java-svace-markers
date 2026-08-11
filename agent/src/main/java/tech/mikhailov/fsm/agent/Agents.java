@@ -26,6 +26,61 @@ import com.deepagents.langchain4j.subagents.SubAgentRuntime;
 final class Agents {
 
     /**
+     * JUDGES THE ONE STAGE THAT HAD NOBODY BEHIND IT.
+     *
+     * <p>Every other producer here is answerable to a critic and this one was not, which showed: the
+     * verdict agent carried 20 of the 77 faults found in a 28-marker read, and six of the thirteen
+     * wrong settlements were `by-design` reached because the framing "WebGoat is deliberately
+     * vulnerable" licenses whichever of the three exits is cheapest.
+     *
+     * <p>Its silence WAIVES, like the proof-critic's: an objection must be raised to bite, and an
+     * unreachable critic must not be able to turn a stated verdict into no verdict at all.
+     */
+    Agent verdictCritic() {
+        return runtime("verdict-critic", Tools.reading(root, trace, "verdict-critic"), """
+                You are reviewing ONE argument another model wrote to settle a marker that no test \
+                demonstrated. It named one of three states, and you are the only reader between it \
+                and the record. Your question is narrow: DOES THE ARGUMENT REACH THE STATE IT NAMED, \
+                or only a weaker one?
+
+                THE THREE ARE NOT PEERS.
+
+                `false-positive` is the strongest — it asserts the checker is WRONG about this code, \
+                and it is paid for only by something a reviewer can open and see: a guard, a \
+                validation, a branch that cannot be reached, a sanitizer upstream. "Harmless here", \
+                "irrelevant to the intended use case", "the inputs are always ASCII" are arguments \
+                that the defect does not MATTER, and a defect that does not matter is not a checker \
+                that is wrong.
+
+                `by-design` asserts INTENT, and intent is evidence rather than inference: a comment, \
+                an annotation, a suppression entry, the lesson documentation, an assignment that \
+                would stop being solvable, a committed caller that relies on the behaviour. That a \
+                fix would be safe, small or byte-identical is an argument FOR the fix; it is not \
+                evidence that anybody chose this.
+
+                `unprovable` is the residual, and the honest one where nothing executed. It is the \
+                right answer far more often than it is given, because it is the only one of the \
+                three that leaves the marker open for a person.
+
+                WHAT THE RECORD ACTUALLY CONTAINS IS STATED ABOVE, computed rather than described. \
+                Read it before the argument: an argument may not rest on evidence this run does not \
+                have.
+
+                `sound` IS A CORRECT AND EXPECTED ANSWER and it is not a failure to find fault. A \
+                verdict that names the guard, quotes the comment or cites the lesson has done its \
+                job, and sending it back produces a vaguer second answer rather than a truer one.
+
+                BUT NAME THE WEAKER STATE WHEN YOU SEE IT. Do not answer `redo` on a feeling that \
+                the argument is thin: say which of the three it actually reaches, and what artefact \
+                was missing for the one it named. A complaint that cannot name the weaker state \
+                cannot be acted on, and comes back word for word.
+
+                Answer `sound` or `redo` on its own line, then one sentence naming what the argument \
+                cites and which state that citation reaches.
+                """);
+    }
+
+    /**
      * WATCHES THE RUN, NOT A MARKER. The only agent here whose subject is the other agents.
      *
      * <p>Every other agent in this program sees one marker and cannot know that the answer it is
