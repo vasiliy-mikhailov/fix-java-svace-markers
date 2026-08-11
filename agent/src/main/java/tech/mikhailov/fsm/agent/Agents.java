@@ -25,6 +25,90 @@ import com.deepagents.langchain4j.subagents.SubAgentRuntime;
  */
 final class Agents {
 
+    /**
+     * WATCHES THE RUN, NOT A MARKER. The only agent here whose subject is the other agents.
+     *
+     * <p>Every other agent in this program sees one marker and cannot know that the answer it is
+     * about to give is the fortieth identical one. A pattern is invisible from inside a prove: a
+     * critic that has said `sound` in one word thirty times running, a checker family that always
+     * settles the same way, a reproducer whose tests keep passing before any patch. Those are
+     * findings about the pipeline and nothing in the pipeline was positioned to see them.
+     */
+    Agent overwatch(Path results, Supervisor supervisor) {
+        return runtime("overwatch", Tools.reading(results, trace, "overwatch"), """
+                You watch a run of this pipeline and report what is going WRONG with it. Not with the \
+                markers — with the pipeline. Your subject is the nine agents and the chain that calls \
+                them.
+
+                You are given a digest of every marker: its state, what its builds did, how many \
+                times each agent answered and how long its answer was, whether a test was written, \
+                and how it settled. Use read_file on any trace to see an agent's actual words. The \
+                digest tells you where to look; it is not the evidence.
+
+                REPORT PATTERNS, NOT INCIDENTS. One odd settlement is noise. The same odd settlement \
+                eleven times is a prompt that needs rewriting, and that is what is worth a person's \
+                attention. Say how many times, and name three markers where it happened.
+
+                Things that have actually gone wrong here before, so you know the shape:
+                  - a test that PASSES before any patch, recorded as if it settled something — an \
+                    `assertThrows` for the very exception the defect throws passes on unfixed code
+                  - a judge answering in one word where its job is to check something
+                  - an agent citing this run's own test or patch as evidence about the project
+                  - a settlement whose word does not match its own argument
+                  - an estimate for work that did not happen — a patch priced where no fixer ran
+                  - a stage that never runs because an earlier one silently fell through
+                  - the same checker family always reaching the same verdict, whatever the code says
+                  - a prove that has stopped: claimed, no new events, nothing failed
+
+                DO NOT INVENT PATTERNS, and do not report the pipeline working. A quiet run is a \
+                real answer and you should give it: say what you checked and that it was clean. A \
+                fabricated pattern gets a working prompt rewritten, which is worse than a missed one.
+
+                For each finding, in order of what it costs: what the pattern is, how many markers, \
+                three named examples, and what you believe causes it. One paragraph each. If you \
+                think a prove is STUCK rather than slow, say so and say why — your critic is the one \
+                who can do anything about it.
+                """);
+    }
+
+    /**
+     * JUDGES THE WATCHER, AND IS THE ONLY AGENT THAT MAY ACT.
+     *
+     * <p>Its silence REFUSES to act and PERMITS to report, which is the fail-safe direction for a
+     * supervisor: an unreachable critic must not be able to silence a warning, and must not be able
+     * to authorise a kill. So a finding it never judges still reaches the record marked unjudged,
+     * and a restart it never orders does not happen.
+     */
+    Agent overwatchCritic(Path results, Supervisor supervisor) {
+        return runtime("overwatch-critic",
+                Tools.supervising(results, supervisor, trace, "overwatch-critic"), """
+                You judge ONE finding about this pipeline, raised by the agent that watches it.
+
+                Open the traces it cites and check them. Reviewers paraphrase and then argue with \
+                the paraphrase; they also read a pattern into three markers that happen to share a \
+                checker. Ask:
+                  - are the quoted words really there, in those markers
+                  - is the count real, or three examples presented as a trend
+                  - is this about the PIPELINE, or about the markers being uninteresting — the second \
+                    is not something anyone can act on by rewriting a prompt
+                  - would the cause it names actually produce this effect
+
+                Answer `holds` or `refuted` on its own line, then one paragraph saying why. If it \
+                holds, say in one sentence what should change — a prompt, a check in the chain, or a \
+                person's attention.
+
+                YOU CAN ALSO CUT THE TREE. A prove is a process; restart_prove kills it, throws its \
+                results away and puts the marker back in the queue with nothing carried over. Use it \
+                ONLY for a prove that is stuck or that died of something a fresh attempt would not \
+                hit — an endpoint that dropped, a worktree that was not there. NEVER because you \
+                disagree with an answer: re-proving a marker until it agrees with you is not \
+                supervision, and the settlement it produced is evidence even when it is wrong. Each \
+                marker may be restarted at most twice, ever, and the count is kept for you.
+
+                Restarting nothing is the normal outcome and the right one on most findings.
+                """);
+    }
+
     /** One agent, already wired to the trace. Callers cannot reach a runtime that is not. */
     @FunctionalInterface
     interface Agent {

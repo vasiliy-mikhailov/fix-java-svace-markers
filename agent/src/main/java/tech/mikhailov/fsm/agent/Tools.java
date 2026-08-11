@@ -134,6 +134,51 @@ final class Tools {
     }
 
     /**
+     * READ THE RECORD, AND CUT THE TREE.
+     *
+     * <p>The supervisor's critic is the only agent in this program that can act on the run rather
+     * than describe it, and the only one whose subject is the other agents. It gets the reading tools
+     * over the RESULTS directory rather than a checkout — its evidence is traces, not source.
+     */
+    static Map<ToolSpecification, ToolExecutor> supervising(Path results, Supervisor supervisor,
+            Trace trace, String agent) {
+        Map<ToolSpecification, ToolExecutor> tools = only(results, Set.of("list_dir", "read_file"));
+        tools.putAll(restart(supervisor));
+        return recorded(tools, trace, agent);
+    }
+
+    /**
+     * KILL A PROVE AND PUT ITS MARKER BACK IN THE QUEUE.
+     *
+     * <p>Described to the model as what it is — destructive, counted, and about a process rather than
+     * an agent — because a tool whose description undersells it gets used as though it were cheap.
+     * The limit is enforced in {@link Supervisor}, not here and not in the prompt: this description
+     * tells the model the rule so it does not waste a turn discovering it.
+     */
+    private static Map<ToolSpecification, ToolExecutor> restart(Supervisor supervisor) {
+        ToolSpecification spec = ToolSpecification.builder()
+                .name("restart_prove")
+                .description("DESTRUCTIVE. Kill the running prove for one marker, delete its results, "
+                        + "and release its claim so the pool proves it again from a clean worktree. "
+                        + "Nothing of the attempt survives except its trace, kept aside for reading. "
+                        + "A marker may be restarted at most " + Supervisor.LIMIT + " time(s), ever. "
+                        + "Use it for a prove that is STUCK or that failed for a reason a fresh "
+                        + "attempt would not hit — not for one whose answer you disagree with, which "
+                        + "is a finding to report and not a process to cycle.")
+                .parameters(JsonObjectSchema.builder()
+                        .addStringProperty("marker", "the full marker key, exactly as the record has it")
+                        .addStringProperty("why", "one sentence: what is wrong that a restart fixes")
+                        .required("marker", "why")
+                        .build())
+                .build();
+        ToolExecutor exec = (request, memoryId) -> supervisor.restart(
+                Json.field(request.arguments(), "marker"), Json.field(request.arguments(), "why"));
+        Map<ToolSpecification, ToolExecutor> one = new LinkedHashMap<>();
+        one.put(spec, exec);
+        return one;
+    }
+
+    /**
      * FIND A STRING ACROSS THE CHECKOUT — the tool every agent asks for and none of the built-ins is.
      *
      * <p>Absent, a model asking for it does not degrade: the runtime treats an unknown tool name as a

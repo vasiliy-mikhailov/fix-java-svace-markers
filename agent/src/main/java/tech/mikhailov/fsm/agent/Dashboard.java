@@ -212,6 +212,11 @@ public final class Dashboard {
         server.createContext("/trace", e -> send(e, "text/html; charset=utf-8",
                 events(trace, settlements, "", open(e), "",
                         (int) num(query(e, "from")), fragment(e))));
+        // WHAT IS WRONG WITH THE PIPELINE, as opposed to with a marker. Its own page because it is
+        // its own question: every other view here answers "what happened to this defect".
+        server.createContext("/overwatch", e -> send(e, "text/html; charset=utf-8",
+                overwatch(settlements.resolveSibling("overwatch.jsonl"),
+                        settlements.resolveSibling("restarts.jsonl"), open(e))));
         server.createContext("/", e -> send(e, "text/html; charset=utf-8",
                 index(settlements, trace, lines(settlements.resolveSibling("markers.txt")))));
 
@@ -269,6 +274,70 @@ public final class Dashboard {
         String tail = marker.substring(marker.lastIndexOf('/') + 1)
                 .replaceAll("[^A-Za-z0-9._-]", "_");
         return tail.length() <= 80 ? tail : tail.substring(0, 80);
+    }
+
+    /**
+     * THE SUPERVISOR'S FINDINGS, worst first, each one feedback-able like any other answer.
+     *
+     * <p>An unjudged finding is shown, and shown as unjudged: a critic that could not be reached must
+     * not be able to suppress a warning, and a reader deciding what to act on needs to know which of
+     * the two they are looking at.
+     */
+    private static String overwatch(Path findings, Path restarts, boolean expand) {
+        List<String> all = lines(findings);
+        List<String> cut = lines(restarts);
+        long holds = all.stream().filter(l -> field(l, "verdict").equals("holds")).count();
+        long refuted = all.stream().filter(l -> field(l, "verdict").equals("refuted")).count();
+        long unjudged = all.size() - holds - refuted;
+        StringBuilder b = head("What is wrong with the pipeline",
+                all.isEmpty() ? "the supervisor has not reported yet"
+                        : holds + " hold, " + refuted + " refuted, " + unjudged + " unjudged"
+                                + " &middot; " + cut.size() + " prove(s) restarted")
+                .append("<nav class=tabs><a href='/'>&larr; all markers</a>")
+                .append("<a href='/trace'>the record</a></nav>");
+
+        if (!cut.isEmpty()) {
+            StringBuilder tree = new StringBuilder();
+            for (String line : cut) {
+                tree.append(field(line, "id")).append("  attempt ").append(field(line, "attempt"))
+                        .append("  killed=").append(field(line, "killed")).append('\n')
+                        .append("    ").append(field(line, "why")).append("\n\n");
+            }
+            b.append("<div class='ev tool'><span class=kind>the tree was cut here</span>")
+                    .append(fold(cut.size() + " restart(s)", tree.toString(), expand))
+                    .append("</div>");
+        }
+
+        // HOLDS FIRST, because a reader with ten minutes should spend them on what survived being
+        // attacked. Refuted findings stay on the page: what the watcher wrongly worries about is
+        // itself a thing to fix in the watcher.
+        for (String want : new String[] {"holds", "unjudged", "refuted"}) {
+            for (int i = 0; i < all.size(); i++) {
+                String line = all.get(i);
+                String verdict = field(line, "verdict");
+                if (verdict.isBlank()) {
+                    verdict = "unjudged";
+                }
+                if (!verdict.equals(want)) {
+                    continue;
+                }
+                b.append("<div class='ev ").append(verdict.equals("refuted") ? "tool" : "asked")
+                        .append("'><span class=who>overwatch</span><span class='s ")
+                        .append(verdict.equals("holds") ? "settled"
+                                : verdict.equals("refuted") ? "infra" : "needs-review")
+                        .append("'>").append(verdict).append("</span>")
+                        .append("<pre>").append(esc(field(line, "finding"))).append("</pre>")
+                        .append(fold("what the critic said", field(line, "judgement"), expand))
+                        .append(rate("overwatch", "overwatch", i, "/overwatch",
+                                field(line, "finding"), field(line, "judgement")))
+                        .append("</div>");
+            }
+        }
+        if (all.isEmpty()) {
+            b.append("<div class=empty>Nothing reported yet. The supervisor runs on its own "
+                    + "schedule and reports only patterns, so a quiet page is a good sign.</div>");
+        }
+        return b.toString();
     }
 
     private static String index(Path settlements, Path trace, List<String> queued) {

@@ -9,8 +9,8 @@ QWEN_BASE_URL=… QWEN_API_KEY=… QWEN_MODEL=… \
   docker run -p 8085:8085 -v results:/results fsm-agent prove 'repo|file|line|checker'
 ```
 
-`entrypoint.sh` takes `prove`, `slice <markers> [concurrency]`, `test [cases]`, `seed [cases]` and
-`dashboard`.
+`entrypoint.sh` takes `prove`, `slice <markers> [concurrency]`, `overwatch [seconds]`,
+`test [cases]`, `seed [cases]` and `dashboard`.
 
 ## The chain
 
@@ -65,6 +65,34 @@ pr-critic blocks the pull request.
 
 **Dispositions are computed where the builds settled them.** The verdict agent is asked only where
 they settled nothing — a declined proof, or a test that passed before any patch.
+
+## The supervisor
+
+A tenth and eleventh agent, in their own process, whose subject is the other nine.
+
+```
+overwatch → finding → overwatch-critic → holds | refuted   (and may restart_prove)
+```
+
+Every agent in a prove is handed one marker and cannot know its answer is the fortieth identical
+one. A pattern is invisible from inside a prove — a critic that has said `sound` in one word thirty
+times, a checker family that always settles the same way, a reproducer whose tests keep passing
+before any patch. Each of those was found by a person reading a finished run, which is the expensive
+way and the late way.
+
+**The digest is counted, not summarised.** Builds, answers, empty replies, the length of each judge's
+last word, whether a test was written, minutes since anything happened. Asking a model to summarise
+the traces would be asking the thing under watch to summarise the evidence about itself. The watcher
+reads whichever traces it wants with its own tools; the digest only says where to look.
+
+**Only the critic may act, and a restart is a process restart.** An agent is a synchronous call —
+there is nothing behind it to kill. A prove is a JVM, so `restart_prove` kills it, keeps its trace
+aside, deletes its results and releases its claim; the pool takes the marker again in a clean
+worktree. Two restarts per marker, ever, counted in a file rather than asked for in a prompt.
+
+**Silence is fail-safe in both directions here.** A finding the critic never judges still reaches the
+record marked `unjudged`, so an unreachable critic cannot suppress a warning; a restart it never
+orders does not happen, so an unreachable critic cannot kill anything either.
 
 ## Running many
 

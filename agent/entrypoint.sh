@@ -116,6 +116,16 @@ case "${1:-dashboard}" in
         echo "SLICE DONE ($n marker(s))"
         ;;
 
+    overwatch)
+        # overwatch [seconds between passes] — the supervisor. Reads the whole run, reports what is
+        # going wrong with the PIPELINE, and may kill a stuck prove so the pool takes it again.
+        #
+        # ITS OWN PROCESS, not a stage in a prove. A prove sees one marker by design; the patterns
+        # worth catching are only visible across three hundred of them, and an agent that could see
+        # them from inside a prove would be an agent that could rewrite the order it runs in.
+        exec java -cp "$CP" tech.mikhailov.fsm.agent.Overwatch "$RESULTS" "${2:-900}"
+        ;;
+
     seed)
         # seed cases from a trace you have read
         java -cp "$CP" tech.mikhailov.fsm.agent.ModelTest --seed "$RESULTS/trace.jsonl" \
@@ -135,7 +145,7 @@ case "${1:-dashboard}" in
         ;;
 
     *)
-        echo "usage: prove 'repo|file|line|checker' | slice <markers> [concurrency] | test [cases] | seed [cases] | dashboard" >&2
+        echo "usage: prove 'repo|file|line|checker' | slice <markers> [concurrency] | overwatch [seconds] | test [cases] | seed [cases] | dashboard" >&2
         exit 2
         ;;
 esac
