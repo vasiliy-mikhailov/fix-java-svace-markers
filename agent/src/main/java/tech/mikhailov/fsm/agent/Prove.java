@@ -1,18 +1,19 @@
 package tech.mikhailov.fsm.agent;
 
+import com.deepagents.langchain4j.subagents.SubAgentRuntime;
+import dev.langchain4j.http.client.jdk.JdkHttpClientBuilder;
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.openai.OpenAiChatModel;
 import java.io.IOException;
 import java.net.http.HttpClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
+
 import java.time.Duration;
+
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-import com.deepagents.langchain4j.subagents.SubAgentRuntime;
-
-import dev.langchain4j.http.client.jdk.JdkHttpClientBuilder;
-import dev.langchain4j.model.chat.ChatModel;
-import dev.langchain4j.model.openai.OpenAiChatModel;
 
 /**
  * THE ORDER. Investigation belongs to the agents; sequence belongs here, where nothing can rewrite it.
@@ -54,6 +55,9 @@ public final class Prove {
 
     /** One re-ask per producer, quoting whoever objected. Two loops, one budget, stated once. */
     private static final int REASK = 1;
+
+    /** What a reproducer says when there is nothing to demonstrate. Named in its prompt, verbatim. */
+    private static final String DECLINE = "no test";
 
     public static void main(String[] args) throws IOException {
         if (args.length < 2) {
@@ -120,20 +124,25 @@ public final class Prove {
                 + siblingTests(checkout, marker);
 
         trace.progress(marker, "reproducer: writing a failing test");
-        Attempt a = reproduce(runner, agents, brief, "", agents.reproducer().run(brief), trace);
-        // AN ANSWER WITH NO FILE IS NOT A DECLINE. A reproducer that explains the marker at length
-        // and writes nothing leaves the runner with no test to name, and reporting that as infra
-        // blames the build for an agent that did not do the work. Ask once, plainly.
-        if (!declined(a.test()) && testClass(trace, a.test()).isBlank()) {
-            a = reproduce(runner, agents, brief, "",
-                    agents.reproducer().run(brief + "\n\nYou explained the marker but wrote no file. "
-                            + "Use write_file to create the test, then name its class. If you believe "
-                            + "there is no defect to demonstrate, say exactly: no test."), trace);
+        // NOTHING IS BUILT UNTIL A FILE EXISTS. The build used to run first, so a reproducer that
+        // wrote nothing cost two Maven invocations before anyone looked — 78 of 153 builds in a
+        // 67-marker run executed no test at all. A written file is a fact this program can check.
+        String reply = agents.reproducer().run(brief);
+        for (int again = 0; again < REASK
+                && !declined(reply) && testClass(trace, reply).isBlank(); again++) {
+            reply = agents.reproducer().run(brief + "\n\nYou wrote no test file. Either use "
+                    + "write_file to create one, or answer with exactly `" + DECLINE + "` and a "
+                    + "one-line reason. An empty answer is not a decision.");
         }
-        if (declined(a.test())) {
-            return argued(agents.verdict().run(brief
-                    + "\nThe reproducer declined to write a test, saying:\n" + a.test()));
+        if (testClass(trace, reply).isBlank()) {
+            // No file, after being asked plainly. That is an argument to be made, not a build to be
+            // spent — and the verdict agent is the one that makes it.
+            return argued(agents.verdict().run(whatThisRunMade() + brief
+                    + "\nNo test was written for this marker. The reproducer said:\n"
+                    + (reply.isBlank() ? "(nothing at all)" : reply)));
         }
+
+        Attempt a = reproduce(runner, agents, brief, "", reply, trace);
         // EVERY FAILURE CARRIES WHAT FAILED. A settlement that says "the test never compiled" and
         // drops javac's output tells whoever reads it nothing they can act on, and throws away the
         // one piece of feedback in this program guaranteed to be correct.
@@ -142,7 +151,7 @@ public final class Prove {
                     + REASK + " re-ask(s) with the compiler's own words:\n" + a.build().summary());
         }
         if (a.build().passed()) {
-            return argued(agents.verdict().run(brief
+            return argued(agents.verdict().run(whatThisRunMade() + brief
                     + "\nA test written for this defect PASSED before any patch:\n"
                     + a.build().summary()));
         }
@@ -191,8 +200,11 @@ public final class Prove {
 
         // The skeptic CERTIFIES, and a certificate must be given to bite: silence enforces nothing.
         trace.progress(marker, "GREEN passed; fix-skeptic certifying");
+        String changed = diff();
         String certificate = agents.fixCritic().run(brief + evidence + "\nGREEN:\n" + green.summary()
-                + "\nThe patch it certifies:\n" + patch);
+                + "\nWhat the fixer says it did:\n" + patch
+                + "\nWHAT IT ACTUALLY CHANGED (git diff, tests excluded):\n" + changed
+                + "\n" + reachesTheFlaggedLine(changed));
         if (rejects(certificate)) {
             for (int again = 0; again < REASK; again++) {
                 // "Do not resubmit the previous one" is unfollowable unless the previous one is here.
@@ -451,8 +463,15 @@ public final class Prove {
         return !"sound".equals(verdict(certificate, "sound", "over-fit", "regression-risk"));
     }
 
+    /**
+     * A DECLINE IS A DECISION, AND SILENCE IS NOT ONE.
+     *
+     * <p>Treating a blank reply as a decline let 53 empty answers out of 133 pass for judgements,
+     * and each one reached the verdict agent as though the reproducer had considered the marker and
+     * ruled on it. The token is in the prompt so there is something to say instead of nothing.
+     */
     private static boolean declined(String reply) {
-        return reply == null || reply.isBlank() || says(reply, "no test");
+        return reply != null && says(reply, DECLINE);
     }
 
     /**
@@ -480,6 +499,99 @@ public final class Prove {
      * checkout escapes it entirely and every marker in the report becomes infra. The source root is
      * the first thing in the path that a repository actually has.
      */
+    /**
+     * WHAT THE FIXER CHANGED, not what it said it changed.
+     *
+     * <p>The critic used to be handed the fixer's prose — "I added a null check in resolve()" — and
+     * certified that. Two markers reached pr-ready with the flagged line untouched and a sibling
+     * class edited instead, because nobody in the chain ever looked at a diff. This is `git diff`,
+     * minus the test the reproducer wrote, which is not part of the patch under review.
+     */
+    private String diff() {
+        Shell.Output out = Shell.run(checkout, "git", "diff", "-U3", "--", ".",
+                ":(exclude)*src/test/*", ":(exclude)*src/it/*");
+        String text = out.exit() == 0 ? out.text().strip() : "";
+        return text.isBlank() ? "(the working tree is unchanged outside the tests)" : Shell.tail(text);
+    }
+
+    /**
+     * WHETHER THE PATCH REACHES THE LINE THAT WAS FLAGGED.
+     *
+     * <p>A hunk header carries the range it replaces, so this is arithmetic rather than an opinion,
+     * and it is the one thing about a patch a judge should not have to be trusted for. Reported to
+     * the critic as a fact it may not contradict — the critic still decides what it means, because a
+     * defect is sometimes correctly fixed at its source rather than at the line the analyser saw.
+     */
+    private String reachesTheFlaggedLine(String diff) {
+        String file = fileOf(marker);
+        int line = lineOf(marker);
+        boolean inFile = false;
+        for (String row : diff.split("\\R")) {
+            if (row.startsWith("+++ ")) inFile = row.endsWith("/" + file) || row.endsWith(file);
+            if (!inFile || !row.startsWith("@@")) continue;
+            java.util.regex.Matcher m = HUNK.matcher(row);
+            if (!m.find()) continue;
+            int from = Integer.parseInt(m.group(1));
+            int count = m.group(2) == null ? 1 : Integer.parseInt(m.group(2));
+            if (line >= from && line < from + count) {
+                return "The patch changes " + file + " over line " + line + ", which is the line "
+                        + "flagged. Judge whether what it changed there removes the defect.";
+            }
+        }
+        return "THE PATCH DOES NOT TOUCH " + file + ":" + line + ", the line flagged. That is not "
+                + "automatically wrong — a defect is often correctly fixed at its source rather than "
+                + "where the analyser saw it — but you may not answer `sound` without saying, in one "
+                + "sentence, why the flagged line is no longer defective given this patch. If you "
+                + "cannot say that, the answer is `over-fit`.";
+    }
+
+    /** The old-side range of a unified-diff hunk: @@ -from,count +to,count @@. */
+    private static final java.util.regex.Pattern HUNK =
+            java.util.regex.Pattern.compile("^@@ -(\\d+)(?:,(\\d+))? ");
+
+    /**
+     * WHAT THIS RUN MADE, so a judge cannot cite it back as evidence.
+     *
+     * <p>The verdict agent reads the tree, and by the time it is asked the tree contains the test
+     * this run wrote and the patch this run applied. Thirteen settlements rested on that: `by-design`
+     * because "a test depends on this behaviour", where the test was the one written eleven minutes
+     * earlier by the reproducer, in this prove, about this marker. Circular, and invisible in the
+     * record because the citation reads exactly like a citation of the project's own tests.
+     *
+     * <p>`git status` knows: everything untracked or modified is ours, and everything else was here
+     * before we were.
+     */
+    private String whatThisRunMade() {
+        Shell.Output out = Shell.run(checkout, "git", "status", "--porcelain");
+        if (out.exit() != 0) {
+            return "";
+        }
+        List<String> ours = out.text().lines()
+                .map(row -> row.length() > 3 ? row.substring(3).strip() : "")
+                .filter(path -> !path.isBlank())
+                .toList();
+        if (ours.isEmpty()) {
+            return "";
+        }
+        return "\n\nINADMISSIBLE — THIS RUN CREATED THESE, AND THEY ARE NOT EVIDENCE ABOUT THE "
+                + "PROJECT:\n  " + String.join("\n  ", ours)
+                + "\nA test written to demonstrate this marker cannot also show that the behaviour "
+                + "is intended, and a patch written for this marker cannot show that the code was "
+                + "already correct. Cite only what was here before this run started — the lesson "
+                + "text, an assignment, a comment, a committed test, a caller. If your argument "
+                + "needs one of the files above, you do not have an argument.";
+    }
+
+    /** The line the analyser flagged; 0 when the marker names none, which matches no hunk. */
+    private static int lineOf(String marker) {
+        String[] parts = marker.split("\\|");
+        try {
+            return parts.length > 2 ? Integer.parseInt(parts[2].strip()) : 0;
+        } catch (NumberFormatException noNumber) {
+            return 0;
+        }
+    }
+
     private static String fileOf(String marker) {
         String[] parts = marker.split("\\|");
         String file = parts.length > 1 ? parts[1] : "";
@@ -522,9 +634,33 @@ public final class Prove {
     }
 
     /** Absent or unreadable is not fatal: the agent still has read_file and can go and get it. */
+    /**
+     * THE SOURCE, NUMBERED, AND WHAT THE NUMBER FINDS.
+     *
+     * <p>Unnumbered source makes the marker's line an assertion nobody in the chain can check. These
+     * markers come from an analyser run against an older revision, so some have drifted: EncDec:67
+     * points six lines past the end of a 64-line file, and the reproducer wrote a test for whatever
+     * it decided the marker must have meant. A number beside every line turns that from a guess into
+     * something the first reader sees.
+     */
     private static String source(Path checkout, String marker) {
+        int flagged = lineOf(marker);
         try {
-            return Files.readString(checkout.resolve(fileOf(marker)));
+            List<String> lines = Files.readAllLines(checkout.resolve(fileOf(marker)));
+            StringBuilder numbered = new StringBuilder();
+            for (int i = 0; i < lines.size(); i++) {
+                numbered.append(i + 1 == flagged ? ">> " : "   ")
+                        .append(i + 1).append("  ").append(lines.get(i)).append('\n');
+            }
+            if (flagged > lines.size()) {
+                numbered.append("\nTHE MARKER POINTS AT LINE ").append(flagged).append(" AND THIS "
+                        + "FILE HAS ").append(lines.size()).append(". The analyser ran against an "
+                        + "older revision of it. Find what it meant — the same construct will "
+                        + "usually still be here, moved — and say in your answer which line you "
+                        + "actually judged. If nothing here matches the checker, say so: a marker "
+                        + "about code that no longer exists is not a defect to prove.");
+            }
+            return numbered.toString();
         } catch (IOException e) {
             return "(could not be read: " + e.getMessage() + " — use read_file)";
         }

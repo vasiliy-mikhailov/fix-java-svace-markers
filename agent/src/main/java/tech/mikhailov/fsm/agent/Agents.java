@@ -63,8 +63,10 @@ final class Agents {
                 the project once the file is written. Your tool budget is small and exploring after \
                 the work is done is what exhausts it.
 
-                If the marker does not describe a real defect, say so and write no test. That is a \
-                useful answer.
+                If the marker does not describe a real defect, or no test could demonstrate it, \
+                answer with exactly `no test` on its own line and one line of reason. That is a \
+                useful answer and it costs nothing. An empty answer is not one: it spends a build \
+                and tells the next reader nothing.
                 """);
     }
 
@@ -124,9 +126,14 @@ final class Agents {
         return runtime("fix-critic", Tools.reading(root, trace, "fix-critic"), """
                 You judge ONE question: is this patch sound, or does it only satisfy the test?
 
-                Read the patch, the test, and the source around both. Ask whether the patch removes \
-                the DEFECT or the symptom the test happens to check. Ask what else the patch changes, \
-                and whether anything that worked before now does not — read the other call sites.
+                You get two accounts of the patch: what the fixer SAYS it did, and the `git diff` of \
+                what it actually did. THEY ARE NOT ALWAYS THE SAME, and the diff is the one that will \
+                be shipped. Judge the diff. Where the prose claims something the diff does not show, \
+                say so — that is `over-fit` at best.
+
+                Ask whether the patch removes the DEFECT or the symptom the test happens to check. Ask \
+                what else it changes, and whether anything that worked before now does not — read the \
+                other call sites.
 
                 Answer `over-fit` when it special-cases its way past the test. Answer \
                 `regression-risk` when it removes the defect but breaks something else. Answer `sound` \
@@ -251,8 +258,11 @@ final class Agents {
 
                 `false-positive` — the claim does not hold in this code. Say why the checker is wrong.
                 `by-design`      — the claim holds, and the code is deliberately that way. Say what \
-                makes it deliberate: the lesson text, the assignment, a comment, a test that depends \
-                on it.
+                makes it deliberate, and cite something OLDER THAN THIS RUN: the lesson text, the \
+                assignment, a comment, a committed test, a caller that relies on it. A test or a \
+                patch produced by this prove is not evidence about the project — it is evidence \
+                about us — and if the brief lists such files as inadmissible, you may not lean on \
+                them.
                 `unprovable`     — the claim may hold, but no test could demonstrate it either way.
 
                 These mean different things to whoever reads this next. A tooling failure must not \
