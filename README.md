@@ -32,6 +32,24 @@ standard of proof. `Runner` has three outcomes, not two: a build that produced n
 never evidence, because in the RED phase a failing test is the goal and a compile error would
 otherwise read as success.
 
+**Nothing is built until a file exists**, and a blank reply is not a decline. A reproducer that
+explained a marker at length and wrote nothing used to cost two builds before anyone looked; its
+silence then reached the verdict agent as a considered refusal. The decline is a token now (`no
+test`), it is named in the prompt, and the file is checked before Maven runs.
+
+**The critic judges the diff, not the account of it.** `fix-critic` gets `git diff` beside the
+fixer's prose, and a computed sentence saying whether a hunk spans the flagged line. That does not
+forbid `sound` — a defect is often correctly fixed at its source rather than where the analyser saw
+it — it makes `sound` cost a sentence saying why.
+
+**A run may not cite itself.** By the time the verdict agent reads the tree, the tree holds this
+run's test and this run's patch. `git status` is the line between ours and theirs, and everything on
+our side is handed over as inadmissible.
+
+**The source is numbered.** These markers came off an older revision and some have drifted —
+`EncDec:67` points six lines past a 64-line file. Numbered, the drift is a fact in the brief instead
+of a guess an agent makes silently.
+
 **Producers may run their own tests; judges may not.** The rule is that a certification must not
 manufacture the evidence it certifies — not that a producer should work blind. The RED and GREEN that
 *decide* a marker are still the ones `Prove` runs between stages.
@@ -98,4 +116,19 @@ Of those, **282 are `src/main`** — exactly the set an earlier system proved, r
 `examples/webgoat/results-282.csv`. The other 74 are `src/it` and `src/test`, which that system
 excluded and which have no prior result to compare against.
 
-2,009 lines of Java across 14 files.
+2,144 lines of Java across 14 files, and 50 tests across 10 — one case per defect that reached a
+deployed server.
+
+A 14-marker sanity run after the four checks above, against the same 14 before them:
+
+| | before | after |
+|---|---|---|
+| builds | 30 | 17 |
+| builds that ran no test | 12 | 0 |
+| reproducer answers | 22 | 20 |
+| of them empty | 12 | 7 |
+
+The empty replies did not go away — a model whose last turn is a tool call returns no text, and that
+is not a fault. What changed is that an empty reply no longer buys a build or passes for a
+judgement: the five markers where nothing was written reached the verdict agent directly, at a cost
+of zero builds each.
