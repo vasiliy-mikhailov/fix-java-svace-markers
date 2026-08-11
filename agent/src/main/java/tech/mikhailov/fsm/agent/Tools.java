@@ -34,6 +34,11 @@ import dev.langchain4j.service.tool.ToolExecutor;
  * anything shortens it. A judge that cannot write cannot edit the thing it is
  * certifying; a critic that cannot run the build cannot manufacture the evidence it is judging.
  *
+ * <p>SEARCH IS GIVEN, NOT ARGUED WITH. grep and glob go to every agent, judges included: a model
+ * asking for a tool that does not exist does not fall back, it throws and the prove ends. Two markers
+ * were lost that way — one to grep before this had one, one to glob after a prompt sentence was
+ * written to talk a model out of wanting it.
+ *
  * <p>NO JUDGE GETS THE RUNNER, and both producers do. The rule it protects is that a certification
  * must not manufacture the evidence it certifies — not that a producer should work blind. A
  * reproducer that can run what it wrote finds its own compile error in seconds instead of spending a
@@ -139,15 +144,13 @@ final class Tools {
     private static Map<ToolSpecification, ToolExecutor> grep(Path root) {
         ToolSpecification spec = ToolSpecification.builder()
                 .name("grep")
-                .description("Search the checkout for a literal string or regular expression, "
+                .description("Search file CONTENTS for a literal string or regular expression, "
                         + "optionally filtered by filename. Returns matching file:line pairs, and is "
-                        + "cheaper than reading files to find a definition. This is also the ONLY "
-                        + "search tool: there is no glob, find or ls beyond list_dir.")
+                        + "cheaper than reading files to find a definition. To find files by NAME "
+                        + "rather than content, use glob.")
                 .parameters(JsonObjectSchema.builder()
                         .addStringProperty("pattern", "a literal string or Java regular expression")
-                                .addStringProperty("glob", "optional filename filter, e.g. *.java or "
-                                + "**/pages/*.java. Give it here rather than calling a separate glob "
-                                + "tool; there is not one.")
+                        .addStringProperty("glob", "optional filename filter, e.g. *.java")
                         .required("pattern")
                         .build())
                 .build();
@@ -155,6 +158,66 @@ final class Tools {
         Map<ToolSpecification, ToolExecutor> one = new LinkedHashMap<>();
         one.put(spec, exec);
         return one;
+    }
+
+    /**
+     * FIND FILES BY NAME — the tool a model asks for by reflex, and the cheapest way to answer
+     * "where do the tests for this package live".
+     *
+     * <p>It exists because asking for it and not having it is not a degradation: the runtime treats
+     * an unknown tool name as a hallucination and throws, ending the prove. That is how a marker was
+     * lost to {@code grep} before this program had one, and again to {@code glob} after a prompt
+     * sentence was written to talk a model out of wanting it. Prompt text does not win that argument;
+     * a twenty-line tool does.
+     */
+    private static Map<ToolSpecification, ToolExecutor> glob(Path root) {
+        ToolSpecification spec = ToolSpecification.builder()
+                .name("glob")
+                .description("Find files by PATH pattern — e.g. **/*Test.java, src/it/**, "
+                        + "**/pages/*.java. Returns matching paths. Use grep to search file contents.")
+                .parameters(JsonObjectSchema.builder()
+                        .addStringProperty("pattern", "a path glob, e.g. **/*Test.java")
+                        .required("pattern")
+                        .build())
+                .build();
+        ToolExecutor exec = (request, memoryId) -> matching(root, field(request.arguments(), "pattern"));
+        Map<ToolSpecification, ToolExecutor> one = new LinkedHashMap<>();
+        one.put(spec, exec);
+        return one;
+    }
+
+    /** Bounded like {@link #search}: a pattern matching everything must not return the repository. */
+    private static String matching(Path root, String pattern) {
+        if (pattern.isBlank()) {
+            return "no pattern given";
+        }
+        java.nio.file.PathMatcher matcher;
+        try {
+            matcher = root.getFileSystem().getPathMatcher("glob:"
+                    + (pattern.startsWith("**") || pattern.startsWith("/") ? pattern : "**/" + pattern));
+        } catch (IllegalArgumentException badPattern) {
+            return "not a glob: " + badPattern.getMessage();
+        }
+        StringBuilder hits = new StringBuilder();
+        int found = 0;
+        try (var files = Files.walk(root)) {
+            for (Path f : files.filter(Files::isRegularFile).toList()) {
+                String path = f.toString();
+                if (path.contains("/.git/") || path.contains("/target/")) {
+                    continue;
+                }
+                if (matcher.matches(root.relativize(f)) || matcher.matches(f)) {
+                    hits.append(root.relativize(f)).append('\n');
+                    if (++found >= 200) {
+                        hits.append("… more suppressed; narrow the pattern\n");
+                        break;
+                    }
+                }
+            }
+        } catch (IOException e) {
+            return "glob failed: " + e.getMessage();
+        }
+        return found == 0 ? "no files match " + pattern : hits.toString();
     }
 
     /** Bounded: a pattern that matches everything must not return the repository. */
@@ -227,11 +290,12 @@ final class Tools {
                     }
                 });
         kept.putAll(grep(root));
-        if (kept.size() != names.size() + 1) {
+        kept.putAll(glob(root));
+        if (kept.size() != names.size() + 2) {
             // The tool names are the library's, so a rename upstream silently strips a capability and
             // an agent quietly stops being able to do its job. Fail at construction instead.
             throw new IllegalStateException(
-                    "expected " + names + " plus grep but got " + kept.keySet());
+                    "expected " + names + " plus grep and glob but got " + kept.keySet());
         }
         return kept;
     }
