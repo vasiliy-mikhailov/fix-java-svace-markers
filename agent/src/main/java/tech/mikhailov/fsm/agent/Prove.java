@@ -391,6 +391,17 @@ public final class Prove {
         if (reply == null) {
             return "";
         }
+        // A DECLARATION, NOT A MENTION. An agent uses these words while reasoning — "patching this
+        // would make Challenge 7 unsolvable" — and then declares itself, often at the end. Reading
+        // the earliest occurrence turned a pr-maker that wrote "**reject**" into a make, because
+        // "makes admin reset links predictable" came first. It would have shipped a patch that
+        // breaks the lesson, against the explicit judgement of both agents that exist to stop that.
+        String declared = declaration(reply, allowed);
+        if (!declared.isEmpty()) {
+            return declared;
+        }
+        // Nothing declared: fall back to the earliest mention, which is right for a judge that
+        // opens with its answer and never emphasises it.
         String lower = reply.toLowerCase();
         String earliest = "";
         int at = Integer.MAX_VALUE;
@@ -402,6 +413,33 @@ public final class Prove {
             }
         }
         return earliest;
+    }
+
+    /**
+     * A line that IS one of the words, rather than one that mentions it.
+     *
+     * <p>Markdown emphasis, a heading, a trailing colon and surrounding punctuation are stripped, so
+     * {@code **reject**}, {@code ## Verdict: sound} and a bare {@code necessary} all count. The LAST
+     * such line wins: an agent that reasons and then concludes has its conclusion last, and one that
+     * opens with its answer has only the one.
+     */
+    private static String declaration(String reply, String... allowed) {
+        String found = "";
+        for (String raw : reply.split("\\R")) {
+            String line = raw.strip().toLowerCase()
+                    .replaceAll("^[#*_`\\s>-]+", "")
+                    .replaceAll("[#*_`\\s.!]+$", "");
+            int colon = line.lastIndexOf(':');
+            if (colon >= 0 && colon < line.length() - 1) {
+                line = line.substring(colon + 1).strip();
+            }
+            for (String word : allowed) {
+                if (line.equals(word)) {
+                    found = word;
+                }
+            }
+        }
+        return found;
     }
 
     private static boolean says(String reply, String word) {
