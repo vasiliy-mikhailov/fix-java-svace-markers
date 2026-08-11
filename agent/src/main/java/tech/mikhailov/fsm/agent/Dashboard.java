@@ -94,6 +94,43 @@ public final class Dashboard {
      * event arriving later cannot renumber the ones already rendered. Session storage rather than
      * local, so opening a second marker in another tab does not inherit this one's state.
      */
+    /**
+     * Live, without throwing away the reader's place.
+     *
+     * <p>The trace is append-only, so a page showing events can ASK FOR THE NEW ONES and put them at
+     * the bottom — every fold stays as it was and the scroll does not move. The index has no state in
+     * it, so it re-renders wholesale and only the scroll is restored.
+     */
+    private static final String LIVE = """
+            <script>
+            (function(){
+              var src = new EventSource('/events');
+              var here = location.pathname + location.search;
+              var isList = location.pathname === '/' || location.pathname === '/dashboard/';
+              src.onmessage = function(m){
+                var n = JSON.parse(m.data);
+                if (isList) {
+                  fetch(here, {headers:{'X-Fragment':'1'}}).then(function(r){return r.text()}).then(function(html){
+                    var y = window.scrollY;
+                    document.body.innerHTML = html;
+                    window.scrollTo(0, y);
+                  });
+                  return;
+                }
+                var seen = +(document.body.dataset.events || 0);
+                if (n.trace <= seen) return;
+                fetch(here + (here.indexOf('?') < 0 ? '?' : '&') + 'from=' + seen,
+                      {headers:{'X-Fragment':'1'}})
+                  .then(function(r){return r.text()}).then(function(html){
+                    if (!html.trim()) return;
+                    document.body.insertAdjacentHTML('beforeend', html);
+                    document.body.dataset.events = n.trace;
+                  });
+              };
+            })();
+            </script>
+            """;
+
     private static final String KEEP_OPEN = """
             <script>
             (function(){
@@ -149,14 +186,55 @@ public final class Dashboard {
             e.close();
         });
         server.createContext("/marker", e -> send(e, "text/html; charset=utf-8",
-                marker(trace, settlements, query(e, "k"), query(e, "a"), open(e))));
+                marker(trace, settlements, query(e, "k"), query(e, "a"), open(e),
+                        (int) num(query(e, "from")), fragment(e))));
         // THE WHOLE TRACE, every marker, in the order it happened. The per-marker view answers "why
         // did this settle so"; this one answers "what is this thing doing", which is a different
         // question and the one asked while a run is in flight.
         server.createContext("/trace", e -> send(e, "text/html; charset=utf-8",
-                events(trace, settlements, "", open(e), "")));
+                events(trace, settlements, "", open(e), "",
+                        (int) num(query(e, "from")), fragment(e))));
         server.createContext("/", e -> send(e, "text/html; charset=utf-8",
                 index(settlements, trace, lines(settlements.resolveSibling("markers.txt")))));
+
+        // SERVER-SENT EVENTS. The page used to reload itself every fifteen seconds, which is why it
+        // needed a script to put the reader's folds back afterwards: a full reload throws away
+        // everything they had open and where they were. One long-lived connection per reader, a line
+        // when the counts move, and the page decides what to do with it — append, or re-render the
+        // parts that have no state in them.
+        server.createContext("/events", e -> {
+            e.getResponseHeaders().set("Content-Type", "text/event-stream");
+            e.getResponseHeaders().set("Cache-Control", "no-cache");
+            e.getResponseHeaders().set("Connection", "keep-alive");
+            try {
+                e.sendResponseHeaders(200, 0);
+                OutputStream out = e.getResponseBody();
+                int lastTrace = -1;
+                int lastSettled = -1;
+                // Bounded: a reader who closed the tab should not hold a thread for the run's life,
+                // and EventSource reconnects on its own when the stream ends.
+                for (int tick = 0; tick < 900; tick++) {
+                    int t = lines(trace).size();
+                    int s = lines(settlements).size();
+                    if (t != lastTrace || s != lastSettled) {
+                        lastTrace = t;
+                        lastSettled = s;
+                        out.write(("data: {\"trace\":" + t + ",\"settled\":" + s + "}\n\n")
+                                .getBytes(StandardCharsets.UTF_8));
+                    } else {
+                        // A comment keeps the connection alive through a proxy that times idle ones
+                        // out — Caddy sits in front of this.
+                        out.write(": ping\n\n".getBytes(StandardCharsets.UTF_8));
+                    }
+                    out.flush();
+                    Thread.sleep(2000);
+                }
+            } catch (IOException | InterruptedException gone) {
+                // The reader navigated away. Nothing to clean up and nothing worth logging.
+            } finally {
+                e.close();
+            }
+        });
         server.start();
         System.out.println("dashboard on http://127.0.0.1:" + port + "  reading " + settlements);
     }
@@ -331,9 +409,14 @@ public final class Dashboard {
      * @param agent one of {@link #AGENTS}, {@code trace} for the record, or empty for the summary
      */
     private static String marker(Path trace, Path settlements, String key, String agent,
-                                 boolean expand) {
+                                 boolean expand, int from, boolean fragment) {
         if (agent.equals("trace")) {
-            return events(trace, settlements, key, expand, tabs(key, agent));
+            return events(trace, settlements, key, expand, tabs(key, agent), from, fragment);
+        }
+        // An agent tab shows one answer, not a stream, so a live update re-renders it rather than
+        // appending — and there is nothing below the final answer to lose.
+        if (fragment) {
+            return "";
         }
         List<String> mine = new ArrayList<>();
         for (String line : lines(trace)) {
@@ -469,7 +552,7 @@ public final class Dashboard {
      *               is a prompt rather than an answer.
      */
     private static String events(Path trace, Path settlements, String key, boolean expand,
-                                 String nav) {
+                                 String nav, int from, boolean fragment) {
         List<String> mine = new ArrayList<>();
         for (String line : lines(trace)) {
             if (key.isEmpty() || field(line, "marker").equals(key)) {
@@ -486,6 +569,16 @@ public final class Dashboard {
             }
         }
 
+        // A FRAGMENT IS ONLY WHAT IS NEW. The page already holds everything before `from`, with
+        // whatever the reader opened still open; sending it again would close all of it.
+        if (fragment) {
+            StringBuilder tail = new StringBuilder();
+            for (int i = Math.max(0, from); i < mine.size(); i++) {
+                tail.append(one(mine.get(i), key, expand, i, ""));
+            }
+            return tail.toString();
+        }
+
         String title = key.isEmpty() ? "whole trace" : key.substring(key.lastIndexOf('/') + 1);
         String where = key.isEmpty() ? "every marker" : esc(key);
         StringBuilder b = head(title, where + " · " + mine.size() + " event(s)"
@@ -500,16 +593,31 @@ public final class Dashboard {
         }
 
         String self = key.isEmpty() ? "/trace" : "/marker?k=" + enc(key);
-        int i = -1;
-        for (String e : mine) {
-            String kind = field(e, "kind");
-            i++;
-            b.append("<div class='ev ").append(esc(kind)).append("'>");
-            if (key.isEmpty()) {
-                String m = field(e, "marker");
-                b.append("<div class=k><a href='/marker?k=").append(enc(m)).append("'>")
-                        .append(esc(m.substring(m.lastIndexOf('/') + 1))).append("</a></div>");
-            }
+        for (int i = 0; i < mine.size(); i++) {
+            b.append(one(mine.get(i), key, expand, i, self));
+        }
+        return b.append(cursor(mine.size())).toString();
+    }
+
+    /**
+     * ONE EVENT, rendered the same whether the page is being built or extended.
+     *
+     * <p>Two renderers would drift, and the one that drifts is always the live path — it is the one
+     * nobody looks at directly.
+     *
+     * @param i the event's index, which the feedback form uses to point at exactly this answer
+     */
+    private static String one(String e, String key, boolean expand, int i, String self) {
+        if (self.isEmpty()) {
+            self = key.isEmpty() ? "/trace" : "/marker?k=" + enc(key);
+        }
+        String kind = field(e, "kind");
+        StringBuilder b = new StringBuilder("<div class='ev ").append(esc(kind)).append("'>");
+        if (key.isEmpty()) {
+            String m = field(e, "marker");
+            b.append("<div class=k><a href='/marker?k=").append(enc(m)).append("'>")
+                    .append(esc(m.substring(m.lastIndexOf('/') + 1))).append("</a></div>");
+        }
             switch (kind) {
                 case "asked" -> b.append("<span class=who>").append(esc(field(e, "agent")))
                         .append("</span><span class=kind>answered</span>")
@@ -541,7 +649,6 @@ public final class Dashboard {
                 default -> b.append("<span class=kind>").append(esc(kind)).append("</span>");
             }
             b.append("</div>");
-        }
         return b.toString();
     }
 
@@ -687,9 +794,19 @@ public final class Dashboard {
 
     // ------------------------------------------------------------------ plumbing
 
+    /** A request the live script made, wanting only what changed. */
+    private static boolean fragment(HttpExchange e) {
+        return e.getRequestHeaders().getFirst("X-Fragment") != null;
+    }
+
+    /** How many events the page already holds, so the live script asks only for what follows. */
+    private static String cursor(int events) {
+        return "<script>document.body.dataset.events=" + events + "</script>";
+    }
+
     private static StringBuilder head(String title, String sub) {
         return new StringBuilder("<style>").append(CSS).append("</style>")
-                .append("<meta http-equiv=refresh content=15>").append(KEEP_OPEN)
+                .append(LIVE).append(KEEP_OPEN)
                 .append("<header><h1>").append(esc(title)).append("</h1><div class=sub>")
                 .append(sub).append("</div></header>");
     }
