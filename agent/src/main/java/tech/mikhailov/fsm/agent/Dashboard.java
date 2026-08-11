@@ -616,7 +616,7 @@ public final class Dashboard {
                             : why.isBlank()
                                     ? "<span class=k>" + esc(cut(reason, 150)) + "</span>"
                                     : "<details><summary>" + esc(firstSentence(why))
-                                            + "</summary>" + code(flagged(
+                                            + "</summary>" + code(flagged(CHECKOUTS,
                                                     parts.length > 0 ? parts[0] : "", file, line))
                                             + "<pre>" + esc(why) + "</pre></details>")
                     .append("</td>")
@@ -1164,7 +1164,8 @@ public final class Dashboard {
      * is a convenience for a reader, and a dashboard that will not start because a tree is missing
      * would be a poor trade for it.
      */
-    private static String flagged(String repo, String file, String lineNumber) {
+    private static String flagged(Path checkouts, String repo, String file,
+            String lineNumber) {
         int want;
         try {
             want = Integer.parseInt(lineNumber.strip());
@@ -1172,7 +1173,17 @@ public final class Dashboard {
             return "";
         }
         String name = repo.substring(repo.lastIndexOf('/') + 1).replaceAll("\\.git$", "");
-        List<String> source = read(CHECKOUTS.resolve(name).resolve(file));
+        // NOT read(), WHICH DROPS BLANK LINES. It is the right reader for a JSONL record, where a
+        // blank line is nothing, and the wrong one for source, where a blank line is line 79 and
+        // every number after it shifts. It put `public ResponseEntity getProfilePicture` at line 82
+        // of ProfileUploadBase, four lines below the truth, and I read that as the marker having
+        // drifted and nearly wrote it up as a finding about the analyser.
+        List<String> source;
+        try {
+            source = Files.readAllLines(checkouts.resolve(name).resolve(file));
+        } catch (IOException | RuntimeException noTree) {
+            return "";
+        }
         if (source.isEmpty() || want < 1) {
             return "";
         }
