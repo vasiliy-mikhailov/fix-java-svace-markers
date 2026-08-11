@@ -1,0 +1,16 @@
+new (Random|SecureRandom)\s*\(
+A `Random` created and used once, then discarded, usually inside a method that is called repeatedly.
+
+WHAT THE CHECKER IS SAYING is that this wastes the generator's state and, when the instance is
+seeded, makes the sequence predictable. It is a code-quality finding first and a security finding
+only when the value it produces is relied on to be unguessable.
+
+SO THE QUESTION IS ALWAYS WHO CONSUMES THE VALUE, and it is one grep away. If the consumer compares
+the value against something the requester was already given — a session attribute the same response
+handed back, a flag the lesson prints — then predicting it unlocks nothing and hardening it locks
+nothing, and both proposed fixes leave every observable identical. If the consumer treats it as a
+secret (a reset token, an admin link), predicting it is the whole defect.
+
+A seeded generator is the strong case: `random.setSeed(key.length())` makes the sequence a function
+of a public value, and a test can compute the next value and assert it matches. An unseeded `new
+Random()` in a loop usually cannot be demonstrated at all.

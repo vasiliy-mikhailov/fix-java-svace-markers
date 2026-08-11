@@ -1,0 +1,15 @@
+^\s*(final\s+)?[A-Za-z_$][\w$<>,\[\]. ]*\s+[A-Za-z_$][\w$]*\s*=
+A value assigned to a local variable that is never read afterwards.
+
+THIS IS ALMOST NEVER OBSERVABLE. Removing a dead store changes no return value, no field, no output
+and no timing — that is what makes it dead. So a test that "demonstrates" it is nearly always
+asserting something else, and `unprovable` is usually the honest state.
+
+BEWARE THE TWO CHEAP WRONG ANSWERS. `by-design` needs evidence that somebody CHOSE this: a comment,
+a suppression entry, an annotation. "Removing the assignment would be functionally identical"
+is an argument that the fix is safe, which is an argument FOR the fix and not evidence of intent.
+And a variable that IS read later — including inside a string concatenation, a lambda, or a
+try-with-resources — is not dead at all; check before agreeing with the checker.
+
+Where the initialiser has a side effect the call still runs, so the store being dead does not make
+the statement dead.

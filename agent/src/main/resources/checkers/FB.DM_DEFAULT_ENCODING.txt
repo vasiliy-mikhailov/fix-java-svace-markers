@@ -1,0 +1,28 @@
+getBytes\(\s*\)|new String\s*\(\s*[^,)]+\s*\)|new (FileReader|FileWriter|InputStreamReader|OutputStreamWriter|PrintWriter|Formatter|Scanner)\s*\([^,)]*\)$
+A byte/char conversion with no charset argument, so it uses the JVM's default. `getBytes()`,
+`new String(byte[])`, `new FileReader(...)`, `new PrintWriter(File)` and friends.
+It is NOT `Charset.defaultCharset()` — that call is how you READ the setting, not how you
+depend on it accidentally, and a marker has already been settled on that confusion.
+
+HOW YOU MAKE IT VISIBLE, which is the part every agent has got wrong. The default charset is fixed
+at JVM start-up from `file.encoding` and cannot be changed at runtime — that much is true, and every
+agent that has seen this checker has concluded from it that no test can demonstrate the defect. The
+conclusion does not follow: A TEST MAY START A JVM. Fork one and run the subject inside it:
+
+    ProcessBuilder b = new ProcessBuilder(
+            System.getProperty("java.home") + "/bin/java",
+            "-Dfile.encoding=ISO-8859-1",
+            "-cp", System.getProperty("java.class.path"),
+            SomeMainThatExercisesTheSubject.class.getName());
+
+Assert on what the child prints. Under ISO-8859-1 a round trip of "café" comes back "caf©Ã"; under
+UTF-16 a base64 decode throws `IllegalArgumentException: Illegal base64 character`. Both go GREEN
+once the charset is explicit. This has been run by hand against this checkout and it works.
+
+Since Java 18 the default IS UTF-8 whatever the platform (JEP 400), so the defect cannot be
+demonstrated by running the same JVM the build runs in. That is a reason to fork, not a reason to
+give up: 33 markers of this family have never produced a single build.
+
+Whether it MATTERS is a separate question from whether it reproduces. Ask what reaches the
+conversion. A constant ASCII table reaches it identically under every ASCII-compatible charset; a
+`@RequestParam` does not, and a caller two files away is usually what decides it.

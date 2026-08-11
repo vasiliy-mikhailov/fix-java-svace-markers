@@ -83,6 +83,12 @@ public final class Prove {
             Write it again so it FAILS on this code and would pass once the defect is gone: assert \
             what the method should RETURN or leave behind, not that it throws.
 
+            IF THE DEFECT ONLY SHOWS UNDER A JVM SETTING THIS BUILD DOES NOT USE, A TEST MAY START \
+            A JVM. Fork one with ProcessBuilder, pass the setting, run the subject inside it and \
+            assert on what the child prints. A whole checker family here has been written off as \
+            undemonstrable by agents who knew the setting was fixed at start-up and did not think \
+            of starting one.
+
             If nothing can do that — because the flagged state is unreachable from any caller, or \
             because the checker names a code shape whose fix changes nothing observable — answer \
             with exactly `no test` and one line of why. That answer is worth more than this build \
@@ -160,6 +166,7 @@ public final class Prove {
         // are for reading what nobody anticipated.
         brief = "Marker: " + marker
                 + "\nThe checkout is your workspace; read further only if you need to.\n\n"
+                + Checkers.note(checkout, marker, checkerOf(marker), fileOf(marker), lineOf(marker))
                 + "The flagged file, " + fileOf(marker) + ":\n" + source(checkout, marker)
                 + siblingTests(checkout, marker);
 
@@ -675,6 +682,12 @@ public final class Prove {
                 + "already correct. Cite only what was here before this run started — the lesson "
                 + "text, an assignment, a comment, a committed test, a caller. If your argument "
                 + "needs one of the files above, you do not have an argument.";
+    }
+
+    /** The checker family, which is what {@link Checkers} has a note for. */
+    private static String checkerOf(String marker) {
+        String[] parts = marker.split("\\|");
+        return parts.length > 3 ? parts[3].strip() : "";
     }
 
     /** The line the analyser flagged; 0 when the marker names none, which matches no hunk. */

@@ -74,6 +74,16 @@ one run 16 of the 33 markers that reached a build had their first RED pass, and 
 The chain re-asks the reproducer once; `run_test` says the same thing at the moment it happens,
 because the bare word `PASSED` reads as success and means its opposite here.
 
+**The checker's claim is stated, not guessed.** A marker arrives as `file|line|checker` and every
+agent reconstructs the claim from a bare name — several reconstructed it wrong in ways that decided
+the marker. `src/main/resources/checkers/<CHECKER>.txt` carries the construct as a regex and the note;
+Java reports whether the flagged line actually contains it and, when it does not, which nearby lines
+do. A checker with no note says so.
+
+The note that mattered most: 33 `DM_DEFAULT_ENCODING` markers had never produced a build, because
+every agent reasoned that the default charset is fixed at JVM start-up and concluded no test could
+vary it. The first clause is true and the conclusion does not follow — **a test may start a JVM**.
+
 **Silence has a direction.** An objection must be raised to bite, so an unreachable proof-critic
 waives and the test stands. A certificate must be given to bite, so an unreachable fix-critic or
 pr-critic blocks the pull request.
