@@ -18,8 +18,24 @@ final class Json {
         if (k < 0) {
             return "";
         }
-        int open = json.indexOf('"', k + key.length() + 3);
-        if (open < 0) {
+        // A VALUE IS NOT ALWAYS QUOTED. Settlement writes booleans and Feedback writes an int
+        // unquoted, and scanning for the next quote then skips past them and finds the following
+        // KEY's quote instead — which is why red_verified read as empty for every marker that had
+        // genuinely gone red, and the semaphore never lit.
+        int colon = json.indexOf(':', k + key.length());
+        int scan = colon + 1;
+        while (scan < json.length() && json.charAt(scan) == ' ') {
+            scan++;
+        }
+        if (scan < json.length() && json.charAt(scan) != '"') {
+            int stop = scan;
+            while (stop < json.length() && ",}".indexOf(json.charAt(stop)) < 0) {
+                stop++;
+            }
+            return json.substring(scan, stop).trim();
+        }
+        int open = scan;
+        if (open >= json.length()) {
             return "";
         }
         StringBuilder v = new StringBuilder();
