@@ -58,7 +58,7 @@ public final class Dashboard {
             .sev.major{background:#3b2300;color:#f0883e}
             .sev.minor{background:#161b22;color:#7d8590}
             .sev.normal{background:#132132;color:#79c0ff}
-            td.why{max-width:34em}
+            td.why{max-width:44em}
             td.why summary{cursor:pointer;color:#9198a1;font-size:12px;line-height:1.45}
             td.why pre{white-space:pre-wrap;font-size:12px;margin:6px 0 0}
             .ev.thought{border-left-color:#6e5494}
@@ -566,8 +566,13 @@ public final class Dashboard {
                     .append(humanMinutes % 60).append("m</b><span>human-equivalent</span></div>");
         }
         Map<String, String> severity = severities(settlements);
-        b.append("</div><table><tr><th>marker</th><th>severity</th><th>where</th><th>state</th>"
-                + "<th>why</th><th>human-equiv</th><th>took</th><th>latest</th></tr>");
+        // ONE ROW READS AS ONE SENTENCE, left to right: how bad, what and where, what we decided,
+        // why, what it cost. `where` used to sit between severity and state, splitting the two
+        // things a reader compares, and `latest` repeated at the far right what `why` already says
+        // for a marker still running. Both are gone — the package now sits under the filename it
+        // belongs to, and a running marker's progress note is its `why` until it has a better one.
+        b.append("</div><table><tr><th>severity</th><th>marker</th><th>state</th>"
+                + "<th>why</th><th>took</th><th>a person would have</th></tr>");
 
         all.forEach((key, state) -> {
             String row = latest.getOrDefault(key, "");
@@ -590,25 +595,31 @@ public final class Dashboard {
             // Folded, because a table of thirty paragraphs is not a table — and not shortened,
             // because a reason cut at two hundred characters is a reason nobody can check.
             String why = row.isEmpty() ? "" : field(row, "verdict_text");
-            b.append("<tr><td><a href='/marker?k=").append(enc(key)).append("'>")
+            // A RUNNING MARKER HAS NO ARGUMENT YET, and what it is doing is the nearest thing to
+            // one. It used to be in a column of its own at the far right, which meant a reader
+            // scanning `why` found a dash for every marker in flight and had to jump the width of
+            // the table to find out that anything was happening at all.
+            String reason = why.isBlank() ? oneLine(saidLast.getOrDefault(key, "")) : why;
+            b.append("<tr><td><span class='sev ").append(esc(sev.toLowerCase())).append("'>")
+                    .append(sev.isEmpty() ? "&mdash;" : esc(sev)).append("</span></td>")
+                    .append("<td><a href='/marker?k=").append(enc(key)).append("'>")
                     .append(esc(name))
-                    .append(line.isEmpty() ? "" : ":" + esc(line)).append("</a><div class=k>")
-                    .append(esc(checker)).append("</div></td>")
-                    .append("<td><span class='sev ").append(esc(sev.toLowerCase()))
-                    .append("'>").append(sev.isEmpty() ? "&mdash;" : esc(sev)).append("</span></td>")
-                    .append("<td class=k>").append(esc(dir)).append("</td>")
-                    .append("<td><span class='s ").append(esc(css(state))).append("'>").append(esc(state))
-                    .append("</span>").append(flags(row)).append("</td>")
-                    .append("<td class=why>").append(why.isBlank()
+                    .append(line.isEmpty() ? "" : ":" + esc(line)).append("</a>")
+                    .append("<div class=k>").append(esc(checker)).append("</div>")
+                    .append("<div class=k>").append(esc(dir)).append("</div></td>")
+                    .append("<td><span class='s ").append(esc(css(state))).append("'>")
+                    .append(esc(state)).append("</span>").append(flags(row)).append("</td>")
+                    .append("<td class=why>").append(reason.isBlank()
                             ? "<span class=k>&mdash;</span>"
-                            : "<details><summary>" + esc(firstSentence(why)) + "</summary><pre>"
-                                    + esc(why) + "</pre></details>")
+                            : why.isBlank()
+                                    ? "<span class=k>" + esc(cut(reason, 150)) + "</span>"
+                                    : "<details><summary>" + esc(firstSentence(why))
+                                            + "</summary><pre>" + esc(why) + "</pre></details>")
                     .append("</td>")
+                    .append("<td class=k>").append(took > 0 ? clock(took) : "—")
+                    .append("<div class=k>").append(events.getOrDefault(key, 0))
+                    .append(" event(s)</div></td>")
                     .append("<td>").append(mins > 0 ? hm(mins) : "<span class=k>—</span>")
-                    .append("</td><td class=k>").append(took > 0 ? clock(took) : "—")
-                    .append("<div class=k>").append(events.getOrDefault(key, 0)).append(" event(s)</div>")
-                    .append("</td><td class=latest>")
-                    .append(esc(cut(oneLine(saidLast.getOrDefault(key, "")), 150)))
                     .append("</td></tr>");
         });
         return b.append("</table><a class=back href='/trace'>the whole trace, every marker →</a>")
@@ -1144,7 +1155,10 @@ public final class Dashboard {
      * opening as it stands, which is the honest answer for an argument that has no first sentence.
      */
     private static String firstSentence(String why) {
-        String flat = why.strip().replaceAll("[*`#>]", " ").replaceAll("\\s+", " ").strip();
+        // Stripping the markdown leaves its spacing behind: `**The bug**: Line 91` becomes
+        // `The bug : Line 91`, which reads as a typo in a column meant to be scanned.
+        String flat = why.strip().replaceAll("[*`#>]", " ").replaceAll("\\s+", " ")
+                .replaceAll("\\s+([:;,.])", "$1").strip();
         for (String word : new String[] {"false-positive", "by-design", "unprovable", "reproduced",
                 "needs-review", "verified/pr-ready", "verified/pr-rejected", "make", "reject",
                 "sound", "redo", "over-fit", "regression-risk", "necessary", "reducible"}) {
