@@ -40,10 +40,12 @@ COPY --from=builder /src/agent/target/lib              /opt/agent/lib
 COPY entrypoint.sh                                     /opt/agent/entrypoint.sh
 RUN chmod +x /opt/agent/entrypoint.sh && chown -R prover:prover /work
 
-# THE RESULTS DIRECTORY IS MADE BEFORE THE VOLUME IS DECLARED. Declaring a VOLUME on a path that
-# does not exist creates it owned by root, and this image does not run as root — so the trace and the
-# settlements silently fail to write, and a prove that ran perfectly leaves nothing behind.
-RUN mkdir -p /results /work/checkouts && chown -R prover:prover /results /work
+# EVERY VOLUME PATH IS MADE, OWNED, BEFORE IT IS DECLARED. Docker takes a fresh named volume's
+# ownership from the image directory underneath it — and creates it root-owned when there is nothing
+# there. This image does not run as root, so a volume declared on a missing path is a volume its own
+# process cannot write: the trace silently fails, or Maven cannot cache and re-resolves every build.
+RUN mkdir -p /results /work/checkouts /home/prover/.m2 \
+    && chown -R prover:prover /results /work /home/prover/.m2
 
 USER prover
 ENV RESULTS=/results \
