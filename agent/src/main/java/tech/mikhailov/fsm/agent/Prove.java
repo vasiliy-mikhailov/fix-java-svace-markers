@@ -53,7 +53,7 @@ public final class Prove {
      * generation that streams steadily and never stops is still a prove that never finishes, but the
      * endpoint is not at fault and the record should not say it was.
      */
-    private static final Duration CEILING = Duration.ofMinutes(45);
+    private static final Duration CEILING = Duration.ofMinutes(30);
 
     /** One re-ask per producer, quoting whoever objected. Two loops, one budget, stated once. */
     private static final int REASK = 1;
@@ -689,11 +689,12 @@ public final class Prove {
      * could only file every thought under one name. They share the HTTP client and cost nothing but
      * a builder.
      *
-     * <p>NO TOKEN CAP. There was one, at sixteen thousand, and it was a workaround for a blocking
-     * call that looked hung whenever a reasoning model took its time; it cut off the reasoning that
-     * caused the wait. Streaming removes the reason for it, and {@link Thinking} bounds real silence
-     * instead. The model still stops when it has finished, and the server's own context is the
-     * ceiling.
+     * <p>NO TOKEN CAP, and that is a decision rather than an omission. A cap is a number somebody
+     * chooses by measuring last week's run, and it is wrong the first time a marker legitimately
+     * needs more; the supervisor exists so that this program does not have to guess. {@link #PATIENCE}
+     * and {@link #CEILING} bound the two ways a call can fail to return — silence, and speech that
+     * gets nowhere — and a generation that runs away is a PATTERN, which is the supervisor's subject.
+     * It sees the ceiling firing across markers, says so, and restarts what is stuck.
      */
     static ChatModel model(String agent, Trace trace) {
         String base = env("QWEN_BASE_URL");

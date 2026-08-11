@@ -134,7 +134,9 @@ the run they came from, so seed from one you have read.
 ## What it does not do
 
 - **Clone or choose a JDK** beyond the checkout the entrypoint makes.
-- **Bound cost per marker** beyond a token cap and a tool ceiling.
+- **Cap output tokens.** A cap is a number chosen from last week's run and wrong the first time a
+  marker legitimately needs more. Two time bounds stand instead — silence, and speech that gets
+  nowhere — and a generation that runs away is a pattern, which is the supervisor's subject.
 - **Push a pull request.** `pr-maker` decides; nothing acts on it.
 
 ## Status

@@ -155,14 +155,15 @@ final class Overwatch {
 
     /** One marker, counted. */
     private record Marker(String id, String state, String builds, String answers, boolean test,
-            long idleMinutes, boolean claimed) {
+            long idleMinutes, boolean claimed, String died) {
 
         String line() {
             return id + " | " + state + " | " + (builds.isBlank() ? "no builds" : builds)
                     + " | " + (answers.isBlank() ? "no answers" : answers)
                     + " | " + (test ? "test written" : "NO TEST")
                     + " | idle=" + idleMinutes + "m"
-                    + (claimed && idleMinutes > QUIET.toMinutes() ? "  <-- QUIET, still claimed" : "");
+                    + (claimed && idleMinutes > QUIET.toMinutes() ? "  <-- QUIET, still claimed" : "")
+                    + (died.isBlank() ? "" : "  <-- DIED: " + died);
         }
     }
 
@@ -173,6 +174,7 @@ final class Overwatch {
         Map<String, int[]> answers = new LinkedHashMap<>();
         Map<String, Integer> lastLength = new LinkedHashMap<>();
         boolean test = false;
+        String died = "";
         long last = 0;
         Path t = dir.resolve("trace.jsonl");
         if (Files.exists(t)) {
@@ -203,8 +205,19 @@ final class Overwatch {
                             lastLength.put(who, reply.length());
                         }
                         case "tool" -> test |= Json.field(line, "tool").equals("write_file");
+                        case "failed" -> {
+                            // A PROVE THAT DIED MUST NOT READ AS ONE STILL WORKING. Without this the
+                            // state stayed "proving" and the marker looked merely quiet, which is
+                            // the one thing the supervisor is here to notice and the one thing it
+                            // could not see. The cause is carried, not just the fact: "no token in
+                            // four minutes" and "still generating after thirty" are different
+                            // failures and only one of them is the endpoint's.
+                            // The first line only. The stack follows it in the record and belongs
+                            // in the trace the watcher opens, not in three hundred digest rows.
+                            died = Json.field(line, "cause").lines().findFirst().orElse("");
+                        }
                         default -> {
-                            // progress, thought, settled, priced, failed — dated above, not counted.
+                            // progress, thought, settled, priced — dated above, not counted.
                         }
                     }
                 }
@@ -231,8 +244,8 @@ final class Overwatch {
                 .append(n[1] > 0 ? "!" + n[1] : "").append(' '));
         long idle = last == 0 ? 0 : (now - last) / 60_000;
         boolean claimed = Files.isDirectory(results.resolve("claims").resolve(id));
-        return new Marker(id, state, builds.toString().trim(), said.toString().trim(), test, idle,
-                claimed);
+        return new Marker(id, died.isBlank() ? state : "FAILED", builds.toString().trim(),
+                said.toString().trim(), test, idle, claimed, died);
     }
 
     /**
