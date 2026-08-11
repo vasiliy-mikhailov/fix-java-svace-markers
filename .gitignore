@@ -27,5 +27,6 @@ feedback/*
 pipeline/**/*cache*/
 pipeline/**/node_modules/
 pipeline/deploy/n8n-data/
+results/
 results_n8n/
 target/
