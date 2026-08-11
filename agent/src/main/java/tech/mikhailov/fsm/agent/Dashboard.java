@@ -164,6 +164,16 @@ public final class Dashboard {
         int port = args.length > 1 ? Integer.parseInt(args[1]) : 8087;
 
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
+        // A THREAD PER REQUEST, because one of them blocks for half an hour. With the default
+        // executor every handler runs on the dispatcher thread, so a single reader holding the
+        // event stream open stops the server answering anything at all — the page, the API and the
+        // next reader's stream included. Cached rather than fixed: streams are idle almost always,
+        // and a fixed pool of n stops serving at the n+1th reader.
+        server.setExecutor(java.util.concurrent.Executors.newCachedThreadPool(r -> {
+            Thread t = new Thread(r, "dashboard");
+            t.setDaemon(true);
+            return t;
+        }));
         server.createContext("/api/settlements", e -> send(e, "application/json",
                 "[" + String.join(",", lines(settlements)) + "]"));
         server.createContext("/api/trace", e -> send(e, "application/json",
