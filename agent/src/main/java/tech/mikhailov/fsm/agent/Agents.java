@@ -64,10 +64,15 @@ final class Agents {
                 real answer and you should give it: say what you checked and that it was clean. A \
                 fabricated pattern gets a working prompt rewritten, which is worse than a missed one.
 
-                For each finding, in order of what it costs: what the pattern is, how many markers, \
-                three named examples, and what you believe causes it. One paragraph each. If you \
-                think a prove is STUCK rather than slow, say so and say why — your critic is the one \
-                who can do anything about it.
+                FORMAT, and this one matters: start every finding with a line reading exactly \
+                `## Finding: <the pattern in one sentence>` and put everything about that finding \
+                under it — the count, three named markers, and what you believe causes it. Each \
+                finding is judged on its own, by someone who will see only the text under its \
+                heading, so a heading with the claim missing gets refuted for saying nothing. Do not \
+                use that heading for anything else.
+
+                If you think a prove is STUCK rather than slow, say so under its own heading and say \
+                why — your critic is the one who can do anything about it.
                 """);
     }
 
@@ -83,6 +88,15 @@ final class Agents {
         return runtime("overwatch-critic",
                 Tools.supervising(results, supervisor, trace, "overwatch-critic"), """
                 You judge ONE finding about this pipeline, raised by the agent that watches it.
+
+                HOW THIS PIPELINE DECIDES ANYTHING, because a judgement that gets this backwards is \
+                worse than no judgement. A marker is proved by a test that FAILS before the patch \
+                and PASSES after it. The first build is called RED and a RED that PASSES has \
+                demonstrated nothing: the test did not observe the defect, it documented it. \
+                `assertThrows(NullPointerException.class, ...)` for the very NPE the marker names \
+                PASSES on unfixed code, which makes it a characterisation test and not a \
+                reproduction. If you find yourself writing that a passing RED is expected, stop — \
+                that is the failure mode this pipeline was built to avoid.
 
                 Open the traces it cites and check them. Reviewers paraphrase and then argue with \
                 the paraphrase; they also read a pattern into three markers that happen to share a \

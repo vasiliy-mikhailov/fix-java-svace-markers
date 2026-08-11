@@ -249,25 +249,42 @@ final class Overwatch {
     }
 
     /**
-     * ONE FINDING PER JUDGEMENT.
+     * ONE FINDING PER JUDGEMENT, AND A FINDING IS NOT A PARAGRAPH.
      *
-     * <p>A critic handed six findings at once agrees with the tone of the set. Splitting on blank
-     * lines is crude and deliberately so: a watcher that writes one long paragraph gets one
-     * judgement, which is the honest reading of what it wrote.
+     * <p>This split on blank lines, which is what a paragraph is and is not what a finding is. The
+     * watcher's first real report — four markers whose tests pass on unfixed code, named, with the
+     * cause traced to a prompt — arrived as a heading, a count, a list of examples and an
+     * explanation, and came out of here as four claims none of which contained the claim. The critic
+     * refuted "**Examples:** …" twice, correctly, because a list of file names asserts nothing.
+     *
+     * <p>So the boundary is a heading the prompt requires, and a report without one is one finding.
+     * Splitting on structure the watcher was told to produce is checkable; splitting on whitespace
+     * was a guess about how a model formats prose.
      */
     private static List<String> split(String found) {
         List<String> out = new ArrayList<>();
-        for (String part : found.split("\\R\\s*\\R")) {
-            String trimmed = part.strip();
-            if (trimmed.length() > 80) {
-                out.add(trimmed);
+        StringBuilder current = new StringBuilder();
+        for (String line : found.split("\\R")) {
+            if (line.stripLeading().toLowerCase().startsWith(HEADING) && current.length() > 0) {
+                out.add(current.toString().strip());
+                current.setLength(0);
             }
+            current.append(line).append('\n');
         }
+        if (current.length() > 0) {
+            out.add(current.toString().strip());
+        }
+        out.removeIf(finding -> finding.length() < 80 || !finding.toLowerCase().contains(HEADING));
         if (out.isEmpty()) {
+            // No heading anywhere: the watcher wrote one thing, so it gets one judgement. Better a
+            // whole claim judged once than several fragments judged separately.
             out.add(found.strip());
         }
         return out;
     }
+
+    /** What the watcher is told to start each finding with, and what this splits on. */
+    private static final String HEADING = "## finding";
 
     private void write(String finding, String judged) {
         String verdict = judged == null || judged.isBlank() ? "unjudged"
