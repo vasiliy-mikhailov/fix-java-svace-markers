@@ -53,6 +53,14 @@ public final class Dashboard {
             .s{padding:2px 9px;border-radius:20px;font-size:11px;white-space:nowrap;display:inline-block}
             .verified,.verified-pr-ready,.verified-pr-rejected{background:#132e1a;color:#3fb950}
             .reproduced,.needs-review{background:#2b2011;color:#d29922}
+            .sev{font-size:11px;padding:2px 6px;border-radius:3px;background:#21262d;color:#7d8590}
+            .sev.critical{background:#3d1113;color:#ff7b72}
+            .sev.major{background:#3b2300;color:#f0883e}
+            .sev.minor{background:#161b22;color:#7d8590}
+            .sev.normal{background:#132132;color:#79c0ff}
+            td.why{max-width:34em}
+            td.why summary{cursor:pointer;color:#9198a1;font-size:12px;line-height:1.45}
+            td.why pre{white-space:pre-wrap;font-size:12px;margin:6px 0 0}
             .ev.thought{border-left-color:#6e5494}
             .ev.thought .who{color:#a371f7}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
@@ -431,6 +439,28 @@ public final class Dashboard {
         return b.toString();
     }
 
+    /**
+     * WHAT THE ANALYSER THOUGHT IT WAS WORTH, joined from the run it came out of.
+     *
+     * <p>A marker key is repo|file|line|checker and carries no severity, and adding a fifth field
+     * would change every key — re-proving the whole queue to display one word. So this is reference
+     * data, read beside the queue and joined on filename, line and checker.
+     *
+     * <p>It covers the 282 markers that analyser run reported. The other 74 are src/it and src/test,
+     * which it excluded, and they get "—" rather than a guess: a table that prints Minor for
+     * everything it does not know about is worse than one that admits the gap.
+     */
+    private static Map<String, String> severities(Path beside) {
+        Map<String, String> by = new LinkedHashMap<>();
+        for (String line : read(beside.resolveSibling("severities.tsv"))) {
+            String[] f = line.split("\\t");
+            if (f.length >= 4) {
+                by.put(f[0] + "|" + f[1] + "|" + f[2], f[3]);
+            }
+        }
+        return by;
+    }
+
     private static String index(Path settlements, Path trace, List<String> queued) {
         Map<String, String> latest = new LinkedHashMap<>();
         for (String line : lines(settlements)) {
@@ -535,8 +565,9 @@ public final class Dashboard {
             b.append("<div class=c><b>").append(humanMinutes / 60).append("h ")
                     .append(humanMinutes % 60).append("m</b><span>human-equivalent</span></div>");
         }
-        b.append("</div><table><tr><th>marker</th><th>where</th><th>state</th>"
-                + "<th>human-equiv</th><th>took</th><th>latest</th></tr>");
+        Map<String, String> severity = severities(settlements);
+        b.append("</div><table><tr><th>marker</th><th>severity</th><th>where</th><th>state</th>"
+                + "<th>why</th><th>human-equiv</th><th>took</th><th>latest</th></tr>");
 
         all.forEach((key, state) -> {
             String row = latest.getOrDefault(key, "");
@@ -552,13 +583,27 @@ public final class Dashboard {
             String dir = file.contains("/") ? file.substring(0, file.lastIndexOf('/')) : "";
             // The package tail, because two markers in the same run are routinely both LessonPage.java.
             dir = dir.replace("src/main/java/", "").replace("src/test/java/", "");
+            String name = file.substring(file.lastIndexOf('/') + 1);
+            String sev = severity.getOrDefault(name + "|" + line + "|" + checker, "");
+            // THE ARGUMENT, IN THE TABLE. Reading the table used to tell you a marker was a
+            // false-positive and nothing about why, so every question started with opening it.
+            // Folded, because a table of thirty paragraphs is not a table — and not shortened,
+            // because a reason cut at two hundred characters is a reason nobody can check.
+            String why = row.isEmpty() ? "" : field(row, "verdict_text");
             b.append("<tr><td><a href='/marker?k=").append(enc(key)).append("'>")
-                    .append(esc(file.substring(file.lastIndexOf('/') + 1)))
+                    .append(esc(name))
                     .append(line.isEmpty() ? "" : ":" + esc(line)).append("</a><div class=k>")
                     .append(esc(checker)).append("</div></td>")
+                    .append("<td><span class='sev ").append(esc(sev.toLowerCase()))
+                    .append("'>").append(sev.isEmpty() ? "&mdash;" : esc(sev)).append("</span></td>")
                     .append("<td class=k>").append(esc(dir)).append("</td>")
                     .append("<td><span class='s ").append(esc(css(state))).append("'>").append(esc(state))
                     .append("</span>").append(flags(row)).append("</td>")
+                    .append("<td class=why>").append(why.isBlank()
+                            ? "<span class=k>&mdash;</span>"
+                            : "<details><summary>" + esc(firstSentence(why)) + "</summary><pre>"
+                                    + esc(why) + "</pre></details>")
+                    .append("</td>")
                     .append("<td>").append(mins > 0 ? hm(mins) : "<span class=k>—</span>")
                     .append("</td><td class=k>").append(took > 0 ? clock(took) : "—")
                     .append("<div class=k>").append(events.getOrDefault(key, 0)).append(" event(s)</div>")
@@ -1083,6 +1128,37 @@ public final class Dashboard {
         } catch (IOException e) {
             return List.of();
         }
+    }
+
+    /**
+     * THE FIRST SENTENCE THAT SAYS ANYTHING, for the closed fold.
+     *
+     * <p>Not a truncation — the whole argument is inside the fold, one click away and on this page.
+     * This is the line a reader scans down the table, and the naive first sentence was mostly not
+     * one: an argument opens by repeating the word it settled on ("false-positive false-positive
+     * The static analyzer claims…") and then clears its throat ("Looking at this issue: 1."), so
+     * two of every three rows summarised to nothing.
+     *
+     * <p>So: drop a leading restatement of the verdict, drop anything that ends in a colon, and take
+     * the first sentence long enough to be a claim. Where nothing qualifies the reader gets the
+     * opening as it stands, which is the honest answer for an argument that has no first sentence.
+     */
+    private static String firstSentence(String why) {
+        String flat = why.strip().replaceAll("[*`#>]", " ").replaceAll("\\s+", " ").strip();
+        for (String word : new String[] {"false-positive", "by-design", "unprovable", "reproduced",
+                "needs-review", "verified/pr-ready", "verified/pr-rejected", "make", "reject",
+                "sound", "redo", "over-fit", "regression-risk", "necessary", "reducible"}) {
+            while (flat.toLowerCase().startsWith(word + " ")) {
+                flat = flat.substring(word.length()).strip();
+            }
+        }
+        for (String sentence : flat.split("(?<=[.!?])\\s+")) {
+            String one = sentence.strip();
+            if (one.length() >= 40 && !one.endsWith(":") && !one.matches("(?i)looking at .{0,40}")) {
+                return one.length() <= 240 ? one : one.substring(0, 240) + "…";
+            }
+        }
+        return flat.length() <= 240 ? flat : flat.substring(0, 240) + "…";
     }
 
     /** A settled state is one CSS class; anything else is styled as infra. */

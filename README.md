@@ -131,6 +131,11 @@ the new events rather than reloading, so nothing you have open closes.
 reasoning, and its whole record. Nothing on those pages is trimmed or capped — a page that quietly
 shows part of a record reads as the record.
 
+The table is meant to be read without opening anything: severity, the checker, the state, and the
+argument that reached it — folded to its first real sentence, whole inside the fold. Severity is
+joined from `examples/webgoat/severities.tsv`, which the marker key does not carry; the 74 `src/it`
+and `src/test` markers show "—" rather than a guess.
+
 Per marker: a tab for each agent showing its **final** answer with superseded attempts folded
 beneath, the test it wrote, a semaphore for whether RED reproduced and GREEN held, what the machine
 spent and what a person would have. Feedback is a text box on any answer.
