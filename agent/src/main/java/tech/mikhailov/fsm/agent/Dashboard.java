@@ -61,6 +61,8 @@ public final class Dashboard {
             td.why{max-width:44em}
             td.why summary{cursor:pointer;color:#9198a1;font-size:12px;line-height:1.45}
             td.why pre{white-space:pre-wrap;font-size:12px;margin:6px 0 0}
+            pre.flagged{background:#0d1117;border-left:2px solid #30363d;padding:8px 10px;
+              white-space:pre;overflow-x:auto;color:#8b949e;font-size:11.5px;line-height:1.5}
             .ev.thought{border-left-color:#6e5494}
             .ev.thought .who{color:#a371f7}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
@@ -614,7 +616,9 @@ public final class Dashboard {
                             : why.isBlank()
                                     ? "<span class=k>" + esc(cut(reason, 150)) + "</span>"
                                     : "<details><summary>" + esc(firstSentence(why))
-                                            + "</summary><pre>" + esc(why) + "</pre></details>")
+                                            + "</summary>" + code(flagged(
+                                                    parts.length > 0 ? parts[0] : "", file, line))
+                                            + "<pre>" + esc(why) + "</pre></details>")
                     .append("</td>")
                     .append("<td class=k>").append(took > 0 ? clock(took) : "—")
                     .append("<div class=k>").append(events.getOrDefault(key, 0))
@@ -1141,6 +1145,52 @@ public final class Dashboard {
         }
     }
 
+    /** Where the provers keep their trees. The same value {@code entrypoint.sh} uses. */
+    private static final Path CHECKOUTS =
+            Path.of(System.getenv().getOrDefault("CHECKOUTS", "/work/checkouts"));
+
+    /** Lines of context either side of the flagged one. Enough to see the statement it is part of. */
+    private static final int AROUND = 4;
+
+    /**
+     * THE LINE THE ANALYSER FLAGGED, WITH THE CODE AROUND IT.
+     *
+     * <p>A verdict about {@code ProfileUploadBase.java:82} is not checkable without line 82. The
+     * argument names it, quotes fragments of it and reasons about it, and a reader had to open the
+     * marker, open the reproducer's prompt and scroll to find the four lines the whole thing is
+     * about. They are four lines. They belong next to the verdict.
+     *
+     * <p>Read from the reference checkout the provers share, and empty when there is not one — this
+     * is a convenience for a reader, and a dashboard that will not start because a tree is missing
+     * would be a poor trade for it.
+     */
+    private static String flagged(String repo, String file, String lineNumber) {
+        int want;
+        try {
+            want = Integer.parseInt(lineNumber.strip());
+        } catch (NumberFormatException noLine) {
+            return "";
+        }
+        String name = repo.substring(repo.lastIndexOf('/') + 1).replaceAll("\\.git$", "");
+        List<String> source = read(CHECKOUTS.resolve(name).resolve(file));
+        if (source.isEmpty() || want < 1) {
+            return "";
+        }
+        StringBuilder b = new StringBuilder();
+        for (int n = Math.max(1, want - AROUND); n <= Math.min(source.size(), want + AROUND); n++) {
+            b.append(n == want ? "&gt;&gt; " : "   ").append(n).append("  ")
+                    .append(esc(source.get(n - 1))).append('\n');
+        }
+        if (want > source.size()) {
+            // THE MARKERS CAME OFF AN OLDER REVISION and some point past the end of the file now.
+            // Saying so here is the difference between a reader trusting the line number and a
+            // reader knowing not to.
+            b.append("\n&gt;&gt; line ").append(want).append(" — THIS FILE HAS ")
+                    .append(source.size()).append(". The analyser ran against an older revision.");
+        }
+        return b.toString();
+    }
+
     /**
      * THE FIRST SENTENCE THAT SAYS ANYTHING, for the closed fold.
      *
@@ -1173,6 +1223,11 @@ public final class Dashboard {
             }
         }
         return flat.length() <= 240 ? flat : flat.substring(0, 240) + "…";
+    }
+
+    /** The flagged lines, already escaped, or nothing at all when there was no tree to read. */
+    private static String code(String lines) {
+        return lines.isBlank() ? "" : "<pre class=flagged>" + lines + "</pre>";
     }
 
     /** A settled state is one CSS class; anything else is styled as infra. */
