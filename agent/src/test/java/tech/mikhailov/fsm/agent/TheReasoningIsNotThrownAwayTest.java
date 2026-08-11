@@ -275,6 +275,40 @@ class TheReasoningIsNotThrownAwayTest {
     }
 
     @Test
+    @DisplayName("a runaway leaves its reasoning behind before it is killed")
+    void whatItWasSaying() {
+        // EIGHT OF TEN DEATHS IN ONE RUN WERE THIS, and every one recorded the exception and not a
+        // word of what the model had been generating for thirty minutes. "It looped" was a guess.
+        Overheard overheard = hearing(
+                "{\"choices\":[{\"delta\":{\"reasoning\":\"I will try the same thing again. \"}}]}",
+                "{\"choices\":[{\"delta\":{\"reasoning\":\"I will try the same thing again.\"}}]}");
+        Kept trace = new Kept();
+        // The reasoning has to arrive DURING the call: chat() drains the buffer before it starts,
+        // which is what stops one call inheriting the last one's words.
+        StreamingChatModel endless = new StreamingChatModel() {
+            @Override
+            public void doChat(ChatRequest request, StreamingChatResponseHandler handler) {
+                Thread talking = new Thread(() -> overheard.build().execute(null, null,
+                        new dev.langchain4j.http.client.sse.ServerSentEventListener() {
+                            @Override public void onError(Throwable t) { }
+                        }));
+                talking.setDaemon(true);
+                talking.start();
+            }
+        };
+        assertThrows(RuntimeException.class, () -> new Thinking(endless, overheard, trace,
+                "reproducer", Duration.ofSeconds(30), Duration.ofMillis(200))
+                .chat(ChatRequest.builder().messages(
+                        dev.langchain4j.data.message.UserMessage.from("?")).build()));
+        assertEquals(1, trace.thoughts.size(), "the reasoning it got through is recorded");
+        assertTrue(trace.thoughts.get(0).contains("I will try the same thing again."),
+                "and it is the actual words, which is what tells a reader it was repeating itself "
+                        + "rather than working: " + trace.thoughts.get(0));
+        assertTrue(trace.thoughts.get(0).contains("as far as it got"),
+                "marked as partial, so nobody reads a cut-off thought as a finished one");
+    }
+
+    @Test
     @DisplayName("an endpoint that errors reports its own cause, not a wrapper")
     void broken() {
         StreamingChatModel refuses = new StreamingChatModel() {

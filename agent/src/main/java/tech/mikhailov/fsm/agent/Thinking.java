@@ -91,6 +91,25 @@ record Thinking(StreamingChatModel model, Overheard overheard, Trace trace, Stri
     }
 
     /**
+     * WHAT A RUNAWAY WAS SAYING, kept before it is killed.
+     *
+     * <p>A thought is recorded when a call returns, so a call that never returns recorded nothing —
+     * and eight of the ten proves that died in one run died exactly there. The record held the
+     * exception and not one word of what the model had been generating for thirty minutes, which
+     * makes "it looped" a guess: nobody could say whether it was repeating itself, writing an
+     * enormous test, or reasoning in circles about a marker it could not place.
+     *
+     * <p>{@link Overheard} has been holding all of it the whole time. This is the only chance to
+     * write it down.
+     */
+    private void keep(String why) {
+        String far = overheard.drain();
+        if (!far.isBlank()) {
+            trace.thought(agent, "[" + why + "; this is the reasoning as far as it got]\n\n" + far);
+        }
+    }
+
+    /**
      * WAITS WHILE THE STREAM IS STILL SPEAKING, and this is the whole point of streaming.
      *
      * <p>The first version of this waited a fixed twelve minutes in total and then reported "no token
@@ -111,12 +130,14 @@ record Thinking(StreamingChatModel model, Overheard overheard, Trace trace, Stri
                 return answer.get(GLANCE.toMillis(), TimeUnit.MILLISECONDS);
             } catch (TimeoutException stillGoing) {
                 if (overheard.silentFor() > patience.toNanos()) {
+                    keep("gave up after " + patience.toMinutes() + " minutes of silence");
                     answer.cancel(true);
                     throw new RuntimeException(agent + ": nothing on the wire for "
                             + patience.toMinutes() + " minutes — the endpoint stopped speaking "
                             + "mid-answer", stillGoing);
                 }
                 if (System.nanoTime() - start > ceiling.toNanos()) {
+                    keep("cut off after " + ceiling.toMinutes() + " minutes, still generating");
                     answer.cancel(true);
                     throw new RuntimeException(agent + ": still generating after "
                             + ceiling.toMinutes() + " minutes — answering, but not finishing",
