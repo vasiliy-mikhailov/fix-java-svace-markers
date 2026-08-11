@@ -55,6 +55,12 @@ public final class Dashboard {
             .reproduced,.needs-review{background:#2b2011;color:#d29922}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
             .queued{background:#0d1117;color:#6e7681;border:1px solid #21262d}
+            .sema{display:flex;gap:5px;margin-top:5px}
+            .sema i{width:9px;height:9px;border-radius:50%;display:block;border:1px solid #30363d}
+            .sema i.lit.red{background:#f85149;border-color:#f85149;box-shadow:0 0 5px #f8514966}
+            .sema i.lit.green{background:#3fb950;border-color:#3fb950;box-shadow:0 0 5px #3fb95066}
+            .sema i.dim{background:#21262d}
+            .sema i.none{background:transparent;border-style:dashed}
             .interrupted{background:#20161f;color:#bc8cff;border:1px solid #21262d}
             td.latest{color:#8b949e;font-size:12px;max-width:46ch}
             .tabs{display:flex;gap:2px;flex-wrap:wrap;padding:10px 24px;border-bottom:1px solid #21262d}
@@ -446,6 +452,25 @@ public final class Dashboard {
         b.append(tabs(key, agent));
 
         if (agent.isEmpty()) {
+            // THE TEST ITSELF, first. It is the artefact the whole prove turns on, and reading it
+            // out of a write_file argument on another tab is work a reader should not have to do.
+            String test = "";
+            String path = "";
+            for (String e : mine) {
+                if (field(e, "kind").equals("tool") && field(e, "tool").equals("write_file")) {
+                    String content = field(field(e, "arguments"), "content");
+                    if (!content.isBlank()) {
+                        test = content;
+                        path = field(field(e, "arguments"), "path");
+                    }
+                }
+            }
+            if (!test.isBlank()) {
+                b.append("<div class='ev asked'><span class=who>the test</span>")
+                        .append("<span class=kind>").append(esc(path)).append("</span><pre>")
+                        .append(esc(test)).append("</pre></div>");
+            }
+
             // The summary: every agent's final word, in the order they ran, and nothing else.
             for (String who : AGENTS) {
                 List<String> said = asked(mine, who);
@@ -743,18 +768,31 @@ public final class Dashboard {
         return out;
     }
 
-    /** RED and GREEN as they were recorded — the two facts a state alone does not carry. */
+    /**
+     * THE TWO FACTS A STATE DOES NOT CARRY: did a test fail before the patch, did it pass after.
+     *
+     * <p>Lit means the build said so. Dim means it was reached and did not happen — a RED that
+     * passed, a GREEN that failed. Hollow means it was never got to, which is a different answer
+     * from "no": a marker the reproducer declined never had a red to fail.
+     */
     private static String flags(String row) {
         if (row.isEmpty()) {
             return "";
         }
         String red = field(row, "red_verified");
         String green = field(row, "green_verified");
-        if (red.isEmpty() && green.isEmpty()) {
-            return "";
-        }
-        return "<div class=k>" + ("true".equals(red) ? "red ✓" : "red ·")
-                + " " + ("true".equals(green) ? "green ✓" : "green ·") + "</div>";
+        String state = field(row, "state");
+        boolean reachedRed = !state.equals("queued") && !state.equals("not-a-bug");
+        boolean reachedGreen = "true".equals(red);
+        return "<div class=sema>"
+                + dot("red", "true".equals(red), reachedRed, "reproduced: the test failed first")
+                + dot("green", "true".equals(green), reachedGreen, "fixed: the same test then passed")
+                + "</div>";
+    }
+
+    private static String dot(String which, boolean lit, boolean reached, String title) {
+        String cls = lit ? which + " lit" : reached ? which + " dim" : which + " none";
+        return "<i class='" + cls + "' title='" + esc(title) + "'></i>";
     }
 
     /** The first line worth showing: agents answer with their verdict first and reasoning after. */
@@ -873,6 +911,11 @@ public final class Dashboard {
      * <p>The rows are flat maps of strings written by {@link Settlement} and {@link JsonlTrace}, so
      * this stays a scan rather than a parser: a malformed line costs one blank cell, where a parser
      * would refuse the whole page.
+     */
+    /**
+     * Reading a field out of a tool's arguments means reading JSON that was itself a JSON string, so
+     * one level of escaping is already gone by the time this sees it. That is why it works: the
+     * value arrives as ordinary text with real newlines, not as \n.
      */
     private static String field(String json, String key) {
         int k = json.indexOf('"' + key + "\":");
