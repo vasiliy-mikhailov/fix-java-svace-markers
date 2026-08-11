@@ -182,15 +182,15 @@ public final class Dashboard {
             t.setDaemon(true);
             return t;
         }));
-        server.createContext("/api/settlements", e -> send(e, "application/json",
+        route(server, "/api/settlements", e -> send(e, "application/json",
                 "[" + String.join(",", lines(settlements)) + "]"));
-        server.createContext("/api/trace", e -> send(e, "application/json",
+        route(server, "/api/trace", e -> send(e, "application/json",
                 "[" + String.join(",", lines(trace)) + "]"));
         // THE CORPUS. Every labelled example, prompt and reply included, ready to train on with no
         // join back to the trace.
-        server.createContext("/api/feedback", e -> send(e, "application/json",
+        route(server, "/api/feedback", e -> send(e, "application/json",
                 "[" + String.join(",", lines(feedback)) + "]"));
-        server.createContext("/feedback", e -> {
+        route(server, "/feedback", e -> {
             // ONCE. The body is a stream: a second read returns nothing, and the redirect would lose
             // the page the reader was on.
             Map<String, String> posted = "POST".equals(e.getRequestMethod())
@@ -203,13 +203,13 @@ public final class Dashboard {
             e.sendResponseHeaders(303, -1);
             e.close();
         });
-        server.createContext("/marker", e -> send(e, "text/html; charset=utf-8",
+        route(server, "/marker", e -> send(e, "text/html; charset=utf-8",
                 marker(trace, settlements, query(e, "k"), query(e, "a"), open(e),
                         (int) num(query(e, "from")), fragment(e))));
         // THE WHOLE TRACE, every marker, in the order it happened. The per-marker view answers "why
         // did this settle so"; this one answers "what is this thing doing", which is a different
         // question and the one asked while a run is in flight.
-        server.createContext("/trace", e -> send(e, "text/html; charset=utf-8",
+        route(server, "/trace", e -> send(e, "text/html; charset=utf-8",
                 events(trace, settlements, "", open(e), "",
                         (int) num(query(e, "from")), fragment(e))));
         // WHAT IS WRONG WITH THE PIPELINE, as opposed to with a marker. Its own page because it is
@@ -218,13 +218,13 @@ public final class Dashboard {
         // "what is wrong"; its trace answers "and how do you know", which is the question a reader
         // brings the moment a finding surprises them. Without it the watcher was the one thing in
         // this program asserting things with no way to check them.
-        server.createContext("/overwatch", e -> send(e, "text/html; charset=utf-8",
+        route(server, "/overwatch", e -> send(e, "text/html; charset=utf-8",
                 overwatch(settlements.resolveSibling("overwatch.jsonl"),
                         settlements.resolveSibling("restarts.jsonl"),
                         settlements.resolveSibling("overwatch-trace.jsonl"),
                         settlements.resolveSibling("overwatch-settlements.jsonl"),
                         query(e, "a"), open(e), (int) num(query(e, "from")), fragment(e))));
-        server.createContext("/", e -> send(e, "text/html; charset=utf-8",
+        route(server, "/", e -> send(e, "text/html; charset=utf-8",
                 index(settlements, trace, lines(settlements.resolveSibling("markers.txt")))));
 
         // SERVER-SENT EVENTS. The page used to reload itself every fifteen seconds, which is why it
@@ -232,7 +232,7 @@ public final class Dashboard {
         // everything they had open and where they were. One long-lived connection per reader, a line
         // when the counts move, and the page decides what to do with it — append, or re-render the
         // parts that have no state in them.
-        server.createContext("/events", e -> {
+        route(server, "/events", e -> {
             e.getResponseHeaders().set("Content-Type", "text/event-stream");
             e.getResponseHeaders().set("Cache-Control", "no-cache");
             e.getResponseHeaders().set("Connection", "keep-alive");
@@ -324,7 +324,11 @@ public final class Dashboard {
      * complaint worth having and acting on, and not one worth guessing at first.
      */
     private static String supervisorRecord(Path trace, String nav, boolean expand) {
-        List<String> all = read(trace);
+        // A COPY, BECAUSE read() HANDS BACK AN IMMUTABLE LIST. Sorting it threw
+        // UnsupportedOperationException out of the handler, which HttpServer answers by closing the
+        // connection with no status and no log line — an empty reply in twenty milliseconds, which
+        // reads exactly like a page too big to build and is nothing of the kind.
+        List<String> all = new ArrayList<>(read(trace));
         all.sort((a, b) -> Long.compare(num(field(b, "at")), num(field(a, "at"))));
         return supervisorEvents(all, "the supervisor's record", nav, expand, "/overwatch?a=trace");
     }
@@ -1167,6 +1171,50 @@ public final class Dashboard {
 
     private static String esc(String s) {
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    /**
+     * A HANDLER THAT THROWS MUST SAY SO, TO THE READER, IN THE BROWSER.
+     *
+     * <p>{@code HttpServer} answers an exception from a handler by closing the connection: no status,
+     * no body, no log line. Empty reply in twenty milliseconds — which reads exactly like a page too
+     * big to build, and sent me looking at response sizes and memory limits for an
+     * UnsupportedOperationException from sorting an immutable list.
+     *
+     * <p>The stack goes in the page for the same reason it goes in a settlement: a failure that
+     * cannot locate itself sends whoever is reading to a container log that does not have it.
+     */
+    private static void route(HttpServer server, String path,
+            com.sun.net.httpserver.HttpHandler handler) {
+        server.createContext(path, guarded(handler));
+    }
+
+    private static com.sun.net.httpserver.HttpHandler guarded(
+            com.sun.net.httpserver.HttpHandler handler) {
+        return exchange -> {
+            try {
+                handler.handle(exchange);
+            } catch (IOException | RuntimeException | Error broke) {
+                StringBuilder where = new StringBuilder(broke.getClass().getName() + ": "
+                        + broke.getMessage());
+                for (StackTraceElement at : broke.getStackTrace()) {
+                    where.append("\n  at ").append(at);
+                }
+                byte[] body = ("<style>" + CSS + "</style><header><h1>this page broke</h1>"
+                        + "<div class=sub>" + esc(exchange.getRequestURI().toString())
+                        + "</div></header><div class='ev failed'><pre>" + esc(where.toString())
+                        + "</pre></div>").getBytes(StandardCharsets.UTF_8);
+                try {
+                    exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
+                    exchange.sendResponseHeaders(500, body.length);
+                    try (OutputStream out = exchange.getResponseBody()) {
+                        out.write(body);
+                    }
+                } catch (IOException gone) {
+                    // The reader closed the connection. Nothing left to tell.
+                }
+            }
+        };
     }
 
     private static void send(HttpExchange e, String type, String body) throws IOException {
