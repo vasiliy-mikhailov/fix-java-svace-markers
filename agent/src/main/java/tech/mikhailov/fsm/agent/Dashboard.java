@@ -54,7 +54,8 @@ public final class Dashboard {
             .verified,.verified-pr-ready,.verified-pr-rejected{background:#132e1a;color:#3fb950}
             .reproduced,.needs-review{background:#2b2011;color:#d29922}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
-            .to-do{background:#0d1117;color:#6e7681;border:1px solid #21262d}
+            .queued{background:#0d1117;color:#6e7681;border:1px solid #21262d}
+            .interrupted{background:#20161f;color:#bc8cff;border:1px solid #21262d}
             td.latest{color:#8b949e;font-size:12px;max-width:46ch}
             .tabs{display:flex;gap:2px;flex-wrap:wrap;padding:10px 24px;border-bottom:1px solid #21262d}
             .tabs a{padding:5px 11px;border-radius:6px;font-size:12px;color:#8b949e}
@@ -162,6 +163,18 @@ public final class Dashboard {
 
     // ------------------------------------------------------------------ index
 
+    /**
+     * The slug a claim directory is named by — the same rule {@code entrypoint.sh} slugs with.
+     *
+     * <p>Everything after the last slash, non-alphanumerics replaced, cut to eighty. It has to match
+     * exactly: a claim this cannot find reads as a marker nobody is working on.
+     */
+    private static String slug(String marker) {
+        String tail = marker.substring(marker.lastIndexOf('/') + 1)
+                .replaceAll("[^A-Za-z0-9._-]", "_");
+        return tail.length() <= 80 ? tail : tail.substring(0, 80);
+    }
+
     private static String index(Path settlements, Path trace, List<String> queued) {
         Map<String, String> latest = new LinkedHashMap<>();
         for (String line : lines(settlements)) {
@@ -207,14 +220,44 @@ public final class Dashboard {
 
         // EVERY MARKER THE RUN WAS GIVEN, not only the ones it has reached. A queue you cannot see
         // is a queue you cannot plan around, and "to-do" is a state like any other.
+        // WHAT IS CLAIMED IS WHAT IS BEING PROVED. A settlement row saying "proving" only means a
+        // prove once started; the row survives a container that was replaced under it, and every
+        // interrupted marker then reads as busy forever. The claim directory is the fact: a prover
+        // takes one before it works and the run ends with it still there.
+        java.util.Set<String> claimed = new java.util.HashSet<>();
+        Path claims = settlements.resolveSibling("claims");
+        if (Files.isDirectory(claims)) {
+            try (var c = Files.list(claims)) {
+                c.forEach(p -> claimed.add(p.getFileName().toString()));
+            } catch (IOException none) {
+                // No claims directory is a run that has not started, not an error.
+            }
+        }
+
         Map<String, String> all = new LinkedHashMap<>();
         for (String marker : queued) {
-            all.put(marker.trim(), "to-do");
+            all.put(marker.trim(), "queued");
         }
-        latest.forEach((k, row) -> all.put(k, field(row, "state")));
+        latest.forEach((k, row) -> {
+            String state = field(row, "state");
+            if (state.equals("proving")) {
+                // Claimed and unfinished is being proved. Unclaimed and unfinished was interrupted —
+                // a different thing, and one nobody should wait on.
+                state = claimed.contains(slug(k)) ? "proving" : "interrupted";
+            }
+            all.put(k, state);
+        });
+        // Claimed but no row yet: taken seconds ago, before the first stage reported.
+        for (String marker : queued) {
+            String k = marker.trim();
+            if (claimed.contains(slug(k)) && "queued".equals(all.get(k))) {
+                all.put(k, "proving");
+            }
+        }
         int total = all.size();
         int settled = (int) all.values().stream()
-                .filter(s -> !s.equals("proving") && !s.equals("to-do")).count();
+                .filter(s -> !s.equals("proving") && !s.equals("queued")
+                        && !s.equals("interrupted")).count();
         long began = first.values().stream().mapToLong(Long::longValue).min().orElse(0L);
         long elapsed = began == 0 ? 0 : System.currentTimeMillis() - began;
 
