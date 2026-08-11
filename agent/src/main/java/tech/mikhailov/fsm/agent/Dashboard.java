@@ -214,9 +214,16 @@ public final class Dashboard {
                         (int) num(query(e, "from")), fragment(e))));
         // WHAT IS WRONG WITH THE PIPELINE, as opposed to with a marker. Its own page because it is
         // its own question: every other view here answers "what happened to this defect".
+        // THE SUPERVISOR IS AN AGENT AND ITS RECORD IS READ THE SAME WAY. Its findings answer
+        // "what is wrong"; its trace answers "and how do you know", which is the question a reader
+        // brings the moment a finding surprises them. Without it the watcher was the one thing in
+        // this program asserting things with no way to check them.
         server.createContext("/overwatch", e -> send(e, "text/html; charset=utf-8",
                 overwatch(settlements.resolveSibling("overwatch.jsonl"),
-                        settlements.resolveSibling("restarts.jsonl"), open(e))));
+                        settlements.resolveSibling("restarts.jsonl"),
+                        settlements.resolveSibling("overwatch-trace.jsonl"),
+                        settlements.resolveSibling("overwatch-settlements.jsonl"),
+                        query(e, "a"), open(e), (int) num(query(e, "from")), fragment(e))));
         server.createContext("/", e -> send(e, "text/html; charset=utf-8",
                 index(settlements, trace, lines(settlements.resolveSibling("markers.txt")))));
 
@@ -283,9 +290,88 @@ public final class Dashboard {
      * not be able to suppress a warning, and a reader deciding what to act on needs to know which of
      * the two they are looking at.
      */
-    private static String overwatch(Path findings, Path restarts, boolean expand) {
-        List<String> all = lines(findings);
-        List<String> cut = lines(restarts);
+    private static String overwatch(Path findings, Path restarts, Path trace, Path settlements,
+            String view, boolean expand, int from, boolean fragment) {
+        String nav = supervisorTabs(view);
+        if (view.equals("trace")) {
+            return supervisorRecord(trace, nav, expand);
+        }
+        if (view.equals("overwatch") || view.equals("overwatch-critic")) {
+            return supervisorAgent(trace, view, nav, expand);
+        }
+        return reported(findings, restarts, nav, expand);
+    }
+
+    /** The supervisor's own tabs. {@link #tab} builds marker URLs and these are not markers. */
+    private static String supervisorTabs(String current) {
+        StringBuilder b = new StringBuilder("<nav class=tabs>");
+        for (String[] t : new String[][] {{"", "findings"}, {"overwatch", "overwatch"},
+                {"overwatch-critic", "overwatch-critic"}, {"trace", "the record"}}) {
+            b.append("<a class='").append(t[0].equals(current) ? "on" : "")
+                    .append("' href='/overwatch").append(t[0].isEmpty() ? "" : "?a=" + t[0])
+                    .append("'>").append(esc(t[1])).append("</a>");
+        }
+        return b.append("<a href='/'>&larr; all markers</a></nav>").toString();
+    }
+
+    /**
+     * THE SUPERVISOR'S WHOLE RECORD, and whole means whole.
+     *
+     * <p>Eight megabytes of it after an afternoon, most of it the traces the watcher opened. It is
+     * not trimmed and it is not capped: a page that quietly shows part of a record reads as the
+     * record, and every cut this program has made to a payload for a reader's convenience has later
+     * turned out to remove the field somebody needed. If a browser will not open it, that is a
+     * complaint worth having and acting on, and not one worth guessing at first.
+     */
+    private static String supervisorRecord(Path trace, String nav, boolean expand) {
+        List<String> all = read(trace);
+        all.sort((a, b) -> Long.compare(num(field(b, "at")), num(field(a, "at"))));
+        return supervisorEvents(all, "the supervisor's record", nav, expand, "/overwatch?a=trace");
+    }
+
+    /** Newest first, all of it. */
+    private static String supervisorEvents(List<String> all, String title, String nav,
+            boolean expand, String self) {
+        StringBuilder b = head(title, all.size() + " event(s), newest first").append(nav);
+        if (all.isEmpty()) {
+            return b.append("<div class=empty>Nothing yet. The supervisor looks on its own "
+                    + "schedule.</div>").toString();
+        }
+        for (int i = 0; i < all.size(); i++) {
+            b.append(one(all.get(i), "", expand, i, self));
+        }
+        return b.toString();
+    }
+
+
+    /**
+     * One supervisor agent: what it said, and what it worked through to say it.
+     *
+     * <p>Newest first here, unlike a marker's tab. A prove is read after it settles and its story
+     * runs forwards; the supervisor is read while it is running, and the question is always what it
+     * just said.
+     */
+    private static String supervisorAgent(Path trace, String agent, String nav, boolean expand) {
+        List<String> mine = new ArrayList<>();
+        for (String line : read(trace)) {
+            if (field(line, "agent").equals(agent)) {
+                mine.add(line);
+            }
+        }
+        mine.sort((a, b) -> Long.compare(num(field(b, "at")), num(field(a, "at"))));
+        return supervisorEvents(mine, agent, nav, expand, "/overwatch?a=" + agent);
+    }
+
+    /**
+     * THE SUPERVISOR'S FINDINGS, worst first, each one feedback-able like any other answer.
+     *
+     * <p>An unjudged finding is shown, and shown as unjudged: a critic that could not be reached must
+     * not be able to suppress a warning, and a reader deciding what to act on needs to know which of
+     * the two they are looking at.
+     */
+    private static String reported(Path findings, Path restarts, String nav, boolean expand) {
+        List<String> all = read(findings);
+        List<String> cut = read(restarts);
         long holds = all.stream().filter(l -> field(l, "verdict").equals("holds")).count();
         long refuted = all.stream().filter(l -> field(l, "verdict").equals("refuted")).count();
         long unjudged = all.size() - holds - refuted;
@@ -293,8 +379,7 @@ public final class Dashboard {
                 all.isEmpty() ? "the supervisor has not reported yet"
                         : holds + " hold, " + refuted + " refuted, " + unjudged + " unjudged"
                                 + " &middot; " + cut.size() + " prove(s) restarted")
-                .append("<nav class=tabs><a href='/'>&larr; all markers</a>")
-                .append("<a href='/trace'>the record</a></nav>");
+                .append(nav);
 
         if (!cut.isEmpty()) {
             StringBuilder tree = new StringBuilder();
@@ -335,7 +420,9 @@ public final class Dashboard {
         }
         if (all.isEmpty()) {
             b.append("<div class=empty>Nothing reported yet. The supervisor runs on its own "
-                    + "schedule and reports only patterns, so a quiet page is a good sign.</div>");
+                    + "schedule and reports only patterns, so a quiet page is a good sign. "
+                    + "Its record is on the tabs above whether or not it has concluded "
+                    + "anything.</div>");
         }
         return b.toString();
     }

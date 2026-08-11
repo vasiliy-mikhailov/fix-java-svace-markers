@@ -127,6 +127,10 @@ payloads are recorded at the executor, before the library's own truncation.
 `dashboard` serves the record. Server-sent events push when the counts move; a marker page appends
 the new events rather than reloading, so nothing you have open closes.
 
+`/overwatch` is the supervisor, with the same tabs: its findings, each agent's answers and
+reasoning, and its whole record. Nothing on those pages is trimmed or capped — a page that quietly
+shows part of a record reads as the record.
+
 Per marker: a tab for each agent showing its **final** answer with superseded attempts folded
 beneath, the test it wrote, a semaphore for whether RED reproduced and GREEN held, what the machine
 spent and what a person would have. Feedback is a text box on any answer.
