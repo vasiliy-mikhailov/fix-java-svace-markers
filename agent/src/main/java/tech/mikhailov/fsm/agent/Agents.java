@@ -261,6 +261,29 @@ final class Agents {
     }
 
     /**
+     * THE TEN THAT RUN INSIDE A PROVE, IN THE ORDER {@link Prove} CALLS THEM.
+     *
+     * <p>One list, used by the prompt editor, by the marker tabs and by the collector below, because
+     * three copies of an order drift and the drift is invisible: the tabs were missing
+     * {@code verdict-critic} entirely, so an agent that can send a settlement back for rework had no
+     * page of its own and nobody noticed.
+     */
+    static final java.util.List<String> CHAIN = java.util.List.of(
+            "reproducer", "proof-critic",
+            "fixer", "fix-critic",
+            "pr-maker", "pr-critic",
+            "verdict", "verdict-critic",
+            "estimator", "estimator-critic");
+
+    /** The four that watch a run rather than run in one: the run-level pair, then the lane-level. */
+    static final java.util.List<String> WATCH = java.util.List.of(
+            "overwatch", "overwatch-critic", "interpreter", "interpreter-critic");
+
+    /** Everything, in the order a reader meets it: the chain first, then what watches the chain. */
+    static final java.util.List<String> ORDER =
+            java.util.stream.Stream.concat(CHAIN.stream(), WATCH.stream()).toList();
+
+    /**
      * EVERY BUILT-IN PROMPT, BY AGENT, so the editor can show what it is replacing.
      *
      * <p>Filled as the runtimes are constructed, which means an agent that has never been built in
@@ -279,8 +302,10 @@ final class Agents {
     static java.util.Map<String, String> builtIn(Path root, JsonlTrace trace, Runner runner) {
         Agents all = new Agents(root, trace, runner);
         java.util.List<java.util.function.Supplier<Agent>> every = java.util.List.of(
-                all::reproducer, all::proofCritic, all::fixer, all::fixCritic,
-                all::prMaker, all::prCritic, all::verdict, all::verdictCritic,
+                all::reproducer, all::proofCritic,
+                all::fixer, all::fixCritic,
+                all::prMaker, all::prCritic,
+                all::verdict, all::verdictCritic,
                 all::estimator, all::estimatorCritic,
                 () -> all.overwatch(root, null), () -> all.overwatchCritic(root, null),
                 () -> all.interpreter(root), () -> all.interpreterCritic(root));
@@ -292,7 +317,19 @@ final class Agents {
                 // want one. A reader of the prompts page needs no inference endpoint to be up.
             }
         }
-        return java.util.Map.copyOf(BUILT_IN);
+        // IN PIPELINE ORDER, not the hash's. A page of prompts sorted alphabetically puts
+        // estimator-critic first and reproducer eleventh, which is the reverse of how anybody
+        // thinks about this.
+        java.util.Map<String, String> ordered = new java.util.LinkedHashMap<>();
+        for (String agent : ORDER) {
+            String prompt = BUILT_IN.get(agent);
+            if (prompt != null) {
+                ordered.put(agent, prompt);
+            }
+        }
+        BUILT_IN.keySet().stream().filter(a -> !ordered.containsKey(a)).sorted()
+                .forEach(a -> ordered.put(a, BUILT_IN.get(a)));
+        return java.util.Collections.unmodifiableMap(ordered);
     }
 
     /** One agent, already wired to the trace. Callers cannot reach a runtime that is not. */

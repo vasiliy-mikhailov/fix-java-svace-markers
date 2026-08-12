@@ -101,6 +101,8 @@ public final class Dashboard {
                             font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;
                             white-space:pre;overflow:auto}
             button.plain{background:none;border:1px solid #30363d;color:#8b949e}
+            h2.stage{font-size:.8rem;font-weight:400;color:#6e7681;margin:1.4rem 0 .3rem;
+                     text-transform:lowercase;letter-spacing:.02em}
             .ev.thought{border-left-color:#6e5494}
             .ev.thought .who{color:#a371f7}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
@@ -882,8 +884,14 @@ public final class Dashboard {
      * changes underneath itself.
      */
     private static String prompts(Map<String, String> builtIns) {
-        List<String> names = new ArrayList<>(builtIns.keySet());
-        names.sort(null);
+        // FROM THE ORDER ITSELF, NOT FROM THE MAP. BUILT_INS is a ConcurrentHashMap because it is
+        // written from a handler thread, and a hash map has no order to preserve — putAll'ing an
+        // ordered map into one throws the order away, which is exactly what it did. Anything the
+        // order does not name still appears, at the end, so a new agent is visible before it is
+        // listed rather than invisible until somebody remembers.
+        List<String> names = new ArrayList<>(Agents.ORDER);
+        builtIns.keySet().stream().filter(a -> !names.contains(a)).sorted().forEach(names::add);
+        names.removeIf(a -> !builtIns.containsKey(a));
         long edited = names.stream().filter(a -> !Prompts.saved(a).isBlank()).count();
         StringBuilder b = head("prompts", names.size() + " agent(s) &middot; "
                 + (edited == 0 ? "none edited &mdash; every one is the code's"
@@ -894,7 +902,14 @@ public final class Dashboard {
                         + "merge, because a prompt half from the code and half from a box is a "
                         + "prompt nobody can read in one place. It takes effect on the next marker "
                         + "a prover starts, not on the ones already running.</p>");
+        String stage = "";
         for (String agent : names) {
+            String belongs = Agents.CHAIN.contains(agent) ? "the chain, in the order Prove calls it"
+                    : "watching the run";
+            if (!belongs.equals(stage)) {
+                stage = belongs;
+                b.append("<h2 class=stage>").append(esc(stage)).append("</h2>");
+            }
             String saved = Prompts.saved(agent);
             String code = builtIns.getOrDefault(agent, "");
             boolean overridden = !saved.isBlank();
@@ -1216,8 +1231,14 @@ public final class Dashboard {
     // ----------------------------------------------------------------- marker
 
     /** The agents, in the order they run. A tab each, plus the record itself. */
-    private static final List<String> AGENTS = List.of("reproducer", "proof-critic", "fixer",
-            "fix-critic", "pr-maker", "pr-critic", "verdict", "estimator", "estimator-critic");
+    /**
+     * The chain, in call order, from the one list that defines it.
+     *
+     * <p>This was a second copy and it had drifted: {@code verdict-critic} was missing, so the agent
+     * that can send a settlement back for rework had no tab and its answers could be read only in
+     * the whole trace.
+     */
+    private static final List<String> AGENTS = Agents.CHAIN;
 
     /**
      * One marker, by tab.
