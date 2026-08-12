@@ -114,6 +114,24 @@ last word, whether a test was written, minutes since anything happened. Asking a
 the traces would be asking the thing under watch to summarise the evidence about itself. The watcher
 reads whichever traces it wants with its own tools; the digest only says where to look.
 
+**Two levers, for two different failures.** `restart_prove` is for a prove that is BROKEN — it died
+of something a fresh attempt would not hit. `pause_prove` is for one that is WORKING and simply
+taking much longer than the others: restarting that changes nothing, and leaving it costs a quarter
+of the pool while the queue waits. Pausing frees the slot and the pool proves the marker again once
+everything else is done.
+
+**"Much longer" is a comparison, not a number somebody picked.** Half an hour is only long because
+most markers finish in five, and a fixed cap either strangles ordinary work or lets a stuck prove run
+all day the moment the model or the subject changes. `Pace` takes the median of what has actually
+settled in this run. The floor matters more than the multiple: nothing is an outlier until there are
+eight settlements to have a median of, and nothing is an outlier under twenty minutes however quick
+the rest has been. Median rather than mean, because one four-hour prove would drag a mean far enough
+to make itself look ordinary — which is the case it exists to catch.
+
+What comes back later is a fresh attempt, not a continuation. A prove is a JVM mid-conversation with
+a model and nothing persists that, so what is saved is not the work but the SLOT, which is what was
+actually being wasted.
+
 **Only the critic may act, and a restart is a process restart.** An agent is a synchronous call —
 there is nothing behind it to kill. A prove is a JVM, so `restart_prove` kills it, keeps its trace
 aside, deletes its results and releases its claim; the pool takes the marker again in a clean

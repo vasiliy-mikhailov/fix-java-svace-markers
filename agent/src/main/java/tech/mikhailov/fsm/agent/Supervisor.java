@@ -111,6 +111,50 @@ final class Supervisor {
         return "queued again";
     }
 
+    /**
+     * SETS A MARKER ASIDE AND KILLS ITS PROVE, to be picked up once the queue is otherwise done.
+     *
+     * <p>The honest name for this is pause, and the honest caveat is that it is not a suspension: a
+     * prove is a JVM mid-conversation with a model, its state is in the runtime's memory and nothing
+     * persists it, so what comes back later is a fresh attempt rather than a continuation. What is
+     * saved is not the work — it is the SLOT, which is the thing that was actually being wasted
+     * while three hundred markers waited behind one.
+     */
+    String pause(String markerKey, String why) {
+        String id = slug(markerKey);
+        if (id.isBlank()) {
+            return "REFUSED: no marker named.";
+        }
+        if (Pace.paused(results, id)) {
+            return "already set aside; it will be proved when the queue is done.";
+        }
+        try {
+            Pace.pause(results, id, why, trace);
+        } catch (IOException notPaused) {
+            return "REFUSED: could not set it aside: " + notPaused.getMessage();
+        }
+        boolean killed = kill(id);
+        delete(results.resolve("claims").resolve(id));
+        return "SET ASIDE " + id + ". " + (killed ? "The prove was killed. " : "")
+                + "Its slot is free and the queue moves on; it is proved again once everything "
+                + "else is done. What comes back is a fresh attempt, not a continuation — nothing "
+                + "persists a conversation with a model.";
+    }
+
+    /** Puts a set-aside marker back in the queue now, rather than at the end. */
+    String resume(String markerKey, String why) {
+        String id = slug(markerKey);
+        if (!Pace.paused(results, id)) {
+            return "REFUSED: " + id + " is not set aside.";
+        }
+        try {
+            Pace.resume(results, id, trace);
+        } catch (IOException notResumed) {
+            return "REFUSED: " + notResumed.getMessage();
+        }
+        return "RESUMED " + id + " — the pool will take it on its next pass. " + why;
+    }
+
     /** Kills the JVM proving this marker, identified by the worktree the pool gave it. */
     private boolean kill(String id) {
         Shell.Output out = Shell.run(results, "pkill", "-f", "tree-" + id + " ");

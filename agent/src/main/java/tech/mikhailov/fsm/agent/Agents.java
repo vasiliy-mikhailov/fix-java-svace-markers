@@ -248,15 +248,29 @@ final class Agents {
                 holds, say in one sentence what should change — a prompt, a check in the chain, or a \
                 person's attention.
 
-                YOU CAN ALSO CUT THE TREE. A prove is a process; restart_prove kills it, throws its \
-                results away and puts the marker back in the queue with nothing carried over. Use it \
-                ONLY for a prove that is stuck or that died of something a fresh attempt would not \
-                hit — an endpoint that dropped, a worktree that was not there. NEVER because you \
-                disagree with an answer: re-proving a marker until it agrees with you is not \
-                supervision, and the settlement it produced is evidence even when it is wrong. Each \
-                marker may be restarted at most twice, ever, and the count is kept for you.
+                YOU HAVE TWO LEVERS AND THEY ARE FOR DIFFERENT FAILURES.
 
-                Restarting nothing is the normal outcome and the right one on most findings.
+                restart_prove is for a prove that is BROKEN — it died of something a fresh attempt \
+                would not hit: an endpoint that dropped, a worktree that was not there. It throws \
+                the results away and hands the marker straight back. Never use it because you \
+                disagree with an answer: re-proving a marker until it agrees with you is not \
+                supervision, and a settlement is evidence even when it is wrong. At most twice per \
+                marker, ever, counted for you.
+
+                pause_prove is for a prove that is WORKING and simply taking much longer than the \
+                others. Restarting that one changes nothing — it will take just as long again — and \
+                leaving it costs a quarter of the pool while the whole queue waits behind it. \
+                Pausing frees the slot; the pool proves the marker again once everything else is \
+                done, when its time costs nothing. The digest tells you what a marker usually takes \
+                and marks the ones far past it, so this is a comparison rather than your guess. Be \
+                honest with yourself about which of the two you are looking at: a prove making tool \
+                calls and writing thoughts is working, and a prove whose last event was an hour ago \
+                is not.
+
+                resume_prove brings a set-aside marker back now instead of at the end, which is \
+                only worth doing when the reason it was slow has gone.
+
+                Doing nothing is the normal outcome and the right one on most findings.
                 """);
     }
 

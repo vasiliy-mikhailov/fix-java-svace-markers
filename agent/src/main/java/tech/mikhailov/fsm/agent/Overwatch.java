@@ -138,6 +138,7 @@ final class Overwatch {
             for (Path d : all) {
                 markers++;
                 Marker row = read(d, now);
+                row = row.withPace(Pace.outlier(results, d));
                 states.merge(row.state, 1, Integer::sum);
                 if (markers <= NAMED) {
                     b.append(row.line()).append('\n');
@@ -146,8 +147,19 @@ final class Overwatch {
         } catch (IOException unreadable) {
             return "";
         }
+        // WHAT A MARKER USUALLY TAKES, so "long" is a comparison rather than a number somebody
+        // picked. A fixed cap strangles ordinary work the moment the model or the subject changes;
+        // the median of what has actually settled moves with them.
+        int typical = Pace.typical(results);
         StringBuilder head = new StringBuilder("THE RUN: ").append(markers)
-                .append(" marker(s) started. Settlements so far: ");
+                .append(" marker(s) started. ")
+                .append(typical > 0
+                        ? "A marker that settles takes about " + typical + " minutes. Anything "
+                                + "running far past that is holding a quarter of the pool while the "
+                                + "queue waits — pause_prove sets it aside and the pool proves it "
+                                + "once everything else is done. "
+                        : "Too few markers have settled to say what one usually takes. ")
+                .append("Settlements so far: ");
         states.forEach((state, n) -> head.append(state).append('=').append(n).append(' '));
         head.append("\n\nOne line per marker. Fields: id | state | builds(phase:outcome) | ")
                 .append("agent=answers/chars-of-last (empty marked !, tool calls marked t) | ")
@@ -160,7 +172,12 @@ final class Overwatch {
 
     /** One marker, counted. */
     private record Marker(String id, String state, String builds, String answers, boolean test,
-            long idleMinutes, boolean claimed, String died) {
+            long idleMinutes, boolean claimed, String died, String pace) {
+
+        /** The same row, with what this run's own record says about how long it is taking. */
+        Marker withPace(String note) {
+            return new Marker(id, state, builds, answers, test, idleMinutes, claimed, died, note);
+        }
 
         String line() {
             return id + " | " + state + " | " + (builds.isBlank() ? "no builds" : builds)
@@ -168,7 +185,8 @@ final class Overwatch {
                     + " | " + (test ? "test written" : "NO TEST")
                     + " | idle=" + idleMinutes + "m"
                     + (claimed && idleMinutes > QUIET.toMinutes() ? "  <-- QUIET, still claimed" : "")
-                    + (died.isBlank() ? "" : "  <-- DIED: " + died);
+                    + (died.isBlank() ? "" : "  <-- DIED: " + died)
+                    + (pace.isBlank() ? "" : "\n      <-- " + pace);
         }
     }
 
@@ -269,7 +287,7 @@ final class Overwatch {
         long idle = last == 0 ? 0 : (now - last) / 60_000;
         boolean claimed = Files.isDirectory(results.resolve("claims").resolve(id));
         return new Marker(id, died.isBlank() ? state : "FAILED", builds.toString().trim(),
-                said.toString().trim(), test, idle, claimed, died);
+                said.toString().trim(), test, idle, claimed, died, "");
     }
 
     /**

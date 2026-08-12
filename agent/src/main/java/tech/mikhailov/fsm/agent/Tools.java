@@ -150,6 +150,7 @@ final class Tools {
             Trace trace, String agent) {
         Map<ToolSpecification, ToolExecutor> tools = only(results, Set.of("list_dir", "read_file"));
         tools.putAll(restart(supervisor));
+        tools.putAll(setAside(supervisor));
         return recorded(tools, trace, agent);
     }
 
@@ -182,6 +183,52 @@ final class Tools {
         Map<ToolSpecification, ToolExecutor> one = new LinkedHashMap<>();
         one.put(spec, exec);
         return one;
+    }
+
+    /**
+     * SET A MARKER ASIDE, AND BRING IT BACK.
+     *
+     * <p>Distinct from {@code restart_prove}, which hands a marker straight back and is for a prove
+     * that died of something a fresh attempt would not hit. This one is for a prove that is WORKING
+     * and simply taking much longer than the others: killing and retrying it changes nothing, and
+     * leaving it running costs a quarter of the pool while the queue waits.
+     */
+    private static Map<ToolSpecification, ToolExecutor> setAside(Supervisor supervisor) {
+        Map<ToolSpecification, ToolExecutor> two = new LinkedHashMap<>();
+        two.put(ToolSpecification.builder()
+                .name("pause_prove")
+                .description("Set one marker aside and kill its prove, freeing its slot. The queue "
+                        + "moves on and this marker is proved again once everything else is done. "
+                        + "For a prove that is WORKING but taking much longer than the others — not "
+                        + "for one that is broken, which is what restart_prove is for. What comes "
+                        + "back later is a fresh attempt, not a continuation: nothing persists a "
+                        + "conversation with a model, so the work so far is lost and only the slot "
+                        + "is saved.")
+                .parameters(JsonObjectSchema.builder()
+                        .addStringProperty("marker", "the full marker key, as the record has it")
+                        .addStringProperty("why", "one sentence: what makes this one an outlier")
+                        .required("marker", "why")
+                        .build())
+                .build(),
+                (request, memoryId) -> supervisor.pause(
+                        Json.field(request.arguments(), "marker"),
+                        Json.field(request.arguments(), "why")));
+        two.put(ToolSpecification.builder()
+                .name("resume_prove")
+                .description("Put a set-aside marker back in the queue NOW rather than at the end. "
+                        + "The pool does this by itself once the queue is done, so use it only when "
+                        + "there is a reason not to wait — the thing that made it slow has been "
+                        + "fixed, or it was set aside by mistake.")
+                .parameters(JsonObjectSchema.builder()
+                        .addStringProperty("marker", "the full marker key")
+                        .addStringProperty("why", "one sentence: why now rather than at the end")
+                        .required("marker", "why")
+                        .build())
+                .build(),
+                (request, memoryId) -> supervisor.resume(
+                        Json.field(request.arguments(), "marker"),
+                        Json.field(request.arguments(), "why")));
+        return two;
     }
 
     /**
