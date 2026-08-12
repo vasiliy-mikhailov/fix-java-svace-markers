@@ -81,6 +81,79 @@ final class Agents {
     }
 
     /**
+     * READS ONE LANE AND SAYS WHAT HAPPENED IN IT, for somebody who does not know this pipeline.
+     *
+     * <p>The table used to show the verdict agent's first sentence, which is an argument addressed
+     * to the next agent and not an account addressed to a person: "false-positive — the claim does
+     * not hold in this code" tells a reader the word and nothing about how it was reached, whether
+     * anything was executed, or whether to believe it.
+     *
+     * <p>Its subject is one marker's whole journey — every build, every agent, every loop back —
+     * which no agent inside that journey ever sees, because each is handed its own stage.
+     */
+    Agent interpreter(Path results) {
+        return runtime("interpreter", Tools.reading(results, trace, "interpreter"), """
+                You explain what happened to ONE marker, to a working developer who has never seen \
+                this pipeline and is not going to read a trace.
+
+                You are given the whole lane: the claim, what each agent answered, what the builds \
+                did, and where it ended. Write TWO OR THREE SENTENCES. No headings, no bullets, no \
+                markdown, no preamble.
+
+                Say, in this order and only where it applies:
+                  - what the checker claimed, in ordinary words rather than its name
+                  - whether anything was actually EXECUTED, and what it showed — a test that failed \
+                    before a patch and passed after it is the strongest thing this pipeline can say, \
+                    and no test at all is the weakest
+                  - what was concluded and on what grounds
+                  - anything a reader would want to know before trusting it: a stage that never ran, \
+                    a loop back, a judge that answered in one word, a test that passed when it was \
+                    supposed to fail
+
+                WRITE WHAT THE RECORD SHOWS, NOT WHAT WOULD MAKE A TIDY STORY. If the marker settled \
+                on an argument with nothing executed behind it, that IS the summary — say so plainly \
+                rather than repeating the argument as though it were a finding. If the record does \
+                not say why something happened, do not supply a reason.
+
+                Never use the words in this pipeline's vocabulary as if the reader knows them. Not \
+                "the RED build", but "a test written to fail on the unfixed code". Not \
+                "by-design", but "the code is deliberately like this because a lesson depends on it".
+                """);
+    }
+
+    /**
+     * CHECKS THE ACCOUNT AGAINST THE RECORD, AND ITS ANSWER IS THE ONE SHOWN.
+     *
+     * <p>The producer's text never reaches the table. That is the point of the pair here: a summary
+     * is the one thing on the page a reader will take at face value, so the version that ships is
+     * the one that has been read against the record by something that was not trying to write it.
+     *
+     * <p>Its silence WITHHOLDS: no answer means the table falls back to the verdict's own words,
+     * which are at least demonstrably somebody's, rather than showing an account nothing checked.
+     */
+    Agent interpreterCritic(Path results) {
+        return runtime("interpreter-critic", Tools.reading(results, trace, "interpreter-critic"), """
+                A summary of one marker has been written for a developer who will not read the \
+                trace. You are given it and the record it was written from.
+
+                Check it against the record, line by line:
+                  - does it claim anything was executed that was not
+                  - does it report a conclusion more confidently than the record supports
+                  - does it leave out the thing a reader would most want to know — nothing ran, a \
+                    judge said one word, a test passed when it was meant to fail
+                  - does it use this pipeline's jargon at a reader who does not have it
+
+                Then WRITE THE FINAL SUMMARY YOURSELF. Not a critique, not a verdict, not a list of \
+                corrections: the two or three sentences that will be shown, corrected where the \
+                draft was wrong and kept where it was right. Yours is the text a person reads, and \
+                nothing else from this pair is shown anywhere.
+
+                Plain sentences. No headings, no bullets, no markdown, no preamble, and no mention \
+                of the draft, of yourself, or of this instruction.
+                """);
+    }
+
+    /**
      * WATCHES THE RUN, NOT A MARKER. The only agent here whose subject is the other agents.
      *
      * <p>Every other agent in this program sees one marker and cannot know that the answer it is

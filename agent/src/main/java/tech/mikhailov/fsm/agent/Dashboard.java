@@ -802,6 +802,17 @@ public final class Dashboard {
     /** How much of an answer in progress to show. The end of it, not the start. */
     private static final int LIVE_TAIL = 4_000;
 
+    /** The checked summary for one lane, or blank where nothing has interpreted it yet. */
+    private static String summary(Path settlements, String key) {
+        Path file = settlements.resolveSibling("m").resolve(Supervisor.slug(key))
+                .resolve("summary.txt");
+        try {
+            return Files.isReadable(file) ? Files.readString(file).strip() : "";
+        } catch (IOException | RuntimeException none) {
+            return "";
+        }
+    }
+
     private static String index(Path settlements, Path trace, List<String> queued) {
         Map<String, String> latest = new LinkedHashMap<>();
         for (String line : lines(settlements)) {
@@ -954,6 +965,10 @@ public final class Dashboard {
             // one. It used to be in a column of its own at the far right, which meant a reader
             // scanning `why` found a dash for every marker in flight and had to jump the width of
             // the table to find out that anything was happening at all.
+            // WHAT A PERSON WOULD SAY HAPPENED, where somebody has said it. The verdict's own
+            // first sentence is an argument addressed to the next agent; it stays underneath in the
+            // fold, because a summary is a READING of the record and the record is the record.
+            String summary = summary(settlements, key);
             String reason = why.isBlank() ? oneLine(saidLast.getOrDefault(key, "")) : why;
             b.append("<tr><td><span class='sev ").append(esc(sev.toLowerCase())).append("'>")
                     .append(sev.isEmpty() ? "&mdash;" : esc(sev)).append("</span></td>")
@@ -975,7 +990,8 @@ public final class Dashboard {
                             ? "<span class=k>&mdash;</span>"
                             : why.isBlank()
                                     ? "<span class=k>" + esc(cut(reason, 150)) + "</span>"
-                                    : "<details><summary>" + esc(firstSentence(why))
+                                    : "<details><summary>"
+                                            + esc(summary.isBlank() ? firstSentence(why) : summary)
                                             + "</summary>" + code(flagged(CHECKOUTS,
                                                     parts.length > 0 ? parts[0] : "", file, line))
                                             + "<pre>" + esc(why) + "</pre></details>")

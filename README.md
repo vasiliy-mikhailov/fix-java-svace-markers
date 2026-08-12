@@ -119,6 +119,33 @@ worktree. Two restarts per marker, ever, counted in a file rather than asked for
 record marked `unjudged`, so an unreachable critic cannot suppress a warning; a restart it never
 orders does not happen, so an unreachable critic cannot kill anything either.
 
+## The lane-level watch
+
+A second pair in the supervisor's process, one level below the one that watches the run.
+
+```
+interpreter → draft → interpreter-critic → the sentence the table shows
+```
+
+`why` used to hold the verdict agent's first sentence, which is an argument addressed to the next
+agent rather than an account addressed to a reader: *"false-positive — the claim does not hold in
+this code"* names the word and says nothing about whether anything was executed or how it was
+reached.
+
+A LANE is one marker's whole journey — every build, every agent, every loop back. No agent inside it
+ever sees that, because each is handed its own stage, and the settlement records only where it
+ended. The digest is assembled by counting and quoting, never by asking a model to summarise a
+trace: a build that produced no test result reads as *"did not run at all — nothing was learned"*,
+and an empty reply as *"nothing at all — it answered with silence"*, because rendering either as
+blank makes a stage that failed look like a stage that never ran.
+
+**The critic writes the text that ships.** The draft appears nowhere. A summary is the one thing on
+the page a reader takes at face value, so the version shown is the one read against the record by
+something that was not trying to write it. Its silence WITHHOLDS: with no answer the table falls
+back to the verdict's own words, which are at least demonstrably somebody's.
+
+Only settled lanes, eight per pass. A lane is not a story until it has an ending.
+
 ## The order of the queue
 
 `markers.txt` is sorted **severity, then path, then line, then checker** — Critical, Major, Normal,

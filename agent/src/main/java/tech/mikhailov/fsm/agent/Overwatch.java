@@ -70,11 +70,15 @@ final class Overwatch {
         // supervises. This refuses in the same words, from the same place, for the same reason.
         Runner nothingToBuild = (phase, test) -> new Runner.Result(true, false,
                 "the supervisor does not build; it reads what the provers built");
-        Overwatch overwatch = new Overwatch(results,
-                new Agents(results, trace, nothingToBuild), trace);
+        Agents agents = new Agents(results, trace, nothingToBuild);
+        Overwatch overwatch = new Overwatch(results, agents, trace);
+        // THE LANE-LEVEL WATCH, in the same process because it has the same subject — the record
+        // rather than the code — and because a prove should not wait on a paragraph about itself.
+        Interpreter interpreter = new Interpreter(results, agents, trace);
         while (true) {
             try {
                 overwatch.pass(supervisor);
+                interpreter.pass();
             } catch (RuntimeException failed) {
                 // A WATCHER THAT DIES IS WORSE THAN ONE THAT MISSES A PASS. The run it is watching
                 // takes hours; a model call that fails must cost this pass and not the loop.
