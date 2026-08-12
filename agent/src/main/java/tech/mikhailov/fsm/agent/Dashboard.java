@@ -63,6 +63,13 @@ public final class Dashboard {
             td.why pre{white-space:pre-wrap;font-size:12px;margin:6px 0 0}
             pre.flagged{background:#0d1117;border-left:2px solid #30363d;padding:8px 10px;
               white-space:pre;overflow-x:auto;color:#8b949e;font-size:11.5px;line-height:1.5}
+            .alarm{border:1px solid #f85149;background:#2b1214;border-radius:6px;
+                   padding:.7rem .9rem;margin:.6rem 0}
+            .alarm>a{color:#f85149;text-decoration:none}
+            .alarm ul{margin:.45rem 0 0;padding-left:1.1rem}
+            .alarm li{margin:.15rem 0}
+            .alarm li a{color:#d7dbe0;text-decoration:none;font-size:.85rem}
+            .alarm li a:hover{text-decoration:underline}
             .ev.thought{border-left-color:#6e5494}
             .ev.thought .who{color:#a371f7}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
@@ -463,6 +470,46 @@ public final class Dashboard {
         return by;
     }
 
+    /**
+     * WHAT THE SUPERVISOR FOUND, WHERE IT CANNOT BE MISSED.
+     *
+     * <p>Only what survived its critic: `holds` earns the banner and `refuted` does not appear.
+     * `unjudged` does — a finding the critic never reached is not one it dismissed, and the
+     * direction that costs least is to show it.
+     *
+     * <p>Newest first, and the count is the point. One finding is a curiosity; nineteen holding
+     * findings on a run that is still going is the reason to stop and read them.
+     */
+    private static String warnings(Path findings) {
+        List<String> live = new ArrayList<>();
+        for (String line : read(findings)) {
+            String verdict = field(line, "verdict");
+            if (verdict.equals("holds") || verdict.isBlank() || verdict.equals("unjudged")) {
+                live.add(line);
+            }
+        }
+        if (live.isEmpty()) {
+            return "";
+        }
+        StringBuilder b = new StringBuilder("<div class=alarm><a href='/overwatch'><b>")
+                .append(live.size()).append(live.size() == 1 ? " finding" : " findings")
+                .append(" from the supervisor</b> \u2014 what is wrong with the pipeline, not with "
+                        + "these markers</a><ul>");
+        for (int i = live.size() - 1; i >= Math.max(0, live.size() - 5); i--) {
+            String head = field(live.get(i), "finding").strip()
+                    .replaceAll("^[#*\\s]*(Finding:)?\\s*", "");
+            int stop = head.indexOf('\n');
+            b.append("<li><a href='/overwatch'>")
+                    .append(esc(stop < 0 ? head : head.substring(0, stop)))
+                    .append("</a></li>");
+        }
+        if (live.size() > 5) {
+            b.append("<li><a href='/overwatch'>and ").append(live.size() - 5)
+                    .append(" more &rarr;</a></li>");
+        }
+        return b.append("</ul></div>").toString();
+    }
+
     private static String index(Path settlements, Path trace, List<String> queued) {
         Map<String, String> latest = new LinkedHashMap<>();
         for (String line : lines(settlements)) {
@@ -555,6 +602,13 @@ public final class Dashboard {
             return b.append("<div class=empty>No markers queued and no prove has run.</div>")
                     .toString();
         }
+        // THE SUPERVISOR FOUND ALL OF THIS TEN HOURS BEFORE ANYONE READ IT. Its findings sat in
+        // overwatch.jsonl and on a page that had to be navigated to, so the runaway reproducer, the
+        // passing REDs and the whole DM_DEFAULT_ENCODING family were each reported, judged, marked
+        // `holds` — and then rediscovered from scratch by a person who never opened the page. A
+        // warning nobody is shown is a warning nobody has. It goes at the top of the page everybody
+        // already has open.
+        b.append(warnings(settlements.resolveSibling("overwatch.jsonl")));
         b.append(progress(total, settled, elapsed));
 
 
