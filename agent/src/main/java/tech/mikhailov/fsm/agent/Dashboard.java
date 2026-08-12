@@ -122,6 +122,24 @@ public final class Dashboard {
             label.field .k{display:block;margin-top:.2rem;font-size:.74rem;max-width:52em}
             input.wide{background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:5px;
                        padding:.35rem .5rem;width:min(34rem,100%);font:inherit}
+            nav.chain{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin:.7rem 0 .3rem}
+            nav.chain .stage{display:inline-flex;align-items:center;gap:.3rem;position:relative;
+                             border:1px solid #21262d;border-radius:7px;padding:.55rem .5rem .35rem}
+            nav.chain .stage.off{opacity:.42}
+            nav.chain .lbl{position:absolute;top:-.52rem;left:.5rem;font-size:.6rem;
+                           letter-spacing:.08em;text-transform:uppercase;color:#6e7681;
+                           background:#0d1117;padding:0 .25rem}
+            nav.chain .chip{background:#161b22;border:1px solid #30363d;border-radius:5px;
+                            padding:.2rem .45rem;font-size:.78rem;color:#c9d1d9;white-space:nowrap}
+            nav.chain .chip:hover{border-color:#58a6ff}
+            nav.chain .chip.on{border-color:#58a6ff;background:#0d2d5e;color:#fff}
+            nav.chain .chip.off{color:#6e7681;border-style:dashed;background:none}
+            nav.chain .chip b{margin-left:.35rem;font-weight:600}
+            nav.chain .arrow{color:#484f58;font-size:.75rem}
+            nav.chain .loop{color:#d29922;font-size:.95rem;line-height:1}
+            nav.chain .pill{background:#161b22;border:1px solid #30363d;border-radius:999px;
+                            padding:.25rem .6rem;font-size:.76rem;color:#8b949e}
+            nav.chain .pill.on{background:#1f6feb;border-color:#1f6feb;color:#fff}
             .ev.thought{border-left-color:#6e5494}
             .ev.thought .who{color:#a371f7}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
@@ -1153,7 +1171,7 @@ public final class Dashboard {
                         : used.size() + " agent(s) ran"
                                 + (stale.isEmpty() ? " &middot; all still current"
                                         : " &middot; " + stale.size() + " prompt(s) changed since"))
-                .append(tabs(key, "prompts"));
+                .append(tabs(key, "prompts", mine));
 
         if (!stale.isEmpty()) {
             b.append("<div class=alarm><b>")
@@ -1437,29 +1455,31 @@ public final class Dashboard {
      */
     private static String marker(Path trace, Path settlements, String key, String agent,
                                  boolean expand, int from, boolean fragment) {
+        // AN AGENT TAB SHOWS ONE ANSWER, NOT A STREAM, so a live update re-renders it rather than
+        // appending — and there is nothing below the final answer to lose.
+        if (fragment && !agent.equals("trace")) {
+            return "";
+        }
+                List<String> mine = new ArrayList<>();
+        for (String line : lines(trace)) {
+            if (field(line, "marker").equals(key)) {
+                mine.add(line);
+            }
+        }
+        // EVERY VIEW WANTS THE STRIP, and the strip wants the events, so the dispatch waits until
+        // they are read. It used to happen first, which is why two of these had no counts to show.
         if (agent.equals("live")) {
             // THE CONTAINER CARRIES ITS OWN URL, so the same poller serves this page and the front
             // one without either knowing about the other.
             return head(key.substring(key.lastIndexOf('/') + 1), "what this prove is saying now")
-                    .append(tabs(key, "live"))
+                    .append(tabs(key, "live", mine))
                     .append("<div id=live class=live data-live='/live?k=").append(enc(key))
                     .append("'>")
                     .append(live(trace.getParent() == null ? Path.of(".") : trace.getParent(), key))
                     .append("</div>").toString();
         }
         if (agent.equals("trace")) {
-            return events(trace, settlements, key, expand, tabs(key, agent), from, fragment);
-        }
-        // An agent tab shows one answer, not a stream, so a live update re-renders it rather than
-        // appending — and there is nothing below the final answer to lose.
-        if (fragment) {
-            return "";
-        }
-        List<String> mine = new ArrayList<>();
-        for (String line : lines(trace)) {
-            if (field(line, "marker").equals(key)) {
-                mine.add(line);
-            }
+            return events(trace, settlements, key, expand, tabs(key, agent, mine), from, fragment);
         }
         if (agent.equals("prompts")) {
             return promptsFor(key, mine);
@@ -1473,7 +1493,7 @@ public final class Dashboard {
         StringBuilder b = head(key.substring(key.lastIndexOf('/') + 1),
                 esc(key) + (state.isEmpty() ? "" : " · <span class='s " + css(state) + "'>"
                         + esc(state) + "</span>"));
-        b.append(tabs(key, agent));
+        b.append(tabs(key, agent, mine));
 
         if (agent.isEmpty()) {
             // WHAT HAPPENED, IN ENGLISH, ABOVE THE ARTEFACTS. Everything else on this tab is
@@ -1693,21 +1713,72 @@ public final class Dashboard {
         return out;
     }
 
+    /** The five stages, in call order: the label a reader sees, then the pair that runs. */
+    private static final List<String[]> STAGES = List.of(
+            new String[] {"reproduce", "reproducer", "proof-critic"},
+            new String[] {"fix", "fixer", "fix-critic"},
+            new String[] {"propose", "pr-maker", "pr-critic"},
+            new String[] {"argue", "verdict", "verdict-critic"},
+            new String[] {"price", "estimator", "estimator-critic"});
+
+    /**
+     * THE CHAIN, WITH WHAT ACTUALLY HAPPENED IN IT.
+     *
+     * <p>This was ten agent names in a row, which told a reader the pipeline's vocabulary and
+     * nothing about the marker in front of them: which stages ran, which never did, and where a
+     * critic sent work back. All three are countable from the trace and none of them was shown.
+     *
+     * <p>A stage greyed out did not run, and that is usually the most informative thing on the
+     * page — a marker settled at `argue` never reached a fixer, and one that stops after `reproduce`
+     * never got a red. A number is how many times that agent answered. A {@code ↺} between a
+     * producer and its critic means the critic sent it back and the producer went again, which is
+     * the loop this chain allows exactly once per stage.
+     */
     private static String tabs(String key, String current) {
-        StringBuilder b = new StringBuilder("<nav class=tabs>")
-                .append(tab(key, "", "summary", current))
-                // SECOND, AND ONLY WHILE IT MEANS ANYTHING. Every other tab is a record of what was
-                // said; this one is what is being said, so it belongs beside the summary rather
-                // than after ten agents.
-                .append(tab(key, "live", "live", current))
-                .append(tab(key, "prompts", "prompts", current));
-        for (String a : AGENTS) {
-            b.append(tab(key, a, a, current));
+        return tabs(key, current, List.of());
+    }
+
+    private static String tabs(String key, String current, List<String> events) {
+        Map<String, Integer> ran = new LinkedHashMap<>();
+        for (String e : events) {
+            if (field(e, "kind").equals("asked")) {
+                ran.merge(field(e, "agent"), 1, Integer::sum);
+            }
         }
-        return b.append(tab(key, "trace", "the record", current))
-                .append("<a href='/overwatch'>the supervisor</a>")
-                .append("<a href='/settings'>settings</a>")
-                .append("<a href='/'>← all markers</a></nav>").toString();
+        StringBuilder b = new StringBuilder("<nav class=chain>")
+                .append("<a class='pill").append(current.isEmpty() ? " on" : "")
+                .append("' href='/marker?k=").append(enc(key)).append("'>summary</a>");
+        for (String[] stage : STAGES) {
+            int producer = ran.getOrDefault(stage[1], 0);
+            int critic = ran.getOrDefault(stage[2], 0);
+            b.append("<span class='stage").append(producer + critic == 0 ? " off" : "")
+                    .append("'><span class=lbl>").append(stage[0]).append("</span>")
+                    .append(chip(key, stage[1], producer, current))
+                    // THE LOOP IS THE PRODUCER HAVING ANSWERED TWICE. Nothing else in this chain
+                    // makes that happen: a producer runs once, and runs again only because its
+                    // critic objected and Prove asked it to.
+                    .append(producer > 1 ? "<span class=loop title='the critic sent it back'>&#8634;"
+                            + "</span>" : "<span class=arrow>&rarr;</span>")
+                    .append(chip(key, stage[2], critic, current))
+                    .append("</span>");
+        }
+        return b.append("<a class='pill").append(current.equals("live") ? " on" : "")
+                .append("' href='/marker?k=").append(enc(key)).append("&a=live'>live</a>")
+                .append("<a class='pill").append(current.equals("prompts") ? " on" : "")
+                .append("' href='/marker?k=").append(enc(key)).append("&a=prompts'>prompts</a>")
+                .append("<a class='pill").append(current.equals("trace") ? " on" : "")
+                .append("' href='/marker?k=").append(enc(key)).append("&a=trace'>the record</a>")
+                .append("<a class=pill href='/overwatch'>the supervisor</a>")
+                .append("<a class=pill href='/settings'>settings</a>")
+                .append("<a class=pill href='/'>&larr; all markers</a></nav>").toString();
+    }
+
+    /** One agent: its name, how many times it answered, and a link to what it said. */
+    private static String chip(String key, String agent, int runs, String current) {
+        boolean never = runs == 0;
+        return "<a class='chip" + (never ? " off" : "") + (agent.equals(current) ? " on" : "")
+                + "' href='/marker?k=" + enc(key) + "&a=" + agent + "'>" + esc(agent)
+                + (never ? "" : "<b>" + runs + "</b>") + "</a>";
     }
 
     private static String tab(String key, String a, String label, String current) {
