@@ -307,6 +307,17 @@ public final class Dashboard {
                         settlements.resolveSibling("overwatch-trace.jsonl"),
                         settlements.resolveSibling("overwatch-settlements.jsonl"),
                         query(e, "a"), open(e), (int) num(query(e, "from")), fragment(e))));
+        // WHAT IS BEING SAID RIGHT NOW. Polled rather than pushed: the event stream fires when the
+        // counts move, and an agent reasoning for four minutes moves no counts — which is precisely
+        // the stretch worth watching. No key is the supervisor; a key is that one prove.
+        //
+        // REGISTERED THE WAY THE OTHERS ARE. It was written as server.createContext, which every
+        // other route here stopped using when they gained an error page, so it registered nothing
+        // and every request for it fell through to `/` — the poller then wrote a copy of the entire
+        // index page inside the index page, header, banner and all.
+        route(server, "/live", e -> send(e, "text/html; charset=utf-8",
+                live(settlements.getParent() == null ? Path.of(".") : settlements.getParent(),
+                        query(e, "k"))));
         route(server, "/", e -> send(e, "text/html; charset=utf-8",
                 index(settlements, trace, lines(settlements.resolveSibling("markers.txt")))));
 
