@@ -86,6 +86,19 @@ class CuttingTheTreeTest {
     }
 
     @Test
+    @DisplayName("a restart lifts a postponement, because there is nothing else that could")
+    void liftsThePostponement(@TempDir Path dir) throws Exception {
+        Path results = proving(dir);
+        Pace.postpone(results, Supervisor.slug(MARKER), "much slower than the rest", quiet());
+        assertTrue(Pace.postponed(results, Supervisor.slug(MARKER)));
+        new Supervisor(results, quiet()).restart(MARKER, "the endpoint dropped");
+        assertFalse(Pace.postponed(results, Supervisor.slug(MARKER)),
+                "a separate resume would be a second name for proving again from scratch, with a "
+                        + "promise of continuation it cannot keep — so restart is the one name, "
+                        + "and it has to actually put the marker back in the queue");
+    }
+
+    @Test
     @DisplayName("the third restart is refused, and says what to do instead")
     void limit(@TempDir Path dir) throws Exception {
         Path results = dir;

@@ -267,8 +267,9 @@ final class Agents {
                 calls and writing thoughts is working, and a prove whose last event was an hour ago \
                 is not.
 
-                resume_prove brings a postponed marker back now instead of at the end, which is \
-                only worth doing when the reason it was slow has gone.
+                There is no resume. A postponed marker comes back by itself when the queue is done, \
+                and if you want it sooner that is restart_prove — proving it again from scratch is \
+                the only thing either of them can do, so there is one name for it.
 
                 Doing nothing is the normal outcome and the right one on most findings.
                 """);

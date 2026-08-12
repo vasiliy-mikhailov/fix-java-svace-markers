@@ -171,7 +171,9 @@ final class Tools {
                         + "A marker may be restarted at most " + Supervisor.LIMIT + " time(s), ever. "
                         + "Use it for a prove that is STUCK or that failed for a reason a fresh "
                         + "attempt would not hit — not for one whose answer you disagree with, which "
-                        + "is a finding to report and not a process to cycle.")
+                        + "is a finding to report and not a process to cycle. It also lifts a "
+                        + "postponement, so it is how you prove a postponed marker now rather than "
+                        + "waiting for the end of the queue.")
                 .parameters(JsonObjectSchema.builder()
                         .addStringProperty("marker", "the full marker key, exactly as the record has it")
                         .addStringProperty("why", "one sentence: what is wrong that a restart fixes")
@@ -203,7 +205,8 @@ final class Tools {
                         + "for one that is broken, which is what restart_prove is for. What comes "
                         + "back later is a fresh attempt, not a continuation: nothing persists a "
                         + "conversation with a model, so the work so far is lost and only the slot "
-                        + "is saved.")
+                        + "is saved. To prove it NOW instead of at the end, use restart_prove — "
+                        + "there is no separate resume, because there is nothing to resume.")
                 .parameters(JsonObjectSchema.builder()
                         .addStringProperty("marker", "the full marker key, as the record has it")
                         .addStringProperty("why", "one sentence: what makes this one an outlier")
@@ -211,21 +214,6 @@ final class Tools {
                         .build())
                 .build(),
                 (request, memoryId) -> supervisor.postpone(
-                        Json.field(request.arguments(), "marker"),
-                        Json.field(request.arguments(), "why")));
-        two.put(ToolSpecification.builder()
-                .name("resume_prove")
-                .description("Put a postponed marker back in the queue NOW rather than at the end. "
-                        + "The pool does this by itself once the queue is done, so use it only when "
-                        + "there is a reason not to wait — the thing that made it slow has been "
-                        + "fixed, or it was set aside by mistake.")
-                .parameters(JsonObjectSchema.builder()
-                        .addStringProperty("marker", "the full marker key")
-                        .addStringProperty("why", "one sentence: why now rather than at the end")
-                        .required("marker", "why")
-                        .build())
-                .build(),
-                (request, memoryId) -> supervisor.resume(
                         Json.field(request.arguments(), "marker"),
                         Json.field(request.arguments(), "why")));
         return two;

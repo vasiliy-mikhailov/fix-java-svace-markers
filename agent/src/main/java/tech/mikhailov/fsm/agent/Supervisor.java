@@ -71,6 +71,14 @@ final class Supervisor {
         }
 
         boolean killed = kill(id);
+        // AND IT LIFTS A POSTPONEMENT, because "prove it again from scratch" is exactly what a
+        // postponed marker needs when somebody wants it now rather than at the end of the queue.
+        // A separate resume would be a second name for this with a promise it cannot keep.
+        try {
+            Pace.resume(results, id, trace);
+        } catch (IOException stillPostponed) {
+            trace.progress(id, "could not lift the postponement: " + stillPostponed.getMessage());
+        }
         // THE RECORD OF THE ATTEMPT OUTLIVES THE ATTEMPT. Deleting the trace as well as the tree
         // would erase the evidence the restart was ordered on, and the next reader would find a
         // marker that had simply been proved twice with no account of why.
@@ -139,20 +147,6 @@ final class Supervisor {
                 + "Its slot is free and the queue moves on; it is proved again once everything "
                 + "else is done. What comes back is a fresh attempt, not a continuation — nothing "
                 + "persists a conversation with a model.";
-    }
-
-    /** Puts a set-aside marker back in the queue now, rather than at the end. */
-    String resume(String markerKey, String why) {
-        String id = slug(markerKey);
-        if (!Pace.postponed(results, id)) {
-            return "REFUSED: " + id + " is not set aside.";
-        }
-        try {
-            Pace.resume(results, id, trace);
-        } catch (IOException notResumed) {
-            return "REFUSED: " + notResumed.getMessage();
-        }
-        return "RESUMED " + id + " — the pool will take it on its next pass. " + why;
     }
 
     /** Kills the JVM proving this marker, identified by the worktree the pool gave it. */

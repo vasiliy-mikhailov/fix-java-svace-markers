@@ -163,8 +163,16 @@ case "${1:-dashboard}" in
                 settled "$marker" && continue
                 mkdir "$RESULTS/claims/$id" 2>/dev/null || continue
                 out="$RESULTS/m/$id"
+                # THE FIRST ATTEMPT IS PUT ASIDE, NOT WRITTEN OVER. Prove appends, so without this
+                # the second attempt lands on top of the first in one trace.jsonl and the record
+                # reads as a single prove that changed its mind — two reproducers, two verdicts,
+                # no line between them. What comes back is a fresh attempt and the record says so.
+                if [ -d "$out" ]; then
+                    mkdir -p "$RESULTS/dead"
+                    mv "$out" "$RESULTS/dead/$id.before-postponing" 2>/dev/null || rm -rf "$out"
+                fi
                 mkdir -p "$out"
-                echo "=== resumed $marker" | tee -a "$out/slice.log"
+                echo "=== proving again after the queue: $marker" | tee -a "$out/slice.log"
                 tree="$CHECKOUTS/tree-$id"
                 rm -rf "$tree"
                 git -C "$reference" worktree add --detach -f "$tree" HEAD >> "$out/slice.log" 2>&1 \

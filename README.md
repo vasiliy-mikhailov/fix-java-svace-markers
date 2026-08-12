@@ -118,7 +118,12 @@ reads whichever traces it wants with its own tools; the digest only says where t
 of something a fresh attempt would not hit. `postpone_prove` is for one that is WORKING and simply
 taking much longer than the others: restarting that changes nothing, and leaving it costs a quarter
 of the pool while the queue waits. Postponing frees the slot and the pool proves the marker again once
-everything else is done.
+everything else is done — from scratch, with the first attempt kept aside in `dead/` rather than
+written over.
+
+**There is no resume**, because there is nothing to resume: a prove is a JVM mid-conversation with a
+model and nothing persists that. Proving a postponed marker sooner is `restart_prove`, which is the
+same act under its only honest name and which lifts the postponement as part of doing it.
 
 **"Much longer" is a comparison, not a number somebody picked.** Half an hour is only long because
 most markers finish in five, and a fixed cap either strangles ordinary work or lets a stuck prove run
