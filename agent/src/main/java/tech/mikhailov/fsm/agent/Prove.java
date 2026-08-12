@@ -54,7 +54,7 @@ public final class Prove {
      * generation that streams steadily and never stops is still a prove that never finishes, but the
      * endpoint is not at fault and the record should not say it was.
      */
-    private static final Duration CEILING = Duration.ofMinutes(30);
+    private static final Duration CEILING = Duration.ofHours(4);
 
     /** One re-ask per producer, quoting whoever objected. Two loops, one budget, stated once. */
     private static final int REASK = 1;
@@ -167,6 +167,7 @@ public final class Prove {
         brief = "Marker: " + marker
                 + "\nThe checkout is your workspace; read further only if you need to.\n\n"
                 + Checkers.note(checkout, marker, checkerOf(marker), fileOf(marker), lineOf(marker))
+                + aTestThisBuildCannotRun(marker)
                 + "The flagged file, " + fileOf(marker) + ":\n" + source(checkout, marker)
                 + siblingTests(checkout, marker);
 
@@ -682,6 +683,43 @@ public final class Prove {
                 + "already correct. Cite only what was here before this run started — the lesson "
                 + "text, an assignment, a comment, a committed test, a caller. If your argument "
                 + "needs one of the files above, you do not have an argument.";
+    }
+
+    /**
+     * WHEN THE FLAGGED LINE IS INSIDE A TEST THIS BUILD CANNOT RUN.
+     *
+     * <p>Fifty-six of eighty-six runaway generations were the reproducer, and the captured reasoning
+     * says what it was doing: going round on a marker inside an integration test — "this is an
+     * integration test class, not a regular source class", "the method is private, so I can't
+     * directly test it", "let me think about this differently" — for half an hour, because the task
+     * it was given has no answer and the answer it was allowed to give was one line in a prompt.
+     *
+     * <p>Two facts the program knows and the agent was left to work out. The tree under
+     * {@code src/it} is bound to failsafe and excluded from the surefire run this pipeline uses, so
+     * those classes never execute here at all; and they need a WebGoat on localhost:8080, so when
+     * one IS run its failure is a connection error rather than a defect — which is also how markers
+     * in that tree have been collecting a free RED and settling `reproduced` on nothing.
+     */
+    private static String aTestThisBuildCannotRun(String marker) {
+        String file = fileOf(marker);
+        if (!file.startsWith("src/it/") && !file.startsWith("src/test/")) {
+            return "";
+        }
+        boolean failsafe = file.startsWith("src/it/");
+        return "\n\nTHE FLAGGED LINE IS IN THE " + (failsafe ? "INTEGRATION" : "UNIT")
+                + " TEST TREE, NOT IN APPLICATION CODE"
+                + (failsafe
+                        ? ". This project binds src/it to failsafe and excludes it from the surefire "
+                                + "run this pipeline uses, and those classes need a WebGoat serving "
+                                + "on localhost:8080. Nothing here can execute that class, so a "
+                                + "failure you see from it is a connection error and not your "
+                                + "defect. Do not write a test that calls into it."
+                        : ".")
+                + " A defect in test code has no caller in the application and usually no observable "
+                + "behaviour to assert on: the honest answer is very often `no test`, and it is the "
+                + "expected one here. Give it in one line and stop. Reasoning at length towards a "
+                + "test that cannot exist has cost this pipeline more than every marker in this "
+                + "tree is worth.\n";
     }
 
     /** The checker family, which is what {@link Checkers} has a note for. */
