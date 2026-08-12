@@ -120,18 +120,18 @@ final class Supervisor {
      * saved is not the work — it is the SLOT, which is the thing that was actually being wasted
      * while three hundred markers waited behind one.
      */
-    String pause(String markerKey, String why) {
+    String postpone(String markerKey, String why) {
         String id = slug(markerKey);
         if (id.isBlank()) {
             return "REFUSED: no marker named.";
         }
-        if (Pace.paused(results, id)) {
-            return "already set aside; it will be proved when the queue is done.";
+        if (Pace.postponed(results, id)) {
+            return "already postponed; it will be proved when the queue is done.";
         }
         try {
-            Pace.pause(results, id, why, trace);
-        } catch (IOException notPaused) {
-            return "REFUSED: could not set it aside: " + notPaused.getMessage();
+            Pace.postpone(results, id, why, trace);
+        } catch (IOException notPostponed) {
+            return "REFUSED: could not set it aside: " + notPostponed.getMessage();
         }
         boolean killed = kill(id);
         delete(results.resolve("claims").resolve(id));
@@ -144,7 +144,7 @@ final class Supervisor {
     /** Puts a set-aside marker back in the queue now, rather than at the end. */
     String resume(String markerKey, String why) {
         String id = slug(markerKey);
-        if (!Pace.paused(results, id)) {
+        if (!Pace.postponed(results, id)) {
             return "REFUSED: " + id + " is not set aside.";
         }
         try {

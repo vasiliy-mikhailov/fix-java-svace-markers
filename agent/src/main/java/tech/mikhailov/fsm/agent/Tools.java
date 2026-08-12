@@ -196,8 +196,8 @@ final class Tools {
     private static Map<ToolSpecification, ToolExecutor> setAside(Supervisor supervisor) {
         Map<ToolSpecification, ToolExecutor> two = new LinkedHashMap<>();
         two.put(ToolSpecification.builder()
-                .name("pause_prove")
-                .description("Set one marker aside and kill its prove, freeing its slot. The queue "
+                .name("postpone_prove")
+                .description("Postpone one marker: kill its prove and free its slot. The queue "
                         + "moves on and this marker is proved again once everything else is done. "
                         + "For a prove that is WORKING but taking much longer than the others — not "
                         + "for one that is broken, which is what restart_prove is for. What comes "
@@ -210,12 +210,12 @@ final class Tools {
                         .required("marker", "why")
                         .build())
                 .build(),
-                (request, memoryId) -> supervisor.pause(
+                (request, memoryId) -> supervisor.postpone(
                         Json.field(request.arguments(), "marker"),
                         Json.field(request.arguments(), "why")));
         two.put(ToolSpecification.builder()
                 .name("resume_prove")
-                .description("Put a set-aside marker back in the queue NOW rather than at the end. "
+                .description("Put a postponed marker back in the queue NOW rather than at the end. "
                         + "The pool does this by itself once the queue is done, so use it only when "
                         + "there is a reason not to wait — the thing that made it slow has been "
                         + "fixed, or it was set aside by mistake.")

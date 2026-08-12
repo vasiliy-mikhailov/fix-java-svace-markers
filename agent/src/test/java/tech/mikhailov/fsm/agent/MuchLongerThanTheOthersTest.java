@@ -108,14 +108,14 @@ class MuchLongerThanTheOthersTest {
     @Test
     @DisplayName("set aside, then brought back")
     void pauseResume(@TempDir Path dir) throws Exception {
-        assertFalse(Pace.paused(dir, "x"));
-        Pace.pause(dir, "x", "taking six times the median", quiet());
-        assertTrue(Pace.paused(dir, "x"));
-        assertEquals(java.util.List.of("x"), Pace.allPaused(dir),
+        assertFalse(Pace.postponed(dir, "x"));
+        Pace.postpone(dir, "x", "taking six times the median", quiet());
+        assertTrue(Pace.postponed(dir, "x"));
+        assertEquals(java.util.List.of("x"), Pace.allPostponed(dir),
                 "the pool reads this list when the queue is done");
         Pace.resume(dir, "x", quiet());
-        assertFalse(Pace.paused(dir, "x"));
-        assertTrue(Pace.allPaused(dir).isEmpty());
+        assertFalse(Pace.postponed(dir, "x"));
+        assertTrue(Pace.allPostponed(dir).isEmpty());
     }
 
     @Test

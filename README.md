@@ -115,9 +115,9 @@ the traces would be asking the thing under watch to summarise the evidence about
 reads whichever traces it wants with its own tools; the digest only says where to look.
 
 **Two levers, for two different failures.** `restart_prove` is for a prove that is BROKEN — it died
-of something a fresh attempt would not hit. `pause_prove` is for one that is WORKING and simply
+of something a fresh attempt would not hit. `postpone_prove` is for one that is WORKING and simply
 taking much longer than the others: restarting that changes nothing, and leaving it costs a quarter
-of the pool while the queue waits. Pausing frees the slot and the pool proves the marker again once
+of the pool while the queue waits. Postponing frees the slot and the pool proves the marker again once
 everything else is done.
 
 **"Much longer" is a comparison, not a number somebody picked.** Half an hour is only long because

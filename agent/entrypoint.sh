@@ -118,10 +118,10 @@ case "${1:-dashboard}" in
             done
 
             settled "$marker" && continue
-            # SET ASIDE, NOT SKIPPED. A marker taking much longer than the others is paused so it
+            # SET ASIDE, NOT SKIPPED. A marker taking much longer than the others is postponed so it
             # stops holding a quarter of the pool while three hundred wait; the pass below picks it
             # up again once the queue is otherwise done, when its slot costs nothing.
-            [ "$(java -cp "$CP" tech.mikhailov.fsm.agent.Pace --paused "$RESULTS" "$id")" = yes ] \
+            [ "$(java -cp "$CP" tech.mikhailov.fsm.agent.Pace --postponed "$RESULTS" "$id")" = yes ] \
                 && continue
             mkdir "$RESULTS/claims/$id" 2>/dev/null || continue
 
@@ -150,15 +150,15 @@ case "${1:-dashboard}" in
         wait
 
         # AND NOW THE ONES THAT WERE SET ASIDE, with the pool to themselves. Each gets released and
-        # proved in turn; a marker paused again during this pass stays paused, because the second
+        # proved in turn; a marker postponed again during this pass stays postponed, because the second
         # time it is not competing with anything and taking long is all it is doing.
-        held=$(java -cp "$CP" tech.mikhailov.fsm.agent.Pace --list-paused "$RESULTS" | wc -l)
+        held=$(java -cp "$CP" tech.mikhailov.fsm.agent.Pace --list-postponed "$RESULTS" | wc -l)
         if [ "$held" -gt 0 ]; then
             echo "=== the queue is done; $held marker(s) were set aside for taking much longer"
-            for id in $(java -cp "$CP" tech.mikhailov.fsm.agent.Pace --list-paused "$RESULTS"); do
+            for id in $(java -cp "$CP" tech.mikhailov.fsm.agent.Pace --list-postponed "$RESULTS"); do
                 marker=$(grep -F "$(echo "$id" | sed 's/_[0-9]*_[A-Z].*//')" "$2" | head -1)
                 [ -z "$marker" ] && continue
-                rm -f "$RESULTS/paused/$id"
+                rm -f "$RESULTS/postponed/$id"
                 rm -rf "$RESULTS/claims/$id"
                 settled "$marker" && continue
                 mkdir "$RESULTS/claims/$id" 2>/dev/null || continue

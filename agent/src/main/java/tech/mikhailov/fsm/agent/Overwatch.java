@@ -156,7 +156,7 @@ final class Overwatch {
                 .append(typical > 0
                         ? "A marker that settles takes about " + typical + " minutes. Anything "
                                 + "running far past that is holding a quarter of the pool while the "
-                                + "queue waits — pause_prove sets it aside and the pool proves it "
+                                + "queue waits — postpone_prove sets it aside and the pool proves it "
                                 + "once everything else is done. "
                         : "Too few markers have settled to say what one usually takes. ")
                 .append("Settlements so far: ");

@@ -123,19 +123,19 @@ final class Pace {
         }
         return "TAKING MUCH LONGER THAN THE OTHERS: " + going + " minutes, against a median of "
                 + typical + " for the markers that have settled. It is not necessarily stuck — but "
-                + "it is holding a quarter of the pool while the queue waits, and it can be paused "
+                + "it is holding a quarter of the pool while the queue waits, and it can be postponed "
                 + "and picked up once the rest is done.";
     }
 
-    /** Markers set aside, to be run once the queue is otherwise finished. */
-    static boolean paused(Path results, String id) {
+    /** Markers postponed: set aside, and run once the queue is otherwise finished. */
+    static boolean postponed(Path results, String id) {
         return Files.exists(file(results, id));
     }
 
-    static void pause(Path results, String id, String why, Trace trace) throws IOException {
+    static void postpone(Path results, String id, String why, Trace trace) throws IOException {
         Files.createDirectories(file(results, id).getParent());
         Files.writeString(file(results, id), why.strip() + "\n");
-        trace.progress(id, "paused: " + why);
+        trace.progress(id, "postponed: " + why);
     }
 
     static void resume(Path results, String id, Trace trace) throws IOException {
@@ -144,9 +144,9 @@ final class Pace {
     }
 
     /** Every marker currently set aside. */
-    static List<String> allPaused(Path results) {
+    static List<String> allPostponed(Path results) {
         List<String> out = new ArrayList<>();
-        Path dir = results.resolve("paused");
+        Path dir = results.resolve("postponed");
         if (!Files.isDirectory(dir)) {
             return out;
         }
@@ -176,7 +176,7 @@ final class Pace {
     }
 
     private static Path file(Path results, String id) {
-        return results.resolve("paused").resolve(id.replaceAll("[^A-Za-z0-9._-]", ""));
+        return results.resolve("postponed").resolve(id.replaceAll("[^A-Za-z0-9._-]", ""));
     }
 
     /**
@@ -189,10 +189,10 @@ final class Pace {
         String what = args.length > 0 ? args[0] : "";
         Path results = args.length > 1 ? Path.of(args[1]) : Path.of("/results");
         switch (what) {
-            case "--paused" -> System.out.println(paused(results, args[2]) ? "yes" : "no");
-            case "--list-paused" -> allPaused(results).forEach(System.out::println);
+            case "--postponed" -> System.out.println(postponed(results, args[2]) ? "yes" : "no");
+            case "--list-postponed" -> allPostponed(results).forEach(System.out::println);
             case "--typical" -> System.out.println(typical(results));
-            default -> System.out.println("usage: --paused <results> <id> | --list-paused <results> "
+            default -> System.out.println("usage: --postponed <results> <id> | --list-postponed <results> "
                     + "| --typical <results>");
         }
     }
