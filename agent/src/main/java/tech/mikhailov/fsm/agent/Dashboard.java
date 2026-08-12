@@ -813,6 +813,33 @@ public final class Dashboard {
      * a table of sentences that all begin the same way and stop before the part that distinguishes
      * them.
      */
+    /**
+     * WHAT THE CHECKER IS COMPLAINING ABOUT, in the words this pipeline already keeps for its agents.
+     *
+     * <p>{@code resources/checkers/<CHECKER>.txt} exists so no agent has to guess what a bare name
+     * means. A reader is in exactly that position and had nothing at all — the page showed
+     * {@code FB.DM_DEFAULT_ENCODING} and left them to know it.
+     *
+     * <p>The first paragraph only. The rest of that file is how to DEMONSTRATE the defect, which is
+     * an instruction to an agent and not an explanation to a person.
+     */
+    private static String claimIs(String checker) {
+        String safe = checker.replaceAll("[^A-Za-z0-9._-]", "");
+        try (var in = Dashboard.class.getResourceAsStream("/checkers/" + safe + ".txt")) {
+            if (in == null) {
+                return "This pipeline has no note for " + checker + ", so what it means here is "
+                        + "whatever the agents below took it to mean.";
+            }
+            String all = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            int nl = all.indexOf('\n');
+            String note = nl < 0 ? "" : all.substring(nl + 1).strip();
+            int para = note.indexOf("\n\n");
+            return para < 0 ? note : note.substring(0, para).strip();
+        } catch (IOException | RuntimeException unreadable) {
+            return "";
+        }
+    }
+
     private static String[] summary(Path results, String key) {
         Path file = results.resolve("m").resolve(Supervisor.slug(key)).resolve("summary.txt");
         try {
@@ -953,7 +980,7 @@ public final class Dashboard {
         // for a marker still running. Both are gone — the package now sits under the filename it
         // belongs to, and a running marker's progress note is its `why` until it has a better one.
         b.append("</div><table><tr><th>severity</th><th>marker</th><th>state</th>"
-                + "<th>why</th><th>took</th><th>a person would have</th></tr>");
+                + "<th>what happened</th><th>took</th><th>a person would have</th></tr>");
 
         all.forEach((key, state) -> {
             String row = latest.getOrDefault(key, "");
@@ -1079,12 +1106,66 @@ public final class Dashboard {
             // WHAT HAPPENED, IN ENGLISH, ABOVE THE ARTEFACTS. Everything else on this tab is
             // evidence — the test, each agent's final word — and evidence is what you read after
             // you know what you are looking at.
+            // ONE PAGE THAT ANSWERS THE WHOLE QUESTION, in the order a person asks it: what was
+            // claimed, where, what happened, what was actually run, what was written, what was
+            // changed. Everything below was already on this tab; none of it was in an order that
+            // told a story, and the claim itself was not here at all — a reader had to hold the
+            // checker's name and the line number in their head from the table they came from.
+            String[] p = key.split("\\|");
+            String repo = p.length > 0 ? p[0] : "";
+            String file = p.length > 1 ? p[1] : "";
+            String line = p.length > 2 ? p[2] : "";
+            String checker = p.length > 3 ? p[3] : "";
+
+            b.append("<div class='ev asked'><span class=who>the claim</span>")
+                    .append("<span class=kind>").append(esc(checker)).append("</span>")
+                    .append("<p class=account>").append(esc(claimIs(checker)))
+                    .append("<br><span class=k>").append(esc(file)).append(", line ")
+                    .append(esc(line)).append("</span></p></div>");
+
+            String source = flagged(CHECKOUTS, repo, file, line);
+            if (!source.isBlank()) {
+                b.append("<div class='ev tool'><span class=who>the code</span>")
+                        .append("<span class=kind>line ").append(esc(line))
+                        .append(" and what is around it</span>").append(code(source))
+                        .append("</div>");
+            }
+
             String account = summary(trace.getParent() == null ? Path.of(".") : trace.getParent(),
                     key)[1];
             if (!account.isBlank()) {
                 b.append("<div class='ev asked'><span class=who>what happened</span>")
                         .append("<span class=kind>read against the record</span>")
                         .append("<p class=account>").append(esc(account)).append("</p></div>");
+            }
+
+            // WHAT WAS ACTUALLY RUN, in words rather than in a phase name. "red" and "green" are
+            // this pipeline's vocabulary and mean the opposite of what a reader expects: red is the
+            // one that is supposed to fail.
+            StringBuilder ran = new StringBuilder();
+            for (String e : mine) {
+                if (!field(e, "kind").equals("built")) {
+                    continue;
+                }
+                boolean before = field(e, "phase").equals("red");
+                ran.append(before ? "Before any patch: " : "After the patch: ")
+                        .append("true".equals(field(e, "infra"))
+                                ? "the build produced no test result at all, so nothing was learned."
+                                : "true".equals(field(e, "passed"))
+                                        ? "the test passed."
+                                        : "the test failed.")
+                        .append(before && !"true".equals(field(e, "infra"))
+                                ? "true".equals(field(e, "passed"))
+                                        ? "  (It was meant to fail here — a test that passes on the "
+                                                + "unfixed code has not demonstrated anything.)"
+                                        : "  (This is what it was meant to do.)"
+                                : "")
+                        .append('\n');
+            }
+            if (ran.length() > 0) {
+                b.append("<div class='ev built'><span class=who>what was run</span>")
+                        .append("<span class=kind>the build decides, not an agent</span><pre>")
+                        .append(esc(ran.toString().strip())).append("</pre></div>");
             }
 
             // THE TEST ITSELF, first. It is the artefact the whole prove turns on, and reading it
@@ -1102,8 +1183,40 @@ public final class Dashboard {
             }
             if (!test.isBlank()) {
                 b.append("<div class='ev asked'><span class=who>the test</span>")
-                        .append("<span class=kind>").append(esc(path)).append("</span><pre>")
+                        .append("<span class=kind>").append(esc(path))
+                        .append(" — written to fail on the unfixed code</span><pre>")
                         .append(esc(test)).append("</pre></div>");
+            }
+
+            // THE PATCH, WHICH WAS ON THIS PAGE ONLY INSIDE A PROMPT. Java computes the diff and
+            // hands it to fix-critic; nothing recorded it as an artefact, so the one thing a reader
+            // most wants to see — what would actually be changed in their repository — could be
+            // read only by opening the fix-critic tab and scrolling through the prompt it was
+            // given. Recovered from there rather than left there.
+            String patch = "";
+            for (String e : mine) {
+                if (!field(e, "kind").equals("asked") || !field(e, "agent").equals("fix-critic")) {
+                    continue;
+                }
+                String prompt = field(e, "prompt");
+                int heading = prompt.indexOf("WHAT IT ACTUALLY CHANGED");
+                if (heading < 0) {
+                    continue;
+                }
+                int start = prompt.indexOf('\n', heading);
+                int stop = prompt.indexOf("\nThe patch changes ", start);
+                if (stop < 0) {
+                    stop = prompt.indexOf("\nTHE PATCH DOES NOT TOUCH", start);
+                }
+                if (start > 0) {
+                    patch = (stop > start ? prompt.substring(start, stop)
+                            : prompt.substring(start)).strip();
+                }
+            }
+            if (!patch.isBlank()) {
+                b.append("<div class='ev tool'><span class=who>the fix</span>")
+                        .append("<span class=kind>what would change in the repository</span>")
+                        .append(code(patch)).append("</div>");
             }
 
             // The summary: every agent's final word, in the order they ran, and nothing else.
