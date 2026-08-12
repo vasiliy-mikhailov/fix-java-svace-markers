@@ -171,6 +171,26 @@ separator. Where one has changed since, the marker says so and offers to prove i
 is only as good as the prompt that produced it, and one reached under instructions nobody is using
 any more is worth knowing about.
 
+## The model
+
+`/settings` → **the model**: which model, which endpoint, temperature, token cap, and the two bounds.
+Read per prove rather than per process, so a change takes effect on the next marker and disturbs
+nothing running — these were environment variables and constants, and changing one meant recreating
+a container or building an image, both of which kill the pool.
+
+**The two bounds are separate settings with separate names**, because confusing them killed
+eighty-six live proves: one is how long the wire may carry *nothing*, the other is how long an
+answer may go on *arriving*. A single "timeout" that measures the second while reading like the
+first reports a healthy endpoint as dead.
+
+Temperature is 0 because these agents certify — a judge that answers differently on the same
+evidence twice is not a judge, and every loopback replays a decision. The token cap is 0, meaning
+none: a cap is not a smaller number but a different behaviour, and the last one bounded a stall by
+truncating the reasoning that caused it.
+
+**The API key is not on that page and cannot be set from it.** Everything there is a parameter; a
+credential is not one, and a page that shows a key leaks it to whoever is looking at the screen.
+
 ## The order of the queue
 
 `markers.txt` is sorted **severity, then path, then line, then checker** — Critical, Major, Normal,

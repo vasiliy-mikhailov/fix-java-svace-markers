@@ -74,6 +74,7 @@
                          running. -->
                     <environmentVariables>
                         <PROMPTS>${project.build.directory}/test-prompts</PROMPTS>
+                        <TUNING>${project.build.directory}/test-model</TUNING>
                     </environmentVariables>
                 </configuration>
       </plugin>

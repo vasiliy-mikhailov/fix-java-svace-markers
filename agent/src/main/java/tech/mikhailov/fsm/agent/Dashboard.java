@@ -117,6 +117,11 @@ public final class Dashboard {
             pre.flagged .dr{color:#f85149}
             pre.flagged .dh{color:#a371f7}
             pre.flagged .df{color:#8b949e}
+            label.field{display:block;margin:.7rem 0}
+            label.field .fl{display:block;font-size:.78rem;color:#8b949e;margin-bottom:.2rem}
+            label.field .k{display:block;margin-top:.2rem;font-size:.74rem;max-width:52em}
+            input.wide{background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:5px;
+                       padding:.35rem .5rem;width:min(34rem,100%);font:inherit}
             .ev.thought{border-left-color:#6e5494}
             .ev.thought .who{color:#a371f7}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
@@ -378,6 +383,21 @@ public final class Dashboard {
         route(server, "/settings", e -> {
             if (e.getRequestMethod().equalsIgnoreCase("POST")) {
                 Map<String, String> form = form(e);
+                if (form.getOrDefault("setting", "").equals("model")) {
+                    try {
+                        if (form.containsKey("revert")) {
+                            Tuning.revert();
+                        } else {
+                            Tuning.save(form);
+                        }
+                    } catch (IOException notSaved) {
+                        // The page redraws with what is on disk, which is the honest reply.
+                    }
+                    e.getResponseHeaders().add("Location", "/settings?a=model");
+                    e.sendResponseHeaders(303, -1);
+                    e.close();
+                    return;
+                }
                 if (form.getOrDefault("setting", "").equals("workers")) {
                     try {
                         Workers.save(here, (int) num(form.getOrDefault("workers", "")));
@@ -927,7 +947,11 @@ public final class Dashboard {
      * next one has somewhere to go.
      */
     private static String settings(Map<String, String> builtIns, String tab, Path results) {
-        return tab.equals("run") ? theRun(results) : prompts(builtIns);
+        return switch (tab) {
+            case "run" -> theRun(results);
+            case "model" -> theModel();
+            default -> prompts(builtIns);
+        };
     }
 
     /** The tab bar both settings views share. */
@@ -936,6 +960,8 @@ public final class Dashboard {
                 + "<a class='" + (current.equals("run") ? "" : "on") + "' href='/settings'>prompts</a>"
                 + "<a class='" + (current.equals("run") ? "on" : "") + "' href='/settings?a=run'>"
                 + "the run</a>"
+                + "<a class='" + (current.equals("model") ? "on" : "")
+                + "' href='/settings?a=model'>the model</a>"
                 + "<a href='/'>&larr; all markers</a>"
                 + "<a href='/overwatch'>the supervisor</a></nav>";
     }
@@ -948,6 +974,78 @@ public final class Dashboard {
      * had done. The pool re-reads this at the top of each iteration, so a change takes hold as the
      * next marker starts and nothing in flight is disturbed.
      */
+    /**
+     * WHAT THE MODEL IS ASKED FOR.
+     *
+     * <p>The two bounds are separate fields with separate sentences because confusing them killed
+     * eighty-six live proves: one is how long the wire may be SILENT, the other is how long an
+     * answer may go on ARRIVING, and a single "timeout" that means the second while reading like the
+     * first is the exact shape of that bug.
+     *
+     * <p>No key field. Everything here is a parameter and a credential is not one; a page that shows
+     * a key leaks it to whoever gets a look at the screen.
+     */
+    private static String theModel() {
+        Map<String, String> now = Tuning.all();
+        record Field(String name, String label, String type, String why) { }
+        List<Field> fields = List.of(
+                new Field("model", "model", "text",
+                        "What to ask for. Must be a name the endpoint below serves."),
+                new Field("base_url", "endpoint", "text",
+                        "OpenAI-shaped, ending in /v1. The scheme decides the protocol: https "
+                                + "negotiates HTTP/2, anything else stays on 1.1, because offering "
+                                + "h2c on a cleartext endpoint gets it accepted by vLLM which then "
+                                + "loses the body."),
+                new Field("temperature", "temperature", "text",
+                        "Zero, because these agents certify: a judge that answers differently on "
+                                + "the same evidence twice is not a judge, and every loopback here "
+                                + "replays a decision. Raise it to shake a run that keeps producing "
+                                + "the same wrong answer, then put it back."),
+                new Field("max_tokens", "token cap", "text",
+                        "0 for none, which is the setting. A cap is not a smaller number, it is a "
+                                + "different behaviour: the last one bounded a stall by truncating "
+                                + "the reasoning that caused it, mid-thought."),
+                new Field("patience_minutes", "silence, minutes", "text",
+                        "How long the wire may carry NOTHING before the endpoint is called dead. "
+                                + "A stream is silent for milliseconds at a time, so this is "
+                                + "generous by design."),
+                new Field("ceiling_minutes", "generation, minutes", "text",
+                        "How long an answer may go on ARRIVING. A different failure: the model is "
+                                + "answering and not finishing, and the record says so in different "
+                                + "words. This is the one that must not be confused with the "
+                                + "other — it was, and it killed eighty-six proves that were fine."));
+
+        StringBuilder b = head("the model", Tuning.edited()
+                ? "edited &mdash; the environment's values are underneath"
+                : "every value is the environment's or the code's")
+                .append(settingsTabs("model"))
+                .append("<div class='ev ").append(Tuning.edited() ? "asked" : "tool").append("'>")
+                .append("<span class=who>the endpoint</span><span class=kind>")
+                .append(Tuning.keyed() ? "a key is set" : "NO KEY SET — nothing will answer")
+                .append("</span>")
+                .append("<p class=account><span class=k>The API key is not on this page and cannot "
+                        + "be set from it. Everything here is a parameter; a credential is not one, "
+                        + "and a page that shows one leaks it to whoever is looking at the screen. "
+                        + "It stays where the deploy put it.</span></p>")
+                .append("<form method=post action='/settings'>")
+                .append(hidden("setting", "model"));
+        for (Field f : fields) {
+            b.append("<label class=field><span class=fl>").append(esc(f.label())).append("</span>")
+                    .append("<input type=").append(f.type()).append(" name=").append(f.name())
+                    .append(" value='").append(esc(now.getOrDefault(f.name(), "")))
+                    .append("' class=wide>")
+                    .append("<span class=k>").append(esc(f.why())).append("</span></label>");
+        }
+        return b.append("<button>save</button>")
+                .append(Tuning.edited()
+                        ? " <button name=revert value=1 class=plain>put the environment's back"
+                                + "</button>"
+                        : "")
+                .append("</form>")
+                .append("<p class=account><span class=k>Takes effect on the next marker a prover "
+                        + "starts. Nothing running is disturbed.</span></p></div>").toString();
+    }
+
     private static String theRun(Path results) {
         int now = Workers.of(results);
         return head("the run", "how many markers are proved at once")

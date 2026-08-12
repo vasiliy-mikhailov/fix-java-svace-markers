@@ -841,7 +841,15 @@ public final class Prove {
      * It sees the ceiling firing across markers, says so, and restarts what is stuck.
      */
     static ChatModel model(String agent, Trace trace) {
-        String base = env("QWEN_BASE_URL");
+        // READ PER PROVE, NOT PER PROCESS. Every one of these was an environment variable or a
+        // constant, so changing any of them meant recreating a container or building an image, and
+        // both kill the pool — which orphans every claim in flight. A prove is a fresh process per
+        // marker, so a file read here takes effect on the next marker and disturbs nothing running.
+        String base = Tuning.baseUrl();
+        if (base.isBlank()) {
+            throw new IllegalStateException("no endpoint: set QWEN_BASE_URL or the model settings");
+        }
+        Duration patience = Tuning.patience();
         // The scheme decides the protocol. Offering `Upgrade: h2c` on a cleartext endpoint gets it
         // accepted by vLLM, which then loses the body.
         HttpClient.Version version = base.startsWith("https://")
@@ -849,17 +857,23 @@ public final class Prove {
                 : HttpClient.Version.HTTP_1_1;
         Overheard overheard = new Overheard(new JdkHttpClientBuilder()
                 .httpClientBuilder(HttpClient.newBuilder().version(version)));
-        return new Thinking(
+        OpenAiStreamingChatModel.OpenAiStreamingChatModelBuilder built =
                 OpenAiStreamingChatModel.builder()
                         .httpClientBuilder(overheard)
                         .baseUrl(base)
+                        // THE KEY IS NOT A SETTING. Everything else here is a parameter; a
+                        // credential is not, and it stays where a deploy put it.
                         .apiKey(env("QWEN_API_KEY"))
-                        .modelName(env("QWEN_MODEL"))
-                        .temperature(CERTIFYING)
+                        .modelName(Tuning.model())
+                        .temperature(Tuning.temperature())
                         .returnThinking(true)
-                        .timeout(PATIENCE)
-                        .build(),
-                overheard, trace, agent, PATIENCE, CEILING);
+                        .timeout(patience);
+        // ZERO MEANS UNSET, because a cap is not a smaller number — it is a different behaviour.
+        // The last one truncated the reasoning it was meant to bound.
+        if (Tuning.maxTokens() > 0) {
+            built = built.maxTokens(Tuning.maxTokens());
+        }
+        return new Thinking(built.build(), overheard, trace, agent, patience, Tuning.ceiling());
     }
 
     private static String env(String name) {
