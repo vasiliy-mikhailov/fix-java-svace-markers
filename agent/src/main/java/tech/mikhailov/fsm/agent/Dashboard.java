@@ -69,6 +69,11 @@ public final class Dashboard {
             .alarm ul{margin:.45rem 0 0;padding-left:1.1rem}
             .alarm li{margin:.15rem 0}
             .alarm li a{color:#d7dbe0;text-decoration:none;font-size:.85rem}
+            .alarm .v{display:inline-block;min-width:4.7rem;margin-right:.55rem;padding:0 .3rem;
+                      border-radius:3px;font-size:.68rem;text-align:center;vertical-align:1px}
+            .alarm .v.holds{background:#3d1518;color:#ff7b72}
+            .alarm .v.unjudged{background:#2b2011;color:#d29922}
+            .alarm .v.refuted{background:#161b22;color:#6e7681}
             .alarm li a:hover{text-decoration:underline}
             .alarm details.rest{margin-top:.3rem}
             .alarm details.rest>summary{color:#f85149;font-size:.85rem;cursor:pointer;
@@ -535,25 +540,35 @@ public final class Dashboard {
         // THE POSITION IN THE FILE IS THE NAME. The findings page groups by verdict, so its
         // display order is not the file's — an anchor computed from where a finding happens to be
         // rendered would move the moment its critic answered. This one does not.
+        // WHAT SURVIVED FIRST, AND WHAT DID NOT STILL SHOWN. A refuted finding was left off this
+        // banner as noise, and that was wrong twice over: it made a list of twenty-two closed and
+        // open complaints look like twenty-two open ones, and it hid the one thing a reader needs
+        // to decide where to spend ten minutes — whether anybody has checked this yet. Holding
+        // first, unjudged next because nobody has looked, refuted last and greyed.
+        List<String> all = read(findings);
         List<String> live = new ArrayList<>();
         List<Integer> at = new ArrayList<>();
-        List<String> all = read(findings);
-        for (int i = 0; i < all.size(); i++) {
-            String verdict = field(all.get(i), "verdict");
-            if (verdict.equals("holds") || verdict.isBlank() || verdict.equals("unjudged")) {
-                live.add(all.get(i));
-                at.add(i);
+        Map<String, Integer> tally = new LinkedHashMap<>();
+        for (String want : new String[] {"holds", "unjudged", "refuted"}) {
+            for (int i = all.size() - 1; i >= 0; i--) {
+                if (verdictOf(all.get(i)).equals(want)) {
+                    live.add(all.get(i));
+                    at.add(i);
+                    tally.merge(want, 1, Integer::sum);
+                }
             }
         }
         if (live.isEmpty()) {
             return "";
         }
+        StringBuilder sub = new StringBuilder();
+        tally.forEach((v, n) -> sub.append(sub.length() == 0 ? "" : " \u00b7 ").append(n)
+                .append(' ').append(v.equals("holds") ? "hold" : v));
         StringBuilder b = new StringBuilder("<div class=alarm><a href='/overwatch'><b>")
                 .append(live.size()).append(live.size() == 1 ? " finding" : " findings")
-                .append(" from the supervisor</b> \u2014 what is wrong with the pipeline, not with "
-                        + "these markers</a><ul>");
+                .append(" from the supervisor</b> \u2014 ").append(sub).append("</a><ul>");
         int shown = Math.min(SHOWN, live.size());
-        for (int i = live.size() - 1; i >= live.size() - shown; i--) {
+        for (int i = 0; i < shown; i++) {
             b.append(item(live.get(i), at.get(i)));
         }
         b.append("</ul>");
@@ -564,7 +579,7 @@ public final class Dashboard {
         if (live.size() > shown) {
             b.append("<details class=rest><summary>and ").append(live.size() - shown)
                     .append(" more</summary><ul>");
-            for (int i = live.size() - shown - 1; i >= 0; i--) {
+            for (int i = shown; i < live.size(); i++) {
                 b.append(item(live.get(i), at.get(i)));
             }
             b.append("</ul></details>");
@@ -575,12 +590,20 @@ public final class Dashboard {
     /** How many stay open without being asked. Enough to alarm, few enough to read at a glance. */
     private static final int SHOWN = 5;
 
-    /** One finding: its first line, linked to itself on the findings page. */
+    /** A finding's verdict, with the two ways of recording "nobody judged it" collapsed into one. */
+    private static String verdictOf(String finding) {
+        String verdict = field(finding, "verdict");
+        return verdict.isBlank() ? "unjudged" : verdict;
+    }
+
+    /** One finding: what the critic made of it, then its first line, linked to itself. */
     private static String item(String finding, int position) {
         String head = field(finding, "finding").strip()
                 .replaceAll("^[#*\\s]*(Finding:)?\\s*", "");
         int stop = head.indexOf('\n');
-        return "<li><a href='/overwatch#f" + position + "'>"
+        String verdict = verdictOf(finding);
+        return "<li><span class='v " + verdict + "'>" + verdict + "</span>"
+                + "<a href='/overwatch#f" + position + "'>"
                 + esc(stop < 0 ? head : head.substring(0, stop)) + "</a></li>";
     }
 
