@@ -228,7 +228,7 @@ public final class Dashboard {
               // are replaced far too often to go through it.
               function poll(){
                 var box=document.getElementById('live'); if(!box) return;
-                fetch('/live').then(function(r){return r.text()}).then(function(html){
+                fetch(box.dataset.live||'/live').then(function(r){return r.text()}).then(function(html){
                   var box=document.getElementById('live'); if(!box) return;
                   var shut={};
                   [].forEach.call(box.querySelectorAll('details'),function(d){ shut[d.id]=!d.open });
@@ -690,9 +690,28 @@ public final class Dashboard {
      * stays behind holding its last answer, and a panel that went on showing it would be a live
      * view that is quietly a museum.
      */
-    private static String live(Path results) {
+    private static String live(Path results, String key) {
+        // ONE PROVE PER PAGE. Four provers on the front page meant four folds nobody had asked for
+        // above a table of 356 rows, and none of them was the marker the reader had come to look
+        // at. A prove's live view belongs on that prove's page, next to its trace; the front page
+        // keeps the supervisor, which is about the run rather than about any marker.
+        if (!key.isEmpty()) {
+            String id = Supervisor.slug(key);
+            Path settlements = results.resolve("m").resolve(id).resolve("settlements.jsonl");
+            if (settled(settlements)) {
+                return "<div class=k>This prove has finished. What it said is on the tabs above; "
+                        + "this view is only for one still running.</div>";
+            }
+            return panel(id, results.resolve("m").resolve(id).resolve("trace.jsonl.live"), true);
+        }
         StringBuilder b = new StringBuilder();
         b.append(panel("supervisor", results.resolve("overwatch-trace.jsonl.live"), true));
+        return b.toString();
+    }
+
+    /** Every prove still running, for the pages that want the whole pool. */
+    private static String proving(Path results) {
+        StringBuilder b = new StringBuilder();
         // CLAIMED IS NOT RUNNING. A claim is how the pool remembers it has already dealt with a
         // marker, so it OUTLIVES the prove — every settled marker still holds one, and taking the
         // claims directory as the list of active provers gave thirty-four panels for a pool of
@@ -874,8 +893,9 @@ public final class Dashboard {
         // A CONTAINER THE POLLER REPLACES, and only this. Refreshing the whole page every two
         // seconds to watch one agent think would throw away every fold the reader had opened and
         // their place in a table of 356 rows.
-        b.append("<div id=live class=live>")
-                .append(live(settlements.getParent() == null ? Path.of(".") : settlements.getParent()))
+        b.append("<div id=live class=live data-live='/live'>")
+                .append(live(settlements.getParent() == null ? Path.of(".")
+                        : settlements.getParent(), ""))
                 .append("</div>");
         b.append(progress(total, settled, elapsed));
 
@@ -931,8 +951,15 @@ public final class Dashboard {
                     .append(line.isEmpty() ? "" : ":" + esc(line)).append("</a>")
                     .append("<div class=k>").append(esc(checker)).append("</div>")
                     .append("<div class=k>").append(esc(dir)).append("</div></td>")
-                    .append("<td><span class='s ").append(esc(css(state))).append("'>")
-                    .append(esc(state)).append("</span>").append(flags(row)).append("</td>")
+                    .append("<td>")
+                    // PROVING IS THE ONE STATE THAT IS STILL HAPPENING. Every other word in this
+                    // column is a conclusion and reads fine as text; this one is a question — what
+                    // is it doing — and the answer is one page away.
+                    .append(state.equals("proving")
+                            ? "<a class='s " + esc(css(state)) + "' href='/marker?k=" + enc(key)
+                                    + "&a=live'>" + esc(state) + "</a>"
+                            : "<span class='s " + esc(css(state)) + "'>" + esc(state) + "</span>")
+                    .append(flags(row)).append("</td>")
                     .append("<td class=why>").append(reason.isBlank()
                             ? "<span class=k>&mdash;</span>"
                             : why.isBlank()
@@ -970,6 +997,16 @@ public final class Dashboard {
      */
     private static String marker(Path trace, Path settlements, String key, String agent,
                                  boolean expand, int from, boolean fragment) {
+        if (agent.equals("live")) {
+            // THE CONTAINER CARRIES ITS OWN URL, so the same poller serves this page and the front
+            // one without either knowing about the other.
+            return head(key.substring(key.lastIndexOf('/') + 1), "what this prove is saying now")
+                    .append(tabs(key, "live"))
+                    .append("<div id=live class=live data-live='/live?k=").append(enc(key))
+                    .append("'>")
+                    .append(live(trace.getParent() == null ? Path.of(".") : trace.getParent(), key))
+                    .append("</div>").toString();
+        }
         if (agent.equals("trace")) {
             return events(trace, settlements, key, expand, tabs(key, agent), from, fragment);
         }
@@ -1135,7 +1172,11 @@ public final class Dashboard {
 
     private static String tabs(String key, String current) {
         StringBuilder b = new StringBuilder("<nav class=tabs>")
-                .append(tab(key, "", "summary", current));
+                .append(tab(key, "", "summary", current))
+                // SECOND, AND ONLY WHILE IT MEANS ANYTHING. Every other tab is a record of what was
+                // said; this one is what is being said, so it belongs beside the summary rather
+                // than after ten agents.
+                .append(tab(key, "live", "live", current));
         for (String a : AGENTS) {
             b.append(tab(key, a, a, current));
         }

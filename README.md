@@ -174,8 +174,12 @@ spent and what a person would have. Feedback is a text box on any answer.
 
 ## Watching it think
 
-Five folds at the top of the list: the supervisor, and one per prove the pool has claimed. Each shows
-the answer that agent is producing **right now**, updating every two seconds.
+The front page keeps one fold: the supervisor, which is about the run rather than about any marker.
+A prove's live view is a `live` tab on that prove's own page, next to the trace of what it has
+already said, and the word `proving` in the table links straight to it — it is the one state in that
+column that is a question rather than a conclusion.
+
+Each shows the answer that agent is producing **right now**, updating every two seconds.
 
 Everything else in the record is written when a call ENDS, which is right for a record and useless
 for watching — a reasoning turn can run for minutes, and for those minutes the trace shows the agent
