@@ -70,6 +70,7 @@ public final class Dashboard {
             .alarm li{margin:.15rem 0}
             .alarm li a{color:#d7dbe0;text-decoration:none;font-size:.85rem}
             .alarm li a:hover{text-decoration:underline}
+            .ev:target{outline:2px solid #f85149;outline-offset:3px;scroll-margin-top:1rem}
             .ev.thought{border-left-color:#6e5494}
             .ev.thought .who{color:#a371f7}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
@@ -390,7 +391,49 @@ public final class Dashboard {
      * not be able to suppress a warning, and a reader deciding what to act on needs to know which of
      * the two they are looking at.
      */
+    /**
+     * THE MARKERS A FINDING NAMES, MADE REACHABLE.
+     *
+     * <p>A finding says "3 markers" and names them as the directory slugs it read — and the reader
+     * who wants to check the claim then has to copy a slug, guess the marker key it came from and
+     * paste it into a URL. The names are already exact; this only makes them what they look like.
+     *
+     * <p>Escaped first and linked second, so nothing in a finding an agent wrote can put markup on
+     * this page.
+     */
+    private static String linked(String finding, Map<String, String> markers) {
+        String safe = esc(finding);
+        for (Map.Entry<String, String> e : markers.entrySet()) {
+            String slug = e.getKey();
+            if (!safe.contains(slug)) {
+                continue;
+            }
+            safe = safe.replace(slug, "\u0000<a href='/marker?k=" + enc(e.getValue()) + "'>"
+                    + slug + "</a>\u0001");
+        }
+        // Two passes would relink the href of a slug that is a prefix of another. The sentinels
+        // mark what is already done, and come out at the end.
+        return safe.replace("\u0000", "").replace("\u0001", "");
+    }
+
+    /** Every queued marker, by the directory name the pool gives it. */
+    private static Map<String, String> slugs(Path markersFile) {
+        Map<String, String> byLength = new LinkedHashMap<>();
+        List<String> keys = new ArrayList<>(read(markersFile));
+        // LONGEST FIRST, so a slug that contains a shorter one is linked whole rather than having
+        // its middle replaced.
+        keys.sort((a, b) -> Integer.compare(b.length(), a.length()));
+        for (String key : keys) {
+            String trimmed = key.strip();
+            if (!trimmed.isEmpty()) {
+                byLength.put(Supervisor.slug(trimmed), trimmed);
+            }
+        }
+        return byLength;
+    }
+
     private static String reported(Path findings, Path restarts, String nav, boolean expand) {
+        Map<String, String> markers = slugs(findings.resolveSibling("markers.txt"));
         List<String> all = read(findings);
         List<String> cut = read(restarts);
         long holds = all.stream().filter(l -> field(l, "verdict").equals("holds")).count();
@@ -427,12 +470,14 @@ public final class Dashboard {
                 if (!verdict.equals(want)) {
                     continue;
                 }
-                b.append("<div class='ev ").append(verdict.equals("refuted") ? "tool" : "asked")
+                b.append("<div id='f").append(i).append("' class='ev ")
+                        .append(verdict.equals("refuted") ? "tool" : "asked")
                         .append("'><span class=who>overwatch</span><span class='s ")
                         .append(verdict.equals("holds") ? "settled"
                                 : verdict.equals("refuted") ? "infra" : "needs-review")
                         .append("'>").append(verdict).append("</span>")
-                        .append("<pre>").append(esc(field(line, "finding"))).append("</pre>")
+                        .append("<pre>").append(linked(field(line, "finding"), markers))
+                        .append("</pre>")
                         .append(fold("what the critic said", field(line, "judgement"), expand))
                         .append(rate("overwatch", "overwatch", i, "/overwatch",
                                 field(line, "finding"), field(line, "judgement")))
@@ -481,11 +526,17 @@ public final class Dashboard {
      * findings on a run that is still going is the reason to stop and read them.
      */
     private static String warnings(Path findings) {
+        // THE POSITION IN THE FILE IS THE NAME. The findings page groups by verdict, so its
+        // display order is not the file's — an anchor computed from where a finding happens to be
+        // rendered would move the moment its critic answered. This one does not.
         List<String> live = new ArrayList<>();
-        for (String line : read(findings)) {
-            String verdict = field(line, "verdict");
+        List<Integer> at = new ArrayList<>();
+        List<String> all = read(findings);
+        for (int i = 0; i < all.size(); i++) {
+            String verdict = field(all.get(i), "verdict");
             if (verdict.equals("holds") || verdict.isBlank() || verdict.equals("unjudged")) {
-                live.add(line);
+                live.add(all.get(i));
+                at.add(i);
             }
         }
         if (live.isEmpty()) {
@@ -499,7 +550,7 @@ public final class Dashboard {
             String head = field(live.get(i), "finding").strip()
                     .replaceAll("^[#*\\s]*(Finding:)?\\s*", "");
             int stop = head.indexOf('\n');
-            b.append("<li><a href='/overwatch'>")
+            b.append("<li><a href='/overwatch#f").append(at.get(i)).append("'>")
                     .append(esc(stop < 0 ? head : head.substring(0, stop)))
                     .append("</a></li>");
         }
