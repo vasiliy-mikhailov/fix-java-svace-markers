@@ -355,7 +355,13 @@ public final class Dashboard {
             e.sendResponseHeaders(303, -1);
             e.close();
         });
+        // A REDIRECT, BECAUSE THIS URL WAS SHIPPED. Cheap to keep and rude to break.
         route(server, "/prompts", e -> {
+            e.getResponseHeaders().add("Location", "/settings");
+            e.sendResponseHeaders(301, -1);
+            e.close();
+        });
+        route(server, "/settings", e -> {
             if (e.getRequestMethod().equalsIgnoreCase("POST")) {
                 Map<String, String> form = form(e);
                 String agent = form.getOrDefault("agent", "");
@@ -368,12 +374,12 @@ public final class Dashboard {
                 } catch (IOException notSaved) {
                     // Reported by the page redrawing unchanged, which is the honest outcome.
                 }
-                e.getResponseHeaders().add("Location", "/prompts#" + agent);
+                e.getResponseHeaders().add("Location", "/settings#" + agent);
                 e.sendResponseHeaders(303, -1);
                 e.close();
                 return;
             }
-            send(e, "text/html; charset=utf-8", prompts(BUILT_INS));
+            send(e, "text/html; charset=utf-8", settings(BUILT_INS, query(e, "a")));
         });
         route(server, "/live", e -> send(e, "text/html; charset=utf-8",
                 live(settlements.getParent() == null ? Path.of(".") : settlements.getParent(),
@@ -465,7 +471,8 @@ public final class Dashboard {
                     .append("' href='/overwatch").append(t[0].isEmpty() ? "" : "?a=" + t[0])
                     .append("'>").append(esc(t[1])).append("</a>");
         }
-        return b.append("<a href='/'>&larr; all markers</a></nav>").toString();
+        return b.append("<a href='/settings'>settings</a>")
+                .append("<a href='/'>&larr; all markers</a></nav>").toString();
     }
 
     /**
@@ -888,6 +895,18 @@ public final class Dashboard {
      * process per marker and reads the override when it constructs its agents. Nothing in flight
      * changes underneath itself.
      */
+    /**
+     * SETTINGS, of which the prompts are the first tab.
+     *
+     * <p>A tab bar with one tab in it looks like an oversight, and it is not: what belongs here is
+     * everything that changes how the pipeline behaves without changing what it has already done,
+     * and the prompts are the first of those to become data rather than code. The bar exists so the
+     * next one has somewhere to go.
+     */
+    private static String settings(Map<String, String> builtIns, String tab) {
+        return prompts(builtIns);
+    }
+
     private static String prompts(Map<String, String> builtIns) {
         // FROM THE ORDER ITSELF, NOT FROM THE MAP. BUILT_INS is a ConcurrentHashMap because it is
         // written from a handler thread, and a hash map has no order to preserve — putAll'ing an
@@ -901,7 +920,8 @@ public final class Dashboard {
         StringBuilder b = head("prompts", names.size() + " agent(s) &middot; "
                 + (edited == 0 ? "none edited &mdash; every one is the code's"
                         : edited + " edited, the rest are the code's"))
-                .append("<nav class=tabs><a href='/'>&larr; all markers</a>")
+                .append("<nav class=tabs><a class=on href='/settings'>prompts</a>")
+                .append("<a href='/'>&larr; all markers</a>")
                 .append("<a href='/overwatch'>the supervisor</a></nav>")
                 .append("<p class=account>An edit here replaces the built-in entirely — there is no "
                         + "merge, because a prompt half from the code and half from a box is a "
@@ -923,7 +943,7 @@ public final class Dashboard {
                     .append("</span><span class=kind>")
                     .append(overridden ? "edited" : "the code's own")
                     .append("</span>")
-                    .append("<form method=post action='/prompts'>")
+                    .append("<form method=post action='/settings'>")
                     .append(hidden("agent", agent))
                     .append("<textarea name=prompt rows=16 class=prompt>")
                     .append(esc(overridden ? saved : code))
@@ -1229,7 +1249,9 @@ public final class Dashboard {
                     .append("<td>").append(mins > 0 ? hm(mins) : "<span class=k>—</span>")
                     .append("</td></tr>");
         });
-        return b.append("</table><a class=back href='/trace'>the whole trace, every marker →</a>")
+        return b.append("</table><a class=back href='/settings'>settings →</a> ")
+                .append("<a class=back href='/overwatch'>what is wrong with the pipeline →</a> ")
+                .append("<a class=back href='/trace'>the whole trace, every marker →</a>")
                 .toString();
     }
 
@@ -1542,6 +1564,8 @@ public final class Dashboard {
             b.append(tab(key, a, a, current));
         }
         return b.append(tab(key, "trace", "the record", current))
+                .append("<a href='/overwatch'>the supervisor</a>")
+                .append("<a href='/settings'>settings</a>")
                 .append("<a href='/'>← all markers</a></nav>").toString();
     }
 

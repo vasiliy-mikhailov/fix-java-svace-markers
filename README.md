@@ -157,7 +157,7 @@ Every prompt is a Java text block AND a file. Absent, the text block is used and
 present, `PROMPTS/<agent>.txt` replaces it **entirely** — there is no merge, because a prompt half
 from the code and half from a box is a prompt nobody can read in one place.
 
-`/prompts` shows all fourteen, editable, with the code's version one click away and a button to put
+`/settings` shows all fourteen, editable, in the order the pipeline calls them, with the code's version one click away and a button to put
 it back. An edit takes effect on the **next marker a prover starts**, not on the next deploy, because
 a prove is a fresh process per marker and reads the override when it builds its agents.
 
