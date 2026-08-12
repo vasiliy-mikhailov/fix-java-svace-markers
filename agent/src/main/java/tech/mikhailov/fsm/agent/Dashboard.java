@@ -693,11 +693,19 @@ public final class Dashboard {
     private static String live(Path results) {
         StringBuilder b = new StringBuilder();
         b.append(panel("supervisor", results.resolve("overwatch-trace.jsonl.live"), true));
+        // CLAIMED IS NOT RUNNING. A claim is how the pool remembers it has already dealt with a
+        // marker, so it OUTLIVES the prove — every settled marker still holds one, and taking the
+        // claims directory as the list of active provers gave thirty-four panels for a pool of
+        // four. A prove is running when it is claimed and has not settled, which is the same test
+        // the pool itself uses to decide whether to take a marker again.
         List<String> claimed = new ArrayList<>();
         Path claims = results.resolve("claims");
         if (Files.isDirectory(claims)) {
             try (var dirs = Files.list(claims)) {
-                dirs.map(d -> d.getFileName().toString()).sorted().forEach(claimed::add);
+                dirs.map(d -> d.getFileName().toString()).sorted()
+                        .filter(id -> !settled(results.resolve("m").resolve(id)
+                                .resolve("settlements.jsonl")))
+                        .forEach(claimed::add);
             } catch (IOException none) {
                 // No claims directory is a run that has not started.
             }
@@ -709,6 +717,23 @@ public final class Dashboard {
             b.append("<div class=k>No prove is running.</div>");
         }
         return b.toString();
+    }
+
+    /**
+     * Whether a prove reached one of the seven states this program decides.
+     *
+     * <p>The same seven the pool greps for. Anything else — {@code proving}, {@code infra}, an empty
+     * file, no file — is a prove that has not finished, which is exactly what a live panel is for.
+     */
+    private static boolean settled(Path settlements) {
+        for (String line : read(settlements)) {
+            String state = field(line, "state");
+            if (!state.isBlank() && !state.equals("proving") && !state.equals("infra")
+                    && !state.equals("queued")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** One fold: who is speaking, how long ago, and the last of what they have said. */
