@@ -57,7 +57,12 @@ final class Pace {
                 if (!settled(lane)) {
                     continue;
                 }
-                long minutes = totalMinutes(results, lane.getFileName().toString());
+                // ONE ATTEMPT, NOT THE TOTAL. What "typical" answers is how long a marker needs
+                // when it works, and a marker that works needs one attempt. Summing archives here
+                // folds in operational churn — a container restarted mid-prove is not the marker
+                // being slow — and it did: the median went from 8 minutes to 744 the moment this
+                // counted every attempt, which would have made an outlier impossible.
+                long minutes = minutes(lane);
                 if (minutes > 0) {
                     took.add(minutes);
                 }
@@ -103,7 +108,7 @@ final class Pace {
         }
         try (Stream<Path> old = Files.list(dead)) {
             for (Path attempt : (Iterable<Path>) old.filter(Files::isDirectory)
-                    .filter(d -> d.getFileName().toString().startsWith(id + "."))::iterator) {
+                    .filter(d -> mine(d.getFileName().toString(), id))::iterator) {
                 total += minutes(attempt);
             }
         } catch (IOException unreadable) {
@@ -121,10 +126,26 @@ final class Pace {
         }
         try (Stream<Path> old = Files.list(dead)) {
             return n + (int) old.filter(Files::isDirectory)
-                    .filter(d -> d.getFileName().toString().startsWith(id + ".")).count();
+                    .filter(d -> mine(d.getFileName().toString(), id)).count();
         } catch (IOException unreadable) {
             return n;
         }
+    }
+
+    /**
+     * Whether an archived directory is an attempt at THIS marker.
+     *
+     * <p>Prefix alone is not enough, because a checker name can be a prefix of another:
+     * {@code TAINTED_PTR} matches {@code TAINTED_PTR.COOKIE.abandoned}, so one marker would absorb
+     * another's history and report time it never spent. What follows the id has to be an archive
+     * suffix, and those are lowercase words while every checker segment is uppercase.
+     */
+    private static boolean mine(String archived, String id) {
+        if (!archived.startsWith(id + ".")) {
+            return false;
+        }
+        String suffix = archived.substring(id.length() + 1);
+        return suffix.matches("[a-z][a-z0-9-]*");
     }
 
     /** How long the current attempt has been going, as of now. */

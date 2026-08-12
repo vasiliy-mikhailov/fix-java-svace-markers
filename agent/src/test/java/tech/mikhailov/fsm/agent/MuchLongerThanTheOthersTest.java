@@ -151,6 +151,38 @@ class MuchLongerThanTheOthersTest {
     }
 
     @Test
+    @DisplayName("one marker does not absorb another whose checker is a longer name")
+    void prefixCollision(@TempDir Path dir) throws Exception {
+        lane(dir, "F.java_5_TAINTED_PTR", 4, false);
+        Path dead = dir.resolve("dead");
+        Files.createDirectories(dead.resolve("F.java_5_TAINTED_PTR.COOKIE.abandoned"));
+        long start = System.currentTimeMillis() - 300 * 60_000L;
+        Files.writeString(dead.resolve("F.java_5_TAINTED_PTR.COOKIE.abandoned/trace.jsonl"),
+                "{\"at\":\"" + start + "\"}\n{\"at\":\"" + (start + 300 * 60_000L) + "\"}\n");
+        assertEquals(1, Pace.attempts(dir, "F.java_5_TAINTED_PTR"),
+                "TAINTED_PTR is a prefix of TAINTED_PTR.COOKIE, so matching on the prefix alone "
+                        + "makes one marker report five hours it never spent");
+        assertTrue(Pace.totalMinutes(dir, "F.java_5_TAINTED_PTR") < 10,
+                "and the time belongs to the other marker");
+    }
+
+    @Test
+    @DisplayName("what is typical is one attempt, not a marker's whole history")
+    void typicalIsOneAttempt(@TempDir Path dir) throws Exception {
+        for (int i = 0; i < Pace.ENOUGH; i++) {
+            lane(dir, "quick" + i, 8, true);
+        }
+        Path dead = dir.resolve("dead");
+        Files.createDirectories(dead.resolve("quick0.interrupted"));
+        long start = System.currentTimeMillis() - 700 * 60_000L;
+        Files.writeString(dead.resolve("quick0.interrupted/trace.jsonl"),
+                "{\"at\":\"" + start + "\"}\n{\"at\":\"" + (start + 700 * 60_000L) + "\"}\n");
+        assertEquals(8, Pace.typical(dir),
+                "a container restarted mid-prove is not the marker being slow; folding that in "
+                        + "took the median from 8 minutes to 744 and made an outlier impossible");
+    }
+
+    @Test
     @DisplayName("only settled lanes count towards what is typical")
     void onlySettled(@TempDir Path dir) throws Exception {
         for (int i = 0; i < Pace.ENOUGH; i++) {
