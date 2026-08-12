@@ -794,10 +794,10 @@ public final class Dashboard {
      * view that is quietly a museum.
      */
     private static String live(Path results, String key) {
-        // ONE PROVE PER PAGE. Four provers on the front page meant four folds nobody had asked for
-        // above a table of 356 rows, and none of them was the marker the reader had come to look
-        // at. A prove's live view belongs on that prove's page, next to its trace; the front page
-        // keeps the supervisor, which is about the run rather than about any marker.
+        // ONE PROVE PER PAGE, AND ONLY A PROVE. Four provers on the front page meant four folds
+        // nobody had asked for above a table of 356 rows, and none of them was the marker the
+        // reader had come to look at; the supervisor's own stream followed them off it, because a
+        // banner of what it has concluded says more than a paragraph of it thinking.
         if (!key.isEmpty()) {
             String id = Supervisor.slug(key);
             Path settlements = results.resolve("m").resolve(id).resolve("settlements.jsonl");
@@ -807,9 +807,7 @@ public final class Dashboard {
             }
             return panel(id, results.resolve("m").resolve(id).resolve("trace.jsonl.live"), true);
         }
-        StringBuilder b = new StringBuilder();
-        b.append(panel("supervisor", results.resolve("overwatch-trace.jsonl.live"), true));
-        return b.toString();
+        return "";
     }
 
     /** Every prove still running, for the pages that want the whole pool. */
@@ -1222,13 +1220,11 @@ public final class Dashboard {
         // warning nobody is shown is a warning nobody has. It goes at the top of the page everybody
         // already has open.
         b.append(warnings(settlements.resolveSibling("overwatch.jsonl")));
-        // A CONTAINER THE POLLER REPLACES, and only this. Refreshing the whole page every two
-        // seconds to watch one agent think would throw away every fold the reader had opened and
-        // their place in a table of 356 rows.
-        b.append("<div id=live class=live data-live='/live'>")
-                .append(live(settlements.getParent() == null ? Path.of(".")
-                        : settlements.getParent(), ""))
-                .append("</div>");
+        // NO LIVE PANEL HERE. The supervisor's stream was on this page because the front page is
+        // where a live view seemed to belong, and it earned its space for about a day: the findings
+        // banner above says what the supervisor has CONCLUDED, which is what a reader of this page
+        // wants, and a paragraph of it thinking out loud is a slower way to learn less. Its record
+        // is still on /overwatch, and a prove's stream is on that prove's own live tab.
         b.append(progress(total, settled, elapsed));
 
 

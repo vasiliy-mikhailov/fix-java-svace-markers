@@ -230,12 +230,14 @@ spent and what a person would have. Feedback is a text box on any answer.
 
 ## Watching it think
 
-The front page keeps one fold: the supervisor, which is about the run rather than about any marker.
 A prove's live view is a `live` tab on that prove's own page, next to the trace of what it has
 already said, and the word `proving` in the table links straight to it — it is the one state in that
-column that is a question rather than a conclusion.
+column that is a question rather than a conclusion. It shows the answer that agent is producing
+**right now**, updating every two seconds.
 
-Each shows the answer that agent is producing **right now**, updating every two seconds.
+The front page has none. The supervisor's stream was there and earned its space for about a day:
+the findings banner says what it has **concluded**, and a paragraph of it thinking out loud is a
+slower way to learn less.
 
 Everything else in the record is written when a call ENDS, which is right for a record and useless
 for watching — a reasoning turn can run for minutes, and for those minutes the trace shows the agent
