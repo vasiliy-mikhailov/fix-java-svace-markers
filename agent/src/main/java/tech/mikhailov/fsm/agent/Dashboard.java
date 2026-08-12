@@ -63,23 +63,25 @@ public final class Dashboard {
             td.why pre{white-space:pre-wrap;font-size:12px;margin:6px 0 0}
             pre.flagged{background:#0d1117;border-left:2px solid #30363d;padding:8px 10px;
               white-space:pre;overflow-x:auto;color:#8b949e;font-size:11.5px;line-height:1.5}
-            .alarm{border:1px solid #f85149;background:#2b1214;border-radius:6px;
+            .alarm{border:1px solid #30363d;background:#12161c;border-radius:6px;
                    padding:.7rem .9rem;margin:.6rem 0}
-            .alarm>a{color:#f85149;text-decoration:none}
+            .alarm>a{color:#d7dbe0;text-decoration:none}
+            .alarm .hold{color:#f85149}
             .alarm ul{margin:.45rem 0 0;padding-left:1.1rem}
             .alarm li{margin:.15rem 0}
             .alarm li a{color:#d7dbe0;text-decoration:none;font-size:.85rem}
             .alarm .v{display:inline-block;min-width:4.7rem;margin-right:.55rem;padding:0 .3rem;
                       border-radius:3px;font-size:.68rem;text-align:center;vertical-align:1px}
             .alarm .v.holds{background:#3d1518;color:#ff7b72}
+            .alarm.some-hold{border-color:#5a2a2c}
             .alarm .v.unjudged{background:#2b2011;color:#d29922}
             .alarm .v.refuted{background:#161b22;color:#6e7681}
             .alarm li a:hover{text-decoration:underline}
             .alarm details.rest{margin-top:.3rem}
-            .alarm details.rest>summary{color:#f85149;font-size:.85rem;cursor:pointer;
+            .alarm details.rest>summary{color:#8b949e;font-size:.85rem;cursor:pointer;
             list-style:none;padding-left:1.1rem}
-            .alarm details.rest>summary::before{content:"\25b8 ";display:inline-block;width:1em}
-            .alarm details.rest[open]>summary::before{content:"\25be "}
+            .alarm details.rest>summary::before{content:"\u25b8 ";display:inline-block;width:1em}
+            .alarm details.rest[open]>summary::before{content:"\u25be "}
             .alarm details.rest>summary:hover{text-decoration:underline}
             .ev:target{outline:2px solid #f85149;outline-offset:3px;scroll-margin-top:1rem}
             .ev.thought{border-left-color:#6e5494}
@@ -561,10 +563,16 @@ public final class Dashboard {
         if (live.isEmpty()) {
             return "";
         }
+        // THE BOX IS NOT THE ALARM. A red banner on every run teaches a reader to see past it,
+        // and most of what is in here is a complaint that has already been answered. Only the
+        // findings that survived their critic are coloured, and only they tint the border.
+        int holding = tally.getOrDefault("holds", 0);
         StringBuilder sub = new StringBuilder();
-        tally.forEach((v, n) -> sub.append(sub.length() == 0 ? "" : " \u00b7 ").append(n)
-                .append(' ').append(v.equals("holds") ? "hold" : v));
-        StringBuilder b = new StringBuilder("<div class=alarm><a href='/overwatch'><b>")
+        tally.forEach((v, n) -> sub.append(sub.length() == 0 ? "" : " \u00b7 ")
+                .append(v.equals("holds") ? "<span class=hold>" + n + " hold</span>"
+                        : n + " " + v));
+        StringBuilder b = new StringBuilder("<div class='alarm"
+                + (holding > 0 ? " some-hold" : "") + "'><a href='/overwatch'><b>")
                 .append(live.size()).append(live.size() == 1 ? " finding" : " findings")
                 .append(" from the supervisor</b> \u2014 ").append(sub).append("</a><ul>");
         int shown = Math.min(SHOWN, live.size());
