@@ -152,6 +152,28 @@ class ALaneIsTheUnitNobodySeesTest {
     }
 
     @Test
+    @DisplayName("a critic that delivers the shape twice does not put the line inside the account")
+    void saidItTwice(@TempDir Path dir) throws Exception {
+        // OBSERVED, not imagined: the first summary this pair ever wrote came back like this, and
+        // splitting on the first label opened the account by repeating the table's own sentence.
+        String out = written(dir, """
+                SHORT: JDBC resource leak fixed; test passed and the lesson is intact.
+
+                The pipeline identified unclosed handles as a resource leak.
+
+                SHORT: JDBC resource leak fixed; test passed and the lesson is intact.
+
+                The pipeline identified unclosed handles as a resource leak. A test failed on the \
+                original code and passed after the fixer wrapped them.""");
+        String[] parts = out.split("\n\n", 2);
+        assertEquals("JDBC resource leak fixed; test passed and the lesson is intact.", parts[0]);
+        assertFalse(parts[1].contains("JDBC resource leak fixed"),
+                "the account must not open by repeating the line the reader just read: " + parts[1]);
+        assertTrue(parts[1].contains("A test failed on the original code"),
+                "and it is the real account, not the rehearsal: " + parts[1]);
+    }
+
+    @Test
     @DisplayName("a critic that forgets the shape still yields both, rather than neither")
     void noLabel(@TempDir Path dir) throws Exception {
         String out = written(dir,

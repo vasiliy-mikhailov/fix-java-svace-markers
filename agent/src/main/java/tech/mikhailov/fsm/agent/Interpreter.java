@@ -181,19 +181,39 @@ final class Interpreter {
      */
     private void write(Path lane, String answer) {
         String all = answer.strip();
+        // THE LAST LABEL, NOT THE FIRST. A model asked for a shape sometimes delivers it twice —
+        // once as a rehearsal and once for real — and splitting on the first occurrence put the
+        // second copy inside the long form, so the account opened by repeating the line the reader
+        // had just read in the table. The last one is the one it meant.
         String shortForm = "";
         String full = all;
-        for (String line : all.split("\\R")) {
-            String t = line.strip();
+        String[] lines = all.split("\\R");
+        for (int i = lines.length - 1; i >= 0; i--) {
+            String t = lines[i].strip().replaceAll("^[*_`#\\s]+", "");
             if (t.regionMatches(true, 0, "SHORT:", 0, 6)) {
-                shortForm = t.substring(6).strip();
-                full = all.substring(all.indexOf(line) + line.length()).strip();
+                shortForm = t.substring(6).replaceAll("^[*_`\\s]+|[*_`\\s]+$", "").strip();
+                full = String.join("\n", java.util.Arrays.copyOfRange(lines, i + 1, lines.length))
+                        .strip();
                 break;
             }
         }
         if (shortForm.isBlank()) {
             int stop = full.indexOf(". ");
             shortForm = stop > 0 ? full.substring(0, stop + 1) : full;
+        }
+        // AND THE LINE ITSELF NEVER APPEARS TWICE. Whatever the shape, a paragraph identical to the
+        // table's sentence is one the reader has already read.
+        if (!full.isBlank()) {
+            List<String> kept = new ArrayList<>();
+            for (String paragraph : full.split("\\R\\s*\\R")) {
+                if (!paragraph.strip().equalsIgnoreCase(shortForm)) {
+                    kept.add(paragraph.strip());
+                }
+            }
+            full = String.join("\n\n", kept).strip();
+        }
+        if (full.isBlank()) {
+            full = shortForm;
         }
         String summary = shortForm + "\n\n" + full;
         try {
