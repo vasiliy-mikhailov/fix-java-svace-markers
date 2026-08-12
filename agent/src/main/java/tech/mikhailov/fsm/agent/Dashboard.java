@@ -103,6 +103,10 @@ public final class Dashboard {
             button.plain{background:none;border:1px solid #30363d;color:#8b949e}
             h2.stage{font-size:.8rem;font-weight:400;color:#6e7681;margin:1.4rem 0 .3rem;
                      text-transform:lowercase;letter-spacing:.02em}
+            header{position:relative}
+            a.gear{position:absolute;top:.55rem;right:.9rem;font-size:1.25rem;line-height:1;
+                   color:#6e7681;text-decoration:none;padding:.2rem .35rem;border-radius:5px}
+            a.gear:hover{color:#c9d1d9;background:#161b22}
             .ev.thought{border-left-color:#6e5494}
             .ev.thought .who{color:#a371f7}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
@@ -1856,7 +1860,11 @@ public final class Dashboard {
     private static StringBuilder head(String title, String sub) {
         return new StringBuilder("<style>").append(CSS).append("</style>")
                 .append(LIVE).append(KEEP_OPEN)
-                .append("<header><h1>").append(esc(title)).append("</h1><div class=sub>")
+                // THE ONE CONTROL THAT IS ON EVERY PAGE. It was a text link at the bottom of the
+                // list, under 356 rows, which is a link nobody has: a reader who does not already
+                // know the page exists will not scroll past the whole run to discover it.
+                .append("<header><a class=gear href='/settings' title='settings'>\u2699</a>")
+                .append("<h1>").append(esc(title)).append("</h1><div class=sub>")
                 .append(sub).append("</div></header>");
     }
 
