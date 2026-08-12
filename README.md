@@ -139,6 +139,11 @@ trace: a build that produced no test result reads as *"did not run at all — no
 and an empty reply as *"nothing at all — it answered with silence"*, because rendering either as
 blank makes a stage that failed look like a stage that never ran.
 
+**Two lengths, because they are two jobs.** One sentence decides whether to open a row out of 356
+and goes in the table; two to four sentences answer what happened and go at the top of that marker's
+summary tab, above the test and the agents' own words. Truncating the second into the first gives a
+table of sentences that all begin the same way and stop before the part that tells them apart.
+
 **The critic writes the text that ships.** The draft appears nowhere. A summary is the one thing on
 the page a reader takes at face value, so the version shown is the one read against the record by
 something that was not trying to write it. Its silence WITHHOLDS: with no answer the table falls

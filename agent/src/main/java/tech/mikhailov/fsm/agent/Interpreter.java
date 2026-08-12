@@ -84,7 +84,7 @@ final class Interpreter {
             trace.progress(lane.getFileName().toString(), "summary written but not checked; not shown");
             return;
         }
-        write(lane, checked.strip());
+        write(lane, checked);
     }
 
     /** Settled lanes with no summary, in the order the pool reached them. */
@@ -170,7 +170,32 @@ final class Interpreter {
         return flat.length() <= SAY ? flat : flat.substring(0, SAY) + " …";
     }
 
-    private void write(Path lane, String summary) {
+    /**
+     * TWO LENGTHS, ONE FILE, SPLIT WHERE IT IS WRITTEN RATHER THAN WHERE IT IS READ.
+     *
+     * <p>The short line goes in a table of 356 rows and the full account on the marker's own page,
+     * and they are different jobs: one decides whether to open the row, the other answers what
+     * happened. Parsing here means the dashboard splits on a blank line and never sees the
+     * {@code SHORT:} label, so a critic that forgets the shape cannot leak an instruction onto the
+     * page — the whole answer becomes the long form and the first sentence becomes the short one.
+     */
+    private void write(Path lane, String answer) {
+        String all = answer.strip();
+        String shortForm = "";
+        String full = all;
+        for (String line : all.split("\\R")) {
+            String t = line.strip();
+            if (t.regionMatches(true, 0, "SHORT:", 0, 6)) {
+                shortForm = t.substring(6).strip();
+                full = all.substring(all.indexOf(line) + line.length()).strip();
+                break;
+            }
+        }
+        if (shortForm.isBlank()) {
+            int stop = full.indexOf(". ");
+            shortForm = stop > 0 ? full.substring(0, stop + 1) : full;
+        }
+        String summary = shortForm + "\n\n" + full;
         try {
             Files.writeString(lane.resolve("summary.txt"), summary);
         } catch (IOException notWritten) {

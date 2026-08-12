@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -121,6 +122,46 @@ class ALaneIsTheUnitNobodySeesTest {
                         .resolve("summary.txt")),
                 "a lane is not a story until it has an ending, and two model calls spent on a "
                         + "paragraph the next stage invalidates are two calls wasted");
+    }
+
+    /** Reaches the private splitter the way the pass does, without a model. */
+    private static String written(Path dir, String criticSaid) throws Exception {
+        Path lane = lane(dir, "by-design", "{\"marker\":\"MARKER\",\"kind\":\"asked\","
+                + "\"agent\":\"verdict\",\"reply\":\"x\"}");
+        java.lang.reflect.Method m = Interpreter.class.getDeclaredMethod(
+                "write", Path.class, String.class);
+        m.setAccessible(true);
+        m.invoke(new Interpreter(dir, null, quiet()), lane, criticSaid);
+        return Files.readString(lane.resolve("summary.txt"));
+    }
+
+    @Test
+    @DisplayName("the two lengths are split where they are written, and the label never ships")
+    void twoLengths(@TempDir Path dir) throws Exception {
+        String out = written(dir, """
+                SHORT: Settled by-design on an argument, with nothing executed.
+
+                No test was written, so nothing ran. The verdict agent argued the encoding is \
+                deliberate, citing the lesson text.""");
+        String[] parts = out.split("\n\n", 2);
+        assertEquals("Settled by-design on an argument, with nothing executed.", parts[0],
+                "the table's line, without the label — a critic's instruction must never reach "
+                        + "the page");
+        assertTrue(parts[1].startsWith("No test was written"), parts[1]);
+        assertFalse(out.contains("SHORT:"), "the label is consumed, not displayed: " + out);
+    }
+
+    @Test
+    @DisplayName("a critic that forgets the shape still yields both, rather than neither")
+    void noLabel(@TempDir Path dir) throws Exception {
+        String out = written(dir,
+                "Nothing ran here. The verdict agent argued from the lesson text alone.");
+        String[] parts = out.split("\n\n", 2);
+        assertEquals("Nothing ran here.", parts[0],
+                "the first sentence becomes the short form; a row with no summary at all would "
+                        + "silently fall back to the verdict's own words and nobody would know "
+                        + "the pair had run");
+        assertTrue(parts[1].startsWith("Nothing ran here."), "and the whole answer is the account");
     }
 
     @Test

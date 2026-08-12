@@ -143,13 +143,22 @@ final class Agents {
                     judge said one word, a test passed when it was meant to fail
                   - does it use this pipeline's jargon at a reader who does not have it
 
-                Then WRITE THE FINAL SUMMARY YOURSELF. Not a critique, not a verdict, not a list of \
-                corrections: the two or three sentences that will be shown, corrected where the \
-                draft was wrong and kept where it was right. Yours is the text a person reads, and \
-                nothing else from this pair is shown anywhere.
+                Then WRITE THE SUMMARY YOURSELF, in TWO PARTS, corrected where the draft was wrong \
+                and kept where it was right. Not a critique, not a list of corrections — yours is \
+                the text a person reads, and nothing else from this pair is shown anywhere.
 
-                Plain sentences. No headings, no bullets, no markdown, no preamble, and no mention \
-                of the draft, of yourself, or of this instruction.
+                Exactly this shape, and nothing before or after it:
+
+                SHORT: one sentence, under 140 characters, that would let a reader skimming a table \
+                of 356 rows decide whether to open this one. What was concluded and on what \
+                strength of evidence. Not the checker's name, not the state word on its own.
+
+                (a blank line, then two to four sentences: what was claimed, what was actually run \
+                and what it showed, what was concluded and on what grounds, and anything a reader \
+                should know before trusting it.)
+
+                Plain sentences in both. No headings, no bullets, no markdown, no preamble, and no \
+                mention of the draft, of yourself, or of this instruction.
                 """);
     }
 

@@ -94,6 +94,8 @@ public final class Dashboard {
             .live details.stream>pre{margin:0;padding:.1rem .8rem .7rem;max-height:20rem;
                                      overflow:auto;font-size:.76rem;color:#a371f7;
                                      white-space:pre-wrap;word-break:break-word}
+            p.account{margin:.5rem 0 .2rem;font-size:.95rem;line-height:1.7;color:#d7dbe0;
+                      max-width:52em}
             .ev.thought{border-left-color:#6e5494}
             .ev.thought .who{color:#a371f7}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
@@ -802,14 +804,27 @@ public final class Dashboard {
     /** How much of an answer in progress to show. The end of it, not the start. */
     private static final int LIVE_TAIL = 4_000;
 
-    /** The checked summary for one lane, or blank where nothing has interpreted it yet. */
-    private static String summary(Path settlements, String key) {
-        Path file = settlements.resolveSibling("m").resolve(Supervisor.slug(key))
-                .resolve("summary.txt");
+    /**
+     * The checked summary for one lane: {@code [0]} the line for the table, {@code [1]} the account
+     * for the marker's own page. Both blank where nothing has interpreted it yet.
+     *
+     * <p>TWO JOBS, NOT TWO LENGTHS OF ONE. The short line decides whether to open a row out of 356;
+     * the long one answers what happened once you have. Truncating the second into the first gives
+     * a table of sentences that all begin the same way and stop before the part that distinguishes
+     * them.
+     */
+    private static String[] summary(Path results, String key) {
+        Path file = results.resolve("m").resolve(Supervisor.slug(key)).resolve("summary.txt");
         try {
-            return Files.isReadable(file) ? Files.readString(file).strip() : "";
+            if (!Files.isReadable(file)) {
+                return new String[] {"", ""};
+            }
+            String all = Files.readString(file).strip();
+            int gap = all.indexOf("\n\n");
+            return gap < 0 ? new String[] {all, all}
+                    : new String[] {all.substring(0, gap).strip(), all.substring(gap + 2).strip()};
         } catch (IOException | RuntimeException none) {
-            return "";
+            return new String[] {"", ""};
         }
     }
 
@@ -968,7 +983,8 @@ public final class Dashboard {
             // WHAT A PERSON WOULD SAY HAPPENED, where somebody has said it. The verdict's own
             // first sentence is an argument addressed to the next agent; it stays underneath in the
             // fold, because a summary is a READING of the record and the record is the record.
-            String summary = summary(settlements, key);
+            String summary = summary(settlements.getParent() == null ? Path.of(".")
+                    : settlements.getParent(), key)[0];
             String reason = why.isBlank() ? oneLine(saidLast.getOrDefault(key, "")) : why;
             b.append("<tr><td><span class='sev ").append(esc(sev.toLowerCase())).append("'>")
                     .append(sev.isEmpty() ? "&mdash;" : esc(sev)).append("</span></td>")
@@ -1060,6 +1076,17 @@ public final class Dashboard {
         b.append(tabs(key, agent));
 
         if (agent.isEmpty()) {
+            // WHAT HAPPENED, IN ENGLISH, ABOVE THE ARTEFACTS. Everything else on this tab is
+            // evidence — the test, each agent's final word — and evidence is what you read after
+            // you know what you are looking at.
+            String account = summary(trace.getParent() == null ? Path.of(".") : trace.getParent(),
+                    key)[1];
+            if (!account.isBlank()) {
+                b.append("<div class='ev asked'><span class=who>what happened</span>")
+                        .append("<span class=kind>read against the record</span>")
+                        .append("<p class=account>").append(esc(account)).append("</p></div>");
+            }
+
             // THE TEST ITSELF, first. It is the artefact the whole prove turns on, and reading it
             // out of a write_file argument on another tab is work a reader should not have to do.
             String test = "";
