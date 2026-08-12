@@ -84,6 +84,33 @@ final class Supervisor {
                 + "; the pool will take the marker again on its next pass.";
     }
 
+    /**
+     * THE SAME THING, ORDERED BY A PERSON, AND NOT COUNTED AGAINST THE AGENT'S ALLOWANCE.
+     *
+     * <p>{@link #LIMIT} exists because an agent that can re-prove without bound turns a systemic
+     * fault into a kill-and-retry loop that looks like progress. A person pressing a button is not
+     * that loop: they have read the page, they know why, and if they press it four times that is
+     * four decisions rather than a runaway. The record still says who and why, because the next
+     * reader needs to know this marker was proved twice and on whose say-so.
+     */
+    String reprove(String markerKey, String why) {
+        String id = slug(markerKey);
+        if (id.isBlank()) {
+            return "REFUSED: no marker named.";
+        }
+        Path out = results.resolve("m").resolve(id);
+        Path claim = results.resolve("claims").resolve(id);
+        if (!Files.isDirectory(out) && !Files.isDirectory(claim)) {
+            return "REFUSED: nothing named " + id + " has run.";
+        }
+        boolean killed = kill(id);
+        keep(out, id, restarts(id) + 1);
+        delete(out);
+        delete(claim);
+        record(id, markerKey, "asked for by a person — " + why, restarts(id) + 1, killed);
+        return "queued again";
+    }
+
     /** Kills the JVM proving this marker, identified by the worktree the pool gave it. */
     private boolean kill(String id) {
         Shell.Output out = Shell.run(results, "pkill", "-f", "tree-" + id + " ");

@@ -151,6 +151,26 @@ back to the verdict's own words, which are at least demonstrably somebody's.
 
 Only settled lanes, eight per pass. A lane is not a story until it has an ending.
 
+## The prompts
+
+Every prompt is a Java text block AND a file. Absent, the text block is used and nothing changes;
+present, `PROMPTS/<agent>.txt` replaces it **entirely** — there is no merge, because a prompt half
+from the code and half from a box is a prompt nobody can read in one place.
+
+`/prompts` shows all fourteen, editable, with the code's version one click away and a button to put
+it back. An edit takes effect on the **next marker a prover starts**, not on the next deploy, because
+a prove is a fresh process per marker and reads the override when it builds its agents.
+
+Sixteen of the faults found in one audit were "the prompt says nothing about this" — each a
+paragraph somebody could have written in a minute and could not, because it was behind a build, an
+image and a redeploy.
+
+Per marker, the `prompts` tab shows what each agent was **actually told when that marker was proved**
+— recoverable from the trace, since `asked` carries the whole prompt and the task follows a
+separator. Where one has changed since, the marker says so and offers to prove it again: a settlement
+is only as good as the prompt that produced it, and one reached under instructions nobody is using
+any more is worth knowing about.
+
 ## The order of the queue
 
 `markers.txt` is sorted **severity, then path, then line, then checker** — Critical, Major, Normal,

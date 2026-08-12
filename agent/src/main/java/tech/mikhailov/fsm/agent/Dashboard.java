@@ -96,6 +96,11 @@ public final class Dashboard {
                                      white-space:pre-wrap;word-break:break-word}
             p.account{margin:.5rem 0 .2rem;font-size:.95rem;line-height:1.7;color:#d7dbe0;
                       max-width:52em}
+            textarea.prompt{width:100%;min-height:12rem;background:#0d1117;color:#c9d1d9;
+                            border:1px solid #30363d;border-radius:6px;padding:.6rem;
+                            font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;
+                            white-space:pre;overflow:auto}
+            button.plain{background:none;border:1px solid #30363d;color:#8b949e}
             .ev.thought{border-left-color:#6e5494}
             .ev.thought .who{color:#a371f7}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
@@ -256,6 +261,15 @@ public final class Dashboard {
         Path feedback = settlements.resolveSibling("feedback.jsonl");
         int port = args.length > 1 ? Integer.parseInt(args[1]) : 8087;
 
+        // THE CODE'S PROMPTS, COLLECTED ONCE AT START-UP. The dashboard builds no agents of its
+        // own, so without this it could show what an agent is being told and not what it would be
+        // told if the override were removed.
+        Path here = settlements.getParent() == null ? Path.of(".") : settlements.getParent();
+        BUILT_INS.putAll(Agents.builtIn(here,
+                new JsonlTrace(here.resolve("dashboard-trace.jsonl"),
+                        here.resolve("dashboard-settlements.jsonl"), "dashboard"),
+                (phase, test) -> new Runner.Result(true, false, "the dashboard does not build")));
+
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         // A THREAD PER REQUEST, because one of them blocks for half an hour. With the default
         // executor every handler runs on the dispatcher thread, so a single reader holding the
@@ -317,6 +331,43 @@ public final class Dashboard {
         // other route here stopped using when they gained an error page, so it registered nothing
         // and every request for it fell through to `/` — the poller then wrote a copy of the entire
         // index page inside the index page, header, banner and all.
+        // THE PROMPTS, EDITABLE. Sixteen of the faults found in one run were "the prompt says
+        // nothing about this" — each a paragraph somebody could have written in a minute and could
+        // not, because it was a Java text block behind a build, an image and a redeploy.
+        // PROVING IT AGAIN, ORDERED BY A PERSON. The same mechanism the supervisor's critic uses —
+        // kill it, keep its record aside, release the claim, let the pool take it — but not counted
+        // against that agent's two, because somebody who has read the page and pressed a button is
+        // making a decision rather than looping.
+        route(server, "/reprove", e -> {
+            Map<String, String> form = form(e);
+            String marker = form.getOrDefault("marker", "");
+            new Supervisor(here, new JsonlTrace(here.resolve("dashboard-trace.jsonl"),
+                    here.resolve("dashboard-settlements.jsonl"), "dashboard"))
+                    .reprove(marker, form.getOrDefault("why", "no reason given"));
+            e.getResponseHeaders().add("Location", "/marker?k=" + enc(marker) + "&a=prompts");
+            e.sendResponseHeaders(303, -1);
+            e.close();
+        });
+        route(server, "/prompts", e -> {
+            if (e.getRequestMethod().equalsIgnoreCase("POST")) {
+                Map<String, String> form = form(e);
+                String agent = form.getOrDefault("agent", "");
+                try {
+                    if (form.containsKey("revert")) {
+                        Prompts.revert(agent);
+                    } else {
+                        Prompts.save(agent, form.getOrDefault("prompt", ""));
+                    }
+                } catch (IOException notSaved) {
+                    // Reported by the page redrawing unchanged, which is the honest outcome.
+                }
+                e.getResponseHeaders().add("Location", "/prompts#" + agent);
+                e.sendResponseHeaders(303, -1);
+                e.close();
+                return;
+            }
+            send(e, "text/html; charset=utf-8", prompts(BUILT_INS));
+        });
         route(server, "/live", e -> send(e, "text/html; charset=utf-8",
                 live(settlements.getParent() == null ? Path.of(".") : settlements.getParent(),
                         query(e, "k"))));
@@ -823,6 +874,119 @@ public final class Dashboard {
      * <p>The first paragraph only. The rest of that file is how to DEMONSTRATE the defect, which is
      * an instruction to an agent and not an explanation to a person.
      */
+    /**
+     * EVERY PROMPT, SHOWN AND EDITABLE, with the code's version one click away.
+     *
+     * <p>An edit takes effect on the next marker, not on the next deploy, because a prove is a fresh
+     * process per marker and reads the override when it constructs its agents. Nothing in flight
+     * changes underneath itself.
+     */
+    private static String prompts(Map<String, String> builtIns) {
+        List<String> names = new ArrayList<>(builtIns.keySet());
+        names.sort(null);
+        long edited = names.stream().filter(a -> !Prompts.saved(a).isBlank()).count();
+        StringBuilder b = head("prompts", names.size() + " agent(s) &middot; "
+                + (edited == 0 ? "none edited &mdash; every one is the code's"
+                        : edited + " edited, the rest are the code's"))
+                .append("<nav class=tabs><a href='/'>&larr; all markers</a>")
+                .append("<a href='/overwatch'>the supervisor</a></nav>")
+                .append("<p class=account>An edit here replaces the built-in entirely — there is no "
+                        + "merge, because a prompt half from the code and half from a box is a "
+                        + "prompt nobody can read in one place. It takes effect on the next marker "
+                        + "a prover starts, not on the ones already running.</p>");
+        for (String agent : names) {
+            String saved = Prompts.saved(agent);
+            String code = builtIns.getOrDefault(agent, "");
+            boolean overridden = !saved.isBlank();
+            b.append("<div class='ev ").append(overridden ? "asked" : "tool").append("' id='")
+                    .append(esc(agent)).append("'><span class=who>").append(esc(agent))
+                    .append("</span><span class=kind>")
+                    .append(overridden ? "edited" : "the code's own")
+                    .append("</span>")
+                    .append("<form method=post action='/prompts'>")
+                    .append(hidden("agent", agent))
+                    .append("<textarea name=prompt rows=16 class=prompt>")
+                    .append(esc(overridden ? saved : code))
+                    .append("</textarea><button>save</button>")
+                    .append(overridden
+                            ? " <button name=revert value=1 class=plain>put the code's back</button>"
+                            : "")
+                    .append("</form>")
+                    .append(overridden ? fold("what the code says", code, false) : "")
+                    .append("</div>");
+        }
+        return b.toString();
+    }
+
+    /**
+     * WHAT EACH AGENT WAS ACTUALLY TOLD WHEN THIS MARKER WAS PROVED, and whether that is still what
+     * it would be told.
+     *
+     * <p>Recoverable without recording anything new: {@code asked} carries the whole prompt, and the
+     * task is appended to the system prompt after a separator, so the part before it IS the
+     * instruction that agent was running under.
+     *
+     * <p>A settlement is only as good as the prompt that produced it. When one has changed since,
+     * the marker's answer was reached under instructions nobody is using any more — which is worth
+     * knowing before trusting it, and worth a button.
+     */
+    private static String promptsFor(String key, List<String> mine) {
+        Map<String, String> used = new LinkedHashMap<>();
+        for (String e : mine) {
+            if (!field(e, "kind").equals("asked")) {
+                continue;
+            }
+            String prompt = field(e, "prompt");
+            int cut = prompt.indexOf("\n\n---\n\n");
+            used.putIfAbsent(field(e, "agent"), cut < 0 ? prompt : prompt.substring(0, cut));
+        }
+        List<String> stale = new ArrayList<>();
+        for (Map.Entry<String, String> was : used.entrySet()) {
+            String now = Prompts.effective(was.getKey(), BUILT_INS.getOrDefault(was.getKey(), ""));
+            if (!Prompts.same(now, was.getValue())) {
+                stale.add(was.getKey());
+            }
+        }
+
+        StringBuilder b = head(key.substring(key.lastIndexOf('/') + 1),
+                used.isEmpty() ? "no agent has run for this marker"
+                        : used.size() + " agent(s) ran"
+                                + (stale.isEmpty() ? " &middot; all still current"
+                                        : " &middot; " + stale.size() + " prompt(s) changed since"))
+                .append(tabs(key, "prompts"));
+
+        if (!stale.isEmpty()) {
+            b.append("<div class=alarm><b>")
+                    .append(String.join(", ", stale.stream().map(Dashboard::esc).toList()))
+                    .append("</b> ")
+                    .append(stale.size() == 1 ? "has" : "have")
+                    .append(" been edited since this marker was proved, so its answer was reached "
+                            + "under instructions nobody is using any more.")
+                    .append("<form method=post action='/reprove'>")
+                    .append(hidden("marker", key))
+                    .append(hidden("why", "prompts changed: " + String.join(", ", stale)))
+                    .append("<button>prove it again with the prompts as they are now</button>")
+                    .append("</form></div>");
+        }
+
+        for (Map.Entry<String, String> was : used.entrySet()) {
+            String now = Prompts.effective(was.getKey(), BUILT_INS.getOrDefault(was.getKey(), ""));
+            boolean changed = !Prompts.same(now, was.getValue());
+            b.append("<div class='ev ").append(changed ? "asked" : "tool").append("'>")
+                    .append("<span class=who>").append(esc(was.getKey())).append("</span>")
+                    .append("<span class=kind>")
+                    .append(changed ? "changed since this ran" : "unchanged")
+                    .append("</span>")
+                    .append(fold("what it was told here", was.getValue(), false))
+                    .append(changed ? fold("what it would be told now", now, false) : "")
+                    .append("</div>");
+        }
+        if (used.isEmpty()) {
+            b.append("<div class=empty>Nothing has been asked for this marker yet.</div>");
+        }
+        return b.toString();
+    }
+
     private static String claimIs(String checker) {
         String safe = checker.replaceAll("[^A-Za-z0-9._-]", "");
         try (var in = Dashboard.class.getResourceAsStream("/checkers/" + safe + ".txt")) {
@@ -1091,6 +1255,9 @@ public final class Dashboard {
                 mine.add(line);
             }
         }
+        if (agent.equals("prompts")) {
+            return promptsFor(key, mine);
+        }
         String state = "";
         for (String line : lines(settlements)) {
             if (field(line, "suspicion_key").equals(key)) {
@@ -1343,7 +1510,8 @@ public final class Dashboard {
                 // SECOND, AND ONLY WHILE IT MEANS ANYTHING. Every other tab is a record of what was
                 // said; this one is what is being said, so it belongs beside the summary rather
                 // than after ten agents.
-                .append(tab(key, "live", "live", current));
+                .append(tab(key, "live", "live", current))
+                .append(tab(key, "prompts", "prompts", current));
         for (String a : AGENTS) {
             b.append(tab(key, a, a, current));
         }
@@ -1676,6 +1844,15 @@ public final class Dashboard {
     }
 
     /** Where the provers keep their trees. The same value {@code entrypoint.sh} uses. */
+    /**
+     * THE CODE'S PROMPTS, COLLECTED ONCE AT START-UP.
+     *
+     * <p>The dashboard builds no agents of its own, so without this it could show what an agent is
+     * being told and not what it would be told if the override were removed — and could not tell a
+     * marker proved under the built-in from one proved under an edit that has since been reverted.
+     */
+    private static final Map<String, String> BUILT_INS = new java.util.concurrent.ConcurrentHashMap<>();
+
     private static final Path CHECKOUTS =
             Path.of(System.getenv().getOrDefault("CHECKOUTS", "/work/checkouts"));
 

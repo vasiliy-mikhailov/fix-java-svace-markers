@@ -260,6 +260,41 @@ final class Agents {
                 """);
     }
 
+    /**
+     * EVERY BUILT-IN PROMPT, BY AGENT, so the editor can show what it is replacing.
+     *
+     * <p>Filled as the runtimes are constructed, which means an agent that has never been built in
+     * this process is absent — true of the dashboard, which builds none. So the editor asks a
+     * throwaway {@link Agents} to construct all of them first, purely to collect their text.
+     */
+    private static final java.util.Map<String, String> BUILT_IN =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * The code's prompt for every agent, whatever the overrides say.
+     *
+     * <p>Constructs each runtime and throws it away. That costs a few objects and no model call —
+     * a {@link SubAgentRuntime} does nothing until it is run.
+     */
+    static java.util.Map<String, String> builtIn(Path root, JsonlTrace trace, Runner runner) {
+        Agents all = new Agents(root, trace, runner);
+        java.util.List<java.util.function.Supplier<Agent>> every = java.util.List.of(
+                all::reproducer, all::proofCritic, all::fixer, all::fixCritic,
+                all::prMaker, all::prCritic, all::verdict, all::verdictCritic,
+                all::estimator, all::estimatorCritic,
+                () -> all.overwatch(root, null), () -> all.overwatchCritic(root, null),
+                () -> all.interpreter(root), () -> all.interpreterCritic(root));
+        for (java.util.function.Supplier<Agent> make : every) {
+            try {
+                make.get();
+            } catch (RuntimeException noEndpoint) {
+                // The prompt is already in the map; only the model failed, and this caller does not
+                // want one. A reader of the prompts page needs no inference endpoint to be up.
+            }
+        }
+        return java.util.Map.copyOf(BUILT_IN);
+    }
+
     /** One agent, already wired to the trace. Callers cannot reach a runtime that is not. */
     @FunctionalInterface
     interface Agent {
@@ -509,7 +544,15 @@ final class Agents {
      * library truncates. Both go to the same instance, so one file holds a run in one order.
      */
     private Agent runtime(String name, java.util.Map<dev.langchain4j.agent.tool.ToolSpecification,
-            dev.langchain4j.service.tool.ToolExecutor> tools, String prompt) {
+            dev.langchain4j.service.tool.ToolExecutor> tools, String builtIn) {
+        // THE PROMPT IS DATA NOW, and the text block above is its default. Read here rather than
+        // at class load, because a prove is a fresh process per marker: an edit made while a run is
+        // going takes effect on the next marker rather than on the next deploy.
+        // RECORDED BEFORE ANYTHING CAN THROW. Collecting the prompts must not need a model: the
+        // dashboard has no endpoint of its own and reading what an agent is told is not a thing
+        // that should require one to be reachable.
+        BUILT_IN.put(name, builtIn);
+        String prompt = Prompts.effective(name, builtIn);
         SubAgentRuntime runtime = new SubAgentRuntime(Prove.model(name, trace), prompt, tools,
                 "agent:" + name,
                 ToolInvocationLogMode.NONE, trace);
