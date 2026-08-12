@@ -57,7 +57,7 @@ final class Pace {
                 if (!settled(lane)) {
                     continue;
                 }
-                long minutes = minutes(lane);
+                long minutes = totalMinutes(results, lane.getFileName().toString());
                 if (minutes > 0) {
                     took.add(minutes);
                 }
@@ -72,42 +72,94 @@ final class Pace {
         return Math.toIntExact(took.get(took.size() / 2));
     }
 
-    /** How long this lane has been going, from its first event to its last. */
+    /** How long one attempt ran, from its first event to its last. */
     static long minutes(Path lane) {
-        long first = 0;
-        long last = 0;
-        try (Stream<String> lines = Files.lines(lane.resolve("trace.jsonl"))) {
-            for (String line : (Iterable<String>) lines::iterator) {
-                long at = num(Json.field(line, "at"));
-                if (at <= 0) {
-                    continue;
-                }
-                if (first == 0) {
-                    first = at;
-                }
-                last = at;
-            }
-        } catch (IOException | RuntimeException unreadable) {
-            return 0;
-        }
+        long first = first(lane);
+        long last = last(lane);
         return first == 0 ? 0 : (last - first) / 60_000;
     }
 
-    /** How long it has been going as of now, which for a running prove is the number that matters. */
-    static long running(Path lane) {
-        long first = 0;
+    /**
+     * EVERY ATTEMPT AT THIS MARKER, ADDED UP — including the ones that were thrown away.
+     *
+     * <p>THE CLOCK BELONGED TO THE ATTEMPT AND IT SHOULD HAVE BELONGED TO THE MARKER.
+     * {@code restart_prove} moves the trace to {@code dead/} and the next attempt starts a new one,
+     * so a marker could burn seventy-nine minutes, be restarted, burn seventy-nine more, and read as
+     * seventy-nine every single time. The one tool the supervisor was reaching for was resetting the
+     * measurement that would have told it to reach for the other one — a marker could never look
+     * slow, however long it actually took.
+     *
+     * <p>So the archived attempts count. {@code dead/<id>.restart-N} and
+     * {@code dead/<id>.before-postponing} are this marker's history and the time in them was spent
+     * on this marker.
+     */
+    static long totalMinutes(Path results, String id) {
+        long total = 0;
+        Path current = results.resolve("m").resolve(id);
+        total += Files.isDirectory(current) ? sinceStart(current) : 0;
+        Path dead = results.resolve("dead");
+        if (!Files.isDirectory(dead)) {
+            return total;
+        }
+        try (Stream<Path> old = Files.list(dead)) {
+            for (Path attempt : (Iterable<Path>) old.filter(Files::isDirectory)
+                    .filter(d -> d.getFileName().toString().startsWith(id + "."))::iterator) {
+                total += minutes(attempt);
+            }
+        } catch (IOException unreadable) {
+            return total;
+        }
+        return total;
+    }
+
+    /** How many attempts this marker has had, the current one included. */
+    static int attempts(Path results, String id) {
+        int n = Files.isDirectory(results.resolve("m").resolve(id)) ? 1 : 0;
+        Path dead = results.resolve("dead");
+        if (!Files.isDirectory(dead)) {
+            return n;
+        }
+        try (Stream<Path> old = Files.list(dead)) {
+            return n + (int) old.filter(Files::isDirectory)
+                    .filter(d -> d.getFileName().toString().startsWith(id + ".")).count();
+        } catch (IOException unreadable) {
+            return n;
+        }
+    }
+
+    /** How long the current attempt has been going, as of now. */
+    static long sinceStart(Path lane) {
+        long first = first(lane);
+        return first == 0 ? 0 : (System.currentTimeMillis() - first) / 60_000;
+    }
+
+    private static long first(Path lane) {
         try (Stream<String> lines = Files.lines(lane.resolve("trace.jsonl"))) {
             for (String line : (Iterable<String>) lines::iterator) {
                 long at = num(Json.field(line, "at"));
                 if (at > 0) {
-                    first = at;
-                    break;
+                    return at;
                 }
             }
         } catch (IOException | RuntimeException unreadable) {
             return 0;
         }
-        return first == 0 ? 0 : (System.currentTimeMillis() - first) / 60_000;
+        return 0;
+    }
+
+    private static long last(Path lane) {
+        long last = 0;
+        try (Stream<String> lines = Files.lines(lane.resolve("trace.jsonl"))) {
+            for (String line : (Iterable<String>) lines::iterator) {
+                long at = num(Json.field(line, "at"));
+                if (at > 0) {
+                    last = at;
+                }
+            }
+        } catch (IOException | RuntimeException unreadable) {
+            return 0;
+        }
+        return last;
     }
 
     /**
@@ -117,14 +169,22 @@ final class Pace {
      */
     static String outlier(Path results, Path lane) {
         int typical = typical(results);
-        long going = running(lane);
-        if (typical == 0 || going < NEVER_BEFORE || going < (long) typical * MUCH_LONGER) {
+        String id = lane.getFileName().toString();
+        long going = sinceStart(lane);
+        long spent = totalMinutes(results, id);
+        int attempts = attempts(results, id);
+        if (typical == 0 || spent < NEVER_BEFORE || spent < (long) typical * MUCH_LONGER) {
             return "";
         }
-        return "TAKING MUCH LONGER THAN THE OTHERS: " + going + " minutes, against a median of "
-                + typical + " for the markers that have settled. It is not necessarily stuck — but "
-                + "it is holding a quarter of the pool while the queue waits, and it can be postponed "
-                + "and picked up once the rest is done.";
+        return "TAKING MUCH LONGER THAN THE OTHERS: " + spent + " minutes on this marker"
+                + (attempts > 1
+                        ? " across " + attempts + " attempts (" + going + " in the current one) — "
+                                + "restarting it again would reset that count without changing "
+                                + "anything, which is how it stayed invisible"
+                        : "")
+                + ", against a median of " + typical + " for the markers that have settled. It is "
+                + "not necessarily stuck — but it is holding a quarter of the pool while the queue "
+                + "waits, and it can be postponed and picked up once the rest is done.";
     }
 
     /** Markers postponed: set aside, and run once the queue is otherwise finished. */

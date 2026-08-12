@@ -59,8 +59,13 @@ final class Supervisor {
         int already = restarts(id);
         if (already >= LIMIT) {
             return "REFUSED: " + id + " has been restarted " + already + " time(s), which is the "
-                    + "limit. A marker that fails this often is a finding to report, not a process "
-                    + "to cycle — say what is wrong with it and leave it alone.";
+                    + "limit — and every restart threw away the record of how long it had already "
+                    + "taken, so it has cost " + Pace.totalMinutes(results, id) + " minutes across "
+                    + Pace.attempts(results, id) + " attempts rather than the one you can see. "
+                    + "Restarting it again resets that count and changes nothing else. If it is "
+                    + "WORKING and merely slow, postpone_prove sets it aside and the pool proves it "
+                    + "when the queue is done; if it is broken in a way a fresh attempt will not "
+                    + "fix, that is a finding to report and not a process to cycle.";
         }
 
         Path claim = results.resolve("claims").resolve(id);

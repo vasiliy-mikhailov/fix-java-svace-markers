@@ -125,6 +125,13 @@ written over.
 model and nothing persists that. Proving a postponed marker sooner is `restart_prove`, which is the
 same act under its only honest name and which lifts the postponement as part of doing it.
 
+**The clock belongs to the marker, not the attempt.** `restart_prove` moves the trace to `dead/` and
+the next attempt starts a new one — so a marker could burn seventy-nine minutes, be restarted, burn
+seventy-nine more, and read as seventy-nine every time. The one tool the supervisor reached for was
+resetting the measurement that would have told it to reach for the other one, and a marker could
+never look slow however long it actually took. `Pace` sums every attempt, `dead/` included, and the
+digest says how many there were.
+
 **"Much longer" is a comparison, not a number somebody picked.** Half an hour is only long because
 most markers finish in five, and a fixed cap either strangles ordinary work or lets a stuck prove run
 all day the moment the model or the subject changes. `Pace` takes the median of what has actually

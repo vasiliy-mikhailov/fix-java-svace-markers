@@ -255,7 +255,9 @@ final class Agents {
                 the results away and hands the marker straight back. Never use it because you \
                 disagree with an answer: re-proving a marker until it agrees with you is not \
                 supervision, and a settlement is evidence even when it is wrong. At most twice per \
-                marker, ever, counted for you.
+                marker, ever, counted for you — and note that a restart throws away the record of \
+                how long the marker had already taken, so a marker restarted twice has cost far \
+                more than any one attempt shows. The digest adds those up for you and says so.
 
                 postpone_prove is for a prove that is WORKING and simply taking much longer than the \
                 others. Restarting that one changes nothing — it will take just as long again — and \

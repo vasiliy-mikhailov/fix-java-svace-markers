@@ -119,6 +119,38 @@ class MuchLongerThanTheOthersTest {
     }
 
     @Test
+    @DisplayName("a restart does not reset the clock, which is how this stayed invisible")
+    void restartsAccumulate(@TempDir Path dir) throws Exception {
+        for (int i = 0; i < Pace.ENOUGH; i++) {
+            lane(dir, "quick" + i, 8, true);
+        }
+        // Two attempts thrown away by restart_prove, and a third running now. Each on its own is
+        // under the line; together they are three times over it.
+        Path dead = dir.resolve("dead");
+        Files.createDirectories(dead);
+        for (int n = 1; n <= 2; n++) {
+            Path old = dead.resolve("slow.restart-" + n);
+            Files.createDirectories(old);
+            long start = System.currentTimeMillis() - 30 * 60_000L;
+            Files.writeString(old.resolve("trace.jsonl"),
+                    "{\"at\":\"" + start + "\"}\n{\"at\":\"" + (start + 30 * 60_000L) + "\"}\n");
+        }
+        lane(dir, "slow", 25, false);
+
+        assertEquals(3, Pace.attempts(dir, "slow"), "two thrown away and one running");
+        assertEquals(85, Pace.totalMinutes(dir, "slow"), "30 + 30 + 25, not 25");
+        String said = Pace.outlier(dir, dir.resolve("m").resolve("slow"));
+        assertTrue(said.contains("85 minutes on this marker"),
+                "the clock belongs to the MARKER; restart_prove moves the trace to dead/ and the "
+                        + "next attempt starts a new one, so a marker could burn the same time "
+                        + "over and over and read as young every single time: " + said);
+        assertTrue(said.contains("across 3 attempts"), said);
+        assertTrue(said.contains("restarting it again would reset that count"),
+                "and the supervisor is told, because the tool it reaches for is the one that hides "
+                        + "the evidence: " + said);
+    }
+
+    @Test
     @DisplayName("only settled lanes count towards what is typical")
     void onlySettled(@TempDir Path dir) throws Exception {
         for (int i = 0; i < Pace.ENOUGH; i++) {
