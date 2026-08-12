@@ -1490,28 +1490,11 @@ public final class Dashboard {
                         .append(code(patch)).append("</div>");
             }
 
-            // The summary: every agent's final word, in the order they ran, and nothing else.
-            for (String who : AGENTS) {
-                List<String> said = asked(mine, who);
-                if (said.isEmpty()) {
-                    long busy = mine.stream().filter(e -> field(e, "kind").equals("tool")
-                            && field(e, "agent").endsWith(who)).count();
-                    if (busy > 0) {
-                        b.append("<div class='ev tool'><span class=who>").append(esc(who))
-                                .append("</span><span class=kind>working — ").append(busy)
-                                .append(" tool call(s) · <a href='/marker?k=").append(enc(key))
-                                .append("&a=").append(who).append("'>open</a></span></div>");
-                    }
-                    continue;
-                }
-                String last = said.get(said.size() - 1);
-                b.append("<div class='ev asked'><span class=who>").append(esc(who))
-                        .append("</span><span class=kind>")
-                        .append(said.size() > 1 ? "final of " + said.size() + " attempts" : "answered")
-                        .append(" · <a href='/marker?k=").append(enc(key)).append("&a=").append(who)
-                        .append("'>open</a></span><pre>").append(esc(field(last, "reply")))
-                        .append("</pre></div>");
-            }
+            // NO AGENT TRANSCRIPTS HERE ANY MORE. This was the summary when there was nothing else
+            // to be: ten final answers stacked in call order, which is a pile of arguments
+            // addressed to each other and never an account of the marker. Every one of them is
+            // still one click away on its own tab, so nothing is lost — what goes is the reader
+            // having to assemble the story out of ten paragraphs written for somebody else.
             return b.toString();
         }
 
