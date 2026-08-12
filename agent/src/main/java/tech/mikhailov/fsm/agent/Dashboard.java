@@ -70,6 +70,12 @@ public final class Dashboard {
             .alarm li{margin:.15rem 0}
             .alarm li a{color:#d7dbe0;text-decoration:none;font-size:.85rem}
             .alarm li a:hover{text-decoration:underline}
+            .alarm details.rest{margin-top:.3rem}
+            .alarm details.rest>summary{color:#f85149;font-size:.85rem;cursor:pointer;
+            list-style:none;padding-left:1.1rem}
+            .alarm details.rest>summary::before{content:"\25b8 ";display:inline-block;width:1em}
+            .alarm details.rest[open]>summary::before{content:"\25be "}
+            .alarm details.rest>summary:hover{text-decoration:underline}
             .ev:target{outline:2px solid #f85149;outline-offset:3px;scroll-margin-top:1rem}
             .ev.thought{border-left-color:#6e5494}
             .ev.thought .who{color:#a371f7}
@@ -546,19 +552,36 @@ public final class Dashboard {
                 .append(live.size()).append(live.size() == 1 ? " finding" : " findings")
                 .append(" from the supervisor</b> \u2014 what is wrong with the pipeline, not with "
                         + "these markers</a><ul>");
-        for (int i = live.size() - 1; i >= Math.max(0, live.size() - 5); i--) {
-            String head = field(live.get(i), "finding").strip()
-                    .replaceAll("^[#*\\s]*(Finding:)?\\s*", "");
-            int stop = head.indexOf('\n');
-            b.append("<li><a href='/overwatch#f").append(at.get(i)).append("'>")
-                    .append(esc(stop < 0 ? head : head.substring(0, stop)))
-                    .append("</a></li>");
+        int shown = Math.min(SHOWN, live.size());
+        for (int i = live.size() - 1; i >= live.size() - shown; i--) {
+            b.append(item(live.get(i), at.get(i)));
         }
-        if (live.size() > 5) {
-            b.append("<li><a href='/overwatch'>and ").append(live.size() - 5)
-                    .append(" more &rarr;</a></li>");
+        b.append("</ul>");
+        // THE REST EXPAND HERE, EACH WITH ITS OWN LINK. A bulk "and 17 more" pointing at the
+        // findings page asks the reader to leave, re-find the one they were reading, and lose the
+        // list; and it hides seventeen distinct complaints behind a number, which is the one shape
+        // a findings banner must not have. They are already loaded — showing them costs nothing.
+        if (live.size() > shown) {
+            b.append("<details class=rest><summary>and ").append(live.size() - shown)
+                    .append(" more</summary><ul>");
+            for (int i = live.size() - shown - 1; i >= 0; i--) {
+                b.append(item(live.get(i), at.get(i)));
+            }
+            b.append("</ul></details>");
         }
-        return b.append("</ul></div>").toString();
+        return b.append("</div>").toString();
+    }
+
+    /** How many stay open without being asked. Enough to alarm, few enough to read at a glance. */
+    private static final int SHOWN = 5;
+
+    /** One finding: its first line, linked to itself on the findings page. */
+    private static String item(String finding, int position) {
+        String head = field(finding, "finding").strip()
+                .replaceAll("^[#*\\s]*(Finding:)?\\s*", "");
+        int stop = head.indexOf('\n');
+        return "<li><a href='/overwatch#f" + position + "'>"
+                + esc(stop < 0 ? head : head.substring(0, stop)) + "</a></li>";
     }
 
     private static String index(Path settlements, Path trace, List<String> queued) {
