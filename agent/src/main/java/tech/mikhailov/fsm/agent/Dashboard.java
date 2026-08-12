@@ -176,7 +176,12 @@ public final class Dashboard {
                   });
                   return;
                 }
-                var seen = +(document.body.dataset.events || 0);
+                // A PAGE THAT DOES NOT DECLARE A CURSOR DOES NOT DO FRAGMENTS. Only the trace
+                // views end with one; every other page — the prompts, the supervisor, each marker
+                // tab — answers a fragment request with the whole page, and this branch appended
+                // it. One copy of /prompts per event, which is what it looked like.
+                if (document.body.dataset.events === undefined) return;
+                var seen = +document.body.dataset.events;
                 if (n.trace <= seen) return;
                 fetch(here + (here.indexOf('?') < 0 ? '?' : '&') + 'from=' + seen,
                       {headers:{'X-Fragment':'1'}})
@@ -1589,7 +1594,11 @@ public final class Dashboard {
                 .append(expand ? (key.isEmpty() ? "?fold=1" : "&fold=1") : "")
                 .append("'>").append(expand ? "fold the long parts" : "open everything").append("</a>");
         if (mine.isEmpty()) {
-            return b.append("<div class=empty>Nothing traced for this marker.</div>").toString();
+            // WITH A CURSOR, EVEN AT ZERO. This branch returned before setting one, so a marker
+            // page opened before its first event declared itself unable to take fragments and
+            // stayed empty for the whole prove.
+            return b.append("<div class=empty>Nothing traced for this marker.</div>")
+                    .append(cursor(0)).toString();
         }
 
         String self = key.isEmpty() ? "/trace" : "/marker?k=" + enc(key);
