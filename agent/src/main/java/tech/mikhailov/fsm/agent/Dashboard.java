@@ -152,6 +152,7 @@ public final class Dashboard {
                   fetch(here, {headers:{'X-Fragment':'1'}}).then(function(r){return r.text()}).then(function(html){
                     var y = window.scrollY;
                     document.body.innerHTML = html;
+                    if (window.__keepOpen) window.__keepOpen();
                     window.scrollTo(0, y);
                   });
                   return;
@@ -170,23 +171,47 @@ public final class Dashboard {
             </script>
             """;
 
+    /**
+     * WHAT THE READER OPENED STAYS OPEN.
+     *
+     * <p>Two bugs lived here. The restore ran inline at the top of the document, where
+     * {@code querySelectorAll('details')} matches nothing because none of them are parsed yet — so
+     * every fold was faithfully SAVED and never once put back. And the key was a fold's position
+     * among all folds on the page, which on the index moves every time a marker settles, so even a
+     * restore that ran would have opened somebody else's row.
+     *
+     * <p>Now: restored after the document is parsed, and keyed by id where a fold has one, so the
+     * supervisor's expander is remembered as itself and not as "the first fold".
+     */
     private static final String KEEP_OPEN = """
             <script>
             (function(){
               var K='open:'+location.pathname+location.search, S=sessionStorage;
               function all(){return [].slice.call(document.querySelectorAll('details'))}
-              try{
-                var open=JSON.parse(S.getItem(K)||'[]');
-                all().forEach(function(d,i){ if(open.indexOf(i)>=0) d.open=true });
-                var y=+S.getItem(K+':y'); if(y) window.scrollTo(0,y);
-              }catch(e){}
-              document.addEventListener('toggle',function(){
+              function name(d,i){return d.id||('#'+i)}
+              function save(){
                 try{
-                  var open=[]; all().forEach(function(d,i){ if(d.open) open.push(i) });
+                  var open=[]; all().forEach(function(d,i){ if(d.open) open.push(name(d,i)) });
                   S.setItem(K,JSON.stringify(open));
                 }catch(e){}
-              },true);
+              }
+              function restore(keepScroll){
+                try{
+                  var open=JSON.parse(S.getItem(K)||'[]');
+                  all().forEach(function(d,i){ if(open.indexOf(name(d,i))>=0) d.open=true });
+                  if(!keepScroll){ var y=+S.getItem(K+':y'); if(y) window.scrollTo(0,y); }
+                }catch(e){}
+              }
+              if(document.readyState==='loading'){
+                document.addEventListener('DOMContentLoaded',function(){restore(false)});
+              }else{ restore(false); }
+              document.addEventListener('toggle',save,true);
               addEventListener('scroll',function(){ try{S.setItem(K+':y',window.scrollY)}catch(e){} },{passive:true});
+              // THE LIST REPLACES ITS WHOLE BODY WHEN AN EVENT ARRIVES, so nothing fires again:
+              // not DOMContentLoaded, and not the scripts in the replacement, which innerHTML does
+              // not execute. The listener above is on `document` and survives; this is how the
+              // swap asks for the folds back. The scroll is the caller's to keep.
+              window.__keepOpen=function(){ restore(true) };
             })();
             </script>
             """;
@@ -585,7 +610,7 @@ public final class Dashboard {
         // is the one thing a list of complaints must not be reduced to, because the number is the
         // alarm and the complaints are the reason. Every line was already read from the file.
         if (live.size() > shown) {
-            b.append("<details class=rest><summary>and ").append(live.size() - shown)
+            b.append("<details id=more class=rest><summary>and ").append(live.size() - shown)
                     .append(" more</summary><ul>");
             for (int i = shown; i < live.size(); i++) {
                 b.append(item(live.get(i), at.get(i)));
