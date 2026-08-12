@@ -59,6 +59,16 @@ record Thinking(StreamingChatModel model, Overheard overheard, Trace trace, Stri
             @Override
             public void onPartialThinking(PartialThinking thinking) {
                 partial.append(thinking.text());
+                trace.streaming(agent, partial.toString());
+            }
+
+            @Override
+            public void onPartialResponse(String token) {
+                // The answer counts as speech too. An agent that has stopped reasoning and started
+                // writing is the most interesting moment to be watching, and without this the view
+                // freezes on the last thought while the reply is produced.
+                partial.append(token);
+                trace.streaming(agent, partial.toString());
             }
 
             @Override

@@ -37,6 +37,20 @@ interface Trace {
      */
     void thought(String agent, String text);
 
+    /**
+     * WHAT AN AGENT IS SAYING WHILE IT IS STILL SAYING IT.
+     *
+     * <p>Everything else here is written when a call ENDS, which is right for a record and useless
+     * for watching: a reasoning turn can run for minutes, and for those minutes the trace shows the
+     * agent doing nothing at all. This is the only method that fires mid-call, and the only one
+     * whose argument is replaced rather than appended — it is a view, not evidence, and nothing
+     * downstream may read a settlement out of it.
+     *
+     * <p>Default no-op, so a {@link Trace} that only records can ignore it.
+     */
+    default void streaming(String agent, String soFar) {
+    }
+
     /** A tool the library ran on an agent's behalf. Payloads arrive truncated; that is upstream. */
     void tool(String agent, String tool, String arguments, String result);
 

@@ -41,6 +41,36 @@ final class JsonlTrace implements Trace, DeepAgentFlowListener {
         write("asked", of("agent", agent, "prompt", prompt, "reply", reply));
     }
 
+    /** When the live view was last written. Throttled: a token arrives every few milliseconds. */
+    private volatile long lastLive;
+
+    /**
+     * THE ONLY THING HERE THAT IS OVERWRITTEN RATHER THAN APPENDED.
+     *
+     * <p>Beside the trace and named after it, so a reader finding {@code trace.jsonl.live} knows
+     * exactly which prove it belongs to and that it is not part of the record. It holds one answer
+     * in progress and is replaced wholesale; when the call ends, {@link #thought} and {@link #asked}
+     * write the real thing and this becomes a stale copy of it, which is why the dashboard shows it
+     * only for a prove that is still running.
+     */
+    @Override
+    public void streaming(String agent, String soFar) {
+        long now = System.currentTimeMillis();
+        if (now - lastLive < LIVE_EVERY_MS) {
+            return;
+        }
+        lastLive = now;
+        try {
+            Files.writeString(trace.resolveSibling(trace.getFileName() + ".live"),
+                    agent + "\n" + now + "\n" + soFar);
+        } catch (IOException notShown) {
+            // A view nobody can write is a view nobody sees. It must never cost the prove.
+        }
+    }
+
+    /** How often the live view may be rewritten. Slower than a token, faster than a reader blinks. */
+    private static final long LIVE_EVERY_MS = 700;
+
     @Override
     public void thought(String agent, String text) {
         // In full, like the pair. The reasoning is the only record of why an answer is what it is,

@@ -84,6 +84,16 @@ public final class Dashboard {
             .alarm details.rest[open]>summary::before{content:"\u25be "}
             .alarm details.rest>summary:hover{text-decoration:underline}
             .ev:target{outline:2px solid #f85149;outline-offset:3px;scroll-margin-top:1rem}
+            .live{margin:.6rem 0}
+            .live details.stream{border:1px solid #21262d;border-radius:6px;margin:.3rem 0;
+                                 background:#0d1117}
+            .live details.stream>summary{padding:.4rem .7rem;cursor:pointer;font-size:.82rem;
+                                         color:#8b949e;list-style:none}
+            .live details.stream>summary::before{content:"\u25b8 ";display:inline-block;width:1em}
+            .live details.stream[open]>summary::before{content:"\u25be "}
+            .live details.stream>pre{margin:0;padding:.1rem .8rem .7rem;max-height:20rem;
+                                     overflow:auto;font-size:.76rem;color:#a371f7;
+                                     white-space:pre-wrap;word-break:break-word}
             .ev.thought{border-left-color:#6e5494}
             .ev.thought .who{color:#a371f7}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
@@ -212,6 +222,23 @@ public final class Dashboard {
               // not execute. The listener above is on `document` and survives; this is how the
               // swap asks for the folds back. The scroll is the caller's to keep.
               window.__keepOpen=function(){ restore(true) };
+              // WHAT IS BEING SAID NOW, every two seconds, into its own container. The open/closed
+              // state of these folds is the reader's, so it is read off the page before the swap
+              // and put back after — sessionStorage is for folds that survive a reload, and these
+              // are replaced far too often to go through it.
+              function poll(){
+                var box=document.getElementById('live'); if(!box) return;
+                fetch('/live').then(function(r){return r.text()}).then(function(html){
+                  var box=document.getElementById('live'); if(!box) return;
+                  var shut={};
+                  [].forEach.call(box.querySelectorAll('details'),function(d){ shut[d.id]=!d.open });
+                  box.innerHTML=html;
+                  [].forEach.call(box.querySelectorAll('details'),function(d){
+                    if(shut[d.id]) d.open=false;
+                  });
+                }).catch(function(){});
+              }
+              setInterval(poll,2000);
             })();
             </script>
             """;
@@ -652,6 +679,74 @@ public final class Dashboard {
                 + esc(newline < 0 ? first : first.substring(0, newline)) + "</a></li>";
     }
 
+    /**
+     * THE SUPERVISOR AND EVERY PROVE THAT IS SPEAKING, one fold each.
+     *
+     * <p>Five, because the pool runs four and the supervisor is one — but derived from what is
+     * actually claimed rather than from the number four, so a run at a different width still shows
+     * all of it.
+     *
+     * <p>A live file is only shown for a prove that is still CLAIMED. When a prove ends the file
+     * stays behind holding its last answer, and a panel that went on showing it would be a live
+     * view that is quietly a museum.
+     */
+    private static String live(Path results) {
+        StringBuilder b = new StringBuilder();
+        b.append(panel("supervisor", results.resolve("overwatch-trace.jsonl.live"), true));
+        List<String> claimed = new ArrayList<>();
+        Path claims = results.resolve("claims");
+        if (Files.isDirectory(claims)) {
+            try (var dirs = Files.list(claims)) {
+                dirs.map(d -> d.getFileName().toString()).sorted().forEach(claimed::add);
+            } catch (IOException none) {
+                // No claims directory is a run that has not started.
+            }
+        }
+        for (String id : claimed) {
+            b.append(panel(id, results.resolve("m").resolve(id).resolve("trace.jsonl.live"), true));
+        }
+        if (claimed.isEmpty()) {
+            b.append("<div class=k>No prove is running.</div>");
+        }
+        return b.toString();
+    }
+
+    /** One fold: who is speaking, how long ago, and the last of what they have said. */
+    private static String panel(String who, Path file, boolean open) {
+        String text = "";
+        String agent = "";
+        long at = 0;
+        if (Files.isReadable(file)) {
+            try {
+                String all = Files.readString(file);
+                int one = all.indexOf('\n');
+                int two = one < 0 ? -1 : all.indexOf('\n', one + 1);
+                if (two > 0) {
+                    agent = all.substring(0, one);
+                    at = num(all.substring(one + 1, two));
+                    text = all.substring(two + 1);
+                }
+            } catch (IOException | RuntimeException unreadable) {
+                // Being rewritten as we read it. The next poll is 2 seconds away.
+            }
+        }
+        long ago = at == 0 ? -1 : (System.currentTimeMillis() - at) / 1000;
+        String label = esc(who.length() > 46 ? who.substring(0, 46) : who)
+                + (agent.isEmpty() ? "" : " <span class=k>&middot; " + esc(agent) + "</span>")
+                + (ago < 0 ? " <span class=k>&middot; nothing yet</span>"
+                        : ago > 90 ? " <span class=k>&middot; quiet " + (ago / 60) + "m</span>"
+                                : " <span class=k>&middot; " + ago + "s ago</span>");
+        // THE TAIL, because a reasoning turn runs to tens of thousands of characters and the end is
+        // where it is now. Opening on the beginning would show the same paragraph for four minutes.
+        String tail = text.length() > LIVE_TAIL ? text.substring(text.length() - LIVE_TAIL) : text;
+        return "<details class=stream" + (open ? " open" : "") + " id='live-" + esc(who) + "'>"
+                + "<summary>" + label + "</summary><pre>"
+                + (tail.isBlank() ? "…" : esc(tail)) + "</pre></details>";
+    }
+
+    /** How much of an answer in progress to show. The end of it, not the start. */
+    private static final int LIVE_TAIL = 4_000;
+
     private static String index(Path settlements, Path trace, List<String> queued) {
         Map<String, String> latest = new LinkedHashMap<>();
         for (String line : lines(settlements)) {
@@ -751,6 +846,12 @@ public final class Dashboard {
         // warning nobody is shown is a warning nobody has. It goes at the top of the page everybody
         // already has open.
         b.append(warnings(settlements.resolveSibling("overwatch.jsonl")));
+        // A CONTAINER THE POLLER REPLACES, and only this. Refreshing the whole page every two
+        // seconds to watch one agent think would throw away every fold the reader had opened and
+        // their place in a table of 356 rows.
+        b.append("<div id=live class=live>")
+                .append(live(settlements.getParent() == null ? Path.of(".") : settlements.getParent()))
+                .append("</div>");
         b.append(progress(total, settled, elapsed));
 
 

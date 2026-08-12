@@ -172,6 +172,22 @@ Per marker: a tab for each agent showing its **final** answer with superseded at
 beneath, the test it wrote, a semaphore for whether RED reproduced and GREEN held, what the machine
 spent and what a person would have. Feedback is a text box on any answer.
 
+## Watching it think
+
+Five folds at the top of the list: the supervisor, and one per prove the pool has claimed. Each shows
+the answer that agent is producing **right now**, updating every two seconds.
+
+Everything else in the record is written when a call ENDS, which is right for a record and useless
+for watching — a reasoning turn can run for minutes, and for those minutes the trace shows the agent
+doing nothing. `Trace.streaming` is the one method that fires mid-call and the one whose argument is
+replaced rather than appended: it goes to `trace.jsonl.live` beside the trace, overwritten, throttled
+to once every 700ms. It is a view and never evidence, and no settlement may be read out of it.
+
+Polled, not pushed: the event stream fires when the counts move, and an agent reasoning for four
+minutes moves no counts. Only the panel container is replaced, so nothing else you have open closes.
+A panel appears only while its marker is still claimed — the file outlives the prove, and a panel
+still showing it would be a live view that is quietly a museum.
+
 ## Model tests
 
 `test [cases]` replays an agent against an input it has seen and asserts **what the chain does with
