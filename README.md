@@ -119,6 +119,20 @@ worktree. Two restarts per marker, ever, counted in a file rather than asked for
 record marked `unjudged`, so an unreachable critic cannot suppress a warning; a restart it never
 orders does not happen, so an unreachable critic cannot kill anything either.
 
+## The order of the queue
+
+`markers.txt` is sorted **severity, then path, then line, then checker** — Critical, Major, Normal,
+Minor, then the 74 with no analyser severity, which are all in the test tree.
+
+The pool reads the file top to bottom and the dashboard lists it in the same order, so the file IS
+the order: of the queue, of the table, and of what a run stopped half way through has covered. Two
+runs are only comparable if they take the markers the same way, and a run cut short should have
+spent its time on the worst ones.
+
+The line sorts as a number. As text, 100 comes before 21, which reads as a mistake in a file people
+scan. A test asserts the file is in this order rather than sorting it at load — a queue that
+reorders itself is a queue nobody can diff.
+
 ## Running many
 
 `slice <markers> [n]` proves every marker, at most `n` at a time. A pool, not a partition: whichever
