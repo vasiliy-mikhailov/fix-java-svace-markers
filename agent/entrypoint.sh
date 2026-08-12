@@ -57,7 +57,24 @@ case "${1:-dashboard}" in
         # THE CLAIM IS A MKDIR. It is the one filesystem operation that is atomic and tells the
         # loser it lost, so two provers cannot take the same marker and no lock file is left behind
         # by a process that died holding it.
-        limit="${3:-4}"
+        # THE WIDTH IS RE-READ EVERY TIME ROUND THE LOOP, so it can be changed while a run is
+        # going. It used to be this argument and nothing else, fixed for the life of the pool, so
+        # widening a run meant killing it — which orphans every claim in flight and throws away
+        # whatever those markers had done.
+        #
+        # CLAMPED HERE AS WELL AS IN JAVA. This is the side that starts JVMs, and a file edited by
+        # hand or left behind by an older version must not be able to start ninety of them.
+        # CAPTURED OUT HERE. Inside the function $3 is the FUNCTION's third argument, which there
+        # is never one of, so the fallback would have silently become the empty string.
+        asked="${3:-4}"
+        width() {
+            w=$(cat "$RESULTS/workers" 2>/dev/null | tr -cd '0-9')
+            [ -n "$w" ] || w="$asked"
+            [ "$w" -ge 1 ] 2>/dev/null || w=4
+            [ "$w" -le 16 ] 2>/dev/null || w=16
+            echo "$w"
+        }
+        limit=$(width)
         mkdir -p "$RESULTS/claims" "$RESULTS/m"
 
         # THE REFERENCE IS PREPARED ONCE AND THEN READ ONLY. Every prove used to reset and clean it
@@ -94,7 +111,11 @@ case "${1:-dashboard}" in
             id=$(slug "$marker")
 
             # Wait for a free slot before claiming, so a claim always becomes a prove.
-            while [ "$(jobs -p | wc -l)" -ge "$limit" ]; do wait -n 2>/dev/null || sleep 2; done
+            limit=$(width)
+            while [ "$(jobs -p | wc -l)" -ge "$limit" ]; do
+                wait -n 2>/dev/null || sleep 2
+                limit=$(width)
+            done
 
             settled "$marker" && continue
             mkdir "$RESULTS/claims/$id" 2>/dev/null || continue

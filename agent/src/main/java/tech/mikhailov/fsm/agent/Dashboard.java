@@ -107,6 +107,8 @@ public final class Dashboard {
             a.gear{position:absolute;top:.55rem;right:.9rem;font-size:1.25rem;line-height:1;
                    color:#6e7681;text-decoration:none;padding:.2rem .35rem;border-radius:5px}
             a.gear:hover{color:#c9d1d9;background:#161b22}
+            input.number{background:#0d1117;color:#c9d1d9;border:1px solid #30363d;
+                         border-radius:5px;padding:.35rem .5rem;width:5rem;font:inherit}
             .ev.thought{border-left-color:#6e5494}
             .ev.thought .who{color:#a371f7}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
@@ -368,6 +370,17 @@ public final class Dashboard {
         route(server, "/settings", e -> {
             if (e.getRequestMethod().equalsIgnoreCase("POST")) {
                 Map<String, String> form = form(e);
+                if (form.getOrDefault("setting", "").equals("workers")) {
+                    try {
+                        Workers.save(here, (int) num(form.getOrDefault("workers", "")));
+                    } catch (IOException notSaved) {
+                        // The page redraws with what is actually on disk, which is the honest reply.
+                    }
+                    e.getResponseHeaders().add("Location", "/settings?a=run");
+                    e.sendResponseHeaders(303, -1);
+                    e.close();
+                    return;
+                }
                 String agent = form.getOrDefault("agent", "");
                 try {
                     if (form.containsKey("revert")) {
@@ -383,7 +396,7 @@ public final class Dashboard {
                 e.close();
                 return;
             }
-            send(e, "text/html; charset=utf-8", settings(BUILT_INS, query(e, "a")));
+            send(e, "text/html; charset=utf-8", settings(BUILT_INS, query(e, "a"), here));
         });
         route(server, "/live", e -> send(e, "text/html; charset=utf-8",
                 live(settlements.getParent() == null ? Path.of(".") : settlements.getParent(),
@@ -907,8 +920,49 @@ public final class Dashboard {
      * and the prompts are the first of those to become data rather than code. The bar exists so the
      * next one has somewhere to go.
      */
-    private static String settings(Map<String, String> builtIns, String tab) {
-        return prompts(builtIns);
+    private static String settings(Map<String, String> builtIns, String tab, Path results) {
+        return tab.equals("run") ? theRun(results) : prompts(builtIns);
+    }
+
+    /** The tab bar both settings views share. */
+    private static String settingsTabs(String current) {
+        return "<nav class=tabs>"
+                + "<a class='" + (current.equals("run") ? "" : "on") + "' href='/settings'>prompts</a>"
+                + "<a class='" + (current.equals("run") ? "on" : "") + "' href='/settings?a=run'>"
+                + "the run</a>"
+                + "<a href='/'>&larr; all markers</a>"
+                + "<a href='/overwatch'>the supervisor</a></nav>";
+    }
+
+    /**
+     * HOW WIDE THE POOL RUNS, changeable while it is running.
+     *
+     * <p>It was an argument to {@code slice}, fixed for the life of a run, so changing it meant
+     * killing the pool — which orphans every claim in flight and throws away whatever those markers
+     * had done. The pool re-reads this at the top of each iteration, so a change takes hold as the
+     * next marker starts and nothing in flight is disturbed.
+     */
+    private static String theRun(Path results) {
+        int now = Workers.of(results);
+        return head("the run", "how many markers are proved at once")
+                .append(settingsTabs("run"))
+                .append("<div class='ev asked'><span class=who>parallel provers</span>")
+                .append("<span class=kind>currently ").append(now).append("</span>")
+                .append("<p class=account>Each prover is its own JVM with its own git worktree, and "
+                        + "they all share one inference endpoint — so past a point they are not "
+                        + "proving markers faster, they are queueing on the same tokens and every "
+                        + "answer gets slower. Between ")
+                .append(Workers.LEAST).append(" and ").append(Workers.MOST)
+                .append("; the default is ").append(Workers.DEFAULT).append(".</p>")
+                .append("<form method=post action='/settings'>")
+                .append(hidden("setting", "workers"))
+                .append("<input type=number name=workers min=").append(Workers.LEAST)
+                .append(" max=").append(Workers.MOST).append(" value=").append(now)
+                .append(" class=number> <button>save</button></form>")
+                .append("<p class=account><span class=k>Takes effect as the next marker starts. "
+                        + "Lowering it does not stop a prove that is already running — the pool "
+                        + "simply stops replacing them until it is back under the number.</span>"
+                        + "</p></div>").toString();
     }
 
     private static String prompts(Map<String, String> builtIns) {
@@ -924,9 +978,7 @@ public final class Dashboard {
         StringBuilder b = head("prompts", names.size() + " agent(s) &middot; "
                 + (edited == 0 ? "none edited &mdash; every one is the code's"
                         : edited + " edited, the rest are the code's"))
-                .append("<nav class=tabs><a class=on href='/settings'>prompts</a>")
-                .append("<a href='/'>&larr; all markers</a>")
-                .append("<a href='/overwatch'>the supervisor</a></nav>")
+                .append(settingsTabs("prompts"))
                 .append("<p class=account>An edit here replaces the built-in entirely — there is no "
                         + "merge, because a prompt half from the code and half from a box is a "
                         + "prompt nobody can read in one place. It takes effect on the next marker "

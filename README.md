@@ -187,7 +187,11 @@ reorders itself is a queue nobody can diff.
 
 ## Running many
 
-`slice <markers> [n]` proves every marker, at most `n` at a time. A pool, not a partition: whichever
+`slice <markers> [n]` proves every marker, at most `n` at a time — and `n` is re-read from
+`results/workers` at the top of each iteration, so `/settings` can widen or narrow a run while it is
+going. It was an argument fixed for the life of the pool, and changing it meant killing the pool,
+which orphans every claim in flight. Between 1 and 16, clamped in Java and again in the shell:
+the first is what a person types, the second is what starts JVMs, and neither trusts the other. A pool, not a partition: whichever
 prover is free takes the next marker, so the run ends when the work does rather than when the
 unluckiest slice does. The claim is a `mkdir` — atomic, and it tells the loser it lost. Each prove
 gets its own `git worktree`, thrown away afterwards.
