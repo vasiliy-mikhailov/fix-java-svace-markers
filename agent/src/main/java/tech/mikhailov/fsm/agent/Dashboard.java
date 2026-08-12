@@ -146,6 +146,9 @@ public final class Dashboard {
             nav a.back, nav.chain a.back{background:none;border:none;color:#58a6ff;
                                          padding:.25rem .3rem;font-size:.8rem}
             nav a.back:hover, nav.chain a.back:hover{text-decoration:underline}
+            a.crumb{display:inline-block;color:#58a6ff;font-size:.8rem;text-decoration:none;
+                    margin:0 0 .35rem}
+            a.crumb:hover{text-decoration:underline}
             .ev.thought{border-left-color:#6e5494}
             .ev.thought .who{color:#a371f7}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
@@ -541,7 +544,7 @@ public final class Dashboard {
                     .append("'>").append(esc(t[1])).append("</a>");
         }
         return b.append("<a href='/settings'>settings</a>")
-                .append("<a class=back href='/'>&larr; all markers</a></nav>").toString();
+                .append("</nav>").toString();
     }
 
     /**
@@ -654,7 +657,8 @@ public final class Dashboard {
         StringBuilder b = head("What is wrong with the pipeline",
                 all.isEmpty() ? "the supervisor has not reported yet"
                         : holds + " hold, " + refuted + " refuted, " + unjudged + " unjudged"
-                                + " &middot; " + cut.size() + " prove(s) restarted")
+                                + " &middot; " + cut.size() + " prove(s) restarted",
+                "all markers")
                 .append(nav);
 
         if (!cut.isEmpty()) {
@@ -986,7 +990,7 @@ public final class Dashboard {
                 + "the run</a>"
                 + "<a class='" + (current.equals("model") ? "on" : "")
                 + "' href='/settings?a=model'>the model</a>"
-                + "<a class=back href='/'>&larr; all markers</a>"
+                + ""
                 + "<a href='/overwatch'>the supervisor</a></nav>";
     }
 
@@ -1041,7 +1045,7 @@ public final class Dashboard {
 
         StringBuilder b = head("the model", Tuning.edited()
                 ? "edited &mdash; the environment's values are underneath"
-                : "every value is the environment's or the code's")
+                : "every value is the environment's or the code's", "all markers")
                 .append(settingsTabs("model"))
                 .append("<div class='ev ").append(Tuning.edited() ? "asked" : "tool").append("'>")
                 .append("<span class=who>the endpoint</span><span class=kind>")
@@ -1072,7 +1076,7 @@ public final class Dashboard {
 
     private static String theRun(Path results) {
         int now = Workers.of(results);
-        return head("the run", "how many markers are proved at once")
+        return head("the run", "how many markers are proved at once", "all markers")
                 .append(settingsTabs("run"))
                 .append("<div class='ev asked'><span class=who>parallel provers</span>")
                 .append("<span class=kind>currently ").append(now).append("</span>")
@@ -1105,7 +1109,7 @@ public final class Dashboard {
         long edited = names.stream().filter(a -> !Prompts.saved(a).isBlank()).count();
         StringBuilder b = head("prompts", names.size() + " agent(s) &middot; "
                 + (edited == 0 ? "none edited &mdash; every one is the code's"
-                        : edited + " edited, the rest are the code's"))
+                        : edited + " edited, the rest are the code's"), "all markers")
                 .append(settingsTabs("prompts"))
                 .append("<p class=account>An edit here replaces the built-in entirely — there is no "
                         + "merge, because a prompt half from the code and half from a box is a "
@@ -1176,7 +1180,7 @@ public final class Dashboard {
                 used.isEmpty() ? "no agent has run for this marker"
                         : used.size() + " agent(s) ran"
                                 + (stale.isEmpty() ? " &middot; all still current"
-                                        : " &middot; " + stale.size() + " prompt(s) changed since"))
+                                        : " &middot; " + stale.size() + " prompt(s) changed since"), "all markers")
                 .append(tabs(key, "prompts", mine));
 
         if (!stale.isEmpty()) {
@@ -1477,7 +1481,8 @@ public final class Dashboard {
         if (agent.equals("live")) {
             // THE CONTAINER CARRIES ITS OWN URL, so the same poller serves this page and the front
             // one without either knowing about the other.
-            return head(key.substring(key.lastIndexOf('/') + 1), "what this prove is saying now")
+            return head(key.substring(key.lastIndexOf('/') + 1), "what this prove is saying now",
+                    "all markers")
                     .append(tabs(key, "live", mine))
                     .append("<div id=live class=live data-live='/live?k=").append(enc(key))
                     .append("'>")
@@ -1498,7 +1503,7 @@ public final class Dashboard {
         }
         StringBuilder b = head(key.substring(key.lastIndexOf('/') + 1),
                 esc(key) + (state.isEmpty() ? "" : " · <span class='s " + css(state) + "'>"
-                        + esc(state) + "</span>"));
+                        + esc(state) + "</span>"), "all markers");
         b.append(tabs(key, agent, mine));
 
         if (agent.isEmpty()) {
@@ -1776,7 +1781,7 @@ public final class Dashboard {
                 .append("' href='/marker?k=").append(enc(key)).append("&a=trace'>the record</a>")
                 .append("<a class=pill href='/overwatch'>the supervisor</a>")
                 .append("<a class=pill href='/settings'>settings</a>")
-                .append("<a class=back href='/'>&larr; all markers</a></nav>").toString();
+                .append("</nav>").toString();
     }
 
     /** One agent: its name, how many times it answered, and a link to what it said. */
@@ -1830,7 +1835,7 @@ public final class Dashboard {
         String where = key.isEmpty() ? "every marker" : esc(key);
         StringBuilder b = head(title, where + " · " + mine.size() + " event(s)"
                 + (state.isEmpty() ? "" : " · <span class='s " + css(state) + "'>"
-                + esc(state) + "</span>"));
+                + esc(state) + "</span>"), "all markers");
         b.append(nav).append("<a class=back href='")
                 .append(key.isEmpty() ? "/trace" : "/marker?k=" + enc(key) + "&a=trace")
                 .append(expand ? (key.isEmpty() ? "?fold=1" : "&fold=1") : "")
@@ -2071,13 +2076,27 @@ public final class Dashboard {
         return "<script>document.body.dataset.events=" + events + "</script>";
     }
 
+    /** A page with no way out of it: the list, which is where out goes. */
     private static StringBuilder head(String title, String sub) {
+        return head(title, sub, "");
+    }
+
+    /**
+     * WHERE BACK GOES, IN THE CORNER EVERY PAGE PUTS IT.
+     *
+     * <p>It was the last item of a tab row, which is where a reader looks for another destination
+     * rather than for the exit. Above the title on the left, opposite the gear, it is where the eye
+     * already goes and it is the first thing on the page rather than the last.
+     */
+    private static StringBuilder head(String title, String sub, String back) {
         return new StringBuilder("<style>").append(CSS).append("</style>")
                 .append(LIVE).append(KEEP_OPEN)
                 // THE ONE CONTROL THAT IS ON EVERY PAGE. It was a text link at the bottom of the
                 // list, under 356 rows, which is a link nobody has: a reader who does not already
                 // know the page exists will not scroll past the whole run to discover it.
                 .append("<header><a class=gear href='/settings' title='settings'>\u2699</a>")
+                .append(back.isEmpty() ? ""
+                        : "<a class=crumb href='/'>&larr; " + esc(back) + "</a>")
                 .append("<h1>").append(esc(title)).append("</h1><div class=sub>")
                 .append(sub).append("</div></header>");
     }
