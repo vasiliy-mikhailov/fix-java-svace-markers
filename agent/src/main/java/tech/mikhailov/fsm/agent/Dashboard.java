@@ -572,10 +572,10 @@ public final class Dashboard {
             b.append(item(live.get(i), at.get(i)));
         }
         b.append("</ul>");
-        // THE REST EXPAND HERE, EACH WITH ITS OWN LINK. A bulk "and 17 more" pointing at the
-        // findings page asks the reader to leave, re-find the one they were reading, and lose the
-        // list; and it hides seventeen distinct complaints behind a number, which is the one shape
-        // a findings banner must not have. They are already loaded — showing them costs nothing.
+        // THE REST OPEN WHERE THEY ARE. "and 17 more" was a link to the findings page, so reading
+        // them meant leaving the run you were watching and finding your place again — and a count
+        // is the one thing a list of complaints must not be reduced to, because the number is the
+        // alarm and the complaints are the reason. Every line was already read from the file.
         if (live.size() > shown) {
             b.append("<details class=rest><summary>and ").append(live.size() - shown)
                     .append(" more</summary><ul>");
@@ -587,7 +587,13 @@ public final class Dashboard {
         return b.append("</div>").toString();
     }
 
-    /** How many stay open without being asked. Enough to alarm, few enough to read at a glance. */
+    /**
+     * How many findings stand open without being asked for.
+     *
+     * <p>Enough that the banner reads as a list rather than a headline, few enough that it does not
+     * push the run's own table below the fold — which would trade one thing nobody reads for
+     * another.
+     */
     private static final int SHOWN = 5;
 
     /** A finding's verdict, with the two ways of recording "nobody judged it" collapsed into one. */
@@ -596,15 +602,21 @@ public final class Dashboard {
         return verdict.isBlank() ? "unjudged" : verdict;
     }
 
-    /** One finding: what the critic made of it, then its first line, linked to itself. */
+    /**
+     * One line of the banner: what the critic made of the finding, then the finding's own first
+     * line, linked to itself on the findings page.
+     *
+     * <p>The heading marks come off because these were written as markdown for a page that renders
+     * none, and a banner reading "## Finding:" five times says nothing five times.
+     */
     private static String item(String finding, int position) {
-        String head = field(finding, "finding").strip()
+        String first = field(finding, "finding").strip()
                 .replaceAll("^[#*\\s]*(Finding:)?\\s*", "");
-        int stop = head.indexOf('\n');
+        int newline = first.indexOf('\n');
         String verdict = verdictOf(finding);
         return "<li><span class='v " + verdict + "'>" + verdict + "</span>"
                 + "<a href='/overwatch#f" + position + "'>"
-                + esc(stop < 0 ? head : head.substring(0, stop)) + "</a></li>";
+                + esc(newline < 0 ? first : first.substring(0, newline)) + "</a></li>";
     }
 
     private static String index(Path settlements, Path trace, List<String> queued) {
