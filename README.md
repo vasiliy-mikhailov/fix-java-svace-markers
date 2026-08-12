@@ -9,8 +9,12 @@ QWEN_BASE_URL=… QWEN_API_KEY=… QWEN_MODEL=… \
   docker run -p 8085:8085 -v results:/results fsm-agent prove 'repo|file|line|checker'
 ```
 
-`entrypoint.sh` takes `prove`, `slice <markers> [concurrency]`, `overwatch [seconds]`,
-`test [cases]`, `seed [cases]` and `dashboard`.
+`entrypoint.sh` takes `prove`, `slice <markers> [concurrency]`, `serve [seconds]`,
+`overwatch [seconds]`, `test [cases]`, `seed [cases]` and `dashboard`.
+
+`serve` is what the deployed container runs: the supervisor in the background and the dashboard in
+the foreground. The asymmetry is deliberate — a watcher that dies must not take the record with it,
+and a dashboard that dies should end the container so the restart policy brings both back.
 
 ## The chain
 

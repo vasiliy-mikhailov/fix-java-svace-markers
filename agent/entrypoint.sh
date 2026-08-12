@@ -169,13 +169,31 @@ case "${1:-dashboard}" in
             "$dir" "${2:-$RESULTS/cases.jsonl}" "$RESULTS"
         ;;
 
+    serve)
+        # serve [seconds] — the dashboard AND the supervisor, in one container.
+        #
+        # THEY WERE TWO CONTAINERS OFF THE SAME IMAGE, which is two things to deploy, two sets of
+        # environment to keep in step, and one of them silently missing its PROMPTS and TUNING for a
+        # deploy or two because I updated the other. They share a volume, a configuration and a
+        # lifetime; there was never a reason for them to be separate but the order I built them in.
+        #
+        # THE WATCHER IN THE BACKGROUND, THE DASHBOARD IN THE FOREGROUND, and the asymmetry is
+        # deliberate. A supervisor that dies must not take the record with it — its own loop already
+        # survives a failed pass, and if the process goes the dashboard keeps serving what is there.
+        # A dashboard that dies SHOULD end the container, so the restart policy brings both back.
+        java -cp "$CP" tech.mikhailov.fsm.agent.Overwatch "$RESULTS" "${2:-900}" \
+            >> "$RESULTS/overwatch.log" 2>&1 &
+        exec java -cp "$CP" tech.mikhailov.fsm.agent.Dashboard \
+            "$RESULTS/settlements.jsonl" "${PORT:-8087}"
+        ;;
+
     dashboard)
         exec java -cp "$CP" tech.mikhailov.fsm.agent.Dashboard \
             "$RESULTS/settlements.jsonl" "${PORT:-8087}"
         ;;
 
     *)
-        echo "usage: prove 'repo|file|line|checker' | slice <markers> [concurrency] | overwatch [seconds] | test [cases] | seed [cases] | dashboard" >&2
+        echo "usage: prove 'repo|file|line|checker' | slice <markers> [concurrency] | serve [seconds] | overwatch [seconds] | test [cases] | seed [cases] | dashboard" >&2
         exit 2
         ;;
 esac
