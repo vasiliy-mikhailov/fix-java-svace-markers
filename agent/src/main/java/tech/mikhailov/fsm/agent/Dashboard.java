@@ -109,6 +109,14 @@ public final class Dashboard {
             a.gear:hover{color:#c9d1d9;background:#161b22}
             input.number{background:#0d1117;color:#c9d1d9;border:1px solid #30363d;
                          border-radius:5px;padding:.35rem .5rem;width:5rem;font:inherit}
+            pre.flagged .k{color:#ff7b72}
+            pre.flagged .s{color:#a5d6ff}
+            pre.flagged .c{color:#8b949e;font-style:italic}
+            pre.flagged .n{color:#79c0ff}
+            pre.flagged .da{color:#3fb950}
+            pre.flagged .dr{color:#f85149}
+            pre.flagged .dh{color:#a371f7}
+            pre.flagged .df{color:#8b949e}
             .ev.thought{border-left-color:#6e5494}
             .ev.thought .who{color:#a371f7}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
@@ -1487,7 +1495,7 @@ public final class Dashboard {
             if (!patch.isBlank()) {
                 b.append("<div class='ev tool'><span class=who>the fix</span>")
                         .append("<span class=kind>what would change in the repository</span>")
-                        .append(code(patch)).append("</div>");
+                        .append(diff(patch)).append("</div>");
             }
 
             // NO AGENT TRANSCRIPTS HERE ANY MORE. This was the summary when there was nothing else
@@ -1993,14 +2001,14 @@ public final class Dashboard {
         }
         StringBuilder b = new StringBuilder();
         for (int n = Math.max(1, want - AROUND); n <= Math.min(source.size(), want + AROUND); n++) {
-            b.append(n == want ? "&gt;&gt; " : "   ").append(n).append("  ")
-                    .append(esc(source.get(n - 1))).append('\n');
+            b.append(n == want ? ">> " : "   ").append(n).append("  ")
+                    .append(source.get(n - 1)).append('\n');
         }
         if (want > source.size()) {
             // THE MARKERS CAME OFF AN OLDER REVISION and some point past the end of the file now.
             // Saying so here is the difference between a reader trusting the line number and a
             // reader knowing not to.
-            b.append("\n&gt;&gt; line ").append(want).append(" — THIS FILE HAS ")
+            b.append("\n>> line ").append(want).append(" — THIS FILE HAS ")
                     .append(source.size()).append(". The analyser ran against an older revision.");
         }
         return b.toString();
@@ -2041,8 +2049,84 @@ public final class Dashboard {
     }
 
     /** The flagged lines, already escaped, or nothing at all when there was no tree to read. */
+    /**
+     * A BLOCK OF CODE, ESCAPED HERE AND NOWHERE ELSE, coloured by what it is.
+     *
+     * <p>This used to concatenate its argument into the page unescaped, and one caller handed it a
+     * {@code git diff} straight out of the repository — so a patch touching a line with a {@code <}
+     * in it wrote markup into this page. Escaping in one place is what makes that impossible to
+     * reintroduce by adding a caller.
+     */
     private static String code(String lines) {
-        return lines.isBlank() ? "" : "<pre class=flagged>" + lines + "</pre>";
+        return block(lines, false);
+    }
+
+    /** A unified diff: escaped, then coloured by what each line does. */
+    private static String diff(String lines) {
+        return block(lines, true);
+    }
+
+    private static String block(String lines, boolean isDiff) {
+        return lines == null || lines.isBlank() ? ""
+                : "<pre class=flagged>" + (isDiff ? colourDiff(lines) : colourJava(lines))
+                        + "</pre>";
+    }
+
+    /**
+     * A DIFF, BY LINE, WHICH IS THE ONLY THING A DIFF NEEDS.
+     *
+     * <p>What matters is what each line does — added, removed, where — and that is the first
+     * character. Nothing here parses the code, because a patch is read for its shape before it is
+     * read for its content.
+     */
+    private static String colourDiff(String lines) {
+        StringBuilder b = new StringBuilder();
+        for (String line : lines.split("\n", -1)) {
+            String kind = line.startsWith("+++") || line.startsWith("---") ? "df"
+                    : line.startsWith("@@") ? "dh"
+                    : line.startsWith("+") ? "da"
+                    : line.startsWith("-") ? "dr" : "";
+            b.append(kind.isEmpty() ? esc(line)
+                    : "<span class=" + kind + ">" + esc(line) + "</span>").append('\n');
+        }
+        return b.toString().stripTrailing();
+    }
+
+    /** Java's words, its strings and its comments. Three colours, which is what a reader uses. */
+    private static final java.util.regex.Pattern JAVA = java.util.regex.Pattern.compile(
+            "(?<comment>//[^\n]*|/\\*.*?\\*/)"
+                    + "|(?<string>\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*')"
+                    + "|(?<word>\\b(?:abstract|assert|boolean|break|byte|case|catch|char|class|"
+                    + "const|continue|default|do|double|else|enum|extends|final|finally|float|for|"
+                    + "goto|if|implements|import|instanceof|int|interface|long|native|new|package|"
+                    + "private|protected|public|return|short|static|strictfp|super|switch|"
+                    + "synchronized|this|throw|throws|transient|try|var|void|volatile|while|true|"
+                    + "false|null|record|sealed|yield)\\b)"
+                    + "|(?<number>\\b\\d[\\w.]*)",
+            java.util.regex.Pattern.DOTALL);
+
+    /**
+     * Colours Java without parsing it.
+     *
+     * <p>ONE PASS, IN ONE ALTERNATION, so a keyword inside a string stays inside the string and a
+     * quote inside a comment does not open one. Colouring by running four separate replacements
+     * over the same text is how {@code // the "public" API} comes out with half a comment and a
+     * stray keyword in it.
+     */
+    private static String colourJava(String source) {
+        java.util.regex.Matcher m = JAVA.matcher(source);
+        StringBuilder b = new StringBuilder();
+        int at = 0;
+        while (m.find()) {
+            b.append(esc(source.substring(at, m.start())));
+            String kind = m.group("comment") != null ? "c"
+                    : m.group("string") != null ? "s"
+                    : m.group("word") != null ? "k" : "n";
+            b.append("<span class=").append(kind).append('>').append(esc(m.group()))
+                    .append("</span>");
+            at = m.end();
+        }
+        return b.append(esc(source.substring(at))).toString();
     }
 
     /** A settled state is one CSS class; anything else is styled as infra. */

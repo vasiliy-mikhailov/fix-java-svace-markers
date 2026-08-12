@@ -25,6 +25,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ABlankLineIsALineTest {
 
+    // THE MARKER IS RAW HERE. flagged() used to escape as it went and now returns source, because
+    // escaping moved into code() — one place, so a caller that forgets cannot exist. These
+    // assertions were written against the escaped form and are the reason that move was noticed
+    // rather than shipped.
+
+
     private static final String REPO = "https://github.com/WebGoat/WebGoat.git";
     private static final String FILE = "src/main/java/Subject.java";
 
@@ -59,8 +65,8 @@ class ABlankLineIsALineTest {
     void counted(@TempDir Path dir) throws Exception {
         subject(dir);
         String block = flagged(dir, "9");
-        String marked = block.lines().filter(l -> l.startsWith("&gt;&gt;")).findFirst().orElse("");
-        assertTrue(marked.startsWith("&gt;&gt; 9  "), "line 9 must be the marked one:\n" + block);
+        String marked = block.lines().filter(l -> l.startsWith(">>")).findFirst().orElse("");
+        assertTrue(marked.startsWith(">> 9  "), "line 9 must be the marked one:\n" + block);
         assertTrue(marked.contains(".equals(uploaded.getParentFile()"),
                 "and line 9 is the equals — with the blanks dropped it would have been "
                         + "`.getCanonicalPath()` two lines earlier, which is how a correct argument "
@@ -74,7 +80,7 @@ class ABlankLineIsALineTest {
         String block = flagged(dir, "7");
         assertTrue(block.lines().anyMatch(l -> l.startsWith("   6  ")),
                 "line 6 is blank and still occupies its number:\n" + block);
-        assertTrue(block.lines().filter(l -> l.startsWith("&gt;&gt;")).findFirst().orElse("")
+        assertTrue(block.lines().filter(l -> l.startsWith(">>")).findFirst().orElse("")
                         .contains("return !expected"),
                 "so line 7 is the return:\n" + block);
     }
