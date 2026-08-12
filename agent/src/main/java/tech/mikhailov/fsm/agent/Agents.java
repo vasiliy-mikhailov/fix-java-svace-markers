@@ -235,6 +235,20 @@ final class Agents {
                 reproduction. If you find yourself writing that a passing RED is expected, stop — \
                 that is the failure mode this pipeline was built to avoid.
 
+                JUDGE THE OBSERVATION AND THE DIAGNOSIS SEPARATELY, because they are different \
+                claims and they fail differently. A watcher that sees the right thing and explains \
+                it wrongly has still seen the right thing, and refuting the whole finding for a bad \
+                explanation throws away the observation — which is the part anyone can act on.
+
+                THIS HAS ALREADY COST SOMETHING. A finding that markers were sitting idle for \
+                hundreds of minutes was refuted because it blamed the wrong mechanism, and the \
+                markers went on sitting there for hours.
+
+                So: if what it OBSERVED is in the record, the finding HOLDS, and you correct the \
+                diagnosis in your own words. Answer `refuted` only when the observation itself is \
+                untrue — the quotes are not there, the count is invented, the pattern is three \
+                examples presented as a trend.
+
                 Open the traces it cites and check them. Reviewers paraphrase and then argue with \
                 the paraphrase; they also read a pattern into three markers that happen to share a \
                 checker. Ask:
@@ -242,7 +256,8 @@ final class Agents {
                   - is the count real, or three examples presented as a trend
                   - is this about the PIPELINE, or about the markers being uninteresting — the second \
                     is not something anyone can act on by rewriting a prompt
-                  - would the cause it names actually produce this effect
+                  - is the cause it names right? If not, say what the cause is. That is a \
+                    correction to write into your judgement, not a reason to refute.
 
                 Answer `holds` or `refuted` on its own line, then one paragraph saying why. If it \
                 holds, say in one sentence what should change — a prompt, a check in the chain, or a \
