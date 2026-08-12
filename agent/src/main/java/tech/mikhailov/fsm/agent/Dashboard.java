@@ -140,6 +140,12 @@ public final class Dashboard {
             nav.chain .pill{background:#161b22;border:1px solid #30363d;border-radius:999px;
                             padding:.25rem .6rem;font-size:.76rem;color:#8b949e}
             nav.chain .pill.on{background:#1f6feb;border-color:#1f6feb;color:#fff}
+            /* GOING BACK IS NOT A TAB. It was styled as one of the row — a grey pill among grey
+               pills — so the one control every page has looked like another destination. Blue,
+               because that is what a link looks like, and it reads before it is read. */
+            nav a.back, nav.chain a.back{background:none;border:none;color:#58a6ff;
+                                         padding:.25rem .3rem;font-size:.8rem}
+            nav a.back:hover, nav.chain a.back:hover{text-decoration:underline}
             .ev.thought{border-left-color:#6e5494}
             .ev.thought .who{color:#a371f7}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
@@ -535,7 +541,7 @@ public final class Dashboard {
                     .append("'>").append(esc(t[1])).append("</a>");
         }
         return b.append("<a href='/settings'>settings</a>")
-                .append("<a href='/'>&larr; all markers</a></nav>").toString();
+                .append("<a class=back href='/'>&larr; all markers</a></nav>").toString();
     }
 
     /**
@@ -980,7 +986,7 @@ public final class Dashboard {
                 + "the run</a>"
                 + "<a class='" + (current.equals("model") ? "on" : "")
                 + "' href='/settings?a=model'>the model</a>"
-                + "<a href='/'>&larr; all markers</a>"
+                + "<a class=back href='/'>&larr; all markers</a>"
                 + "<a href='/overwatch'>the supervisor</a></nav>";
     }
 
@@ -1770,7 +1776,7 @@ public final class Dashboard {
                 .append("' href='/marker?k=").append(enc(key)).append("&a=trace'>the record</a>")
                 .append("<a class=pill href='/overwatch'>the supervisor</a>")
                 .append("<a class=pill href='/settings'>settings</a>")
-                .append("<a class=pill href='/'>&larr; all markers</a></nav>").toString();
+                .append("<a class=back href='/'>&larr; all markers</a></nav>").toString();
     }
 
     /** One agent: its name, how many times it answered, and a link to what it said. */
