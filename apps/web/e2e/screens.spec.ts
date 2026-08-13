@@ -1,0 +1,125 @@
+import { expect, test, type ConsoleMessage, type Page } from '@playwright/test'
+
+/**
+ * WHAT ONLY A BROWSER CAN SEE.
+ *
+ * <p>Two bugs in this port were invisible to every other check. A page typed its payload with an
+ * envelope the endpoint does not send and threw on the first destructure — it compiled, it
+ * prerendered, and the route returned 200. And the zone, mounted alongside the pages it replaces,
+ * served those pages instead: six routes answering 200 with the wrong application entirely.
+ *
+ * <p>Both were found by looking at what was actually on the screen. That is what these do, and it is
+ * why they run the real Java over a real record rather than a mocked API — the failures were the
+ * wire disagreeing with the page, which a mock cannot reproduce because a mock is written to agree.
+ */
+
+/** Console errors, collected per test, so a screen cannot fail quietly. */
+function watchConsole(page: Page): string[] {
+  const bad: string[] = []
+  page.on('console', (m: ConsoleMessage) => {
+    if (m.type() === 'error') {
+      bad.push(m.text())
+    }
+  })
+  page.on('pageerror', e => bad.push(`uncaught: ${e.message}`))
+  return bad
+}
+
+const SCREENS = [
+  { path: '/', name: 'markers' },
+  { path: '/trace/', name: 'the whole trace' },
+  { path: '/overwatch/', name: 'the supervisor' },
+  { path: '/chat/', name: 'the chat' },
+  { path: '/settings/', name: 'settings' },
+] as const
+
+for (const screen of SCREENS) {
+  test(`${screen.name} renders, with nothing thrown`, async ({ page }) => {
+    const errors = watchConsole(page)
+    await page.goto(screen.path)
+
+    // WAIT FOR THE LOADING STATE TO GO, not for the page to have some text on it.
+    //
+    // Every screen fetches in an effect, so the document is complete — and the header, the icons and
+    // the word "markers" are already painted — long before any data arrives. The first version of
+    // this waited for forty characters of body text and got them from the loading state itself, then
+    // asserted the page was not loading. It failed against a page that renders perfectly well.
+    // WAIT FOR CONTENT, POSITIVELY. Twice now this waited for the wrong thing: first for forty
+    // characters of body text, which the loading state supplies on its own, then for the loading
+    // text to disappear — and a screen whose loading wording differs satisfies that the instant it
+    // opens. Both passed the wait and asserted against an empty page.
+    //
+    // So the condition is what a rendered screen actually has: real content, and no loading or
+    // failure wording anywhere in it.
+    await page.waitForFunction(() => {
+      const t = (document.body.textContent ?? '').replace(/\s+/g, ' ').trim()
+      if (/reading the run|reading what it has said|loading/i.test(t)) return false
+      return t.length > 120
+    }, undefined, { timeout: 15_000 })
+
+    const text = (await page.locator('body').innerText()).toLowerCase()
+    expect(text, `${screen.name} says it could not read`).not.toContain('could not read')
+
+    expect(errors, `${screen.name} logged errors: ${errors.join(' | ')}`).toEqual([])
+  })
+}
+
+test('the markers table draws the run the API reports', async ({ page }) => {
+  const errors = watchConsole(page)
+  const api = await (await page.request.get('/api/index')).json()
+  await page.goto('/')
+  await page.waitForFunction(() => document.querySelectorAll('tr').length > 1, undefined, {
+    timeout: 15_000,
+  })
+
+  // A row per marker. Not "some rows" — the count is the assertion, because a table that silently
+  // drops the tail looks exactly like a table that does not.
+  const rows = await page.locator('tbody tr').count()
+  expect(rows, 'one row per queued marker').toBe(api.run.total)
+
+  // And the totals on the page are the record's own, not a recount the client did differently.
+  await expect(page.getByText(String(api.run.total), { exact: false }).first()).toBeVisible()
+  expect(errors).toEqual([])
+})
+
+test('a state the record holds reaches the screen', async ({ page }) => {
+  const api = await (await page.request.get('/api/index')).json()
+  await page.goto('/')
+  await page.waitForFunction(() => document.querySelectorAll('tr').length > 1, undefined, {
+    timeout: 15_000,
+  })
+  const shown = (await page.locator('body').innerText())
+  for (const state of Object.keys(api.run.countsByState)) {
+    expect(shown, `${state} is in the record and must be on the page`).toContain(state)
+  }
+})
+
+test('the findings badge agrees with the endpoint that feeds it', async ({ page }) => {
+  const badges = await (await page.request.get('/api/badges')).json()
+  await page.goto('/')
+  await page.waitForFunction(
+    () => (document.body.textContent ?? '').length > 40, undefined, { timeout: 15_000 })
+
+  // The badge is drawn only when something stands — a badge reading zero teaches a reader to ignore
+  // it, and it has to still mean something on the day it says nineteen.
+  if (badges.findings > 0) {
+    await expect(page.getByText(String(badges.findings), { exact: true }).first()).toBeVisible()
+  }
+})
+
+test('every screen is the zone, not the pages it replaced', async ({ page }) => {
+  // THE BUG THIS EXISTS FOR. A route registered at `/ui/` beat the zone's own `/ui`, and six routes
+  // answered 200 with the old Java dashboard. The status code said nothing; the body said all of it.
+  for (const screen of SCREENS) {
+    const response = await page.request.get(screen.path)
+    expect(response.status(), screen.path).toBe(200)
+    const body = await response.text()
+    expect(body, `${screen.path} served the old dashboard`).not.toContain('box-sizing:border-box')
+    expect(body, `${screen.path} is not the exported zone`).toContain('_next')
+  }
+})
+
+test('an unknown path is the zone\'s own 404', async ({ page }) => {
+  const response = await page.request.get('/no-such-page')
+  expect(response.status()).toBe(404)
+})

@@ -1,0 +1,3 @@
+A test confirmed predictable admin reset links in WebGoat, but the fix was rejected as the flaw is a deliberate teaching exercise.
+
+The checker flagged a random number generator seeded with a predictable value, which a test confirmed caused deterministic admin password reset links. A patch removing the explicit seed was generated and passed the test, but the pull request was rejected. Reviewers determined the code belongs to the WebGoat educational platform, where the predictable seed is an intentional vulnerability for students to exploit in Challenge 7. Fixing it would break the lesson's learning objective, making the rejection the correct outcome.

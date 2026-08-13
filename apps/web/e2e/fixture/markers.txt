@@ -1,0 +1,6 @@
+https://github.com/WebGoat/WebGoat.git|src/main/java/org/owasp/webgoat/lessons/challenges/challenge5/Assignment5.java|44|TAINTED_PTR
+https://github.com/WebGoat/WebGoat.git|src/main/java/org/owasp/webgoat/lessons/sqlinjection/introduction/SqlInjectionLesson5b.java|41|TAINTED_PTR
+https://github.com/WebGoat/WebGoat.git|src/main/java/org/dummy/insecure/framework/VulnerableTaskHolder.java|69|FB.COMMAND_INJECTION
+https://github.com/WebGoat/WebGoat.git|src/main/java/org/owasp/webgoat/container/service/LessonMenuService.java|64|FB.GC_UNRELATED_TYPES
+https://github.com/WebGoat/WebGoat.git|src/main/java/org/owasp/webgoat/lessons/challenges/challenge1/ImageServlet.java|21|FB.DMI_RANDOM_USED_ONLY_ONCE
+https://github.com/WebGoat/WebGoat.git|src/main/java/org/owasp/webgoat/lessons/challenges/challenge7/PasswordResetLink.java|21|FB.DMI_RANDOM_USED_ONLY_ONCE

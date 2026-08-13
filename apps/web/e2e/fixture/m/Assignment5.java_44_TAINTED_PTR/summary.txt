@@ -1,0 +1,3 @@
+Parameterized queries fixed a SQL injection in a WebGoat challenge after a test confirmed the flaw and a review objection was overturned.
+
+The pipeline identified a SQL injection vulnerability where user inputs were concatenated directly into a query string, and a test was written that failed on the buggy code and passed after the fix replaced concatenation with parameterized placeholders. A reviewer initially rejected the patch, arguing the vulnerability was an intentional training exercise, but this was overturned after the test comments explicitly asserted that injection should fail. The fix was deemed sound and the pull request was approved, though the time estimate for the work was later critiqued as inflated.
