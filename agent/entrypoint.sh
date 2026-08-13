@@ -18,10 +18,23 @@ CHECKOUTS="${CHECKOUTS:-/work/checkouts}"
 #
 # Refreshed on every start rather than copied once, so a deploy updates it; the old copy is removed
 # first, so a chapter deleted upstream does not linger as a chapter the watcher still cites.
+# IT SAYS SO WHEN IT FAILS, and it used to fail in silence. Every line here ended in
+# `2>/dev/null || true`, so a full disk or an unwritable volume left no spec and no word about it —
+# and the symptom is an agent answering "I don't see spec.md", which reads as a missing file rather
+# than a failed copy. Found exactly that way: a container came up clean with an empty spec directory
+# because the host had run out of disk, and nothing anywhere said so.
+#
+# Still not fatal. A dashboard with no spec is worth more than no dashboard.
 if [ -d /opt/agent/spec ]; then
     rm -rf "$RESULTS/spec" 2>/dev/null || true
-    mkdir -p "$RESULTS/spec" 2>/dev/null || true
-    cp -R /opt/agent/spec/. "$RESULTS/spec/" 2>/dev/null || true
+    if mkdir -p "$RESULTS/spec" 2>/dev/null && cp -R /opt/agent/spec/. "$RESULTS/spec/" 2>/dev/null
+    then
+        :
+    else
+        echo "WARNING: could not copy the spec into $RESULTS/spec — the agents will not be able to" >&2
+        echo "         read it, and will report it missing. Cause:" >&2
+        cp -R /opt/agent/spec/. "$RESULTS/spec/" 2>&1 | sed 's/^/         /' >&2 || true
+    fi
 fi
 
 # THE CHECKOUT IS THIS SCRIPT'S JOB, not the agent's. A prove needs a tree that is exactly the

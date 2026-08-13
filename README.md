@@ -12,6 +12,9 @@ QWEN_BASE_URL=… QWEN_API_KEY=… QWEN_MODEL=… \
 `entrypoint.sh` takes `prove`, `slice <markers> [concurrency]`, `serve [seconds]`,
 `overwatch [seconds]`, `test [cases]`, `seed [cases]` and `dashboard`.
 
+**[`RUNNING.md`](RUNNING.md) is how to run it** — the image, the modes, the environment, the volumes,
+and the one thing to read before exposing the port.
+
 **[`spec/`](spec/) is the specification**, by chapter — written so that this system could be rebuilt
 from it alone, which means it carries the *reasons*: most rules here exist because something went
 wrong once, and a rebuilder who does not know which failure a rule prevents will simplify it back
