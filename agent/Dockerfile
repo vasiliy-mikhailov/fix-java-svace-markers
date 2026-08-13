@@ -58,6 +58,23 @@ RUN mvn -q -B -DskipTests package \
 #
 # The cost is about a gigabyte of image. That is the price of being able to prove a marker in a
 # project written before 2018.
+# THE REACT ZONE, BUILT HERE SO THE IMAGE CARRIES ONE ARTEFACT AND NOT A TOOLCHAIN.
+#
+# A static export: no node in the final image, no second runtime beside the JVM. BASE_PATH is baked
+# at build because the export writes it into every link and every asset URL — a bundle served from a
+# path it was not built for is a page of 404s with a blank body and nothing in the console.
+FROM node:22-slim AS web
+WORKDIR /src
+RUN corepack enable
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json ./
+COPY packages ./packages
+COPY apps ./apps
+# --ignore-scripts: this build runs on a machine that also proves markers, and a postinstall from the
+# dependency tree is arbitrary code nobody reviewed. Next needs none of them for a static export.
+RUN pnpm install --frozen-lockfile --ignore-scripts
+ENV BASE_PATH=/ui
+RUN pnpm --filter @fsm/web build
+
 FROM eclipse-temurin:8-jdk   AS jdk8
 FROM eclipse-temurin:11-jdk  AS jdk11
 FROM eclipse-temurin:17-jdk  AS jdk17
@@ -82,6 +99,7 @@ COPY agent/entrypoint.sh                               /opt/agent/entrypoint.sh
 # THE SPEC TRAVELS WITH THE CODE. entrypoint.sh copies it into the results volume at start-up,
 # because that is the only tree the agents' file tools can reach — see the note there.
 COPY spec                                              /opt/agent/spec
+COPY --from=web /src/apps/web/out                      /opt/agent/web
 RUN chmod +x /opt/agent/entrypoint.sh && chown -R prover:prover /work
 
 # EVERY VOLUME PATH IS MADE, OWNED, BEFORE IT IS DECLARED. Docker takes a fresh named volume's

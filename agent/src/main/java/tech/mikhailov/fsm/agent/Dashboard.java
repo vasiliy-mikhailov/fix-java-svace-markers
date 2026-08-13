@@ -415,6 +415,17 @@ public final class Dashboard {
                 ApiSettings.prompts(BUILT_INS)));
         route(server, "/api/settings/run", e -> send(e, "application/json",
                 ApiSettings.run(here)));
+
+        // THE REACT ZONE, ALONGSIDE THE PAGES IT WILL REPLACE.
+        //
+        // Both UIs are up while the port is in progress, which is the only way to compare them on the
+        // same run rather than on a screenshot. The zone is built with BASE_PATH=/ui so its links and
+        // its asset URLs already carry the prefix — the export bakes them in, and a bundle served
+        // from a path it was not built for is a page of 404s with a blank body.
+        if (Web.present()) {
+            route(server, "/ui", e -> Web.serve(e, "/ui"));
+            route(server, "/ui-static", e -> Web.serve(e, "/ui-static"));
+        }
         route(server, "/api/settlements", e -> send(e, "application/json",
                 "[" + String.join(",", lines(settlements)) + "]"));
         route(server, "/api/trace", e -> send(e, "application/json",
@@ -2827,9 +2838,26 @@ public final class Dashboard {
      * <p>The stack goes in the page for the same reason it goes in a settlement: a failure that
      * cannot locate itself sends whoever is reading to a container log that does not have it.
      */
+    /**
+     * ONE ROUTE, REGISTERED AT THE ROOT AND UNDER THE MOUNT PREFIX.
+     *
+     * <p>A zone mounted at {@code /ui} asks for {@code /ui/api/index}, because that is what the
+     * manifest promises: {@code api} is {@code <base>/api}, and every link the export bakes in
+     * carries the prefix. Serving the API only at the root made the zone's first fetch 404 — the
+     * page mounted, drew its loading state, and stayed there.
+     *
+     * <p>Both, rather than moving: the Java pages and every existing reader still use the root paths,
+     * and {@code /api/trace} is a documented corpus somebody may be training on. Nothing that worked
+     * yesterday stops working because a second UI arrived.
+     */
     private static void route(HttpServer server, String path,
             com.sun.net.httpserver.HttpHandler handler) {
-        server.createContext(path, guarded(handler));
+        com.sun.net.httpserver.HttpHandler wrapped = guarded(handler);
+        server.createContext(path, wrapped);
+        String base = Zone.basePath();
+        if (!base.isEmpty() && !path.startsWith(base)) {
+            server.createContext(base + path, wrapped);
+        }
     }
 
     private static com.sun.net.httpserver.HttpHandler guarded(
