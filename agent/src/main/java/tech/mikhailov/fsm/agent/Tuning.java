@@ -15,10 +15,16 @@ import java.util.Map;
  * kill the pool, which orphans every claim in flight. A prove is a fresh process per marker, so a
  * file read at construction takes effect on the next marker and disturbs nothing running.
  *
- * <p>THE KEY IS NOT HERE, and that is not an oversight. Everything else on this list is a parameter;
- * a credential is not, and a page that displays one is a page that leaks one to anybody who gets a
- * look at the screen. It stays in the environment, and the settings page reports only whether one is
- * set.
+ * <p>THE KEY IS HERE, HANDLED BY NAME AND NOT BY THE LOOP. It was left out on the argument that a
+ * credential is not a parameter, and the owner of this deployment asked for it: their key, their box,
+ * behind basic auth. The consequence is worth stating rather than hiding — revealing and copying it
+ * from a page means the value is in that page's source, so it is in whatever caches or screenshots
+ * that page.
+ *
+ * <p>So it is kept apart from the rest: it is not in {@link #all()}, which is the map rendered into
+ * plain fields and echoed back on every save, and a blank submission LEAVES IT ALONE rather than
+ * clearing it. The file gets {@code rw-------}, because it sits on a volume three containers mount
+ * and nothing else in it is a secret.
  *
  * <p>Every value is CLAMPED on the way out rather than on the way in, so a file edited by hand or
  * left behind by an older version cannot put the pipeline somewhere the code does not expect.
@@ -81,9 +87,28 @@ final class Tuning {
         return Duration.ofMinutes((long) Math.max(1, Math.min(1440, number("ceiling_minutes", 240))));
     }
 
-    /** Whether a key is set, which is all a page may say about one. */
+    /** Whether a key is set at all. */
     static boolean keyed() {
-        return !System.getenv().getOrDefault("QWEN_API_KEY", "").isBlank();
+        return !apiKey().isBlank();
+    }
+
+    /**
+     * The key, from the store if one has been set there, otherwise from the environment.
+     *
+     * <p>DELIBERATELY NOT IN {@link #all()}. Everything in that map is rendered into a plain field
+     * and echoed back on every save; a credential is handled once, by name, so it cannot be swept
+     * along by a loop that was written for parameters.
+     *
+     * <p>The file it lands in is chmod 600 — it sits on a volume three containers mount, and the
+     * other settings there are not secrets.
+     */
+    static String apiKey() {
+        return read("api_key", System.getenv().getOrDefault("QWEN_API_KEY", ""));
+    }
+
+    /** Where the key came from, which is the thing a reader needs before changing it. */
+    static String keyFrom() {
+        return stored().getOrDefault("api_key", "").isBlank() ? "the environment" : "this page";
     }
 
     /** Everything editable, in the order the page shows it. */
@@ -107,10 +132,26 @@ final class Tuning {
                 now.put(name, value.strip());
             }
         }
+        // BY NAME, NOT BY THE LOOP. And blank means "leave it alone" rather than "clear it", so a
+        // form posted with the field emptied by a browser cannot silently unset the credential and
+        // leave every agent talking to an endpoint that refuses them.
+        String key = given.get("api_key");
+        if (key != null && !key.isBlank()) {
+            now.put("api_key", key.strip());
+        }
+        if ("1".equals(given.get("forget_key"))) {
+            now.remove("api_key");
+        }
         StringBuilder b = new StringBuilder();
         now.forEach((k, v) -> b.append(k).append('=').append(v.replace("\n", " ")).append('\n'));
         Files.createDirectories(WHERE.getParent() == null ? WHERE : WHERE.getParent());
         Files.writeString(WHERE, b.toString());
+        try {
+            Files.setPosixFilePermissions(WHERE,
+                    java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
+        } catch (IOException | UnsupportedOperationException notPosix) {
+            // Not every filesystem has these. The file is no less correct; it is only less private.
+        }
     }
 
     /** Puts every value back to the environment's and the code's. */

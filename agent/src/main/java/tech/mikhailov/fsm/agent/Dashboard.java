@@ -149,6 +149,10 @@ public final class Dashboard {
             a.crumb{display:inline-block;color:#58a6ff;font-size:.8rem;text-decoration:none;
                     margin:0 0 .35rem}
             a.crumb:hover{text-decoration:underline}
+            .keyrow{display:flex;gap:.3rem;align-items:center}
+            button.icon{background:#0d1117;border:1px solid #30363d;border-radius:5px;
+                        padding:.3rem .5rem;cursor:pointer;font-size:.95rem;line-height:1}
+            button.icon:hover{background:#161b22}
             .ev.thought{border-left-color:#6e5494}
             .ev.thought .who{color:#a371f7}
             .false-positive,.by-design,.unprovable,.not-a-bug{background:#161b22;color:#8b949e}
@@ -1049,12 +1053,36 @@ public final class Dashboard {
                 .append(settingsTabs("model"))
                 .append("<div class='ev ").append(Tuning.edited() ? "asked" : "tool").append("'>")
                 .append("<span class=who>the endpoint</span><span class=kind>")
-                .append(Tuning.keyed() ? "a key is set" : "NO KEY SET — nothing will answer")
+                .append(Tuning.keyed() ? "a key is set, from " + Tuning.keyFrom()
+                        : "NO KEY SET — nothing will answer")
                 .append("</span>")
-                .append("<p class=account><span class=k>The API key is not on this page and cannot "
-                        + "be set from it. Everything here is a parameter; a credential is not one, "
-                        + "and a page that shows one leaks it to whoever is looking at the screen. "
-                        + "It stays where the deploy put it.</span></p>")
+                // MASKED, WITH THE TWO BUTTONS THAT MAKE A MASKED FIELD USABLE. The value is in this
+                // page's source for the eye and the clipboard to reach — that is the cost of being
+                // able to see and copy it, and it is the reason this page is behind basic auth.
+                .append("<label class=field><span class=fl>API key</span>")
+                .append("<span class=keyrow>")
+                .append("<input type=password name=api_key id=apikey autocomplete=off value='")
+                .append(esc(Tuning.apiKey())).append("' class=wide>")
+                .append("<button type=button class=icon onclick=\"var f=document.getElementById("
+                        + "'apikey');f.type=f.type==='password'?'text':'password';"
+                        + "this.textContent=f.type==='password'?'👁':'🙈'\" "
+                        + "title='show or hide'>👁</button>")
+                .append("<button type=button class=icon onclick=\"var f=document.getElementById("
+                        + "'apikey');navigator.clipboard.writeText(f.value).then(()=>{"
+                        + "var t=this.textContent;this.textContent='✓';"
+                        + "setTimeout(()=>this.textContent=t,1200)})\" title='copy'>"
+                        + "📋</button>")
+                .append("</span>")
+                .append("<span class=k>Left blank, the key is left alone — a browser that clears "
+                        + "the field cannot silently unset it and leave every agent talking to an "
+                        + "endpoint that refuses them. Saving one writes it to the settings file "
+                        + "with owner-only permissions; <b>forget</b> drops it and falls back to "
+                        + "the environment.</span></label>")
+                .append(Tuning.keyFrom().equals("this page")
+                        ? "<label class=field><span class=k><input type=checkbox name=forget_key "
+                                + "value=1> forget the key stored here and use the environment's"
+                                + "</span></label>"
+                        : "")
                 .append("<form method=post action='/settings'>")
                 .append(hidden("setting", "model"));
         for (Field f : fields) {
