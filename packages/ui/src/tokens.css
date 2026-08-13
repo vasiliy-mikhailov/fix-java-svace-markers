@@ -1,0 +1,291 @@
+/**
+ * THE PORTAL'S TOKENS, TAKEN VERBATIM.
+ *
+ * These 53 names and values are copied from moex-portal's `apps/portal/app/globals.css`, unchanged.
+ * They are not this tool's taste; they are the shell's, and a zone with its own palette is the thing
+ * that makes a portal of microfrontends feel like four different websites behind one nav bar.
+ *
+ * So: do not "improve" a value here. If the portal's palette moves, copy it again. What this tool
+ * adds lives in the second block below, and only where the domain genuinely has no equivalent
+ * upstream — a marker's disposition is not a concept the portal has.
+ *
+ * Both themes, switched by `.dark` on the root, which is how the portal does it. How the class gets
+ * there across a zone boundary is a contract problem, not a CSS one — see spec/17.
+ */
+
+:root {
+  /* === Semantic surface tokens === */
+  --bg-canvas: #F2F3F6;
+  --bg-panel: #FFFFFF;
+  --bg-card: #FAFBFC;
+  --bg-elevated: #FFFFFF;
+  --bg-subtle: #EEF0F3;
+  --bg-soft-accent: #FFE7E8;
+
+  /* === Semantic text tokens === */
+  --text-primary: #15171A;
+  --text-secondary: #343941;
+  --text-tertiary: #68707A;
+
+  /* === Semantic border tokens === */
+  --border-soft: #E3E6EA;
+  --border-strong: #D9DDE3;
+
+  /* === Interaction and selection tokens === */
+  --state-selected-bg: #EEF0F3;
+  --state-selected-text: #15171A;
+  --state-hover-bg: #F7F8FA;
+  --state-active-bg: #E3E6EA;
+  --focus-ring: #15171A;
+
+  /* === Accent tokens === */
+  --accent-primary: #E30613;
+  --accent-hover: #C9000B;
+  --accent-action: #E30613;
+  --accent-action-hover: #C9000B;
+  --accent-on-action: #FFFFFF;
+  --accent-soft: #FFE7E8;
+
+  /* === Паспорт сегмента (витрина «Обзор») === */
+  --score-bg: #33373B;
+  --score-text: #FFFFFF;
+  --score-muted: #CFD3D7;
+  --neutral-bg: #F3F4F6;
+  --pillar-accent-1: var(--accent);
+  --pillar-accent-2: #3B82F6;
+  --pillar-accent-3: #10B981;
+  --pillar-accent-4: #F59E0B;
+  --pillar-accent-5: #6366F1;
+
+  /* === Aliases: old → new (для обратной совместимости) === */
+  --background: var(--bg-canvas);
+  --foreground: var(--text-primary);
+  --card-bg: var(--bg-card);
+  --sidebar-bg: var(--bg-panel);
+  --border: var(--border-strong);
+  --muted: var(--text-secondary);
+  --accent: var(--accent-primary);
+  --accent-light: var(--accent-soft);
+
+  /* === Standalone tokens (не aliased) === */
+  --danger: #DC2626;
+  --danger-hover: #B91C1C;
+  --toast-success-bg: #ecfdf5;
+  --toast-success-border: #a7f3d0;
+  --toast-success-icon: #059669;
+  --toast-success-text: #064e3b;
+  --toast-error-bg: #fef2f2;
+  --toast-error-border: #fecaca;
+  --toast-error-icon: #dc2626;
+  --toast-error-text: #7f1d1d;
+  --toast-info-bg: #eff6ff;
+  --toast-info-border: #bfdbfe;
+  --toast-info-icon: #2563eb;
+  --toast-info-text: #172554;
+}
+
+.dark {
+  /* === Semantic surface tokens (Slate / тёмно-синий) === */
+  --bg-canvas: #101418;
+  --bg-panel: #171B20;
+  --bg-card: #1F252B;
+  --bg-elevated: #262C33;
+  --bg-subtle: #222830;
+  --bg-soft-accent: #3B1C1E;
+
+  /* === Semantic text tokens === */
+  --text-primary: #F4F6F8;
+  --text-secondary: #C7CDD4;
+  --text-tertiary: #9AA3AD;
+
+  /* === Semantic border tokens === */
+  --border-soft: #303741;
+  --border-strong: #434B55;
+
+  /* === Interaction and selection tokens === */
+  --state-selected-bg: #2A3038;
+  --state-selected-text: #F4F6F8;
+  --state-hover-bg: #252B32;
+  --state-active-bg: #343B44;
+  --focus-ring: #F4F6F8;
+
+  /* === Accent tokens === */
+  --accent-primary: #FF6568;
+  --accent-hover: #FF7D80;
+  --accent-action: #E30613;
+  --accent-action-hover: #C9000B;
+  --accent-on-action: #FFFFFF;
+  --accent-soft: #4A1F21;
+
+  /* === Паспорт сегмента (витрина «Обзор») === */
+  --score-bg: #0B1220;
+  --score-text: #F1F5F9;
+  --score-muted: #94A3B8;
+  --neutral-bg: #374151;
+  --pillar-accent-1: var(--accent);
+  --pillar-accent-2: #60A5FA;
+  --pillar-accent-3: #34D399;
+  --pillar-accent-4: #FBBF24;
+  --pillar-accent-5: #818CF8;
+
+  /* === Aliases: old → new === */
+  --background: var(--bg-canvas);
+  --foreground: var(--text-primary);
+  --card-bg: var(--bg-card);
+  --sidebar-bg: var(--bg-panel);
+  --border: var(--border-strong);
+  --muted: var(--text-secondary);
+  --accent: var(--accent-primary);
+  --accent-light: var(--accent-soft);
+
+  /* === Standalone tokens === */
+  --danger: #ef4444;
+  --danger-hover: #dc2626;
+  --toast-success-bg: #022c22;
+  --toast-success-border: #064e3b;
+  --toast-success-icon: #34d399;
+  --toast-success-text: #ecfdf5;
+  --toast-error-bg: #450a0a;
+  --toast-error-border: #7f1d1d;
+  --toast-error-icon: #f87171;
+  --toast-error-text: #fef2f2;
+  --toast-info-bg: #172554;
+  --toast-info-border: #1e3a5f;
+  --toast-info-icon: #60a5fa;
+  --toast-info-text: #eff6ff;
+}
+
+/* Remove box-shadow on cards in dark mode */
+.dark .shadow-sm {
+  box-shadow: none;
+}
+
+select.sigma-field-control {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-tertiary) 50%),
+    linear-gradient(135deg, var(--text-tertiary) 50%, transparent 50%);
+  background-position:
+    calc(100% - 1.125rem) 50%,
+    calc(100% - 0.8125rem) 50%;
+  background-repeat: no-repeat;
+  background-size: 0.3125rem 0.3125rem;
+}
+
+:where([role="dialog"]) .sigma-field-control:not(textarea),
+.sigma-modal-body .sigma-field-control:not(textarea) {
+  height: 2.75rem;
+  min-height: 2.75rem;
+}
+
+:where([role="dialog"]) button[role="combobox"],
+.sigma-modal-body button[role="combobox"] {
+  min-height: 2.75rem;
+}
+
+body {
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: Arial, Helvetica, sans-serif;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+@supports not (scrollbar-gutter: stable) {
+  html {
+    overflow-y: scroll;
+  }
+}
+
+/* Focus ring — unified keyboard focus indicator */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Compact metric tiles keep the number primary; the sparkline disappears only when the tile itself is narrow. */
+.workspace-metric-trend-tile {
+  container-type: inline-size;
+}
+
+@container (max-width: 11.5rem) {
+  .workspace-metric-trend-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace-metric-trend-chart {
+    display: none;
+  }
+}
+
+/* ReactFlow controls inherit the Sigma/Orbit shell chrome. */
+.react-flow__controls {
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
+
+.react-flow__controls button,
+.dark-flow .react-flow__controls button {
+  background-color: var(--bg-elevated) !important;
+  border-radius: 10px !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-soft) !important;
+  fill: var(--text-primary) !important;
+}
+
+.react-flow__controls button:hover,
+.dark-flow .react-flow__controls button:hover {
+  background-color: var(--state-hover-bg) !important;
+}
+
+.react-flow__controls button svg,
+.dark-flow .react-flow__controls button svg {
+  fill: var(--text-primary);
+}
+
+.react-flow .react-flow__attribution {
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent) !important;
+}
+
+.react-flow .react-flow__attribution a {
+  color: var(--text-secondary) !important;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+
+/* WCAG 2.3.3 — respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,100 @@
+/**
+ * WHAT THIS TOOL'S DOMAIN NEEDS AND THE PORTAL HAS NO WORD FOR.
+ *
+ * Everything in `tokens.css` is the portal's and is copied unchanged. This file is the small set the
+ * portal cannot supply, because it has no concept of a marker that settled `by-design` or a build
+ * that went RED for the right reason.
+ *
+ * TWO RULES, so this does not become a second palette:
+ *
+ * 1. Every value here is expressed against the portal's tokens where one fits, and is a flat hex only
+ *    where the meaning is genuinely a status colour the portal does not define. A status colour that
+ *    drifts from the surface it sits on is the thing that makes a mounted zone look pasted in.
+ * 2. If the portal ever grows a semantic status scale, this file shrinks to aliases of it. It is
+ *    meant to be the smallest thing that works, not a design system.
+ *
+ * The names are the states themselves — `--state-by-design`, not `--colour-green-2` — because the
+ * next reader's question is always "what colour is by-design", never "where is green 2 used".
+ */
+
+:root {
+  /* === What a marker settled as ===
+     Proved and shippable reads as success; argued away reads as informational; needs-review is the
+     one asking for a person and is the only warm colour, deliberately — there are usually few. */
+  --state-verified-pr-ready: #1A7F37;
+  --state-verified-pr-rejected: #6E7781;
+  --state-reproduced: #1F6FEB;
+  --state-false-positive: #6E7781;
+  --state-by-design: #8250DF;
+  --state-unprovable: #6E7781;
+  --state-needs-review: #BF8700;
+
+  /* === States that are not an answer ===
+     `infra` is a prove that THREW. It is not a disposition and must never read as one — it used to,
+     and markers whose tooling failed were quietly retired as decided. */
+  --state-proving: #1F6FEB;
+  --state-queued: var(--text-tertiary);
+  --state-infra: #CF222E;
+  --state-interrupted: #BF8700;
+
+  /* === The build semaphore ===
+     RED is the good one here: a test that fails before the patch is the whole standard of proof. The
+     colours are literal because the words are, and a reader looking at two lamps needs no legend. */
+  --build-red: #CF222E;
+  --build-green: #1A7F37;
+  --build-none: var(--border-strong);
+
+  /* === What the supervisor's critic made of a finding === */
+  --verdict-holds: #BF8700;
+  --verdict-unjudged: var(--text-tertiary);
+  --verdict-refuted: var(--text-tertiary);
+
+  /* === Severity, which is joined in from severities.tsv and is often absent === */
+  --severity-critical: #CF222E;
+  --severity-major: #BC4C00;
+  --severity-minor: var(--text-tertiary);
+
+  /* === Syntax, for the flagged source and diffs === */
+  --code-keyword: #CF222E;
+  --code-string: #0A3069;
+  --code-comment: #6E7781;
+  --code-number: #0550AE;
+  --code-added: #1A7F37;
+  --code-removed: #CF222E;
+  --code-flagged-bg: #FFF8C5;
+}
+
+.dark {
+  --state-verified-pr-ready: #3FB950;
+  --state-verified-pr-rejected: #8B949E;
+  --state-reproduced: #58A6FF;
+  --state-false-positive: #8B949E;
+  --state-by-design: #BC8CFF;
+  --state-unprovable: #8B949E;
+  --state-needs-review: #D29922;
+
+  --state-proving: #58A6FF;
+  --state-queued: var(--text-tertiary);
+  --state-infra: #F85149;
+  --state-interrupted: #D29922;
+
+  --build-red: #F85149;
+  --build-green: #3FB950;
+  --build-none: var(--border-strong);
+
+  --verdict-holds: #D29922;
+  --verdict-unjudged: var(--text-tertiary);
+  --verdict-refuted: var(--text-tertiary);
+
+  --severity-critical: #F85149;
+  --severity-major: #F0883E;
+  --severity-minor: var(--text-tertiary);
+
+  --code-keyword: #FF7B72;
+  --code-string: #A5D6FF;
+  --code-comment: #8B949E;
+  --code-number: #79C0FF;
+  --code-added: #3FB950;
+  --code-removed: #F85149;
+  --code-flagged-bg: #341A00;
+}

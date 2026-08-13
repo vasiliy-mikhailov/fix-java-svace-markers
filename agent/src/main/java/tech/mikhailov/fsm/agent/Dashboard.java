@@ -365,6 +365,24 @@ public final class Dashboard {
             t.setDaemon(true);
             return t;
         }));
+        // WHAT A SHELL NEEDS, SERVED RATHER THAN AGREED. Another session writes the shell; it
+        // cannot read this code, so everything it needs is fetchable and versioned. See spec/17.
+        route(server, "/.well-known/microfrontend.json",
+                e -> send(e, "application/json", Zone.manifest()));
+        route(server, "/api/health", e -> {
+            String why = Zone.unhealthy(here);
+            String body = why == null
+                    ? "{\"ok\":true,\"version\":\"" + Settlement.escape(Zone.version()) + "\"}"
+                    : "{\"ok\":false,\"why\":\"" + Settlement.escape(why) + "\"}";
+            byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+            e.getResponseHeaders().set("Content-Type", "application/json");
+            // 503, so a shell can show a degraded zone without parsing the body to find out.
+            e.sendResponseHeaders(why == null ? 200 : 503, bytes.length);
+            try (OutputStream out = e.getResponseBody()) {
+                out.write(bytes);
+            }
+        });
+        route(server, "/api/badges", e -> send(e, "application/json", Zone.badges(here)));
         route(server, "/api/settlements", e -> send(e, "application/json",
                 "[" + String.join(",", lines(settlements)) + "]"));
         route(server, "/api/trace", e -> send(e, "application/json",

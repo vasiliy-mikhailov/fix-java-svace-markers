@@ -92,7 +92,12 @@ RUN mkdir -p /results /work/checkouts /home/prover/.m2 \
     && chown -R prover:prover /results /work /home/prover/.m2
 
 USER prover
-ENV RESULTS=/results \
+# THE RUNNING BUILD, NAMEABLE. The manifest a shell fetches reports this, so a portal can say
+# exactly which build it is talking to and two deployments cannot be mistaken for each other.
+# Passed at build time: `docker build --build-arg FSM_VERSION=$(git rev-parse --short HEAD)`.
+ARG FSM_VERSION=unknown
+ENV FSM_VERSION=$FSM_VERSION \
+    RESULTS=/results \
     CHECKOUTS=/work/checkouts
 
 # The trace and the settlements are the whole record; a run that keeps neither has proved nothing

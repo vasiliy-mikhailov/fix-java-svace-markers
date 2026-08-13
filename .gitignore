@@ -30,3 +30,7 @@ pipeline/deploy/n8n-data/
 results/
 results_n8n/
 target/
+.turbo/
+dist/
+.next/
+node_modules/
