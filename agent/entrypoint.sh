@@ -318,6 +318,15 @@ case "${1:-dashboard}" in
         echo "SLICE DONE ($n marker(s))"
         ;;
 
+    interpret)
+        # interpret — write the plain-English account for every settled lane that has none.
+        #
+        # The prompts are data and they change. A summary already on disk is the OLD prompt's answer,
+        # and the supervisor's own loop would take most of a day to work through a run eight at a
+        # time. Delete the summaries you want redone, then run this.
+        exec java -cp "$CP" tech.mikhailov.fsm.agent.Interpreter "$RESULTS"
+        ;;
+
     overwatch)
         # overwatch [seconds between passes] — the supervisor. Reads the whole run, reports what is
         # going wrong with the PIPELINE, and may kill a stuck prove so the pool takes it again.
@@ -365,7 +374,7 @@ case "${1:-dashboard}" in
         ;;
 
     *)
-        echo "usage: prove 'repo|file|line|checker' | slice <markers> [concurrency] | serve [seconds] | overwatch [seconds] | test [cases] | seed [cases] | dashboard" >&2
+        echo "usage: interpret | prove 'repo|file|line|checker' | slice <markers> [concurrency] | serve [seconds] | overwatch [seconds] | test [cases] | seed [cases] | dashboard" >&2
         exit 2
         ;;
 esac

@@ -88,6 +88,53 @@ final class Interpreter {
     }
 
     /** Settled lanes with no summary, in the order the pool reached them. */
+    /**
+     * {@code interpret <results>} — every lane without a summary, until there are none left.
+     *
+     * <p>THE PROMPTS ARE DATA, so they change; and when they change, the summaries already written
+     * are the OLD prompt's answers sitting beside the new prompt's. Deleting a summary is how you ask
+     * for it again — {@link #waiting} takes any settled lane that has none — but the supervisor's
+     * loop does eight per pass every fifteen minutes, which is most of a day for a full run and
+     * spends a supervisor pass on each one along the way.
+     *
+     * <p>This does the interpreting and nothing else: no findings, no restarts, no postponements. It
+     * runs until the queue is empty and stops, so it can be watched and it ends.
+     *
+     * <p>IT DOES NOT DELETE ANYTHING. Clearing the summaries is a separate act with a separate
+     * blast radius, and a mode that quietly threw away every account this program had written of
+     * every marker — because somebody wanted one of them redone — is not a mode worth having.
+     */
+    public static void main(String[] args) throws Exception {
+        Path results = Path.of(args.length > 0 ? args[0] : "/results");
+        JsonlTrace trace = new JsonlTrace(results.resolve("overwatch-trace.jsonl"),
+                results.resolve("overwatch-settlements.jsonl"), "interpreter");
+        Agents agents = new Agents(results, trace, (phase, test) -> new Runner.Result(true, false,
+                "the interpreter does not build; it reads what the provers built"));
+        Interpreter interpreter = new Interpreter(results, agents, trace);
+        int before = interpreter.waiting().size();
+        System.out.println("interpreting " + before + " lane(s)");
+        int stuck = 0;
+        while (true) {
+            int left = interpreter.waiting().size();
+            if (left == 0) {
+                break;
+            }
+            interpreter.pass();
+            int now = interpreter.waiting().size();
+            System.out.println("  " + (before - now) + " of " + before + " done, " + now + " to go");
+            // A LANE THAT WILL NOT INTERPRET MUST NOT LOOP FOREVER. interpret() writes a summary
+            // whatever the model says, so no progress twice running means something structural —
+            // an unwritable volume, an endpoint that is refusing — and repeating it only burns
+            // the endpoint down while reporting the same number.
+            stuck = now == left ? stuck + 1 : 0;
+            if (stuck >= 2) {
+                System.out.println("  no progress in two passes; stopping with " + now + " left");
+                break;
+            }
+        }
+        System.out.println("done");
+    }
+
     private List<Path> waiting() {
         Path m = results.resolve("m");
         List<Path> out = new ArrayList<>();
