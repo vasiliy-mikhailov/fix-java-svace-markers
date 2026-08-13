@@ -6,6 +6,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -139,6 +141,51 @@ class CuttingTheTreeTest {
         assertTrue(Files.readString(results.resolve("restarts.jsonl")).contains("\"by\":\"person\""),
                 "and who ordered it is in the record, or the next reader cannot tell a supervisor "
                         + "that cycled a marker three times from a person who did");
+    }
+
+    @Test
+    @DisplayName("an agent restart and a person's re-prove never name the same archive")
+    void archivesDoNotCollide(@TempDir Path dir) throws Exception {
+        Path results = dir;
+        Supervisor supervisor = new Supervisor(results, quiet());
+        // The order that used to lose a record: agent, person, agent. Separating the counters so a
+        // person could not spend the agent's allowance left both computing from the agent's count,
+        // so the third of these produced a name the first had already taken — Files.move onto an
+        // existing directory throws, and the attempt it was keeping went with it.
+        proving(results);
+        supervisor.restart(MARKER, "first");
+        proving(results);
+        supervisor.reprove(MARKER, "a person looked");
+        proving(results);
+        supervisor.restart(MARKER, "second");
+
+        String id = Supervisor.slug(MARKER);
+        try (var kept = Files.list(results.resolve("dead"))) {
+            List<String> names = kept.map(k -> k.getFileName().toString()).sorted().toList();
+            assertEquals(3, names.size(),
+                    "three attempts were interrupted, so three records have to survive — and Pace "
+                            + "counts these directories to work out what a marker has really cost, "
+                            + "so a lost one under-reports it too: " + names);
+            assertEquals(names.size(), Set.copyOf(names).size(), "all distinct: " + names);
+            assertEquals(3, Pace.attempts(results, id),
+                    "and the pace clock sees every one of them");
+        }
+    }
+
+    @Test
+    @DisplayName("a name already taken is stepped past rather than moved onto")
+    void neverOverwrites(@TempDir Path dir) throws Exception {
+        Path results = dir;
+        Files.createDirectories(results.resolve("dead").resolve(Supervisor.slug(MARKER)
+                + ".restart-1"));
+        proving(results);
+        new Supervisor(results, quiet()).restart(MARKER, "the name is taken");
+        try (var kept = Files.list(results.resolve("dead"))) {
+            List<String> names = kept.map(k -> k.getFileName().toString()).sorted().toList();
+            assertEquals(2, names.size(),
+                    "whatever the counters say, keep() must not throw away a record because the "
+                            + "name it computed was in use: " + names);
+        }
     }
 
     @Test

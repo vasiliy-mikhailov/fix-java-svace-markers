@@ -366,8 +366,12 @@ it had**. A supervisor whose one action is silently a no-op is worse than one wi
 `<results>/restarts.jsonl`, one line per restart, every value a string:
 
 ```json
-{"at":"<epoch millis>","id":"<slug>","marker":"<escaped key>","attempt":"<n>","killed":"<true|false>","why":"<escaped>"}
+{"at":"<epoch millis>","id":"<slug>","marker":"<escaped key>","attempt":"<n>","killed":"<true|false>","by":"<supervisor|person>","why":"<escaped>"}
 ```
+
+`by` says who ordered it, and the limit counts only the supervisor's own — a person's press must not
+spend an agent's allowance. **A line with no `by` counts as the supervisor's**, so a log written
+before the field existed does not retroactively lift the limit on markers already restarted twice.
 
 **A delete that fails leaves the directory, and the claim check then reads it as still claimed.** That
 is safe in the only direction that matters: the marker is not re-proved, rather than proved twice at
@@ -486,8 +490,14 @@ release the claim, record — **with no `LIMIT` check**, because a person pressi
 four decisions rather than a runaway. It keeps the two guards that are about naming rather than
 budget: a blank slug answers `REFUSED: no marker named.` and an unknown one `REFUSED: nothing named
 <id> has run.` It does **not** lift a postponement. The reason is stored prefixed
-`asked for by a person — <why>`, because the next reader needs to know this marker was proved twice and
-on whose say-so. It returns `queued again`.
+`asked for by a person — <why>` and the line carries `by: person`, because the next reader needs to
+know this marker was proved twice and on whose say-so — and because the agent's limit counts only its
+own. It returns `queued again`.
+
+**It names its archives `dead/<id>.reprove-N`**, where the agent's are `dead/<id>.restart-N`. Both
+paths once derived that number from the same counter, and separating the counters made them collide:
+`Files.move` onto an existing directory throws and the kept record is lost. Distinct prefixes, plus a
+`keep(...)` that takes the first free name, mean no arithmetic can lose an attempt.
 
 `POST /reprove` with form fields `marker` and `why` (default `no reason given`) runs it under a
 dashboard-owned trace (`dashboard-trace.jsonl` / `dashboard-settlements.jsonl`) and redirects 303 to

@@ -859,8 +859,14 @@ judgement in place of prompt and reply.
 is recorded as `no reason given` — **the reason is written down whatever happens, because a re-prove
 with no reason on the record is indistinguishable from a loop.** It is
 **the same mechanism the supervisor's critic uses** — kill it, keep its record aside, release the
-claim, let the pool take it — **but it is not counted against that agent's two restarts, because
+claim, let the pool take it — **and it is not counted against that agent's two restarts, because
 somebody who has read the page and pressed a button is making a decision rather than looping.**
+
+That sentence was false for as long as it existed. Both paths append to `restarts.jsonl` and the
+limit counted every line with the marker's id, so two presses here spent the supervisor's whole
+allowance on a marker it had never touched. The recorded line now carries `by`, and the guard counts
+only `by != person`. See [06 — tools and the fence](06-tools-and-the-fence.md) for the guard and for
+the archive-naming collision that separating the counters then caused.
 
 ---
 

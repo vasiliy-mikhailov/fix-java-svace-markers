@@ -87,14 +87,14 @@ final class Supervisor {
         // THE RECORD OF THE ATTEMPT OUTLIVES THE ATTEMPT. Deleting the trace as well as the tree
         // would erase the evidence the restart was ordered on, and the next reader would find a
         // marker that had simply been proved twice with no account of why.
-        keep(out, id, already + 1);
+        String kept = keep(out, id, "restart-" + (already + 1));
         delete(out);
         delete(claim);
         record(id, markerKey, why, already + 1, killed, "supervisor");
         return "RESTARTED " + id + " (" + (already + 1) + " of " + LIMIT + "). "
                 + (killed ? "The running prove was killed. " : "No prove was running. ")
-                + "Its record is kept as " + id + ".restart-" + (already + 1)
-                + "; the pool will take the marker again on its next pass.";
+                + (kept.isEmpty() ? "" : "Its record is kept as " + kept + ". ")
+                + "The pool will take the marker again on its next pass.";
     }
 
     /**
@@ -125,7 +125,7 @@ final class Supervisor {
             return "REFUSED: nothing named " + id + " has run.";
         }
         boolean killed = kill(id);
-        keep(out, id, restarts(id) + 1);
+        keep(out, id, "reprove-" + (reproves(id) + 1));
         delete(out);
         delete(claim);
         record(id, markerKey, "asked for by a person — " + why, restarts(id) + 1, killed,
@@ -209,17 +209,53 @@ final class Supervisor {
      * the marker was skipped, and the restart did nothing at all while reporting that it had. A
      * supervisor whose one action is silently a no-op is worse than one with no actions.
      */
-    private void keep(Path out, String id, int attempt) {
+    private String keep(Path out, String id, String what) {
         if (!Files.isDirectory(out)) {
-            return;
+            return "";
         }
         try {
             Path dead = results.resolve("dead");
             Files.createDirectories(dead);
-            Files.move(out, dead.resolve(id + ".restart-" + attempt));
+            // THE FIRST FREE NAME, rather than the one a counter computed.
+            //
+            // Two counters name these — the agent's restarts and a person's re-proves — and once
+            // they were separated so that a person could not spend the agent's allowance, nothing
+            // stopped them arriving at the same number. Files.move onto an existing directory
+            // throws, the catch below logs it, and the record of that attempt is gone: the one
+            // thing this method exists to prevent, caused by the fix to something else.
+            //
+            // Pace counts these directories to decide how long a marker has really taken, so a lost
+            // one also under-reports the marker's cost — which is the bug that put `dead/` here.
+            String name = id + "." + what;
+            for (int n = 2; Files.exists(dead.resolve(name)); n++) {
+                name = id + "." + what + "-" + n;
+            }
+            Files.move(out, dead.resolve(name));
+            return name;
         } catch (IOException couldNotKeep) {
-            trace.progress(id, "could not keep the record of attempt " + attempt + ": "
+            trace.progress(id, "could not keep the record of " + what + ": "
                     + couldNotKeep.getMessage());
+            return "";
+        }
+    }
+
+    /**
+     * How many times a PERSON has asked for this marker again.
+     *
+     * <p>Only to name the archive. It is deliberately not a limit: somebody who has read the page
+     * and pressed a button is making a decision, and four of those are four decisions.
+     */
+    private int reproves(String id) {
+        Path log = results.resolve("restarts.jsonl");
+        if (!Files.exists(log)) {
+            return 0;
+        }
+        try (Stream<String> lines = Files.lines(log)) {
+            return (int) lines.filter(l -> Json.field(l, "id").equals(id))
+                    .filter(l -> "person".equals(Json.field(l, "by"))).count();
+        } catch (IOException | java.io.UncheckedIOException unreadable) {
+            // Nothing is gated on this, and keep() picks a free name anyway.
+            return 0;
         }
     }
 

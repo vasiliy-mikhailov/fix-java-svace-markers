@@ -614,15 +614,45 @@ builds a `Supervisor` over the results root (tracing to `dashboard-trace.jsonl`)
 own**, so a person is never refused for having pressed the button before: somebody who has read the
 page and pressed a button is making a decision rather than looping.
 
-It is one ledger, though, and that is where intent and behaviour part company. `reprove` ends with the
-same `record(...)` call `restart` does — a line in `restarts.jsonl` carrying that marker's id, with
-`why` prefixed `asked for by a person — ` — and `restart`'s guard is `restarts(id) >= LIMIT`, which
-counts *every* line with that id whoever wrote it. **So a person's presses do consume
-`overwatch-critic`'s two**: after two reprovals from the page, `restart_prove` on that marker is
-refused. Only the refusal is one-sided, not the counting. `Dashboard`'s comment on the route and an
-earlier draft of this chapter both said it was "not counted against that agent's two"; the code says
-otherwise, and the code is what runs. A rebuilder who wants the documented behaviour has to give
-`reprove` a separate log or a `by` field the guard filters on — not merely repeat the sentence.
+**It is one ledger, and the line says who wrote it.** Both paths end in the same `record(...)` call —
+a line in `restarts.jsonl` carrying the marker's id, with `by` set to `supervisor` or `person`, and a
+person's `why` prefixed `asked for by a person — `. One file, because the record of what happened to a
+marker belongs in one place. `restart`'s guard counts only what the supervisor itself ordered:
+
+```java
+lines.filter(l -> Json.field(l, "id").equals(id))
+     .filter(l -> !"person".equals(Json.field(l, "by"))).count()
+```
+
+A line with no `by` is the supervisor's. Logs written before the field existed therefore keep
+counting, which is the **safe direction**: reading them as person-ordered would retroactively hand the
+agent a fresh allowance on every marker it had already restarted twice.
+
+This was wrong until it was fixed, and the shape of the mistake is worth keeping. The guard counted
+every line with the id, whoever wrote it, so **two presses of the dashboard button spent
+`overwatch-critic`'s whole allowance on a marker it had never touched** — and the agent was then
+refused with a message about a limit it never used. Nothing reported it: a limit is only felt when the
+agent next tries to act, and by then the refusal reads as an agent that has had its turns. Both the
+route's comment and this chapter's earlier draft described the intended behaviour, which is exactly
+why it survived — a comment asserting what the code does not do is read as a check that something else
+performs.
+
+**Separating the counters broke the archive naming, which is the second half of this story.**
+`keep(...)` moves the interrupted lane to `dead/<id>.<name>`, and both paths derived that name from a
+counter. Once the counters were split, an agent restart following a person's re-prove computed a name
+the first restart already held; `Files.move` onto an existing directory throws, the catch logs it, and
+the record that method exists to preserve is gone. `Pace` counts those directories to work out what a
+marker has really cost, so a lost one under-reports it too — which is the bug that put `dead/` there
+in the first place.
+
+Two things prevent it now, and a rebuilder needs both:
+
+- the paths name their own archives — `dead/<id>.restart-N` for the agent, `dead/<id>.reprove-N` for a
+  person — so no arithmetic can make them meet. Both suffixes satisfy `Pace`'s rule that an archive
+  suffix matches `[a-z][a-z0-9-]*`, so both count toward the marker's cost.
+- `keep(...)` takes the **first free name**, appending `-2`, `-3` … if one is taken, and returns the
+  name it used so the caller reports the truth rather than what it predicted. Whatever a counter says,
+  a record is never moved onto another.
 
 There is no dashboard route for `postpone`.
 
