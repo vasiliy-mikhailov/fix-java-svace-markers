@@ -107,6 +107,24 @@ public final class Dashboard {
             a.gear{position:absolute;top:.55rem;right:.9rem;font-size:1.25rem;line-height:1;
                    color:#6e7681;text-decoration:none;padding:.2rem .35rem;border-radius:5px}
             a.gear:hover{color:#c9d1d9;background:#161b22}
+            a.gear.ask{right:2.6rem}
+            .chat{padding:14px 24px;display:flex;flex-direction:column;gap:12px}
+            .say{max-width:64rem}
+            .say .who{color:#7d8590;font-size:11px;text-transform:uppercase;
+                      letter-spacing:.06em;margin-bottom:3px}
+            /* WRAPPED AND PRE-WRAPPED BOTH. An answer is prose with the model's own line breaks in
+               it; <pre> alone would run a paragraph off the side of the page. */
+            .say .said{white-space:pre-wrap;overflow-wrap:anywhere;border-left:2px solid #21262d;
+                       padding:.35rem 0 .35rem .75rem}
+            .say.mine .said{border-left-color:#388bfd;color:#c9d1d9}
+            .say.theirs .said{border-left-color:#30363d;color:#adbac7}
+            form.ask{display:flex;gap:8px;padding:4px 24px 24px;align-items:flex-start}
+            form.ask textarea{flex:1;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;
+                              border-radius:6px;padding:.5rem .6rem;font:inherit;resize:vertical}
+            form.ask button{background:#21262d;color:#c9d1d9;border:1px solid #30363d;
+                            border-radius:6px;padding:.5rem 1rem;font:inherit;cursor:pointer}
+            form.ask button:hover:enabled{background:#30363d}
+            form.ask button:disabled,form.ask textarea:disabled{opacity:.5;cursor:default}
             input.number{background:#0d1117;color:#c9d1d9;border:1px solid #30363d;
                          border-radius:5px;padding:.35rem .5rem;width:5rem;font:inherit}
             pre.flagged .k{color:#ff7b72}
@@ -467,6 +485,21 @@ public final class Dashboard {
         route(server, "/live", e -> send(e, "text/html; charset=utf-8",
                 live(settlements.getParent() == null ? Path.of(".") : settlements.getParent(),
                         query(e, "k"))));
+        // ANSWERED WITH A REDIRECT, so the refresh that watches for the reply cannot re-post the
+        // question. The reply to a POST here is the page, and a page that re-asks itself every three
+        // seconds would be a question asked twenty times before its first answer arrived.
+        route(server, "/chat", e -> {
+            if (e.getRequestMethod().equalsIgnoreCase("POST")) {
+                String said = Chat.ask(here, form(e).getOrDefault("q", ""));
+                e.getResponseHeaders().add("Location",
+                        said.isBlank() ? "/chat" : "/chat?said=" + enc(said));
+                e.sendResponseHeaders(303, -1);
+                e.close();
+                return;
+            }
+            send(e, "text/html; charset=utf-8",
+                    chat(here, slugs(settlements.resolveSibling("markers.txt")), query(e, "said")));
+        });
         route(server, "/", e -> send(e, "text/html; charset=utf-8",
                 index(settlements, trace, lines(settlements.resolveSibling("markers.txt")))));
 
@@ -952,6 +985,79 @@ public final class Dashboard {
 
     /** How much of an answer in progress to show. The end of it, not the start. */
     private static final int LIVE_TAIL = 4_000;
+
+    /**
+     * ASKING THE WATCHER SOMETHING, WHICH EVERY OTHER PAGE HERE MAKES IMPOSSIBLE.
+     *
+     * <p>The dashboard answers one question well — what happened — and only the question it was
+     * built to answer. A reader who wants to know why the reproducer keeps timing out on one checker
+     * family, or whether the two markers at the top are the same fault, has to read three hundred
+     * traces and find out; the watcher has already read them and is not reachable.
+     *
+     * <p>REFRESHED ONLY WHILE AN ANSWER IS COMING. A meta refresh is a blunt instrument and it is the
+     * right one here: it needs no script, it cannot double-post because the question was answered
+     * with a redirect, and there is nothing on the page to lose while it fires — the box is empty and
+     * the person is waiting. When the answer lands the refresh stops, and the page holds still while
+     * they read it.
+     */
+    private static String chat(Path results, Map<String, String> markers, String said) {
+        boolean answering = Chat.answering();
+        StringBuilder b = new StringBuilder();
+        if (answering) {
+            b.append("<meta http-equiv=refresh content=3>");
+        }
+        b.append(head("ask the supervisor",
+                "the agent that watches this run, over the whole record. It reads; it cannot "
+                        + "restart or set aside a prove &mdash; those are buttons on a marker's own "
+                        + "page.", "all markers"));
+        b.append("<div class=chat>");
+        List<Chat.Turn> turns = Chat.turns(results);
+        if (turns.isEmpty()) {
+            b.append("<div class=k>Nothing asked yet. It can see every marker's state, builds, "
+                    + "answers and settlement, and can open any trace to check before it answers.")
+                    .append("</div>");
+        }
+        for (Chat.Turn turn : turns) {
+            b.append("<div class='say ").append(turn.mine() ? "mine" : "theirs").append("'>")
+                    .append("<div class=who>").append(turn.mine() ? "you" : "supervisor")
+                    .append(turn.at() == 0 ? "" : " <span class=k>&middot; " + ago(turn.at())
+                            + "</span>")
+                    .append("</div><div class=said>")
+                    // ESCAPED FIRST AND LINKED SECOND, so nothing a model wrote can put markup on
+                    // this page, and a marker it names becomes the marker's own page.
+                    .append(linked(turn.text(), markers))
+                    .append("</div></div>");
+        }
+        if (answering) {
+            b.append(panel("supervisor", Chat.live(results), true));
+        } else if (Chat.unanswered(results)) {
+            // THE STATE THAT LOOKS LIKE THE OTHER ONE. A question with nothing under it and nothing
+            // running means the dashboard was restarted mid-answer, which happens on every deploy.
+            // Left unsaid, the page reads as still thinking and never stops.
+            b.append("<div class=k>No answer came back &mdash; the dashboard restarted while it was "
+                    + "being written. Ask again.</div>");
+        }
+        b.append("</div>");
+        if (!said.isBlank()) {
+            b.append("<div class=k style='padding:0 24px 8px'>").append(esc(said)).append("</div>");
+        }
+        b.append("<form class=ask method=post action='/chat'>")
+                .append("<textarea name=q rows=3 placeholder='")
+                .append(answering ? "answering the last one…" : "ask about the run…")
+                .append("'").append(answering ? " disabled" : "").append("></textarea>")
+                .append("<button").append(answering ? " disabled" : "").append(">ask</button>")
+                .append("</form>");
+        return b.toString();
+    }
+
+    /** How long ago, in the units a person reading a conversation wants. */
+    private static String ago(long at) {
+        long seconds = (System.currentTimeMillis() - at) / 1000;
+        if (seconds < 90) {
+            return seconds + "s ago";
+        }
+        return seconds < 5400 ? (seconds / 60) + "m ago" : (seconds / 3600) + "h ago";
+    }
 
     /**
      * The checked summary for one lane: {@code [0]} the line for the table, {@code [1]} the account
@@ -2325,7 +2431,10 @@ public final class Dashboard {
                 // THE ONE CONTROL THAT IS ON EVERY PAGE. It was a text link at the bottom of the
                 // list, under 356 rows, which is a link nobody has: a reader who does not already
                 // know the page exists will not scroll past the whole run to discover it.
+                // NEXT TO THE GEAR, because both are "leave this page and do something", and a
+                // reader looking for either looks in the same corner.
                 .append("<header><a class=gear href='/settings' title='settings'>\u2699</a>")
+                .append("<a class='gear ask' href='/chat' title='ask the supervisor'>\u2709</a>")
                 .append(back.isEmpty() ? ""
                         : "<a class=crumb href='/'>&larr; " + esc(back) + "</a>")
                 .append("<h1>").append(esc(title)).append("</h1><div class=sub>")

@@ -81,7 +81,15 @@ class OneOrderNotThreeTest {
             assertTrue(!Agents.CHAIN.contains(watcher),
                     watcher + " watches a run rather than running in one, so it has no marker tab");
         }
-        assertEquals(Agents.CHAIN.size() + Agents.WATCH.size(), Agents.ORDER.size(),
-                "and the two together are everything");
+        // THE THIRD GROUP RUNS ON NOBODY'S SCHEDULE. `chat` answers a person and is asked nothing
+        // otherwise, so it is neither a stage in a prove nor a pass over the run — but it has a
+        // prompt, and a prompt that is not in this order is a paragraph the editor lists last by
+        // accident rather than by decision.
+        for (String asked : Agents.ASKED) {
+            assertTrue(!Agents.CHAIN.contains(asked) && !Agents.WATCH.contains(asked),
+                    asked + " is asked rather than scheduled; it belongs to neither of the others");
+        }
+        assertEquals(Agents.CHAIN.size() + Agents.WATCH.size() + Agents.ASKED.size(),
+                Agents.ORDER.size(), "and the three together are everything");
     }
 }

@@ -293,6 +293,50 @@ final class Agents {
     }
 
     /**
+     * ANSWERS A PERSON ABOUT THE RUN, AND CANNOT TOUCH IT.
+     *
+     * <p>Same subject as {@link #overwatch}, same read-only tools, one difference that decides its
+     * whole shape: it is asked rather than scheduled. The watcher reports what it finds worth
+     * reporting every fifteen minutes; this answers the question actually in front of somebody, now,
+     * which is usually narrower than a pattern and often just "what is this marker doing".
+     *
+     * <p>IT HAS NO ACTIONS, DELIBERATELY. {@code restart_prove} and {@code postpone_prove} belong to
+     * {@code overwatch-critic} and to nothing else, because that agent's SILENCE REFUSES TO ACT —
+     * an unreachable critic cannot authorise a kill. A chat box holding the same tools routes around
+     * that: "what's happening with LessonMenuService?" is a question, and it must not be able to end
+     * as a killed prove because the model read it as a request. So this one answers, names the
+     * button, and the person presses it.
+     */
+    Agent chat(Path results) {
+        return runtime("chat", Tools.reading(results, trace, "chat"), """
+                You are the agent that watches this pipeline, answering a person who is watching it \
+                with you. Answer the question they actually asked.
+
+                You are given a digest of every marker — its state, what its builds did, how many \
+                times each agent answered and how long, whether a test was written, how it settled \
+                — and then the conversation so far. The digest tells you WHERE TO LOOK. It is not \
+                the evidence. Use read_file on `m/<marker>/trace.jsonl` before you assert what an \
+                agent said or why something settled the way it did; quote the words you found.
+
+                SAY WHEN YOU DO NOT KNOW, and say what you would have to read to find out. A \
+                confident wrong answer about a run costs more than a slow one, because the person \
+                asking cannot tell them apart and will act on it.
+
+                Answer in a few sentences unless asked for more. This is a conversation, not a \
+                report: no headings, no numbered findings, no restating of the question. If the \
+                honest answer is one line, give one line.
+
+                Refer to markers by the directory name the digest uses \
+                (`LessonMenuService.java_64_FB.GC_UNRELATED_TYPES`) — the page turns those into \
+                links to the marker, so naming one exactly is how you show your work.
+
+                YOU CANNOT CHANGE ANYTHING. You have no tools but reading. If the answer is that a \
+                prove should be restarted or set aside, say so and say why; the person has buttons \
+                for both on the marker's own page. Do not claim to have done it.
+                """);
+    }
+
+    /**
      * THE TEN THAT RUN INSIDE A PROVE, IN THE ORDER {@link Prove} CALLS THEM.
      *
      * <p>One list, used by the prompt editor, by the marker tabs and by the collector below, because
@@ -311,9 +355,12 @@ final class Agents {
     static final java.util.List<String> WATCH = java.util.List.of(
             "overwatch", "overwatch-critic", "interpreter", "interpreter-critic");
 
+    /** The one that speaks only when spoken to. Last, because it runs on nobody's schedule. */
+    static final java.util.List<String> ASKED = java.util.List.of("chat");
+
     /** Everything, in the order a reader meets it: the chain first, then what watches the chain. */
-    static final java.util.List<String> ORDER =
-            java.util.stream.Stream.concat(CHAIN.stream(), WATCH.stream()).toList();
+    static final java.util.List<String> ORDER = java.util.stream.Stream.of(
+            CHAIN.stream(), WATCH.stream(), ASKED.stream()).flatMap(s -> s).toList();
 
     /**
      * EVERY BUILT-IN PROMPT, BY AGENT, so the editor can show what it is replacing.
@@ -340,7 +387,8 @@ final class Agents {
                 all::verdict, all::verdictCritic,
                 all::estimator, all::estimatorCritic,
                 () -> all.overwatch(root, null), () -> all.overwatchCritic(root, null),
-                () -> all.interpreter(root), () -> all.interpreterCritic(root));
+                () -> all.interpreter(root), () -> all.interpreterCritic(root),
+                () -> all.chat(root));
         for (java.util.function.Supplier<Agent> make : every) {
             try {
                 make.get();

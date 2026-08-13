@@ -153,6 +153,32 @@ worktree. Two restarts per marker, ever, counted in a file rather than asked for
 record marked `unjudged`, so an unreachable critic cannot suppress a warning; a restart it never
 orders does not happen, so an unreachable critic cannot kill anything either.
 
+## Asking it something
+
+`/chat` (the ✉ beside the gear) puts a question to the same agent, over the same digest, with the
+same read-only tools. It reports patterns on its own schedule; this answers the question actually in
+front of somebody — usually narrower than a pattern, and often just "what is this marker doing".
+
+**The dashboard answers, not the watcher.** The watcher is a loop in another process: it wakes,
+reads the run, reports, sleeps fifteen minutes. Posting a question into that loop would give the
+reply a quarter-hour floor, and a conversation with a quarter-hour floor is not one. So the answer is
+built here, from the same prompt over the same `digest()`, sharing nothing but the results directory
+— which is what both of them are looking at anyway. The watcher does not know this exists and cannot
+miss a pass because of it.
+
+**It reads and does nothing else.** `restart_prove` and `postpone_prove` belong to `overwatch-critic`
+and to nothing else, because that agent's silence refuses to act. An agent that answers questions and
+holds those tools fails the other way round: "what's happening with `LessonMenuService`?" is a
+question, and it must not be able to end as a killed prove because a model read it as a request. It
+says what it would do; the buttons are on the marker's own page. The tool map is the fence and a test
+asserts it — the prompt only agrees with it.
+
+The conversation is `results/chat.jsonl`, and the question is written down **before** the answer is
+attempted, so a dashboard that dies mid-reply leaves a record of what was asked. That is a normal
+state rather than an edge case — the container is redeployed several times a day and an answer takes
+minutes — so the page tells "restarted while writing" apart from "still thinking" rather than waiting
+forever on the first.
+
 ## The lane-level watch
 
 A second pair in the supervisor's process, one level below the one that watches the run.
