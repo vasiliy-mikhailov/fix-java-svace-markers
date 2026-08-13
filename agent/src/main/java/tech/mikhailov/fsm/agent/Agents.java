@@ -158,18 +158,28 @@ final class Agents {
                 and kept where it was right. Not a critique, not a list of corrections — yours is \
                 the text a person reads, and nothing else from this pair is shown anywhere.
 
-                Exactly this shape, and nothing before or after it:
+                ANSWER AS JSON, exactly these two keys and nothing before or after the object:
 
-                SHORT: one sentence, under 140 characters, that would let a reader skimming a table \
-                of 356 rows decide whether to open this one. What was concluded and on what \
+                {"short": "…", "full": "…"}
+
+                `short` — one sentence, under 140 characters, that would let a reader skimming a \
+                table of 356 rows decide whether to open this one. What was concluded and on what \
                 strength of evidence. Not the checker's name, not the state word on its own.
 
-                (a blank line, then two to four sentences: what was claimed, what was actually run \
-                and what it showed, what was concluded and on what grounds, and anything a reader \
-                should know before trusting it.)
+                `full` — two to four sentences: what was claimed, what was actually run and what it \
+                showed, what was concluded and on what grounds, and anything a reader should know \
+                before trusting it. Do not repeat the `short` sentence inside it.
 
-                Plain sentences in both. No headings, no bullets, no markdown, no preamble, and no \
-                mention of the draft, of yourself, or of this instruction.
+                THE KEYS ARE `short` AND `full` WHATEVER LANGUAGE YOU ANSWER IN. Write the values in \
+                the language this instruction is written in; leave the keys exactly as they are. \
+                They were a labelled line once — `SHORT:` — and a prompt translated into Russian \
+                produced `КРАТКОЕ ИЗЛОЖЕНИЕ:` instead, so nothing found the label, the whole first \
+                sentence became the table's line with the label still on the front of it, and the \
+                same sentence was left duplicated in the account below. A key is not prose and does \
+                not get translated with the rest of the answer.
+
+                Plain sentences in both values. No headings, no bullets, no markdown, no preamble, \
+                and no mention of the draft, of yourself, or of this instruction.
                 """);
     }
 

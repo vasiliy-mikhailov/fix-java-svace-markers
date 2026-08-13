@@ -226,6 +226,42 @@ final class Interpreter {
      * {@code SHORT:} label, so a critic that forgets the shape cannot leak an instruction onto the
      * page — the whole answer becomes the long form and the first sentence becomes the short one.
      */
+    /**
+     * {@code {"short": …, "full": …}} out of an answer, or null when it is not that.
+     *
+     * <p>Tolerant on purpose about the WRAPPING and strict about the KEYS. A model asked for JSON
+     * routinely fences it, prefaces it, or adds a sentence afterwards; none of that changes what it
+     * meant. Two keys missing does change it, and then this returns null and the reader below has
+     * its turn.
+     *
+     * <p>Hand-parsed, like everything else here. The values are prose with quotes and newlines in
+     * them, so the escapes have to be honoured — but a whole JSON library for two strings, in a
+     * program whose entire record is hand-written JSONL, would be one dependency for one shape.
+     */
+    private static String[] json(String answer) {
+        int open = answer.indexOf('{');
+        int close = answer.lastIndexOf('}');
+        if (open < 0 || close <= open) {
+            return null;
+        }
+        String body = answer.substring(open, close + 1);
+        String brief = Json.field(body, "short");
+        String account = Json.field(body, "full");
+        if (brief.isBlank() && account.isBlank()) {
+            return null;
+        }
+        // ONE OF THE TWO IS ENOUGH TO PROCEED, and the other is derived rather than left empty: a
+        // summary with no account reads as a marker nobody looked at, which is not what happened.
+        if (account.isBlank()) {
+            account = brief;
+        }
+        if (brief.isBlank()) {
+            int stop = account.indexOf(". ");
+            brief = stop > 0 ? account.substring(0, stop + 1) : account;
+        }
+        return new String[] {brief.strip(), account.strip()};
+    }
+
     private void write(Path lane, String answer) {
         String all = answer.strip();
         // THE LAST LABEL, NOT THE FIRST. A model asked for a shape sometimes delivers it twice —
@@ -234,8 +270,23 @@ final class Interpreter {
         // had just read in the table. The last one is the one it meant.
         String shortForm = "";
         String full = all;
+
+        // JSON FIRST, BECAUSE A LABEL IS A WORD AND WORDS GET TRANSLATED.
+        //
+        // The shape used to be a `SHORT:` line. That works while the prompt is in English and fails
+        // silently the moment it is not: a Russian prompt produced `КРАТКОЕ ИЗЛОЖЕНИЕ:`, no `SHORT:`
+        // was found, and the fallback made the whole first sentence — label and all — the line in the
+        // table, leaving it duplicated in the account below. Both halves wrong, nothing reported.
+        //
+        // A JSON key is not prose and does not get translated with the rest of the answer. The label
+        // reader stays below as a fallback, because prompts already written should not break.
+        String[] pair = json(all);
+        if (pair != null) {
+            shortForm = pair[0];
+            full = pair[1];
+        }
         String[] lines = all.split("\\R");
-        for (int i = lines.length - 1; i >= 0; i--) {
+        for (int i = shortForm.isBlank() ? lines.length - 1 : -1; i >= 0; i--) {
             String t = lines[i].strip().replaceAll("^[*_`#\\s]+", "");
             if (t.regionMatches(true, 0, "SHORT:", 0, 6)) {
                 shortForm = t.substring(6).replaceAll("^[*_`\\s]+|[*_`\\s]+$", "").strip();
@@ -247,6 +298,17 @@ final class Interpreter {
         if (shortForm.isBlank()) {
             int stop = full.indexOf(". ");
             shortForm = stop > 0 ? full.substring(0, stop + 1) : full;
+            // AND A LABEL IN ANY LANGUAGE COMES OFF THE FRONT.
+            //
+            // This is the path a translated prompt lands on: no JSON, and a label the reader has
+            // never heard of. `КРАТКОЕ ИЗЛОЖЕНИЕ:` went into the table exactly as written, which is
+            // the model answering correctly and the table showing a word about the answer instead of
+            // the answer.
+            //
+            // Short, colon-terminated, no sentence punctuation before it: that is a label in any
+            // script this is likely to meet. It costs a legitimate opener like "Note: …" its first
+            // word, which is a smaller harm than a heading in a column of three hundred rows.
+            shortForm = shortForm.replaceFirst("^\\s*[^.!?:\\n\\r]{0,40}:\\s+", "").strip();
         }
         // AND THE LINE ITSELF NEVER APPEARS TWICE. Whatever the shape, a paragraph identical to the
         // table's sentence is one the reader has already read.
