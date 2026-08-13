@@ -152,7 +152,12 @@ final class Chat {
             Agents agents = new Agents(results, trace, (phase, test) -> new Runner.Result(true, false,
                     "the supervisor does not build; it reads what the provers built"));
             reply = agents.chat(results).run(prompt(results, question));
-            if (reply == null || reply.isBlank()) {
+            // STRIPPED, because the answer is rendered pre-wrap so the model's own line breaks
+            // survive — and this one opens with two of them, which renders as a reply that starts
+            // an inch below its own name. Inside the text they are the author's; at the ends they
+            // are an artefact of how it was generated.
+            reply = reply == null ? "" : reply.strip();
+            if (reply.isEmpty()) {
                 reply = "(nothing came back — the model answered with silence)";
             }
         } catch (RuntimeException | Error failed) {
