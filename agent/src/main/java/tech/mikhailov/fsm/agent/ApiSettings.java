@@ -1,5 +1,7 @@
 package tech.mikhailov.fsm.agent;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -235,4 +237,93 @@ final class ApiSettings {
     private static String quote(String s) {
         return "\"" + Settlement.escape(s == null ? "" : s) + "\"";
     }
+
+    /**
+     * WHAT AN UPLOAD DID, AS JSON RATHER THAN AS A PAGE.
+     *
+     * <p>Moved here whole from {@code Dashboard.subjectPosted}, which answered a multipart POST with
+     * a rendered page — right when the page was Java's, and wrong now that the thing which asked is a
+     * React screen that will draw the outcome itself.
+     *
+     * <p>THE CONVENTION IS THE ONE THE OLD CODE USED: a message beginning with {@code !} is a
+     * failure. Kept rather than tidied into a boolean, because every branch below already speaks it
+     * and rewriting all of them to hand back a flag is how a branch gets missed and an error renders
+     * as a success. It is unpacked into {@code ok} here, once, where it can be read.
+     */
+    static String posted(com.sun.net.httpserver.HttpExchange e, Path results) {
+        String said = said(e, results);
+        boolean ok = !said.startsWith("!");
+        return "{\"ok\":" + ok + ",\"said\":\""
+                + Settlement.escape(ok ? said : said.substring(1)) + "\"}";
+    }
+
+    private static String said(com.sun.net.httpserver.HttpExchange e, Path results) {
+        String said;
+        try {
+            Map<String, byte[]> parts = Upload.parts(e);
+            String what = Upload.text(parts, "setting").strip();
+            boolean forget = !Upload.text(parts, "forget").isBlank();
+            switch (what) {
+                case "markers" -> {
+                    byte[] file = parts.get("file");
+                    String text = file != null && file.length > 0
+                            ? new String(file, java.nio.charset.StandardCharsets.UTF_8)
+                            : Upload.text(parts, "text");
+                    if (text.isBlank()) {
+                        said = "!nothing was uploaded and nothing was pasted.";
+                    } else {
+                        List<String> wrong = Subject.saveMarkers(results, text);
+                        said = wrong.isEmpty()
+                                ? Subject.count(results) + " marker(s) queued. The old queue is "
+                                        + "kept beside it."
+                                : "!the queue was NOT replaced:\n  " + String.join("\n  ", wrong);
+                    }
+                }
+                case "token" -> {
+                    if (forget) {
+                        Subject.forgetToken(results);
+                        said = "the credential is gone; clones are public again.";
+                    } else {
+                        String host = Upload.text(parts, "host").strip();
+                        String token = Upload.text(parts, "token").strip();
+                        if (host.isBlank() || token.isBlank()) {
+                            said = "!a host and a token are both needed.";
+                        } else {
+                            Subject.saveToken(results, host, token);
+                            said = "a credential for " + host + " is stored, owner-only, in git's "
+                                    + "own store.";
+                        }
+                    }
+                }
+                case "jdk" -> {
+                    String chosen = Upload.text(parts, "jdk").strip();
+                    Subject.saveJdk(results, chosen);
+                    said = Subject.jdk(results).equals(chosen)
+                            ? "builds will run on Java " + chosen + " from the next marker."
+                            : "!" + chosen + " is not one of the JDKs in this image.";
+                }
+                case "zip" -> {
+                    if (forget) {
+                        Files.deleteIfExists(Subject.zip(results));
+                        said = "the zip is gone; the markers' repository is cloned again.";
+                    } else {
+                        byte[] file = parts.get("file");
+                        if (file == null || file.length == 0) {
+                            said = "!no file was uploaded.";
+                        } else if (!(file.length > 4 && file[0] == 'P' && file[1] == 'K')) {
+                            said = "!that is not a zip — it does not start with PK.";
+                        } else {
+                            Files.write(Subject.zip(results), file);
+                            said = (file.length / 1024) + "KB stored. Nothing will be cloned while "
+                                    + "it is here.";
+                        }
+                    }
+                }
+                default -> said = "!nothing to do.";
+            }
+        } catch (IOException | RuntimeException failed) {
+            said = "!" + failed.getClass().getSimpleName() + ": " + failed.getMessage();
+        }
+        return said;
+        }
 }

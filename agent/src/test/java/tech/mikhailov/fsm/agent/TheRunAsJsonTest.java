@@ -158,21 +158,12 @@ class TheRunAsJsonTest {
         assertTrue(said.contains("\"markers\":[]"), said);
     }
 
-    @Test
-    @DisplayName("the page and the API agree about every state")
-    void oneRuleTwoReaders(@TempDir Path dir) throws Exception {
-        Path results = run(dir, settlement(KEY, "proving", ""),
-                settlement(OTHER, "verified/pr-ready", "shipped"));
-        Dashboard.serving(results);
-        String page = Dashboard.index(results.resolve("settlements.jsonl"),
-                results.resolve("trace.jsonl"), List.of(KEY, OTHER));
-        String api = json(results);
-        // The page renders `interrupted` as a word; the API sends it as a value. Same rule.
-        assertTrue(page.contains("interrupted"), "the page resolved it: " + page.length());
-        assertTrue(api.contains("\"state\":\"interrupted\""), api);
-        assertTrue(page.contains("verified/pr-ready") || page.contains("verified-pr-ready"), "page");
-        assertTrue(api.contains("\"state\":\"verified/pr-ready\""), api);
-    }
+
+    // `oneRuleTwoReaders` stood here: it rendered the HTML page and the JSON for the same run and
+    // asserted they agreed about every marker's state. There is one reader now — the page is gone —
+    // so the comparison has nothing to compare. What it was really guarding, that the resolution
+    // lives in ONE place, is now structural: Run.rows is the only thing that computes a state, and
+    // nothing else can disagree with it because nothing else does it.
 
     private static int count(String s, char c) {
         return (int) s.chars().filter(ch -> ch == c).count();

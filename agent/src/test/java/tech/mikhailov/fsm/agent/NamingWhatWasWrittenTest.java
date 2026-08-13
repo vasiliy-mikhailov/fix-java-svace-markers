@@ -20,7 +20,10 @@ class NamingWhatWasWrittenTest {
     }
 
     private static String slug(String marker) throws Exception {
-        Method m = Dashboard.class.getDeclaredMethod("slug", String.class);
+        // SUPERVISOR'S, WHICH IS THE ONE THAT WAS ALWAYS AUTHORITATIVE. Dashboard held a private
+        // copy for its own links; that page is gone, and a second spelling of this rule is what the
+        // test exists to prevent in the first place.
+        Method m = Supervisor.class.getDeclaredMethod("slug", String.class);
         m.setAccessible(true);
         return (String) m.invoke(null, marker);
     }

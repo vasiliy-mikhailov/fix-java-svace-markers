@@ -398,6 +398,18 @@ final class ApiMarker {
      * that would not answer because a checkout is missing is a poor trade for it.
      */
     private static String flagged(String repo, String file, String lineNumber) {
+        return flagged(CHECKOUTS, repo, file, lineNumber);
+    }
+
+    /**
+     * The same, against a named checkouts root.
+     *
+     * <p>Split out because the root was a static read from the environment at class load, which no
+     * test can redirect — and the rule this holds (source is read WITH its blank lines, because a
+     * blank line is line 79 and every number after it shifts) is one that was nearly written up as a
+     * finding about the wrong method once. A rule worth that is a rule worth being able to test.
+     */
+    private static String flagged(Path checkouts, String repo, String file, String lineNumber) {
         int want;
         try {
             want = Integer.parseInt(lineNumber.strip());
@@ -407,7 +419,7 @@ final class ApiMarker {
         String name = repo.substring(repo.lastIndexOf('/') + 1).replaceAll("\\.git$", "");
         List<String> source;
         try {
-            source = Files.readAllLines(CHECKOUTS.resolve(name).resolve(file));
+            source = Files.readAllLines(checkouts.resolve(name).resolve(file));
         } catch (IOException | RuntimeException noTree) {
             return "null";
         }

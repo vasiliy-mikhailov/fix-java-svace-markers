@@ -35,7 +35,10 @@ class ABlankLineIsALineTest {
     private static final String FILE = "src/main/java/Subject.java";
 
     private static String flagged(Path checkouts, String line) throws Exception {
-        Method m = Dashboard.class.getDeclaredMethod("flagged", Path.class, String.class,
+        // APIMARKER'S NOW. The page that used to render this is gone; the rule it holds — that
+        // source is read with its blank lines, because a blank line is line 79 and every number
+        // after it shifts — is the reason this test exists and it moved with the code.
+        Method m = ApiMarker.class.getDeclaredMethod("flagged", Path.class, String.class,
                 String.class, String.class);
         m.setAccessible(true);
         return (String) m.invoke(null, checkouts, REPO, FILE, line);
@@ -65,9 +68,11 @@ class ABlankLineIsALineTest {
     void counted(@TempDir Path dir) throws Exception {
         subject(dir);
         String block = flagged(dir, "9");
-        String marked = block.lines().filter(l -> l.startsWith(">>")).findFirst().orElse("");
-        assertTrue(marked.startsWith(">> 9  "), "line 9 must be the marked one:\n" + block);
-        assertTrue(marked.contains(".equals(uploaded.getParentFile()"),
+        // THE NUMBERS, NOT THE MARKUP. The page drew `>> 9` beside the row; the API sends
+        // flaggedLine and lets the client draw it. The rule underneath is the same one and is the
+        // whole point of this file: blank lines are READ, so line 9 is the line the file calls 9.
+        assertTrue(block.contains("\"flaggedLine\":9"), "line 9 must be the flagged one:\n" + block);
+        assertTrue(block.contains(".equals(uploaded.getParentFile()"),
                 "and line 9 is the equals — with the blanks dropped it would have been "
                         + "`.getCanonicalPath()` two lines earlier, which is how a correct argument "
                         + "came to disagree with the code beside it:\n" + block);
@@ -78,10 +83,11 @@ class ABlankLineIsALineTest {
     void blanksKept(@TempDir Path dir) throws Exception {
         subject(dir);
         String block = flagged(dir, "7");
-        assertTrue(block.lines().anyMatch(l -> l.startsWith("   6  ")),
+        // The window starts at 3 and runs to 11, so a blank line inside it occupies its number:
+        // eight source lines for nine numbers only works if the blanks are there.
+        assertTrue(block.contains("\"firstLine\":3") && block.contains("\"\","),
                 "line 6 is blank and still occupies its number:\n" + block);
-        assertTrue(block.lines().filter(l -> l.startsWith(">>")).findFirst().orElse("")
-                        .contains("return !expected"),
+        assertTrue(block.contains("\"flaggedLine\":7"),
                 "so line 7 is the return:\n" + block);
     }
 
@@ -90,14 +96,16 @@ class ABlankLineIsALineTest {
     void pastTheEnd(@TempDir Path dir) throws Exception {
         subject(dir);
         String block = flagged(dir, "400");
-        assertTrue(block.contains("THIS FILE HAS"),
+        // No firstLine and no lines, but the LENGTH is still sent — that is what tells a reader the
+        // marker points past the end rather than at a file nobody could read.
+        assertTrue(block.contains("\"firstLine\":null") && block.contains("\"fileLength\":11"),
                 "the markers came off an older revision and some point past the end now:\n" + block);
     }
 
     @Test
     @DisplayName("no tree is no block, not a broken page")
     void noTree(@TempDir Path dir) throws Exception {
-        assertTrue(flagged(dir, "9").isEmpty(),
+        assertTrue(flagged(dir, "9").equals("null"),
                 "a dashboard that will not start because a checkout is missing would be a poor "
                         + "trade for a convenience");
     }
