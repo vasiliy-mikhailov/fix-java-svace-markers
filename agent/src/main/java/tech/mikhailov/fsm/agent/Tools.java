@@ -59,6 +59,74 @@ final class Tools {
     }
 
     /**
+     * THE TWO FILES UNDER THE RESULTS ROOT THAT ARE NOT PART OF THE RECORD.
+     *
+     * <p>The watchers are rooted at {@code /results} because that is where the record is — every
+     * marker's trace, its settlements, the archived attempts. The model settings and git's credential
+     * store live in the same directory, so they have always been inside the reach of any agent with
+     * {@code read_file}. Nothing asked for them and nothing surfaced them, so it stayed theoretical.
+     *
+     * <p>A CHAT MAKES IT A QUESTION SOMEBODY CAN TYPE. "What is in the model settings" is one line,
+     * and the answer would put the API key into {@code chat.jsonl} and onto a page — the same key the
+     * settings form deliberately masks and reveals only on a button. A mask that a second route walks
+     * around is not a mask.
+     */
+    private static final Set<String> SECRET = Set.of("model", "git-credentials");
+
+    /**
+     * Refuses to open them and redacts them out of anything else's results.
+     *
+     * <p>Two layers because there are two ways to reach a file: name it, or find it. {@code read_file}
+     * names it and is refused. {@code grep} finds it without naming it, and would return the matching
+     * LINE — so the shapes those two files hold are redacted from every result whatever produced it.
+     *
+     * <p>At the tool layer and not in a prompt. A prompt is a request; this has to be a fact, and it
+     * has to hold for the watcher and the judges too rather than only for the agent that prompted the
+     * question.
+     */
+    private static Map<ToolSpecification, ToolExecutor> withoutSecrets(
+            Map<ToolSpecification, ToolExecutor> tools) {
+        Map<ToolSpecification, ToolExecutor> guarded = new LinkedHashMap<>();
+        tools.forEach((spec, executor) -> guarded.put(spec, (request, memoryId) -> {
+            String named = secretNamed(request.arguments());
+            if (named != null) {
+                return "REFUSED: `" + named + "` holds a credential, not part of the record. "
+                        + "Everything else under this directory is readable. If you were asked for "
+                        + "the API key or a git token, say that it is deliberately unreadable from "
+                        + "here and that the settings page is where it is handled.";
+            }
+            return redact(executor.execute(request, memoryId));
+        }));
+        return guarded;
+    }
+
+    /** Which secret a call names, or null. Matched as a whole path segment, not as a substring. */
+    private static String secretNamed(String arguments) {
+        String args = arguments == null ? "" : arguments;
+        for (String secret : SECRET) {
+            // `model` is an ordinary word, so `Model.java` and `m/ModelTest…` must not trip this.
+            // A path segment is what is between separators, quotes or whitespace.
+            if (args.matches("(?s).*(^|[/\\\\\"'\\s])" + java.util.regex.Pattern.quote(secret)
+                    + "([\"'\\s,}]|$).*")) {
+                return secret;
+            }
+        }
+        return null;
+    }
+
+    /** The shapes those files hold, taken out of any result that carries them. */
+    private static String redact(String result) {
+        if (result == null || result.isEmpty()) {
+            return result;
+        }
+        return result
+                // `api_key=sk-…` from the settings file.
+                .replaceAll("(?i)(api[_-]?key\\s*[=:]\\s*)\\S+", "$1(hidden)")
+                // `https://user:token@host` from git's credential store.
+                .replaceAll("(?i)([a-z][a-z0-9+.-]*://)[^/@\\s:]+:[^/@\\s]+@", "$1(hidden)@");
+    }
+
+    /**
      * The same tools, reporting themselves in full.
      *
      * <p>A tool that throws is recorded as having thrown and then rethrown: an agent must still see
@@ -383,6 +451,9 @@ final class Tools {
             throw new IllegalStateException(
                     "expected " + names + " plus grep and glob but got " + kept.keySet());
         }
-        return kept;
+        // HERE, so it holds for every agent that gets file tools rather than for the one that
+        // prompted the question. The exposure is older than the chat; the chat only made it
+        // something a person could ask for in one line.
+        return withoutSecrets(kept);
     }
 }

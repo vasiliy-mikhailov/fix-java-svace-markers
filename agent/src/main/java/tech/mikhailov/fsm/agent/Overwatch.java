@@ -151,8 +151,14 @@ final class Overwatch {
         // picked. A fixed cap strangles ordinary work the moment the model or the subject changes;
         // the median of what has actually settled moves with them.
         int typical = Pace.typical(results);
+        // STARTED IS NOT QUEUED, and the digest said only the first. Asked how many markers there
+        // were, the watcher answered "82" and cited this line correctly — 82 being the directories
+        // under m/, and the queue being 356. A number with no denominator beside it gets read as the
+        // total by anybody who has not memorised which one it is.
+        int queued = queued(results);
         StringBuilder head = new StringBuilder("THE RUN: ").append(markers)
-                .append(" marker(s) started. ")
+                .append(queued > 0 ? " of " + queued + " queued marker(s) started ("
+                        + (queued - markers) + " not yet begun). " : " marker(s) started. ")
                 .append(typical > 0
                         ? "A marker that settles takes about " + typical + " minutes. Anything "
                                 + "running far past that is holding a quarter of the pool while the "
@@ -168,6 +174,17 @@ final class Overwatch {
                 .append(results.resolve("m")).append("/<id>/trace.jsonl — read the ones that look ")
                 .append("wrong.\n\n");
         return head + b.toString();
+    }
+
+    /** How many markers the run was asked for, which is a different number from how many it began. */
+    private static int queued(Path results) {
+        try (Stream<String> lines = Files.lines(results.resolve("markers.txt"))) {
+            return (int) lines.filter(l -> !l.isBlank()).count();
+        } catch (IOException | RuntimeException noQueue) {
+            // A run started from a queue this container cannot see still has a digest worth reading;
+            // it just says nothing about the total rather than guessing one.
+            return 0;
+        }
     }
 
     /** One marker, counted. */

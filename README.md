@@ -173,6 +173,19 @@ question, and it must not be able to end as a killed prove because a model read 
 says what it would do; the buttons are on the marker's own page. The tool map is the fence and a test
 asserts it — the prompt only agrees with it.
 
+**Enter sends; shift-enter is a new line.** Almost every message is one line, so reaching for the
+button after each is the whole friction; a multi-line question is the rare case and keeps the
+modifier.
+
+**Two files under `results/` are not part of the record.** The watchers are rooted there because that
+is where the record is, and `results/model` and `results/git-credentials` live in the same directory
+— so any agent with `read_file` has always been able to open an API key and a repository token.
+Nothing asked, so it stayed theoretical. A chat makes it a question somebody can type in one line,
+and the answer would land in `chat.jsonl` and on a page. Both now refuse to open, and the shapes they
+hold are redacted from every tool result — `grep` reaches a file without naming it and returns the
+matching line, so refusing by name alone is not enough. At the tool layer, for every agent, because a
+prompt is a request and this has to be a fact.
+
 The conversation is `results/chat.jsonl`, and the question is written down **before** the answer is
 attempted, so a dashboard that dies mid-reply leaves a record of what was asked. That is a normal
 state rather than an edge case — the container is redeployed several times a day and an answer takes

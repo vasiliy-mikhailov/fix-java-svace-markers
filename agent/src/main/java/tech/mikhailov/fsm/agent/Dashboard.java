@@ -1042,13 +1042,33 @@ public final class Dashboard {
             b.append("<div class=k style='padding:0 24px 8px'>").append(esc(said)).append("</div>");
         }
         b.append("<form class=ask method=post action='/chat'>")
-                .append("<textarea name=q rows=3 placeholder='")
-                .append(answering ? "answering the last one…" : "ask about the run…")
+                .append("<textarea name=q rows=3 autofocus placeholder='")
+                .append(answering ? "answering the last one…" : "ask about the run… (enter sends)")
                 .append("'").append(answering ? " disabled" : "").append("></textarea>")
                 .append("<button").append(answering ? " disabled" : "").append(">ask</button>")
-                .append("</form>");
+                .append("</form>").append(SEND_ON_ENTER);
         return b.toString();
     }
+
+    /**
+     * ENTER SENDS; SHIFT-ENTER IS A NEW LINE.
+     *
+     * <p>Which way round to put those is decided by what the box is for. This is a chat, so almost
+     * every message is one line and reaching for a button after each is the whole friction; a
+     * multi-line question is the rare case and keeps the modifier.
+     *
+     * <p>Guarded on the button being enabled, because the form is disabled while an answer is coming
+     * and a keypress must not post a question the page has just said it will not take.
+     */
+    private static final String SEND_ON_ENTER = """
+            <script>document.addEventListener('keydown',function(e){
+              if(e.key!=='Enter'||e.shiftKey)return;
+              var t=e.target;
+              if(!t||t.tagName!=='TEXTAREA'||t.name!=='q')return;
+              var f=t.form; if(!f||t.disabled)return;
+              if(!t.value.trim()){e.preventDefault();return;}
+              e.preventDefault(); f.submit();
+            });</script>""";
 
     /** How long ago, in the units a person reading a conversation wants. */
     private static String ago(long at) {
