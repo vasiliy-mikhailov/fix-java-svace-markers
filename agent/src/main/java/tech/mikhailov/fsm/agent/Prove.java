@@ -171,15 +171,21 @@ public final class Prove {
                 + "The flagged file, " + fileOf(marker) + ":\n" + source(checkout, marker)
                 + siblingTests(checkout, marker);
 
-        trace.progress(marker, "reproducer: writing a failing test");
-        // NOTHING IS BUILT UNTIL A FILE EXISTS. The build used to run first, so a reproducer that
-        // wrote nothing cost two Maven invocations before anyone looked — 78 of 153 builds in a
+        // NOTHING IS BUILT UNTIL A FILE EXISTS. The build used to run first, so a reproduce-doer
+        // that wrote nothing cost two Maven invocations before anyone looked — 78 of 153 builds in a
         // 67-marker run executed no test at all. A written file is a fact this program can check.
-        // PLAN, THEN DO. The plan is written before any file is, and it travels with the brief
-        // into every re-ask — a doer that loses the plan on the second turn is a doer
-        // rewording its own first answer, which is the loop this stage had before.
+        //
+        // PLAN, THEN DO. The plan is written before any file is, and it travels with the brief into
+        // every re-ask — a doer that loses the plan on the second turn is a doer rewording its own
+        // first answer, which is the loop this stage had before.
+        //
+        // EACH NOTE FIRES BEFORE THE AGENT IT NAMES, because the note IS what the table shows while
+        // that agent is thinking. Announcing the doer before the planner had been asked put a
+        // stage's own order backwards on the one column most people read.
+        trace.progress(marker, "reproduce-planner: deciding how to observe it");
         String plan = agents.reproducePlanner().run(brief);
         brief = brief + "\n\nThe plan you are working from:\n" + plan;
+        trace.progress(marker, "reproduce-doer: writing a failing test");
         String reply = agents.reproduceDoer().run(brief);
         for (int again = 0; again < REASK
                 && !declined(reply) && testClass(trace, reply).isBlank(); again++) {
@@ -227,7 +233,7 @@ public final class Prove {
         String test = a.test();
         Runner.Result red = a.build();
 
-        trace.progress(marker, "RED reproduced; proof-critic reading the test");
+        trace.progress(marker, "RED reproduced; reproduce-verifier reading the test");
         String critique = agents.reproduceVerifier().run(brief + "\nThe test, which compiles and goes RED:\n"
                 + test + "\n" + red.summary());
         // `replan` REACHES THE PLANNER, which `reducible` never could. A test that does not
@@ -278,8 +284,9 @@ public final class Prove {
         // EVIDENCE, ASSEMBLED ONCE, so a retry can never be poorer than the call it replaces.
         String evidence = "\nThe failing test:\n" + test + "\nRED:\n" + red.summary();
 
-        trace.progress(marker, "fixer: patching");
+        trace.progress(marker, "fix-planner: deciding where to fix it");
         String fixPlan = agents.fixPlanner().run(brief + evidence);
+        trace.progress(marker, "fix-doer: patching");
         String patch = agents.fixDoer().run(brief + evidence
                 + "\n\nThe plan you are working from:\n" + fixPlan);
         Runner.Result green = patchUntilItBuilds(runner, agents, brief, evidence, test, trace);
@@ -292,7 +299,7 @@ public final class Prove {
         }
 
         // The skeptic CERTIFIES, and a certificate must be given to bite: silence enforces nothing.
-        trace.progress(marker, "GREEN passed; fix-skeptic certifying");
+        trace.progress(marker, "GREEN passed; fix-verifier certifying");
         String changed = diff();
         String certificate = agents.fixVerifier().run(brief + evidence + "\nGREEN:\n" + green.summary()
                 + "\nWhat the fixer says it did:\n" + patch
@@ -323,7 +330,7 @@ public final class Prove {
 
         // The curator decides whether this reaches a stranger's repository, so it gets the whole
         // record rather than the patch alone.
-        trace.progress(marker, "certified; pr-curator deciding");
+        trace.progress(marker, "certified; propose-doer deciding");
         String proposal = brief + evidence + "\nGREEN:\n" + green.summary()
                 + "\nThe certified patch:\n" + patch + "\nThe certification:\n" + certificate;
         String curation = agents.proposeDoer().run(proposal);
