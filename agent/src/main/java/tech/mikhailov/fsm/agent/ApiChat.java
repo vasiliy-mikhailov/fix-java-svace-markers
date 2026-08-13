@@ -3,6 +3,10 @@ package tech.mikhailov.fsm.agent;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * THE CONVERSATION WITH THE SUPERVISOR AS JSON, FOR A CLIENT THAT RENDERS IT SOMEWHERE ELSE.
@@ -18,9 +22,16 @@ import java.nio.file.Path;
  * has stopped, so this sends the epoch millis and {@code serverNow} to measure them against — the
  * one resolution the browser cannot do for itself, because its own clock may be minutes out.
  *
- * <p>Nor is the text cut down. The page shows the last {@code LIVE_TAIL} characters of a partial
- * answer and links marker names inside a recorded one; both are decisions about drawing, and a
- * client sent the trimmed text cannot undo them.
+ * <p>Nor is the text cut down or marked up. The page shows the last {@code LIVE_TAIL} characters of
+ * a partial answer and turns marker names inside a recorded one into links; both are decisions about
+ * drawing, and a client sent the trimmed or linked text cannot undo them.
+ *
+ * <p>WHAT DOES TRAVEL IS THE JOIN THOSE LINKS NEED. Escaping and linking are the client's, but the
+ * slug an answer names cannot be turned back into the marker key the link goes to:
+ * {@link Supervisor#slug} takes the tail after the last slash, replaces every non-alphanumeric and
+ * cuts to eighty, so it is one-way and two markers can share one. So each turn carries the slugs its
+ * own text names and the key each points at — the same {@code {slug,key}} array {@link ApiOverwatch}
+ * sends with a finding, because it is the same problem on different prose.
  */
 final class ApiChat {
 
@@ -43,6 +54,9 @@ final class ApiChat {
         // unanswered is the question only when nothing is being written.
         boolean answering = Chat.answering();
         boolean unanswered = Chat.unanswered(results);
+        // Read after both flags, because it is a file read and it would otherwise sit in the gap
+        // between them, which is the gap the two comments above are about.
+        Map<String, String> slugs = slugs(results.resolve("markers.txt"));
 
         StringBuilder b = new StringBuilder("{\"turns\":[");
         boolean first = true;
@@ -62,6 +76,10 @@ final class ApiChat {
             // The whole text, with the author's own line breaks inside it. It is rendered pre-wrap
             // and Chat.answer already stripped the ends, so what is left is the model's.
             b.append(",\"text\":").append(quote(turn.text()));
+            // The markers this turn names, and only this turn: the page links them per turn and the
+            // whole queue is three hundred and fifty-six entries on a poll that runs every three
+            // seconds. Empty for a turn that names none, which is most of them.
+            b.append(",\"markers\":[").append(named(turn.text(), slugs)).append(']');
             b.append('}');
         }
         b.append(']');
@@ -115,7 +133,73 @@ final class ApiChat {
         // is right — a reasoning turn runs to tens of thousands of characters and opening on the
         // beginning shows the same paragraph for four minutes — but it is a decision about how much
         // fits on a screen, and the screen is the only thing that knows.
+        //
+        // NO MARKERS JOINED IN HERE, unlike a turn: the page escapes the fold's text and stops
+        // (Dashboard.panel), so nothing inside a partial is a link. It is also half a word long at
+        // the tail, and a slug cut in the middle by a token boundary would match nothing anyway.
         return "{\"agent\":" + quote(agent) + ",\"at\":" + at + ",\"text\":" + quote(text) + "}";
+    }
+
+    /**
+     * THE MARKERS ONE TURN NAMES, MADE REACHABLE.
+     *
+     * <p>An answer says a marker's directory slug because that is what the supervisor read; a reader
+     * wanting to open it would otherwise copy the slug, guess the marker key it came from and paste
+     * it into a URL. The names are already exact — this only says what they point at.
+     *
+     * <p>THE KEY TRAVELS WITH THE SLUG because the slug cannot be reversed: {@link Supervisor#slug}
+     * takes everything after the last slash, replaces every non-alphanumeric and cuts to eighty, so
+     * two markers can share one and neither can be turned back into a marker key. Longest slug
+     * first, so a client substituting them in the text links a slug that contains a shorter one
+     * whole rather than having its middle replaced.
+     */
+    private static String named(String text, Map<String, String> slugs) {
+        StringBuilder b = new StringBuilder();
+        for (Map.Entry<String, String> e : slugs.entrySet()) {
+            if (!text.contains(e.getKey())) {
+                continue;
+            }
+            if (b.length() > 0) {
+                b.append(',');
+            }
+            b.append("{\"slug\":").append(quote(e.getKey()))
+                    .append(",\"key\":").append(quote(e.getValue())).append('}');
+        }
+        return b.toString();
+    }
+
+    /** Every queued marker by the directory name the pool gives it, longest slug first. */
+    private static Map<String, String> slugs(Path markersFile) {
+        Map<String, String> byLength = new LinkedHashMap<>();
+        List<String> keys = new ArrayList<>(read(markersFile));
+        // LONGEST SLUG FIRST. The page sorts the marker keys by length, which is the same intent
+        // through a proxy; the length that decides whether one name contains another is the slug's.
+        keys.sort((a, b) -> Integer.compare(Supervisor.slug(b.strip()).length(),
+                Supervisor.slug(a.strip()).length()));
+        for (String key : keys) {
+            String trimmed = key.strip();
+            // An empty slug is contained in every text there is, and would name every marker on
+            // every turn.
+            if (!trimmed.isEmpty() && !Supervisor.slug(trimmed).isEmpty()) {
+                byLength.put(Supervisor.slug(trimmed), trimmed);
+            }
+        }
+        return byLength;
+    }
+
+    /**
+     * ONE FILE, NOT {@link Dashboard#lines}, which is what the page's own reader does here: the
+     * queue is written once at the root and has no per-marker copies to concatenate.
+     *
+     * <p>Absent is not an error. A run given no queue file yet links nothing, which is the same
+     * answer as a run whose answers name no markers.
+     */
+    private static List<String> read(Path file) {
+        try {
+            return Files.readAllLines(file).stream().filter(l -> !l.isBlank()).toList();
+        } catch (IOException | RuntimeException unreadable) {
+            return List.of();
+        }
     }
 
     /** A field that should be a number, or 0 — a malformed one must not take the document down. */

@@ -69,12 +69,23 @@ final class Api {
             }
         }
 
+        // THE BUILD FLAGS COME FROM THE SETTLING ROW, NOT THE LAST ROW.
+        //
+        // Settlement.note writes red_verified=false and green_verified=false on EVERY `proving`
+        // stage row, because a stage boundary has no build result to report. Taking the last row of
+        // all therefore says `false` for a marker whose RED has simply not run yet — and `false`
+        // there does not mean "not yet", it means "we ran the test and it did not fail", which is
+        // the one thing this pipeline must never claim by accident.
+        //
+        // So: the last row that is not `proving`, the same rule Run uses for the state itself, and
+        // null when there is no such row. Absent and false are different answers and the client has
+        // to be able to tell them apart — an unlit lamp is not a failed one.
         Map<String, String> verdictText = new LinkedHashMap<>();
         Map<String, Boolean> red = new LinkedHashMap<>();
         Map<String, Boolean> green = new LinkedHashMap<>();
         for (String line : Dashboard.lines(settlements)) {
             String key = Dashboard.field(line, "suspicion_key");
-            if (key.isEmpty()) {
+            if (key.isEmpty() || Dashboard.field(line, "state").equals("proving")) {
                 continue;
             }
             String text = Dashboard.field(line, "verdict_text");
@@ -136,8 +147,8 @@ final class Api {
             b.append(",\"severity\":").append(sev == null || sev.isBlank() ? "null" : quote(sev));
             b.append(",\"state\":").append(quote(row.state()));
             b.append(",\"hasSettlement\":").append(row.hasSettlement());
-            b.append(",\"redVerified\":").append(red.getOrDefault(key, false));
-            b.append(",\"greenVerified\":").append(green.getOrDefault(key, false));
+            b.append(",\"redVerified\":").append(red.containsKey(key) ? red.get(key) : null);
+            b.append(",\"greenVerified\":").append(green.containsKey(key) ? green.get(key) : null);
             b.append(",\"events\":").append(events.getOrDefault(key, 0));
             long t0 = first.getOrDefault(key, 0L);
             b.append(",\"spanMs\":").append(t0 == 0 ? 0 : last.getOrDefault(key, t0) - t0);

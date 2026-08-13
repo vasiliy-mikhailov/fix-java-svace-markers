@@ -388,6 +388,33 @@ public final class Dashboard {
         // cannot disagree while both exist.
         route(server, "/api/index", e -> send(e, "application/json",
                 Api.index(settlements, trace, Api.queue(settlements))));
+        // AND THE OTHER SEVEN. Every screen the zone renders now has a document to render from,
+        // and each is answered from the same files the page beside it reads.
+        route(server, "/api/marker", e -> send(e, "application/json",
+                ApiMarker.marker(settlements, trace, query(e, "k"))));
+        route(server, "/api/marker/agent", e -> send(e, "application/json",
+                ApiMarker.markerAgent(trace, query(e, "k"), query(e, "a"))));
+        // NOT /api/trace — THAT NAME IS TAKEN, and by something with a different job. The existing
+        // one dumps the raw JSONL as an array; it is the corpus, documented in the README, and a
+        // reader may be training on it. HttpServer.createContext throws on a duplicate path, so
+        // shadowing it would not have degraded quietly — it would have refused to start, which is
+        // the better failure and still not one to ship.
+        route(server, "/api/events", e -> send(e, "application/json",
+                ApiTrace.trace(trace, settlements, (int) num(query(e, "from")),
+                        query(e, "limit").isEmpty() ? ApiTrace.WINDOW
+                                : (int) num(query(e, "limit")))));
+        route(server, "/api/overwatch", e -> send(e, "application/json",
+                ApiOverwatch.overwatch(here, query(e, "a"))));
+        route(server, "/api/chat", e -> send(e, "application/json", ApiChat.chat(here)));
+        route(server, "/api/live", e -> send(e, "application/json",
+                ApiLive.live(here, query(e, "k"))));
+        route(server, "/api/settings/model", e -> send(e, "application/json", ApiSettings.model()));
+        route(server, "/api/settings/subject", e -> send(e, "application/json",
+                ApiSettings.subject(here)));
+        route(server, "/api/settings/prompts", e -> send(e, "application/json",
+                ApiSettings.prompts(BUILT_INS)));
+        route(server, "/api/settings/run", e -> send(e, "application/json",
+                ApiSettings.run(here)));
         route(server, "/api/settlements", e -> send(e, "application/json",
                 "[" + String.join(",", lines(settlements)) + "]"));
         route(server, "/api/trace", e -> send(e, "application/json",
