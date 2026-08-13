@@ -179,12 +179,33 @@ final class Overwatch {
             return new Marker(id, state, builds, answers, test, idleMinutes, claimed, died, note);
         }
 
+        /**
+         * Whether this marker has an answer, stated as what it is NOT.
+         *
+         * <p>The four here are the states that mean a prove is running, threw, or has not begun;
+         * everything else is one of the dispositions this program decides. Listing the negatives is
+         * what {@code Dashboard} does too, and for the same reason: a disposition added to
+         * {@code Prove} and forgotten here would read as unsettled forever, whereas a new
+         * not-an-answer state reads as settled once and is noticed.
+         */
+        boolean settledState() {
+            return !state.equals("proving") && !state.equals("infra")
+                    && !state.equals("FAILED") && !state.equals("queued");
+        }
+
         String line() {
             return id + " | " + state + " | " + (builds.isBlank() ? "no builds" : builds)
                     + " | " + (answers.isBlank() ? "no answers" : answers)
                     + " | " + (test ? "test written" : "NO TEST")
                     + " | idle=" + idleMinutes + "m"
-                    + (claimed && idleMinutes > QUIET.toMinutes() ? "  <-- QUIET, still claimed" : "")
+                    // A MARKER THAT HAS ANSWERED IS NOT A MARKER GONE QUIET, however long its claim
+                    // lingers. The pool now releases a claim when its prove ends, but a release is
+                    // a `rm -rf` after a JVM exits and this is read on a timer, so the two overlap;
+                    // reading a claim as proof of a running prove had the watcher reporting settled
+                    // markers as stalled for a thousand minutes, twice, and its critic refuting the
+                    // finding both times — a whole pass spent on markers that were finished.
+                    + (claimed && !settledState() && idleMinutes > QUIET.toMinutes()
+                            ? "  <-- QUIET, still claimed" : "")
                     + (died.isBlank() ? "" : "  <-- DIED: " + died)
                     + (pace.isBlank() ? "" : "\n      <-- " + pace);
         }

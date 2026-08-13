@@ -133,6 +133,36 @@ final class Pace {
     }
 
     /**
+     * How many times the POOL has given up on this marker and put it back, which is not
+     * {@link #attempts(Path, String)}.
+     *
+     * <p>The difference decides whether a marker is ever tried again. A supervisor restart and a
+     * postponement are somebody choosing to spend another go on this marker; a pool retry is the
+     * marker having failed to settle on its own. Counting them together let two supervisor restarts
+     * exhaust the pool's allowance for a marker the pool had only ever tried once, and the marker
+     * went quiet for the rest of the run with nothing saying why.
+     *
+     * <p>So this counts one suffix and the other method counts all of them.
+     */
+    static int tries(Path results, String id) {
+        Path dead = results.resolve("dead");
+        if (!Files.isDirectory(dead)) {
+            return 0;
+        }
+        try (Stream<Path> old = Files.list(dead)) {
+            return (int) old.filter(Files::isDirectory)
+                    .filter(d -> d.getFileName().toString().matches(
+                            java.util.regex.Pattern.quote(id) + "\\.attempt-[0-9]+"))
+                    .count();
+        } catch (IOException unreadable) {
+            // AN UNREADABLE ARCHIVE IS NOT A CLEAN SLATE. Reporting zero here would let a directory
+            // that cannot be listed hand a broken marker unlimited goes at the pool, which is the
+            // one direction this must not fail in.
+            return Integer.MAX_VALUE;
+        }
+    }
+
+    /**
      * Whether an archived directory is an attempt at THIS marker.
      *
      * <p>Prefix alone is not enough, because a checker name can be a prefix of another:
@@ -273,8 +303,9 @@ final class Pace {
             case "--postponed" -> System.out.println(postponed(results, args[2]) ? "yes" : "no");
             case "--list-postponed" -> allPostponed(results).forEach(System.out::println);
             case "--typical" -> System.out.println(typical(results));
+            case "--tries" -> System.out.println(tries(results, args[2]));
             default -> System.out.println("usage: --postponed <results> <id> | --list-postponed <results> "
-                    + "| --typical <results>");
+                    + "| --typical <results> | --tries <results> <id>");
         }
     }
 }

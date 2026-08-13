@@ -273,6 +273,22 @@ gets its own `git worktree`, thrown away afterwards.
 
 It resumes: a marker already settled anywhere is skipped.
 
+**A claim lasts exactly as long as its prove.** It used to outlive it, and that quietly repealed the
+rule above. `settled` was taught to answer NO for a marker whose prove ended in `infra` — the state
+written when a prove *throws* — precisely so the pool would take it again; three lines later
+`mkdir claims/$id || continue` skipped it anyway, because the dead attempt's claim was still there
+and nothing ever removed it. Every marker whose prove threw was retired by the gate that exists to
+stop two provers taking the same marker, and the promise above was really "already **attempted**
+anywhere is skipped". Both gates read correctly alone; only their order was wrong.
+
+So a prove that ends without a disposition now hands its marker back: the record goes to
+`dead/<marker>.attempt-N` — because `Prove` appends, and a retry landing on the old trace reads as
+one prove that changed its mind — and the claim is released. Three such attempts and the marker is
+left for a person, which is the bound that stops "release it, fail in the same place, take it again".
+A pass also sweeps claims left by earlier runs, keeping any whose worktree still has a process behind
+it; without that, the markers already stranded stay stranded, since the fix only reaches the ones
+stranded after it.
+
 ## The record
 
 | file | what it is |

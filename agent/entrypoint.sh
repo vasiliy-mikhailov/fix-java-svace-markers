@@ -137,8 +137,68 @@ case "${1:-dashboard}" in
                   done | grep -q hit
         }
 
+        # The same question asked of ONE lane, which is all the sweep below knows about.
+        settled_lane() { grep -qE "$DISPOSITIONS" "$RESULTS/m/$1/settlements.jsonl" 2>/dev/null; }
+
         # A directory named for the marker, so a reader finds a prove by what it proved.
         slug() { echo "$1" | sed 's|.*/||; s|[^A-Za-z0-9._-]|_|g' | cut -c1-80; }
+
+        # THE CLAIMS LEFT BY EVERY RUN BEFORE THIS ONE, WHICH IS WHERE THE STRANDED MARKERS ARE.
+        #
+        # Releasing claims from here on fixes the markers this pass strands; it does nothing for the
+        # ones already stranded, because their stale claim still fails the mkdir and they are skipped
+        # exactly as before. The volume outlives the fix, so the fix has to reach back.
+        #
+        # A claim is stale when no prove is behind it, and the prove is identifiable because the pool
+        # gives each one a worktree named for the marker — the same string the supervisor kills by.
+        # Anything still running keeps its claim, so a second pool started alongside this one is not
+        # robbed of its work; the one race left is a claim made microseconds ago whose JVM has not
+        # started yet, and that costs a marker proved twice rather than a marker lost.
+        swept=0
+        for claim in "$RESULTS"/claims/*; do
+            [ -d "$claim" ] || continue
+            held=$(basename "$claim")
+            pgrep -f "tree-$held " >/dev/null 2>&1 && continue
+            if ! settled_lane "$held"; then
+                # It stopped without answering. Its record is kept and its lane cleared, because
+                # Prove APPENDS: retrying on top of the old trace makes one prove that changed its
+                # mind rather than two attempts with a line between them.
+                mkdir -p "$RESULTS/dead"
+                tried=$(java -cp "$CP" tech.mikhailov.fsm.agent.Pace --tries "$RESULTS" "$held")
+                mv "$RESULTS/m/$held" "$RESULTS/dead/$held.attempt-$((tried + 1))" 2>/dev/null || true
+            fi
+            rm -rf "$claim"
+            swept=$((swept + 1))
+        done
+        [ "$swept" -gt 0 ] && echo "released $swept claim(s) left by earlier runs"
+
+        # HOW MANY TIMES THE POOL WILL PUT A MARKER BACK BEFORE LEAVING IT FOR A PERSON.
+        #
+        # Three, because the first retry tests "was that transient", the second tests "was it
+        # transient twice", and a marker that has failed to settle three times is failing for a
+        # reason no further attempt will discover. Without a bound this is a loop: the claim is
+        # released, the marker is unsettled, the next pass takes it, and it dies in the same place.
+        TRIES=3
+
+        # THE CLAIM IS RELEASED WHEN THE PROVE ENDS, and the record of a prove that did not settle
+        # goes to dead/ so the next attempt starts on a clean trace instead of appending to the last.
+        #
+        # The claim used to outlive the prove, and that quietly cancelled the disposition rule above.
+        # `settled` was taught to say NO for a marker that ended in `infra` precisely so the pool
+        # would take it again — and then the next line, `mkdir claims/$id || continue`, skipped it
+        # because the claim from the dead attempt was still there. Every marker whose prove threw was
+        # therefore retired by the very gate that exists to stop double-proving, the README's promise
+        # that "a marker already settled anywhere is skipped" became "already attempted is skipped",
+        # and the fix that was supposed to revisit them never ran once.
+        release() {
+            _id=$2
+            if ! settled "$1"; then
+                mkdir -p "$RESULTS/dead"
+                _try=$(java -cp "$CP" tech.mikhailov.fsm.agent.Pace --tries "$RESULTS" "$_id")
+                mv "$RESULTS/m/$_id" "$RESULTS/dead/$_id.attempt-$((_try + 1))" 2>/dev/null || true
+            fi
+            rm -rf "$RESULTS/claims/$_id"
+        }
 
         n=0
         while IFS= read -r marker; do
@@ -159,6 +219,13 @@ case "${1:-dashboard}" in
             # up again once the queue is otherwise done, when its slot costs nothing.
             [ "$(java -cp "$CP" tech.mikhailov.fsm.agent.Pace --postponed "$RESULTS" "$id")" = yes ] \
                 && continue
+            # AND A MARKER THAT HAS FAILED ITS WAY THROUGH ITS GOES IS LEFT ALONE. This is the gate
+            # the leaked claim was doing by accident, done on purpose and with a count that says so.
+            tries=$(java -cp "$CP" tech.mikhailov.fsm.agent.Pace --tries "$RESULTS" "$id")
+            if [ "$tries" -ge "$TRIES" ] 2>/dev/null; then
+                echo "=== $id has not settled in $tries attempt(s); leaving it for a person"
+                continue
+            fi
             mkdir "$RESULTS/claims/$id" 2>/dev/null || continue
 
             (
@@ -181,6 +248,7 @@ case "${1:-dashboard}" in
                         >> "$out/slice.log" 2>&1 || true
                 fi
                 git -C "$reference" worktree remove --force "$tree" >/dev/null 2>&1 || rm -rf "$tree"
+                release "$marker" "$id"
             ) &
         done < "$2"
         wait
@@ -216,6 +284,7 @@ case "${1:-dashboard}" in
                 java -cp "$CP" tech.mikhailov.fsm.agent.Prove "$tree" "$marker" "$out" \
                     >> "$out/slice.log" 2>&1 || true
                 git -C "$reference" worktree remove --force "$tree" >/dev/null 2>&1 || rm -rf "$tree"
+                release "$marker" "$id"
             done
         fi
         echo "SLICE DONE ($n marker(s))"

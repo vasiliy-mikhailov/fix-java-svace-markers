@@ -872,11 +872,13 @@ public final class Dashboard {
     /** Every prove still running, for the pages that want the whole pool. */
     private static String proving(Path results) {
         StringBuilder b = new StringBuilder();
-        // CLAIMED IS NOT RUNNING. A claim is how the pool remembers it has already dealt with a
-        // marker, so it OUTLIVES the prove — every settled marker still holds one, and taking the
-        // claims directory as the list of active provers gave thirty-four panels for a pool of
-        // four. A prove is running when it is claimed and has not settled, which is the same test
-        // the pool itself uses to decide whether to take a marker again.
+        // CLAIMED IS NOT RUNNING, and the gap is smaller than it was. The claim used to outlive its
+        // prove for the rest of the run — every settled marker still held one, and reading the
+        // claims directory as the list of active provers gave thirty-four panels for a pool of four.
+        // The pool releases a claim when the prove ends now, so what is left is the seconds between
+        // a JVM exiting and the shell tidying up after it. The settled test stays: it cost nothing,
+        // it is the same question the pool asks before taking a marker again, and it is the reason
+        // this page was right about the pool while the watcher was not.
         List<String> claimed = new ArrayList<>();
         Path claims = results.resolve("claims");
         if (Files.isDirectory(claims)) {
