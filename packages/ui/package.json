@@ -8,11 +8,19 @@
     "./domain.css": "./src/domain.css",
     ".": "./src/index.ts"
   },
-  "scripts": { "typecheck": "tsc -p tsconfig.json", "test": "vitest run --passWithNoTests" },
-  "dependencies": { "@fsm/types": "workspace:*" },
-  "peerDependencies": { "react": "^19" },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fsm/types": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19"
+  },
   "devDependencies": {
     "@fsm/config": "workspace:*",
+    "@fsm/types": "workspace:*",
     "@types/react": "^19",
     "react": "19.2.3",
     "typescript": "^5.9.3",

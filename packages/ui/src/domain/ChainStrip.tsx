@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { CHAIN, type AgentName, type MarkerKey } from '@fsm/types'
 import type { ReactNode } from 'react'
 import type { Style } from '../primitives/style'
@@ -15,28 +16,43 @@ const STAGE_LABELS = ['reproduce', 'fix', 'propose', 'argue', 'price'] as const
 
 export type StageName = (typeof STAGE_LABELS)[number]
 
-export type Stage = { label: StageName; producer: ChainAgent; critic: ChainAgent }
+export type Stage = {
+  label: StageName
+  planner: ChainAgent
+  doer: ChainAgent
+  verifier: ChainAgent
+}
+
+/** How many agents make one stage. Three: planner, doer, verifier. */
+const ROLES = 3
 
 /**
- * THE CHAIN, PAIRED OFF THE ONE LIST — not typed out again.
+ * THE CHAIN, GROUPED OFF THE ONE LIST — not typed out again.
  *
- * Java held `STAGES` (2072-2077) as a second copy of `Agents.CHAIN` and the copy had drifted:
- * `verdict-critic` was missing from it, so the agent that can send a settlement back for rework had
- * no tab of its own and its answers were readable only in the whole trace. Nobody noticed, because
- * a list that is missing an entry looks exactly like a list.
+ * Java held `STAGES` as a second copy of `Agents.CHAIN` and the copy had drifted: `verdict-critic`
+ * was missing from it, so the agent that can send a settlement back for rework had no tab of its own
+ * and its answers were readable only in the whole trace. Nobody noticed, because a list that is
+ * missing an entry looks exactly like a list.
  *
- * `CHAIN` is five producer/critic pairs in call order, which is a fact its own doc comment states,
- * so pairing it off is not a guess — it is the shape. Adding a stage to the pipeline means adding
- * two agents to `@fsm/types` and one label here; it cannot mean the two lists disagreeing about who
- * is in the chain, because there is only one list of who.
+ * IT WAS PAIRS AND IT IS TRIPLES NOW, and grouping by the wrong number does not fail — it draws.
+ * When the chain went to planner/doer/verifier this still stepped by two, so REPRODUCE held the
+ * planner and the doer, FIX held the reproduce-verifier and the fix-planner, and PRICE held two
+ * agents belonging to neither. Every label was wrong from the second stage on and every tab still
+ * worked, which is why a screenshot found it and nothing else did.
+ *
+ * So the stride is named, and the test below the fold asserts it against `CHAIN.length`: a chain of
+ * fifteen grouped in threes is five stages, and any other arithmetic leaves a remainder.
  */
 export const STAGES: readonly Stage[] = STAGE_LABELS.flatMap((label, index) => {
-  const producer = CHAIN[index * 2]
-  const critic = CHAIN[index * 2 + 1]
+  const planner = CHAIN[index * ROLES]
+  const doer = CHAIN[index * ROLES + 1]
+  const verifier = CHAIN[index * ROLES + 2]
   // `noUncheckedIndexedAccess` asks for this guard, and it earns its keep: a `CHAIN` that lost an
   // agent drops a whole stage off the strip — visibly, as a gap a reader can see — rather than
   // rendering the word `undefined` as an agent nobody can click.
-  return producer === undefined || critic === undefined ? [] : [{ label, producer, critic }]
+  return planner === undefined || doer === undefined || verifier === undefined
+    ? []
+    : [{ label, planner, doer, verifier }]
 })
 
 export type ChainStripProps = {
@@ -55,10 +71,13 @@ export type ChainStripProps = {
   runs: Partial<Record<AgentName, number>>
 }
 
+export type StageRole = { agent: ChainAgent; runs: number }
+
 export type ChainStageProps = {
   label: StageName
-  producer: { agent: ChainAgent; runs: number }
-  critic: { agent: ChainAgent; runs: number }
+  planner: StageRole
+  doer: StageRole
+  verifier: StageRole
   markerKey: MarkerKey
   current: string
 }
@@ -226,32 +245,36 @@ export function AgentChip({ agent, runs, active, href }: AgentChipProps) {
  * caller, which is where Java kept it. It REPLACES the arrow rather than sitting beside it: the
  * arrow is decoration and the loop is a finding, and two glyphs would read as two hops.
  */
-export function ChainStage({ label, producer, critic, markerKey, current }: ChainStageProps) {
-  const ran = producer.runs + critic.runs > 0
+export function ChainStage({ label, planner, doer, verifier, markerKey, current }: ChainStageProps) {
+  const ran = planner.runs + doer.runs + verifier.runs > 0
+  const roles: StageRole[] = [planner, doer, verifier]
   return (
     <span style={ran ? STAGE_BOX : STAGE_OFF}>
       <span style={LABEL}>{label}</span>
-      <AgentChip
-        agent={producer.agent}
-        runs={producer.runs}
-        active={current === producer.agent}
-        href={markerHref(markerKey, producer.agent)}
-      />
-      {producer.runs > 1 ? (
-        <span style={LOOP} role="img" aria-label="the critic sent it back" title="the critic sent it back">
-          ↺
-        </span>
-      ) : (
-        <span style={ARROW} aria-hidden="true">
-          →
-        </span>
-      )}
-      <AgentChip
-        agent={critic.agent}
-        runs={critic.runs}
-        active={current === critic.agent}
-        href={markerHref(markerKey, critic.agent)}
-      />
+      {roles.map((role, i) => (
+        <Fragment key={role.agent}>
+          {i > 0 &&
+            // THE LOOP MARK SITS BEFORE THE AGENT THAT WAS ASKED TWICE, so it reads as the arrow
+            // that came back rather than as a property of the one before it. A doer with two runs
+            // was sent back by the verifier; a planner with two was sent back further, which is the
+            // `replan` this chain gained and the pair-shaped strip had no way to show.
+            (role.runs > 1 ? (
+              <span style={LOOP} role="img" aria-label="sent back" title="sent back">
+                ↺
+              </span>
+            ) : (
+              <span style={ARROW} aria-hidden="true">
+                →
+              </span>
+            ))}
+          <AgentChip
+            agent={role.agent}
+            runs={role.runs}
+            active={current === role.agent}
+            href={markerHref(markerKey, role.agent)}
+          />
+        </Fragment>
+      ))}
     </span>
   )
 }
@@ -282,8 +305,9 @@ export function ChainStrip({ markerKey, current, runs }: ChainStripProps) {
         <ChainStage
           key={stage.label}
           label={stage.label}
-          producer={{ agent: stage.producer, runs: runs[stage.producer] ?? 0 }}
-          critic={{ agent: stage.critic, runs: runs[stage.critic] ?? 0 }}
+          planner={{ agent: stage.planner, runs: runs[stage.planner] ?? 0 }}
+          doer={{ agent: stage.doer, runs: runs[stage.doer] ?? 0 }}
+          verifier={{ agent: stage.verifier, runs: runs[stage.verifier] ?? 0 }}
           markerKey={markerKey}
           current={current}
         />
