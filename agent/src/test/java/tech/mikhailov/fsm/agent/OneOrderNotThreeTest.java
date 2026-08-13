@@ -54,20 +54,19 @@ class OneOrderNotThreeTest {
     @Test
     @DisplayName("each stage is planner, then doer, then verifier, in that order")
     void triples() {
-        // WRITTEN OUT, because the names do not follow a rule: it is fixer/fix-critic, not
-        // fixer-critic, and reproducer/proof-critic shares no stem at all. A test that derived one
-        // name from another would be testing a convention this code does not have.
+        // WRITTEN OUT even though the names now DO follow a rule, because the rule is the thing
+        // worth pinning: every agent says its stage and its role, and a stage that quietly loses one
+        // of the three is what this catches. Deriving the names from the rule would test nothing.
         //
-        // THE DOERS AND VERIFIERS KEPT THEIR NAMES through the move to three roles. The critics
-        // already were verifiers — that is what they do — and renaming them would have cost every
-        // spec chapter, every checker note, and the agent names in 356 markers of recorded history,
-        // to buy a label. What is new is the planner in front, and a verifier that can reach it.
+        // They were reproducer/proof-critic/fixer/pr-maker/verdict/estimator until the roles became
+        // three. The record written before that carries the old names, and the marker page appends
+        // any agent it does not recognise — so 356 markers of history keep their tabs.
         List<List<String>> expected = List.of(
-                List.of("reproduce-planner", "reproducer", "proof-critic"),
-                List.of("fix-planner", "fixer", "fix-critic"),
-                List.of("propose-planner", "pr-maker", "pr-critic"),
-                List.of("argue-planner", "verdict", "verdict-critic"),
-                List.of("price-planner", "estimator", "estimator-critic"));
+                List.of("reproduce-planner", "reproduce-doer", "reproduce-verifier"),
+                List.of("fix-planner", "fix-doer", "fix-verifier"),
+                List.of("propose-planner", "propose-doer", "propose-verifier"),
+                List.of("argue-planner", "argue-doer", "argue-verifier"),
+                List.of("price-planner", "price-doer", "price-verifier"));
         List<List<String>> actual = new ArrayList<>();
         for (int i = 0; i < Agents.CHAIN.size(); i += 3) {
             actual.add(List.of(Agents.CHAIN.get(i), Agents.CHAIN.get(i + 1), Agents.CHAIN.get(i + 2)));
@@ -77,12 +76,19 @@ class OneOrderNotThreeTest {
                         + "planner separated from the doer that works from it is two prompts nobody "
                         + "edits together");
         assertEquals(0, Agents.CHAIN.size() % 3, "no stage may be missing a role");
+        for (String agent : Agents.CHAIN) {
+            assertTrue(agent.endsWith("-planner") || agent.endsWith("-doer")
+                            || agent.endsWith("-verifier"),
+                    agent + " does not say which role it is. Every name in the chain is "
+                            + "<stage>-<role>, so a reader of a trace, a tab or a settings page "
+                            + "knows what they are looking at without being told");
+        }
     }
 
     @Test
     @DisplayName("the chain is what runs inside a prove, and the watchers are not in it")
     void chainIsTheProve() {
-        assertTrue(Agents.CHAIN.contains("verdict-critic"),
+        assertTrue(Agents.CHAIN.contains("argue-verifier"),
                 "it can send a settlement back for rework, so it runs in the chain and needs a tab");
         for (String watcher : Agents.WATCH) {
             assertTrue(!Agents.CHAIN.contains(watcher),

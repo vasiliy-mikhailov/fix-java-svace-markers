@@ -174,7 +174,7 @@ Above the table, in order: the findings banner, the progress bar, the counts, th
   `proving`, `queued` or `interrupted`, so an interrupted marker counts against the run rather than
   for it. `elapsed` runs from the earliest `at` in the whole trace. With nothing settled the ETA is
   `—`. **The ETA is labelled "extrapolated" because it is honest only while the markers are alike,
-  and they are not** — one the reproducer declines costs a minute, one that goes red, green and two
+  and they are not** — one the reproduce-doer declines costs a minute, one that goes red, green and two
   rounds with a skeptic costs twenty. Shown because a wrong estimate that converges beats none.
 - Counts: one tile per state, in alphabetical order of the state name, plus a *human-equivalent* tile
   summing every `priced` event's `minutes` — shown only when that sum is above zero. An estimator
@@ -222,7 +222,7 @@ hollow it was never got to
 ```
 
 `reachedRed` = the state is not `queued` and not `not-a-bug`; `reachedGreen` = red is `true`.
-**Hollow is a different answer from "no": a marker the reproducer declined never had a red to fail.**
+**Hollow is a different answer from "no": a marker the reproduce-doer declined never had a red to fail.**
 
 ### firstSentence
 
@@ -254,7 +254,7 @@ way.
 
 ### The findings banner
 
-**The supervisor found all of it ten hours before anyone read it.** The runaway reproducer, the
+**The supervisor found all of it ten hours before anyone read it.** The runaway reproduce-doer, the
 passing REDs and the whole `DM_DEFAULT_ENCODING` family were each reported, judged, marked `holds` —
 and then rediscovered from scratch by a person who never opened `/overwatch`. **A warning nobody is
 shown is a warning nobody has**, so it goes at the top of the page everybody already has open.
@@ -291,25 +291,25 @@ shown is a warning nobody has**, so it goes at the top of the page everybody alr
 order:
 
 ```java
-{"reproduce","reproducer","proof-critic"}  {"fix","fixer","fix-critic"}
-{"propose","pr-maker","pr-critic"}         {"argue","verdict","verdict-critic"}
-{"price","estimator","estimator-critic"}
+{"reproduce","reproduce-doer","reproduce-verifier"}  {"fix","fix-doer","fix-verifier"}
+{"propose","propose-doer","propose-verifier"}         {"argue","verdict","argue-verifier"}
+{"price","estimator","price-verifier"}
 ```
 
 **Those ten names must be exactly `Agents.CHAIN`, in `Agents.CHAIN`'s order, paired producer then
 critic.** This is a second copy of an order that lives in `Agents.CHAIN`, and the drift is invisible:
-the tab row was once missing `verdict-critic` entirely, so the agent that can send a settlement back
+the tab row was once missing `argue-verifier` entirely, so the agent that can send a settlement back
 for rework had no page of its own and nobody noticed. (`Dashboard.AGENTS = Agents.CHAIN` exists but is
 referenced only from a javadoc link; nothing derives the tabs from it.)
 
 ```
-summary | reproduce(reproducer→proof-critic) | fix(fixer→fix-critic) |
-propose(pr-maker→pr-critic) | argue(verdict→verdict-critic) |
-price(estimator→estimator-critic) | live | prompts | the record | the supervisor | settings
+summary | reproduce(reproduce-doer→reproduce-verifier) | fix(fix-doer→fix-verifier) |
+propose(propose-doer→propose-verifier) | argue(verdict→argue-verifier) |
+price(estimator→price-verifier) | live | prompts | the record | the supervisor | settings
 ```
 
 Each chip carries how many times that agent answered. **A greyed-out stage did not run, and that is
-usually the most informative thing on the page** — a marker settled at `argue` never reached a fixer.
+usually the most informative thing on the page** — a marker settled at `argue` never reached a fix-doer.
 A `↺` between a producer and its critic means the producer answered more than once, which nothing
 else in this chain can cause: the critic objected and `Prove` asked it to go again, the loop the
 chain allows exactly once per stage.
@@ -352,7 +352,7 @@ chain allows exactly once per stage.
    the argument to `write_file` IS the test, and shortening it shows the path and hides the only thing
    worth reading. Reading the artefact the whole prove turns on out of a tool argument on another tab
    is work a reader should not have to do.
-6. **the fix** — the unified diff, recovered from the last `fix-critic` `asked` event whose prompt
+6. **the fix** — the unified diff, recovered from the last `fix-verifier` `asked` event whose prompt
    contains `WHAT IT ACTUALLY CHANGED`: from the newline after that heading to the line beginning
    `\nThe patch changes ` (or, failing that, `\nTHE PATCH DOES NOT TOUCH`), stripped, and rendered
    through `diff()`. Where neither terminator is present the rest of the prompt is taken. Java
@@ -367,7 +367,7 @@ the marker. Each is one click away on its own tab.
 
 Last answer first, in full — headed `answered` when the agent answered once and `final answer,
 attempt N` when it answered more — because the chronological trace is the wrong shape for "what did
-the fixer end up saying": a reproducer that answered twice buries its final test under the rejected
+the fix-doer end up saying": a reproduce-doer that answered twice buries its final test under the rejected
 one and eighty tool calls. Beneath it, every earlier answer as an `attempt N, superseded` block
 holding a fold of what it said and a fold of the prompt, **counted down from the most recent
 superseded attempt to the first**, so the closest thing to the final answer sits nearest to it.
@@ -835,7 +835,7 @@ else.
 only ever appended. That is not one global numbering: a trace view numbers within its `at`-sorted
 list, an agent tab numbers within that marker's events in file order. The label points at one `asked`
 entry, because prompt tuning optimises one agent's prompt and a complaint filed against a whole prove
-cannot be attributed — a marker that settled badly may have had a fine reproducer and a careless
+cannot be attributed — a marker that settled badly may have had a fine reproduce-doer and a careless
 skeptic. `back` is the URL the reader is on, and the handler 303s straight to it, so
 rating six answers on a marker is six clicks and no navigation. **The prompt and the reply ride along
 as hidden fields** so the row written is a complete training example without a second read of the

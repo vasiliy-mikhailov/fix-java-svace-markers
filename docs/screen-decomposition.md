@@ -203,7 +203,7 @@ hasSettlement: boolean — renders nothing at all when false
 *From:* flags(row) 2313-2326
 
 
-> HOLLOW IS NOT "NO": a marker the reproducer declined never had a red to fail, which is a different answer from a red that passed. `reached` for green is derived from red being true — not from any state. `reached` for red excludes state `not-a-bug`, which nothing in this codebase writes any more (only the dead CSS rule at line 184 remembers it) — that guard is dead and can go. Returns empty string for a marker with no settlement row, so queued rows have no lamps.
+> HOLLOW IS NOT "NO": a marker the reproduce-doer declined never had a red to fail, which is a different answer from a red that passed. `reached` for green is derived from red being true — not from any state. `reached` for red excludes state `not-a-bug`, which nothing in this codebase writes any more (only the dead CSS rule at line 184 remembers it) — that guard is dead and can go. Returns empty string for a marker with no settlement row, so queued rows have no lamps.
 
 
 ### Dot *(shared)*
@@ -609,7 +609,7 @@ code: string
 *From:* marker():1885-1902 — the last trace event with kind=tool, tool=write_file and non-blank arguments.content
 
 
-> Recovered by scanning tool arguments, and it takes the LAST such write from ANY agent, not the reproducer's specifically. settlements.jsonl already holds test_path and test_code and this screen ignores both — the JSON should serve those and delete the scan. Rendered in a plain <pre>, uncoloured, unlike FlaggedSource.
+> Recovered by scanning tool arguments, and it takes the LAST such write from ANY agent, not the reproduce-doer's specifically. settlements.jsonl already holds test_path and test_code and this screen ignores both — the JSON should serve those and delete the scan. Rendered in a plain <pre>, uncoloured, unlike FlaggedSource.
 
 
 ### FixDiff
@@ -624,7 +624,7 @@ diff: string — unified diff text
 *From:* marker():1904-1935, wrapped by diff()→block(isDiff=true):2614-2637
 
 
-> THE WORST DEPENDENCY ON THIS SCREEN: the patch is not recorded as an artefact anywhere, so marker() scrapes it out of the TEXT OF fix-critic's PROMPT, between the heading 'WHAT IT ACTUALLY CHANGED' and either '\nThe patch changes ' or '\nTHE PATCH DOES NOT TOUCH'. Reword either prompt and the fix silently disappears from the page. settlements.jsonl has a fix_diff field — serve that. Also: block() is the single place a diff gets escaped, added after a caller passed raw `git diff` output straight through and a patch containing '<' wrote markup into the page (:2600-2607).
+> THE WORST DEPENDENCY ON THIS SCREEN: the patch is not recorded as an artefact anywhere, so marker() scrapes it out of the TEXT OF fix-verifier's PROMPT, between the heading 'WHAT IT ACTUALLY CHANGED' and either '\nThe patch changes ' or '\nTHE PATCH DOES NOT TOUCH'. Reword either prompt and the fix silently disappears from the page. settlements.jsonl has a fix_diff field — serve that. Also: block() is the single place a diff gets escaped, added after a caller passed raw `git diff` output straight through and a patch containing '<' wrote markup into the page (:2600-2607).
 
 
 ### AgentAnswer
@@ -762,19 +762,19 @@ Two documents. The summary tab, GET /api/marker?k=<key>:
     "verdictKind": "...", "verdictText": "...",
     "redVerified": true, "greenVerified": false,   // real booleans, null = never recorded
     "testPath": "...", "testCode": "...",          // replaces the write_file scan
-    "fixDiff": "--- a/...\n+++ b/...",              // replaces the fix-critic prompt scrape
+    "fixDiff": "--- a/...\n+++ b/...",              // replaces the fix-verifier prompt scrape
     "infraReason": "..." },
   "summary": { "headline": "…", "account": "…" },  // summary.txt, split named not indexed
   "flagged": {                                      // null when the checkout tree is absent —
     "requested": 91, "fileLines": 87,               // absent and "nothing to show" differ
     "lines": [ { "n": 87, "text": "…" } ] },
   "builds": [ { "phase": "red", "passed": false, "infra": false, "at": 1755… } ],
-  "runs": { "reproducer": 2, "proof-critic": 1 },   // asked-count per agent → ChainStrip
+  "runs": { "reproduce-doer": 2, "reproduce-verifier": 1 },   // asked-count per agent → ChainStrip
   "openFindings": 3                                  // overwatch verdict=holds → FindingsButton
 }
 One agent tab, GET /api/marker/agent?k=<key>&a=<agent>:
 {
-  "agent": "fixer",
+  "agent": "fix-doer",
   "answers": [ { "id": "…stable…", "at": 1755…, "prompt": "…", "reply": "…" } ],  // oldest first
   "thoughts": [ { "id": "…", "at": 1755…, "text": "…" } ],
   "calls":    [ { "id": "…", "at": 1755…, "tool": "write_file", "arguments": "…", "result": "…" } ]
@@ -939,7 +939,7 @@ expanded: boolean
 *From:* one() case "tool", Dashboard.java:2198-2202
 
 
-> `arguments` arrives as ordinary text with real newlines, not as \n — it is JSON that was itself a JSON string, so field() (2697-2701) has already peeled one layer. Treat it as text, not as JSON to re-parse. THE GAP: this is where the test file the reproducer writes and the patch the fixer produces actually pass through, and /trace renders both as flat escaped `<pre>`. code()/diff()/block()/colourJava()/colourDiff() (2609-2679) are never called on this route — their only callers are the index (1739) and the marker page (1845, 1934). Porting this screen faithfully means no syntax colour here; a SourceBlock/DiffBlock used by TraceEventRow would be new behaviour, and worth it, but say so rather than implying it exists.
+> `arguments` arrives as ordinary text with real newlines, not as \n — it is JSON that was itself a JSON string, so field() (2697-2701) has already peeled one layer. Treat it as text, not as JSON to re-parse. THE GAP: this is where the test file the reproduce-doer writes and the patch the fix-doer produces actually pass through, and /trace renders both as flat escaped `<pre>`. code()/diff()/block()/colourJava()/colourDiff() (2609-2679) are never called on this route — their only callers are the index (1739) and the marker page (1845, 1934). Porting this screen faithfully means no syntax colour here; a SourceBlock/DiffBlock used by TraceEventRow would be new behaviour, and worth it, but say so rather than implying it exists.
 
 
 ### BuildEvent *(shared)*
@@ -1107,11 +1107,11 @@ GET /api/trace?from=0
       "kind": "asked" | "thought" | "tool" | "built" | "progress" | "settled" | "priced" | "failed",
 
       // kind: "asked"
-      "agent": "reproducer", "prompt": "...", "reply": "...",
+      "agent": "reproduce-doer", "prompt": "...", "reply": "...",
       // kind: "thought"
       "agent": "skeptic", "text": "...",
       // kind: "tool"
-      "agent": "reproducer", "tool": "Write", "arguments": "{...}", "result": "...",
+      "agent": "reproduce-doer", "tool": "Write", "arguments": "{...}", "result": "...",
       // kind: "built"   — booleans, unquoted in the JSONL, which field() at 2702 handles specially
       "phase": "RED", "passed": false, "infra": false, "summary": "...",
       // kind: "progress"
@@ -2217,7 +2217,7 @@ The bordered block that every changeable thing on this screen sits in: agent or 
 name: string — the agent, or "parallel provers"
 state: string — the short uppercase word; a fact about the row, e.g. 'edited'
 overridden: boolean — picks the accent itself
-anchorId?: string — the row's id, so /settings#reproducer lands on it
+anchorId?: string — the row's id, so /settings#reproduce-doer lands on it
 children: ReactNode
 ```
 
@@ -2323,7 +2323,7 @@ No JSON exists for this route today; `settings()` switches on `?a` and returns H
 GET /api/settings/prompts
 {
   "agents": [
-    { "agent": "reproducer",
+    { "agent": "reproduce-doer",
       "group": "chain",            // "chain" | "watch" | "asked" — from Agents.CHAIN/WATCH/ASKED, NOT the sentence Java prints
       "builtIn": "You are given a Svace marker…",   // Prompts built-in; "" when the runtime never registered one
       "saved": "",                 // the override file verbatim, "" when none — Prompts.saved()
@@ -2549,7 +2549,7 @@ GET /api/live?k=<suspicion_key> — the polled fragment, the only thing that cha
   "settled": false,                     // true iff m/<slug>/settlements.jsonl holds any state that is not "" | "proving" | "infra" | "queued". Server-side, because it is the complement of three states, not a list of seven.
   "panel": {                            // null when settled, or when k is empty
     "who": "Dashboard_java_1873_DEREF", // identity/key of the fold; "supervisor" on /chat
-    "agent": "reproducer",              // line 1 of m/<slug>/trace.jsonl.live; "" when the file is absent or has fewer than two newlines
+    "agent": "reproduce-doer",              // line 1 of m/<slug>/trace.jsonl.live; "" when the file is absent or has fewer than two newlines
     "at": 1755079982431,                // line 2, epoch ms; 0 = nothing yet
     "text": "…the tail…",               // line 3 onward, last LIVE_TAIL=4000 chars
     "truncated": true                   // text was cut from the HEAD, not the tail
@@ -2561,7 +2561,7 @@ GET /api/marker/live?k=<key> — the page shell, fetched once (everything here i
 {
   "marker": "repo|file|line|checker",
   "title": "Dashboard.java|1873|DEREF_OF_NULL",  // client can derive: substring after last '/'
-  "runs": { "reproducer": 2, "proof-critic": 1, "fixer": 1 },  // count of trace.jsonl lines for this marker with kind == "asked", grouped by agent. Drives every chip's count and the stage on/off + loop glyph.
+  "runs": { "reproduce-doer": 2, "reproduce-verifier": 1, "fix-doer": 1 },  // count of trace.jsonl lines for this marker with kind == "asked", grouped by agent. Drives every chip's count and the stage on/off + loop glyph.
   "openFindings": 3,                              // holding() over overwatch.jsonl, for the header badge on every page
   "live": { …the /api/live body above, so first paint needs one round trip… }
 }

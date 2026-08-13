@@ -214,7 +214,7 @@ wrong:
   fires on `.passwordParameter("password")` and on a message key.
 
 **2. HOW YOU MAKE IT VISIBLE — the sentence the whole family turns on.** A **RED** is a test that,
-in `prompts/reproducer.txt`'s words, "FAILS on the current, UNPATCHED code precisely because of this
+in `prompts/reproduce-doer.txt`'s words, "FAILS on the current, UNPATCHED code precisely because of this
 defect, and would PASS once it is fixed"; a **GREEN** is that same test passing after the fix. The
 note's job is to say whether a RED is possible for this family, and by what instrument. Everything
 measured is labelled as measured, with the numbers:

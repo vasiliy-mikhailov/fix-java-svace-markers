@@ -99,16 +99,16 @@ something. Eleven get `reading`, one gets `asking`, one gets `writing`, one gets
 
 | Agent | Set | Root |
 |---|---|---|
-| `reproducer` | `writing` | checkout |
-| `proof-critic` | `reading` | checkout |
-| `fixer` | `patching` | checkout |
-| `fix-critic` | `reading` | checkout |
-| `pr-maker` | `reading` | checkout |
-| `pr-critic` | `reading` | checkout |
+| `reproduce-doer` | `writing` | checkout |
+| `reproduce-verifier` | `reading` | checkout |
+| `fix-doer` | `patching` | checkout |
+| `fix-verifier` | `reading` | checkout |
+| `propose-doer` | `reading` | checkout |
+| `propose-verifier` | `reading` | checkout |
 | `verdict` | `reading` | checkout |
-| `verdict-critic` | `reading` | checkout |
+| `argue-verifier` | `reading` | checkout |
 | `estimator` | `reading` | checkout |
-| `estimator-critic` | `reading` | checkout |
+| `price-verifier` | `reading` | checkout |
 | `overwatch` | `reading` | `results` |
 | `overwatch-critic` | `supervising` | `results` |
 | `interpreter` | `reading` | `results` |
@@ -143,16 +143,16 @@ the cheap half is the one that survives somebody adding a tool.
 
 ---
 
-## Why the reproducer gets `write_file` but not `edit_file`
+## Why the reproduce-doer gets `write_file` but not `edit_file`
 
-The reproducer needs `write_file` for the test. **It does not get `edit_file`: a reproducer that can
+The reproduce-doer needs `write_file` for the test. **It does not get `edit_file`: a reproduce-doer that can
 edit source can make its own test pass, which is the one thing the whole program exists to prevent.**
 
 Two consequences downstream depend on that absence and will break silently if it is granted:
 
 1. **A green RED is a certain fact, not a heuristic.** When the first RED build passes, the chain can
    state without qualification that the tree the build ran against IS the revision the marker was
-   raised against — because the reproducer holds no `edit_file` and no fixer has run yet. The re-ask
+   raised against — because the reproduce-doer holds no `edit_file` and no fix-doer has run yet. The re-ask
    says so in those words: *"you cannot edit source and no patch has been applied"*. This mattered:
    across one run, **16 of the 33 markers that reached a build had their first RED pass, and 13 of
    them settled on it** — six `by-design`, seven `false-positive`, every one argued from a build that
@@ -167,12 +167,12 @@ Two consequences downstream depend on that absence and will break silently if it
    ```
 
    What is kept is the simple class name — `path.substring(path.lastIndexOf('/') + 1)` with
-   `.java` cut — and only `write_file` calls update it, which is why the fixer's `edit_file` can
+   `.java` cut — and only `write_file` calls update it, which is why the fix-doer's `edit_file` can
    never change which test gets built.
 
-   Which test to run is a fact, not an inference: reading a class name out of the reproducer's prose
+   Which test to run is a fact, not an inference: reading a class name out of the reproduce-doer's prose
    picks whichever name came last, and a reply that explains itself mentions the harness it borrowed
-   as readily as the test it wrote. A reproducer that could `edit_file` its way to a test would leave
+   as readily as the test it wrote. A reproduce-doer that could `edit_file` its way to a test would leave
    no such record, and the runner would be told no test was named.
 
    **All three source roots, not just `src/test/`.** A project puts integration tests under `src/it`,
@@ -180,10 +180,10 @@ Two consequences downstream depend on that absence and will break silently if it
    version rejected, so the runner was told no test had been named and reported infra for a file that
    was sitting on disk.
 
-## Why the fixer gets `edit_file` but not `write_file`
+## Why the fix-doer gets `edit_file` but not `write_file`
 
-The fixer needs `edit_file` for the source. **It does not get `write_file`: creating a new file is
-not patching a defect, and a fixer that "fixes" a marker by writing a second test is then something a
+The fix-doer needs `edit_file` for the source. **It does not get `write_file`: creating a new file is
+not patching a defect, and a fix-doer that "fixes" a marker by writing a second test is then something a
 judge has to catch in prose.** The tool map catches it instead — the call is not available.
 
 ---
@@ -207,8 +207,8 @@ ToolSpecification.builder()
 ```
 
 The rule it protects is that **a certification must not manufacture the evidence it certifies** — not
-that a producer should work blind. A reproducer that can run what it wrote finds its own compile
-error in seconds instead of spending a round trip through the chain to be told; the same for a fixer
+that a producer should work blind. A reproduce-doer that can run what it wrote finds its own compile
+error in seconds instead of spending a round trip through the chain to be told; the same for a fix-doer
 whose patch does not build.
 
 **The invariant is unchanged by giving producers a runner: the RED and GREEN that COUNT are the ones
@@ -218,7 +218,7 @@ whose patch does not build.
 - It calls the runner directly, **not** through `Prove.built(…)`, so it writes no `built` entry in
   the trace, adds nothing to the builds ledger, and cannot move `redOk` / `greenOk`. It is recorded
   only as a `tool` entry.
-- The reproducer cannot edit source, so it cannot make its own test pass by changing the subject.
+- The reproduce-doer cannot edit source, so it cannot make its own test pass by changing the subject.
 
 What a producer learns from its own run is feedback, not evidence.
 
@@ -244,7 +244,7 @@ finish in time`. A call whose `test` argument is missing or blank reaches the ru
 is an infra result (`check: no test class was named, so nothing ran`) and reads back as
 `DID NOT RUN` — **never as a pass.**
 
-**"PASSED" means its opposite here, and the word reached the agent bare.** A reproducer reading
+**"PASSED" means its opposite here, and the word reached the agent bare.** A reproduce-doer reading
 `PASSED` after running the test it just wrote reads success; what happened is that its test is green
 on the defect. Told at the moment it happens, the agent can still fix it — a round trip later, only
 the verdict agent hears, and the verdict agent cannot rewrite a test. `Prove.GREEN_RED` is shared
@@ -824,7 +824,7 @@ if (kept.size() != names.size() + 2) {
 ```
 
 The four built-in names belong to the library. **A rename upstream would silently strip a capability
-and an agent would quietly stop being able to do its job** — the reproducer with no `write_file` is
+and an agent would quietly stop being able to do its job** — the reproduce-doer with no `write_file` is
 an agent that always answers "I wrote the test" and never wrote one. The `+ 2` is `grep` and `glob`.
 Failing at construction is the whole point: the alternative failure is a run that completes and
 proves nothing.

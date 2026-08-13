@@ -7,7 +7,7 @@ every build that ran or failed to run, every loop back, and the **disposition** 
 for a person: one line for a table, and a short account underneath it.
 
 **No agent inside a prove can see its own lane.** Each of the ten in the chain is handed one stage
-and answers it; none of them sees the build that never ran, the critic that sent the fixer back, or
+and answers it; none of them sees the build that never ran, the critic that sent the fix-doer back, or
 the judge that answered in one word. The settlement records only where the marker ended. So the lane
 is a supervisor's subject — one level below the run-level watch (the `overwatch` pair), whose subject
 is the pipeline rather than the marker.
@@ -438,7 +438,7 @@ artefacts** and below the claim, in the order a person asks the question:
 4. `what was run` — each build in words (*"Before any patch: the test failed. (This is what it was
    meant to do.)"*)
 5. `the test` — the `write_file` content
-6. `the fix` — the diff, recovered from the fix-critic's prompt
+6. `the fix` — the diff, recovered from the fix-verifier's prompt
 
 If the account is blank the block is omitted entirely; nothing else on the tab changes. Everything
 else on that tab is evidence, and evidence is what you read after you know what you are looking at.

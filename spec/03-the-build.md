@@ -63,7 +63,7 @@ text. A tool is something a model chooses to call, and whether RED runs before t
 choice.
 
 The judges are excluded because **a certification that can run the build can manufacture the evidence
-it certifies.** The producers are included for the opposite reason: a reproducer that can run what it
+it certifies.** The producers are included for the opposite reason: a reproduce-doer that can run what it
 wrote finds its own compile error in seconds instead of spending a round trip through the chain to be
 told, and it still cannot make its own test pass, because it holds no `edit_file` and so cannot
 change the subject.
@@ -74,8 +74,8 @@ never set the red/green flags. (It is not invisible — like every tool it is wr
 records a `tool` event with its arguments and result in full. What it is not is a *fact* in the sense
 `built` is.)
 
-`run_test` is offered to the reproducer (alongside `list_dir`, `read_file`, `write_file`) and to the
-fixer (alongside `list_dir`, `read_file`, `edit_file`); `grep` and `glob` go to every agent in the
+`run_test` is offered to the reproduce-doer (alongside `list_dir`, `read_file`, `write_file`) and to the
+fix-doer (alongside `list_dir`, `read_file`, `edit_file`); `grep` and `glob` go to every agent in the
 program, judges included, so those two are in both sets as well — a model asking for a tool that does
 not exist does not degrade, it throws and the prove ends, and two markers were lost that way. It runs
 under phase `check`, and it translates the runner's answer before the model sees it:
@@ -87,7 +87,7 @@ return (r.infra() ? "DID NOT RUN" : r.passed()
 ```
 
 The word `PASSED` means its opposite in the RED phase and it used to reach the agent bare. A
-reproducer reading `PASSED` after running the test it just wrote reads success; what happened is that
+reproduce-doer reading `PASSED` after running the test it just wrote reads success; what happened is that
 its test is green on the defect. **Told at the moment it happens, the agent can still fix it — a
 round trip later only the verdict agent hears, and the verdict agent cannot rewrite a test.**
 
@@ -285,9 +285,9 @@ Every loop below is bounded by one shared constant — `private static final int
 re-ask per producer, quoting whoever objected. Two loops, one budget, stated once." Every "once" in
 this section is that number.
 
-1. **Nothing is built until a file exists.** The reproducer is asked for a test; if the trace has not
+1. **Nothing is built until a file exists.** The reproduce-doer is asked for a test; if the trace has not
    seen a test file written, and the reply did not decline — `declined` is a case-insensitive
-   substring test for `no test`, the token named verbatim in the reproducer's own prompt — it is
+   substring test for `no test`, the token named verbatim in the reproduce-doer's own prompt — it is
    asked once more, plainly, with the alternative named:
 
    ```
@@ -296,25 +296,25 @@ this section is that number.
    ```
 
    If there is still no file, **no build runs at all**: the marker goes straight to the verdict agent
-   with `WHAT THIS RUN OBSERVED: NOTHING EXECUTED FOR THIS MARKER`, and the reproducer's reply, or
-   `(nothing at all)`, quoted under it. The build used to run first, so a reproducer that wrote
+   with `WHAT THIS RUN OBSERVED: NOTHING EXECUTED FOR THIS MARKER`, and the reproduce-doer's reply, or
+   `(nothing at all)`, quoted under it. The build used to run first, so a reproduce-doer that wrote
    nothing cost two Maven invocations before anyone looked — **78 of 153 builds in a 67-marker run
    executed no test at all.**
 2. **RED runs before the critic.** A test that does not compile cannot be over-mocked in any
    interesting way, and a test that does not go red proves nothing whatever its mocks look like.
    Grading it first spends a model call on something no build has agreed exists.
 3. **The compiler is a critic too, and a free one.** When RED is infra, the build summary goes back
-   to the reproducer verbatim with `Fix exactly that, write the file again, and end with the test
+   to the reproduce-doer verbatim with `Fix exactly that, write the file again, and end with the test
    class name.` **Only infra is re-asked** — a test that ran and FAILED is the goal here, not a
    fault.
-4. **A green RED is re-asked, once, of the reproducer.** See below.
-5. **GREEN runs after the fixer**, over the same test class, through the same infra loop: a patch
-   that does not compile is not a rejected patch, it is an unfinished one, and the fixer is handed
+4. **A green RED is re-asked, once, of the reproduce-doer.** See below.
+5. **GREEN runs after the fix-doer**, over the same test class, through the same infra loop: a patch
+   that does not compile is not a rejected patch, it is an unfinished one, and the fix-doer is handed
    the compiler's words with `Fix exactly that. Do not change the test.`
 6. **Any rewrite is re-built.** A rewritten test nobody re-builds is how a green proof gets recorded
    for a test that stopped reproducing.
 
-**Which test class is built comes from what the reproducer WROTE, not from what it said.** Its prose
+**Which test class is built comes from what the reproduce-doer WROTE, not from what it said.** Its prose
 names the harness it borrowed as readily as the test it wrote, so a class name scraped from the reply
 picks whichever came last; the file it wrote is not ambiguous.
 
@@ -358,28 +358,28 @@ if (!r.infra()) {
 ### The green RED
 
 **A test that passes before the fix has documented the defect, not observed it.** This fact is
-certain rather than heuristic: the reproducer holds no `edit_file` and no fixer has run, so the tree
+certain rather than heuristic: the reproduce-doer holds no `edit_file` and no fix-doer has run, so the tree
 a first RED ran against IS the revision the marker was raised against.
 
 **Across one run, 16 of the 33 markers that reached a build had their first RED pass, and 13 of them
 settled on it** — six `by-design`, seven `false-positive`, every one argued from a build that showed
 nothing. The chain routed the fact to the verdict agent, which cannot rewrite a test, and never told
-the reproducer, which can. One of them had already worked it out and shipped anyway: *"this test
+the reproduce-doer, which can. One of them had already worked it out and shipped anyway: *"this test
 won't actually fail on most platforms because the default charset is typically UTF-8"*, followed by
 *"But actually, let me just submit the test."*
 
-So a passing RED is handed straight back to the reproducer, once, with `Prove.GREEN_RED`: it names
+So a passing RED is handed straight back to the reproduce-doer, once, with `Prove.GREEN_RED`: it names
 the fact and why the fact is certain, names `assertThrows` as the exact shape that causes it, asks
 for an assertion on what the method should RETURN, permits a JVM to be forked with `ProcessBuilder`
 when the defect only shows under a setting this build does not use, and names the exit — `no test`
 plus one line of why. It contains no congratulation; a re-ask that opens by agreeing gets the same
 test back.
 
-If the second attempt is still infra or still passes — or if the reproducer declines it, or writes no
+If the second attempt is still infra or still passes — or if the reproduce-doer declines it, or writes no
 file, in which case the first passing build stands — the marker goes to the verdict agent as:
 
 ```
-NO TEST COULD BE MADE TO FAIL ON THIS CODE. The reproducer was asked twice; the last build was:
+NO TEST COULD BE MADE TO FAIL ON THIS CODE. The reproduce-doer was asked twice; the last build was:
 <the summary>
 ```
 
@@ -394,9 +394,9 @@ from the Surefire run this pipeline uses, so those classes never execute here; a
 WebGoat on `localhost:8080`, so when one IS run its failure is a connection error rather than a
 defect — **which is also how markers in that tree have been collecting a free RED and settling
 `reproduced` on nothing.** This is not fixed in the runner. It is stated in the brief, before the
-reproducer starts, for any marker whose file begins `src/it/` or `src/test/`, together with the
+reproduce-doer starts, for any marker whose file begins `src/it/` or `src/test/`, together with the
 instruction that `no test` is the expected answer there. Fifty-six of eighty-six runaway generations
-were the reproducer on exactly this: half an hour of reasoning towards a test that cannot exist.
+were the reproduce-doer on exactly this: half an hour of reasoning towards a test that cannot exist.
 
 ---
 
@@ -547,5 +547,5 @@ confident wrong answer:
 And one rule about what a build proves: **what this run made is not evidence about the project.** By
 the time the verdict agent reads the tree it contains the test this run wrote and the patch this run
 applied. Thirteen settlements rested on that — `by-design` because "a test depends on this
-behaviour", where the test was the one written eleven minutes earlier by the reproducer, in this
+behaviour", where the test was the one written eleven minutes earlier by the reproduce-doer, in this
 prove, about this marker.

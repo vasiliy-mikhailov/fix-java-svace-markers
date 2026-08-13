@@ -27,36 +27,46 @@ and a dashboard that dies should end the container so the restart policy brings 
 
 ## The chain
 
-Ten agents. Five producer/critic pairs, called in a fixed order by `Prove.prove()` — the order is
-Java, not a paragraph an agent can rewrite.
+Fifteen agents. Five stages, three roles each, called in a fixed order by `Prove.prove()` — the
+order is Java, not a paragraph an agent can rewrite.
 
 ```
-reproducer  → RED ──→ proof-critic ─┐   (reducible → reproducer, once)
-                                    ↓
-fixer       → GREEN → fix-critic ───┤   (over-fit | regression-risk → fixer, once)
-                                    ↓
-                      pr-maker  → pr-critic        (redo → pr-maker, once)
-                      verdict   → verdict-critic   (redo → verdict, once — only where execution
-                                                    settled nothing)
-                      estimator → estimator-critic (redo → estimator, once)
+reproduce-planner → reproduce-doer → RED ──→ reproduce-verifier ─┐  (redo → doer · replan → planner)
+                                                                 ↓
+fix-planner       → fix-doer       → GREEN → fix-verifier ───────┤  (over-fit | regression-risk)
+                                                                 ↓
+propose-planner   → propose-doer   → propose-verifier               (redo → propose-doer, once)
+argue-planner     → argue-doer     → argue-verifier                 (only where execution settled
+                                                                     nothing)
+price-planner     → price-doer     → price-verifier                 (prices every exit)
 ```
+
+**The planner exists because a complaint used to have one address.** A verifier's objection went back
+to the agent that had just failed to satisfy it, which works when the fault is in the doing and not
+when it is in the approach: a doer told "this test does not observe the defect" rewrites the same
+test, because rewriting is the only move it has. Thirty-three `DM_DEFAULT_ENCODING` markers produced
+no build that way. So the verifier has a third word — `replan` reaches past the doer to the planner —
+and one of each is allowed per stage, ever.
+
+**A planner reads and never writes.** A plan that can edit its subject is a plan that can arrange to
+be satisfiable, which is the same reason no judge here holds the runner.
 
 **The build is the arbiter.** A test that fails before the patch and passes after it is the whole
 standard of proof. `Runner` has three outcomes, not two: a build that produced no test result is
 never evidence, because in the RED phase a failing test is the goal and a compile error would
 otherwise read as success.
 
-**Nothing is built until a file exists**, and a blank reply is not a decline. A reproducer that
+**Nothing is built until a file exists**, and a blank reply is not a decline. A reproduce-doer that
 explained a marker at length and wrote nothing used to cost two builds before anyone looked; its
-silence then reached the verdict agent as a considered refusal. The decline is a token now (`no
+silence then reached the argue-doer as a considered refusal. The decline is a token now (`no
 test`), it is named in the prompt, and the file is checked before Maven runs.
 
-**The critic judges the diff, not the account of it.** `fix-critic` gets `git diff` beside the
-fixer's prose, and a computed sentence saying whether a hunk spans the flagged line. That does not
+**The critic judges the diff, not the account of it.** `fix-verifier` gets `git diff` beside the
+fix-doer's prose, and a computed sentence saying whether a hunk spans the flagged line. That does not
 forbid `sound` — a defect is often correctly fixed at its source rather than where the analyser saw
 it — it makes `sound` cost a sentence saying why.
 
-**A run may not cite itself.** By the time the verdict agent reads the tree, the tree holds this
+**A run may not cite itself.** By the time the argue-doer reads the tree, the tree holds this
 run's test and this run's patch. `git status` is the line between ours and theirs, and everything on
 our side is handed over as inadmissible.
 
@@ -75,16 +85,16 @@ about the marker. The Dockerfile patches the literal where it can be seen, with 
 the build if upstream changes the line. What stops a tool loop now is the supervisor, which counts
 calls per agent.
 
-**Two write, seven judge**, and the split decides the tools. The reproducer gets `write_file` but not
-`edit_file`, so it can never make its own test pass; the fixer gets `edit_file` but not `write_file`,
+**Two write, the rest plan or judge**, and the split decides the tools. The reproduce-doer gets `write_file` but not
+`edit_file`, so it can never make its own test pass; the fix-doer gets `edit_file` but not `write_file`,
 because a new file is not a patch. Everyone gets `grep` and `glob`: a model asking for a tool that
 does not exist does not degrade, it throws and the prove ends.
 
-**A red that passes is not a reproduction, and the reproducer is the one told.** A first RED build
-runs against the revision the marker was raised against — the reproducer holds no `edit_file` and no
-fixer has run — so a test that is green there has documented the defect rather than observed it. In
+**A red that passes is not a reproduction, and the reproduce-doer is the one told.** A first RED build
+runs against the revision the marker was raised against — the reproduce-doer holds no `edit_file` and no
+fix-doer has run — so a test that is green there has documented the defect rather than observed it. In
 one run 16 of the 33 markers that reached a build had their first RED pass, and 13 settled on it.
-The chain re-asks the reproducer once; `run_test` says the same thing at the moment it happens,
+The chain re-asks the reproduce-doer once; `run_test` says the same thing at the moment it happens,
 because the bare word `PASSED` reads as success and means its opposite here.
 
 **The checker's claim is stated, not guessed.** A marker arrives as `file|line|checker` and every
@@ -99,15 +109,15 @@ vary it. The first clause is true and the conclusion does not follow — **a tes
 
 **Silence has a direction — and only one kind of silence.** An *empty* critique waives everywhere:
 `verdict()` reads no word, so the producer's answer stands. A critic that THROWS is different, and
-which way it falls depends on who catches it. `verdict-critic`, `pr-critic` and `estimator-critic`
+which way it falls depends on who catches it. `argue-verifier`, `propose-verifier` and `price-verifier`
 run inside helpers that catch and return the producer's answer unchanged, so an unreachable one
-waives. Everything else — both producers, `proof-critic`, `fix-critic`, `pr-maker` — is unguarded, so
+waives. Everything else — both producers, `reproduce-verifier`, `fix-verifier`, `propose-doer` — is unguarded, so
 a throw ends the prove as `infra` and the marker is re-queued rather than settled.
 
-This paragraph used to claim that an unreachable `fix-critic` or `pr-critic` *blocks the pull
-request*. `pr-critic` goes through `reviewed()`, which catches and returns the `pr-maker`'s decision
+This paragraph used to claim that an unreachable `fix-verifier` or `propose-verifier` *blocks the pull
+request*. `propose-verifier` goes through `reviewed()`, which catches and returns the `propose-doer`'s decision
 unreviewed, so `verified/pr-ready` can be reached with no second signature on it. Nothing acts on
-that — `pr-maker` decides and nothing pushes — so the cost is a row in the record that looks reviewed
+that — `propose-doer` decides and nothing pushes — so the cost is a row in the record that looks reviewed
 and was not. The stronger guarantee the sentence described does not exist; stating it was worse than
 not having it, because a reader relies on it.
 
@@ -116,7 +126,7 @@ they settled nothing — a declined proof, or a test that passed before any patc
 
 ## The supervisor
 
-A tenth and eleventh agent, in their own process, whose subject is the other nine.
+Two more agents, in their own process, whose subject is the fifteen.
 
 ```
 overwatch → finding → overwatch-critic → holds | refuted   (and may restart_prove)
@@ -124,7 +134,7 @@ overwatch → finding → overwatch-critic → holds | refuted   (and may restar
 
 Every agent in a prove is handed one marker and cannot know its answer is the fortieth identical
 one. A pattern is invisible from inside a prove — a critic that has said `sound` in one word thirty
-times, a checker family that always settles the same way, a reproducer whose tests keep passing
+times, a checker family that always settles the same way, a reproduce-doer whose tests keep passing
 before any patch. Each of those was found by a person reading a finished run, which is the expensive
 way and the late way.
 
@@ -219,7 +229,7 @@ A second pair in the supervisor's process, one level below the one that watches 
 interpreter → draft → interpreter-critic → the sentence the table shows
 ```
 
-`why` used to hold the verdict agent's first sentence, which is an argument addressed to the next
+`why` used to hold the argue-doer's first sentence, which is an argument addressed to the next
 agent rather than an account addressed to a reader: *"false-positive — the claim does not hold in
 this code"* names the word and says nothing about whether anything was executed or how it was
 reached.
@@ -412,7 +422,7 @@ the run they came from, so seed from one you have read.
 - **Cap output tokens.** A cap is a number chosen from last week's run and wrong the first time a
   marker legitimately needs more. Two time bounds stand instead — silence, and speech that gets
   nowhere — and a generation that runs away is a pattern, which is the supervisor's subject.
-- **Push a pull request.** `pr-maker` decides; nothing acts on it.
+- **Push a pull request.** `propose-doer` decides; nothing acts on it.
 
 ## Status
 
@@ -430,10 +440,10 @@ A 14-marker sanity run after the four checks above, against the same 14 before t
 |---|---|---|
 | builds | 30 | 17 |
 | builds that ran no test | 12 | 0 |
-| reproducer answers | 22 | 20 |
+| reproduce-doer answers | 22 | 20 |
 | of them empty | 12 | 7 |
 
 The empty replies did not go away — a model whose last turn is a tool call returns no text, and that
 is not a fault. What changed is that an empty reply no longer buys a build or passes for a
-judgement: the five markers where nothing was written reached the verdict agent directly, at a cost
+judgement: the five markers where nothing was written reached the argue-doer directly, at a cost
 of zero builds each.

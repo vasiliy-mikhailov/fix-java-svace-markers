@@ -70,14 +70,14 @@ export const CHAIN = [
   // fault back to either one. `redo` returns to the doer; `replan` says the approach was wrong and
   // goes back to the planner.
   //
-  // The doers and verifiers kept the names they had. The critics already were verifiers, and
-  // renaming them would have cost every spec chapter and the agent names in 356 markers of history
-  // to buy a label.
-  'reproduce-planner', 'reproducer', 'proof-critic',
-  'fix-planner', 'fixer', 'fix-critic',
-  'propose-planner', 'pr-maker', 'pr-critic',
-  'argue-planner', 'verdict', 'verdict-critic',
-  'price-planner', 'estimator', 'estimator-critic',
+  // EVERY NAME SAYS ITS ROLE. The record written before this change carries the old ones —
+  // reproducer, proof-critic, fixer — and the marker page appends any agent it does not recognise,
+  // so 356 markers of history stay readable rather than losing their tabs.
+  'reproduce-planner', 'reproduce-doer', 'reproduce-verifier',
+  'fix-planner', 'fix-doer', 'fix-verifier',
+  'propose-planner', 'propose-doer', 'propose-verifier',
+  'argue-planner', 'argue-doer', 'argue-verifier',
+  'price-planner', 'price-doer', 'price-verifier',
 ] as const
 
 /** The four that watch a run rather than run in one, then the one that answers when asked. */

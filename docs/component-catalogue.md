@@ -33,8 +33,8 @@ type TraceKind =
 
 /** Agents.java 410-426 — the ONE list. STAGES (Dashboard 2039-2044) is a second copy; collapse. */
 type ChainAgent =
-  | 'reproducer' | 'proof-critic' | 'fixer' | 'fix-critic' | 'pr-maker' | 'pr-critic'
-  | 'verdict' | 'verdict-critic' | 'estimator' | 'estimator-critic';
+  | 'reproduce-doer' | 'reproduce-verifier' | 'fix-doer' | 'fix-verifier' | 'propose-doer' | 'propose-verifier'
+  | 'verdict' | 'argue-verifier' | 'estimator' | 'price-verifier';
 type WatchAgent = 'overwatch' | 'overwatch-critic' | 'interpreter' | 'interpreter-critic';
 type AgentName = ChainAgent | WatchAgent | 'chat';
 
@@ -128,7 +128,7 @@ type DiffBlockProps = { patch: string };
 ```
 - **Escaping lives here and nowhere else** (comment 2601-2607: a caller handed `block()` a raw `git diff` and a patch containing `<` wrote markup into the page). In React that means these components render text nodes and spans themselves — never `dangerouslySetInnerHTML`, and never a pre-coloured HTML blob from the server.
 - `block()` colours everything as Java regardless of the file's language; `language` exists so that stops being silent.
-- **Gap, not an absence:** neither is called from `one()`. `/trace` renders the reproducer's test and the fixer's patch as flat `<pre>`. Using `CodeBlock`/`DiffBlock` inside `ToolCallEvent` is *new behaviour* — worth having, but say so.
+- **Gap, not an absence:** neither is called from `one()`. `/trace` renders the reproduce-doer's test and the fix-doer's patch as flat `<pre>`. Using `CodeBlock`/`DiffBlock` inside `ToolCallEvent` is *new behaviour* — worth having, but say so.
 
 ### `TabRow`
 **Screens:** marker + live (chain row is its own component), supervisor, all four settings screens. **Java:** `settingsTabs()` 1075-1086, `supervisorTabs()` 597-607, and the dead `tab()` 2106-2109.
@@ -292,7 +292,7 @@ type LampProps = {
 ```
 - Prop reconciliation: one pass wanted `hasSettlement: boolean` beside two booleans, another wanted `boolean | null`. Both facts are needed and they are different facts, so: one nullable *object* (no settlement row) containing two nullable booleans (never recorded). Four props become two.
 - **`Lamp` drops `title`.** Java passes it, but both call sites pass a fixed sentence decided entirely by `which` ("reproduced: the test failed first" / "fixed: the same test then passed"). The component owns its tooltip. 4 props → 3. Those tooltips are currently the *only* place on the whole dashboard that explains that red is supposed to fail.
-- **Hollow is not "no".** A marker the reproducer declined never had a red to fail, which is a different answer from a red that passed. Three appearances, and the middle one is the interesting one.
+- **Hollow is not "no".** A marker the reproduce-doer declined never had a red to fail, which is a different answer from a red that passed. Three appearances, and the middle one is the interesting one.
 - `reachedGreen` is derived from `red === true`, not from any state. `reachedRed` excludes `queued` and `not-a-bug` — **the `not-a-bug` guard is dead** (nothing writes that state) and can go.
 - **FINDING, unanimous across two passes and confirmed by grep: `flags()` has exactly one caller, `index():1732`.** The semaphore is not on `/marker`. Yet `red_verified`/`green_verified` live per-marker in settlements.jsonl, and the two facts a state cannot carry are precisely the two facts the marker page exists to show. Put it there.
 
@@ -450,7 +450,7 @@ type AgentChipProps = {
 - **The `↺` glyph is inferred, not recorded.** `producer.runs > 1` *is* the critic having sent the work back — nothing else in the chain makes a producer run twice (2079-2081). Derive it in the component; do not add a `looped` prop or Java keeps the inference. Note it **replaces** the arrow rather than sitting beside it.
 - A stage dims when `producer.runs + critic.runs === 0`, and a greyed-out stage is usually the most informative thing on the page (2053-2055).
 - Counts must be computed **before** the tab dispatch (1790-1791) — an earlier version dispatched first and two tabs rendered with no counts.
-- `STAGES` is a hardcoded second copy of `Agents.CHAIN` that the source itself flags as having drifted (1758-1764: `verdict-critic` was missing and its answers were readable only in the whole trace). **The API should ship the chain shape once, or React should hold one copy — not a copy of the copy.**
+- `STAGES` is a hardcoded second copy of `Agents.CHAIN` that the source itself flags as having drifted (1758-1764: `argue-verifier` was missing and its answers were readable only in the whole trace). **The API should ship the chain shape once, or React should hold one copy — not a copy of the copy.**
 
 ### `TraceEvent` and its eight bodies
 **Screens:** trace, marker?a=trace, supervisor (all three event views). **Java:** `one()` 2177-2223; kind→colour CSS 182-183, 202-205.
@@ -572,7 +572,7 @@ type FixDiffProps       = { patch: string };
 - `MarkerAccount`: `summary()` (1541-1554) splits `summary.txt` at the first blank line; `[0]` is the table's headline, `[1]` is this. With no blank line both halves are the whole file, so the list and this page say the same thing twice. **Send them as two named fields, not an array.**
 - `BuildOutcomes`: **the state that means its opposite.** `phase: 'red'` is the run *before* the patch and is supposed to FAIL; a red that passed has demonstrated nothing, and 1872-1877 is the only place on the dashboard that says so. `infra: true` is a third outcome, not a pass and not a fail. Java composes the English (1866-1878); the component should, so the wording can change without redeploying the record.
 - `TestArtifact`: recovered today by scanning for the **last** `write_file` tool call from *any* agent (1890-1898). `settlements.jsonl` already holds `test_path` and `test_code` and this screen ignores both. **Serve those and delete the scan.**
-- `FixDiff`: **the worst dependency on any screen.** The patch is not recorded as an artefact, so `marker()` scrapes it out of the *text of fix-critic's prompt*, between the heading `WHAT IT ACTUALLY CHANGED` and either `\nThe patch changes ` or `\nTHE PATCH DOES NOT TOUCH` (1911-1930). Reword either prompt and the fix silently vanishes from the page. `settlements.jsonl` has `fix_diff` — serve it.
+- `FixDiff`: **the worst dependency on any screen.** The patch is not recorded as an artefact, so `marker()` scrapes it out of the *text of fix-verifier's prompt*, between the heading `WHAT IT ACTUALLY CHANGED` and either `\nThe patch changes ` or `\nTHE PATCH DOES NOT TOUCH` (1911-1930). Reword either prompt and the fix silently vanishes from the page. `settlements.jsonl` has `fix_diff` — serve it.
 
 ### Marker agent-tab components
 **Java:** `marker()` 1945-2024; `asked()` 2028-2036.
@@ -614,7 +614,7 @@ type Restart = { at: number; id: Slug; marker: MarkerKey; attempt: number;
 ### Settings components
 ```ts
 type SettingRowProps = {
-  name: string;                 // 'the markers', 'parallel provers', 'reproducer'
+  name: string;                 // 'the markers', 'parallel provers', 'reproduce-doer'
   state: string;                // the small uppercase word: 'edited', 'the code's own', 'currently 4'
   changed: boolean;             // picks the accent ITSELF
   anchorId?: string;
@@ -785,13 +785,13 @@ Every payload below carries `openFindings` (holds + unjudged), because `PageHead
     "verdictKind": "…", "verdictText": "…",
     "redVerified": true, "greenVerified": false,   // real booleans; null = never recorded
     "testPath": "…", "testCode": "…",              // REPLACES the write_file scan (1890-1898)
-    "fixDiff": "--- a/…\n+++ b/…",                 // REPLACES the fix-critic prompt scrape (1911-1930)
+    "fixDiff": "--- a/…\n+++ b/…",                 // REPLACES the fix-verifier prompt scrape (1911-1930)
     "infraReason": "…"
   },
   "summary": { "headline": "…", "account": "…" },  // split named, not indexed
   "flagged": { "flagged": 91, "fileLines": 87, "lines": [{ "n": 87, "text": "…" }] },
   "builds": [{ "phase": "red", "passed": false, "infra": false, "at": 1755… }],
-  "runs": { "reproducer": 2, "proof-critic": 1 }
+  "runs": { "reproduce-doer": 2, "reproduce-verifier": 1 }
 }
 ```
 `/api/settlements` serves `settlement` verbatim once the fields are typed; everything else is new.
@@ -799,7 +799,7 @@ Every payload below carries `openFindings` (holds + unjudged), because `PageHead
 ### 5.3 `GET /api/marker/agent?k=&a=` — MarkerAgentScreen — **NEW** (derivable from `/api/trace`)
 ```jsonc
 {
-  "openFindings": 3, "key": "…", "agent": "fixer",
+  "openFindings": 3, "key": "…", "agent": "fix-doer",
   "runs": { "…": 1 },
   "answers":  [{ "id": "…stable…", "at": 1755…, "prompt": "…", "reply": "…" }],  // oldest first
   "thoughts": [{ "id": "…", "at": 1755…, "text": "…" }],
@@ -813,8 +813,8 @@ Server-side, match the agent with **one** rule (`equals`) for all three lists �
 ```jsonc
 {
   "openFindings": 3, "key": "…",
-  "agents": [{ "agent": "reproducer", "usedHere": "…", "nowIs": "…", "changed": true }],
-  "stale": ["reproducer", "fixer"]
+  "agents": [{ "agent": "reproduce-doer", "usedHere": "…", "nowIs": "…", "changed": true }],
+  "stale": ["reproduce-doer", "fix-doer"]
 }
 ```
 ```ts
@@ -869,12 +869,12 @@ The 303 (506-513) exists only so a meta refresh cannot re-post; over JSON that c
 ```jsonc
 // /api/live — the 2s poll, the only thing that changes
 { "marker": "…", "slug": "…", "settled": false,
-  "panel": { "who": "<slug>", "agent": "reproducer", "at": 1755…, "text": "…tail…", "truncated": true } }
+  "panel": { "who": "<slug>", "agent": "reproduce-doer", "at": 1755…, "text": "…tail…", "truncated": true } }
 // panel is null when settled or when k is empty — and "k was empty" must be an error, not a 200 with ""
 
 // /api/marker/live — the shell, fetched once
 { "openFindings": 3, "key": "…", "title": "B.java|82|CHECKER",
-  "runs": { "reproducer": 2 }, "live": { …the above… } }
+  "runs": { "reproduce-doer": 2 }, "live": { …the above… } }
 ```
 `panels: [Panel]` is the latent plural: `proving()` (855-883) already builds one panel per unsettled claim and emits "No prove is running." when there are none — **and nothing calls it.** If the pool-wide view is wanted back, this endpoint grows `panels`; the components already work per panel.
 
@@ -882,7 +882,7 @@ The 303 (506-513) exists only so a meta refresh cannot re-post; over JSON that c
 ```jsonc
 // GET /api/settings/prompts
 { "openFindings": 3, "overriddenCount": 0,
-  "agents": [{ "agent": "reproducer", "group": "chain",   // chain | watch | asked — from Agents, not a sentence
+  "agents": [{ "agent": "reproduce-doer", "group": "chain",   // chain | watch | asked — from Agents, not a sentence
                "builtIn": "…", "saved": "", "differs": false }] }   // order = Agents.ORDER, then unlisted, sorted
 // POST /api/settings/prompts/{agent} {"prompt":"…"} ; DELETE → revert
 
@@ -927,7 +927,7 @@ Today one POST to `/settings` answers six different forms and picks by a hidden 
 | 6 | `/trace`'s subtitle matches any settlement row lacking `suspicion_key` | 2129-2133 | No state in the subtitle on the whole-trace view |
 | 7 | `RestartLog` drops `by`, so a reader cannot tell who cut the tree | 723-733 | One row per restart, `by` shown |
 | 8 | `flags()` never rendered on `/marker`, where red/green matter most | 1732 sole call site | Add `Semaphore` to the marker summary |
-| 9 | `TestArtifact` scans `write_file` args; `FixDiff` scrapes fix-critic's **prompt text** | 1890-1898, 1911-1930 | Serve `test_code` / `fix_diff` from settlements.jsonl |
+| 9 | `TestArtifact` scans `write_file` args; `FixDiff` scrapes fix-verifier's **prompt text** | 1890-1898, 1911-1930 | Serve `test_code` / `fix_diff` from settlements.jsonl |
 | 10 | Fold state keyed by DOM position — reverting a prompt or settling a marker opens the wrong fold | KEEP_OPEN 291-301, 1449 | Key by marker key / event id / `code:<agent>` |
 | 11 | Two `ago` formatters disagree at 100s; two human-minute formats disagree on one screen | 1023-1029 vs 921-926; 1674 vs 2344 | Pick one of each, deliberately |
 | 12 | Two copies of `slug()`; two copies of the chain order | 571-575 vs Supervisor 297-302; STAGES 2039 vs Agents.CHAIN 410 | One each |

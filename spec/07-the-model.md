@@ -37,11 +37,11 @@ static ChatModel model(String agent, Trace trace)   // Prove
 **A model is built per agent, not per process, and the agent's name is baked into it.** `Thinking`
 files every thought under `agent`; one shared instance could only file every thought under one name.
 `Agents.runtime(name, tools, builtIn)` is the only place a `SubAgentRuntime` is constructed, and it
-calls `Prove.model(name, trace)` there. The accessors (`agents.reproducer()`, `agents.fixer()`, …)
+calls `Prove.model(name, trace)` there. The accessors (`agents.reproduce-doer()`, `agents.fix-doer()`, …)
 build a fresh runtime — and therefore a fresh model, `Overheard` and HTTP client — on **every call**;
 nothing is cached (`Agents` holds only `root`, `trace`, `runner`). A model instance is therefore
 never shared between two agents. It lives as long as the `Agent` handle the caller holds: most call
-sites are `agents.reproducer().run(…)`, one handle per invocation, but `Prove.reviewed(critic,
+sites are `agents.reproduce-doer().run(…)`, one handle per invocation, but `Prove.reviewed(critic,
 producer, …)` holds both handles and may run the producer a second time on the same model.
 
 **One `Overheard` per agent is also what makes its buffer safe.** A prove is sequential: exactly one
@@ -234,7 +234,7 @@ reasoning in circles about a marker it could not place. `Overheard` had been hol
 whole time; `keep` is the only chance to write it down.
 
 What that capture then bought is documented elsewhere in the chain: **fifty-six of eighty-six runaway
-generations were the reproducer**, going round for half an hour on a marker inside an integration
+generations were the reproduce-doer**, going round for half an hour on a marker inside an integration
 test — "this is an integration test class, not a regular source class", "the method is private, so I
 can't directly test it", "let me think about this differently" — because the task it was given had no
 answer and the answer it was allowed to give was one line in a prompt. That reading is why the brief
@@ -383,7 +383,7 @@ Without the reset, a model that sat idle between agents would be declared dead o
 `trace.thought(agent, text)` appends one row to `trace.jsonl`, in full:
 
 ```json
-{"at":"1723545600000","marker":"<marker>","kind":"thought","agent":"reproducer","text":"…"}
+{"at":"1723545600000","marker":"<marker>","kind":"thought","agent":"reproduce-doer","text":"…"}
 ```
 
 `thought` fires **several times per `asked` row**: an agent working through its tools makes a model

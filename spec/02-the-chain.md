@@ -9,16 +9,16 @@ exactly one producer each. No agent decides who runs next.
 
 ```java
 static final java.util.List<String> CHAIN = java.util.List.of(
-        "reproducer", "proof-critic",
-        "fixer", "fix-critic",
-        "pr-maker", "pr-critic",
-        "verdict", "verdict-critic",
-        "estimator", "estimator-critic");
+        "reproduce-doer", "reproduce-verifier",
+        "fix-doer", "fix-verifier",
+        "propose-doer", "propose-verifier",
+        "verdict", "argue-verifier",
+        "estimator", "price-verifier");
 ```
 
 **That list is the single copy of the order.** It is read by the prompt editor, by the marker tabs
 and by the built-in-prompt collector. Three copies of an order drift and the drift is invisible: the
-tabs were once missing `verdict-critic` entirely, so an agent that can send a settlement back for
+tabs were once missing `argue-verifier` entirely, so an agent that can send a settlement back for
 rework had no page of its own and nobody noticed.
 
 `CHAIN` is the first third of `Agents.ORDER`, which is `CHAIN` then `WATCH`
@@ -26,10 +26,10 @@ rework had no page of its own and nobody noticed.
 the order a reader meets them in, and the order the prompts page is sorted into. The other five
 agents watch a run rather than run inside one and are not part of a prove.
 
-The list is a reading order, not a claim that all ten run. `verdict`/`verdict-critic` and
-`pr-maker`/`pr-critic` are alternatives — a prove reaches **at most one** of those pairs, and several
+The list is a reading order, not a claim that all ten run. `verdict`/`argue-verifier` and
+`propose-doer`/`propose-verifier` are alternatives — a prove reaches **at most one** of those pairs, and several
 paths (`unprovable` from a test that never built, either `needs-review`, either `reproduced`) reach
-neither. `estimator`/`estimator-critic` run on every path.
+neither. `estimator`/`price-verifier` run on every path.
 
 ---
 
@@ -37,20 +37,20 @@ neither. `estimator`/`estimator-critic` run on every path.
 
 | # | Producer | Producer's tools | Critic | The critic's allowed words |
 |---|----------|-------|--------|--------------------------------------|
-| 1 | `reproducer` — writes ONE JUnit test that must fail because of the defect | `list_dir`, `read_file`, `write_file`, `grep`, `glob`, `run_test` | `proof-critic` | `reducible` \| `necessary` |
-| 2 | `fixer` — patches the defect, minimally | `list_dir`, `read_file`, `edit_file`, `grep`, `glob`, `run_test` | `fix-critic` | `sound` \| `over-fit` \| `regression-risk` |
-| 3 | `pr-maker` — decides whether the patch goes to a stranger's repository (`make` \| `reject`) | read-only | `pr-critic` | `sound` \| `redo` |
-| 4 | `verdict` — argues what execution could not settle (`false-positive` \| `by-design` \| `unprovable`) | read-only | `verdict-critic` | `sound` \| `redo` |
-| 5 | `estimator` — prices the marker in developer minutes (`minutes: N`) | read-only | `estimator-critic` | `sound` \| `redo` |
+| 1 | `reproduce-doer` — writes ONE JUnit test that must fail because of the defect | `list_dir`, `read_file`, `write_file`, `grep`, `glob`, `run_test` | `reproduce-verifier` | `reducible` \| `necessary` |
+| 2 | `fix-doer` — patches the defect, minimally | `list_dir`, `read_file`, `edit_file`, `grep`, `glob`, `run_test` | `fix-verifier` | `sound` \| `over-fit` \| `regression-risk` |
+| 3 | `propose-doer` — decides whether the patch goes to a stranger's repository (`make` \| `reject`) | read-only | `propose-verifier` | `sound` \| `redo` |
+| 4 | `verdict` — argues what execution could not settle (`false-positive` \| `by-design` \| `unprovable`) | read-only | `argue-verifier` | `sound` \| `redo` |
+| 5 | `estimator` — prices the marker in developer minutes (`minutes: N`) | read-only | `price-verifier` | `sound` \| `redo` |
 
 "Read-only" is exactly `list_dir`, `read_file`, `grep`, `glob` — the same four to every judge, and
 the same four the two producers get on top of their one write tool and `run_test`. The allowed words
 are what the chain will read out of the reply; the agents are *asked* to lead with them, but the
 reader does not require it (see *How a word is read*).
 
-**A producer may write; a judge may only read.** The reproducer gets `write_file` and NOT
-`edit_file` — a reproducer that can edit source can make its own test pass, which is the one thing
-the whole program exists to prevent. The fixer gets `edit_file` and NOT `write_file` — creating a
+**A producer may write; a judge may only read.** The reproduce-doer gets `write_file` and NOT
+`edit_file` — a reproduce-doer that can edit source can make its own test pass, which is the one thing
+the whole program exists to prevent. The fix-doer gets `edit_file` and NOT `write_file` — creating a
 new file is not patching a defect. A judge gets neither, because a certification that can edit its
 subject certifies nothing.
 
@@ -72,7 +72,7 @@ win that argument; a twenty-line tool does.
 ## The order that executes
 
 `REASK = 1`. Every loop below runs at most once — the critic loopbacks and the compile-retry loops
-alike. **The budget is per loop, not per prove** — a reproducer can legitimately be asked several
+alike. **The budget is per loop, not per prove** — a reproduce-doer can legitimately be asked several
 times in one prove, once by each loop that reaches it.
 
 ### 0. The brief
@@ -98,17 +98,17 @@ and every later call restates it**.
 file the caller already holds can spend most of them. File tools are for reading what nobody
 anticipated.
 
-### 1. `reproducer` → a file, or a decline
+### 1. `reproduce-doer` → a file, or a decline
 
 ```
-trace.progress: "reproducer: writing a failing test"
+trace.progress: "reproduce-doer: writing a failing test"
 ```
 
 **Nothing is built until there is a test class to build.** The gate is `testClass(trace, reply)`
-being non-blank; the build used to run first, so a reproducer that wrote nothing cost two Maven
+being non-blank; the build used to run first, so a reproduce-doer that wrote nothing cost two Maven
 invocations before anyone looked: 78 of 153 builds in a 67-marker run executed no test at all.
 
-The test class is taken from **what the reproducer wrote, not from what it said**. `JsonlTrace`
+The test class is taken from **what the reproduce-doer wrote, not from what it said**. `JsonlTrace`
 watches `write_file` arguments (through `onToolInvocation`, the one thing that listener is still kept
 for) and remembers the last `path` argument containing `src/test/`, `src/it/` or `src/integrationTest/`
 and ending in `Test.java`; the class name is that file's basename minus `.java`. Only when nothing
@@ -136,11 +136,11 @@ made, not a build to be spent — with exactly this task:
 
 ```java
 argued(whatThisRunMade() + brief
-     + "\nNo test was written for this marker. The reproducer said:\n"
+     + "\nNo test was written for this marker. The reproduce-doer said:\n"
      + (reply.isBlank() ? "(nothing at all)" : reply));
 ```
 
-`(nothing at all)` is literal: **the verdict agent is told the difference between a reproducer that
+`(nothing at all)` is literal: **the verdict agent is told the difference between a reproduce-doer that
 declined and one that said nothing**, because those are different facts about the marker.
 
 ### 2. RED — the build, before any critic
@@ -155,12 +155,12 @@ Fix exactly that, write the file again, and end with the test class name.
 ```
 
 `reproduce()` **returns the latest reply as well as the build**, as `record Attempt(String test,
-Runner.Result build)`. Drop the reply and the caller's `test` string describes a file the reproducer
+Runner.Result build)`. Drop the reply and the caller's `test` string describes a file the reproduce-doer
 has since replaced — a rewrite that renames the class is then built under the old name and handed to
 the critic as source that does not exist.
 
-Note what `Attempt.test()` holds: **the reproducer's reply text**, not the file's contents. That
-string is what every later stage means by "the test" — it is what the proof-critic reads, what goes
+Note what `Attempt.test()` holds: **the reproduce-doer's reply text**, not the file's contents. That
+string is what every later stage means by "the test" — it is what the reproduce-verifier reads, what goes
 into `evidence`, and what `testClass()` is re-run over when the patched tree is built.
 
 Still `infra` after the re-ask → `priced("unprovable", "the test never built, after " + REASK +
@@ -175,16 +175,16 @@ drops javac's output throws away the one piece of feedback in this program guara
 trace.progress: "RED passed before any patch; asking for a test that fails"
 ```
 
-If the RED build ran and *passed*, the reproducer is asked again with `GREEN_RED` appended to the
+If the RED build ran and *passed*, the reproduce-doer is asked again with `GREEN_RED` appended to the
 brief (`brief + GREEN_RED`, with no other context). This fact is certain rather than heuristic: the
-reproducer holds no `edit_file` and no fixer has run, so the tree this build ran against **is** the
+reproduce-doer holds no `edit_file` and no fix-doer has run, so the tree this build ran against **is** the
 revision the marker was raised against.
 
 > Across one run, 16 of the 33 markers that reached a build had their first RED pass, and 13 of them
 > settled on it — six `by-design`, seven `false-positive`, every one argued from a build that showed
 > nothing. The verdict agent cannot fix a test.
 
-The `GREEN_RED` text is load-bearing and shared verbatim with the `run_test` tool, so a reproducer
+The `GREEN_RED` text is load-bearing and shared verbatim with the `run_test` tool, so a reproduce-doer
 running its own test hears the same thing at the same moment rather than reading the bare word
 `PASSED`, which means its opposite here:
 
@@ -210,7 +210,7 @@ the checker names a code shape whose fix changes nothing observable — answer w
 `no test` and one line of why. That answer is worth more than this build was.
 ```
 
-The rewrite loop breaks immediately if the reproducer declines or names no test class — the rewrite
+The rewrite loop breaks immediately if the reproduce-doer declines or names no test class — the rewrite
 is never built in that case, and the original build stands as the last word. In practice, once the
 first attempt wrote a file only a decline can break it, because the written name is remembered for
 the whole prove (see *The decline token*). If the build is still `infra` or still passing afterwards,
@@ -218,14 +218,14 @@ the marker goes to `argued()` with:
 
 ```java
 argued(whatThisRunMade() + brief
-     + "\nNO TEST COULD BE MADE TO FAIL ON THIS CODE. The reproducer was asked "
+     + "\nNO TEST COULD BE MADE TO FAIL ON THIS CODE. The reproduce-doer was asked "
      + "twice; the last build was:\n" + a.build().summary());
 ```
 
-### 3. `proof-critic` — asked only after the build agreed
+### 3. `reproduce-verifier` — asked only after the build agreed
 
 ```
-trace.progress: "RED reproduced; proof-critic reading the test"
+trace.progress: "RED reproduced; reproduce-verifier reading the test"
 input: brief + "\nThe test, which compiles and goes RED:\n" + test + "\n" + red.summary()
 ```
 
@@ -239,7 +239,7 @@ log line or a call count)? It is told both facts are established and not to re-l
 that **if it cannot name a replacement it must answer `necessary`** — naming nothing is the same as
 approving.
 
-**Loopback D — `reducible`.** The reproducer is asked once more:
+**Loopback D — `reducible`.** The reproduce-doer is asked once more:
 
 ```
 A reviewer read your test and judged it observes more than it needs to:
@@ -247,7 +247,7 @@ A reviewer read your test and judged it observes more than it needs to:
 Write it again. Keep only what the defect requires.
 ```
 
-That text travels *with* the compile retries as `reproduce()`'s `context` argument: a reproducer
+That text travels *with* the compile retries as `reproduce()`'s `context` argument: a reproduce-doer
 being told to fix a build error mid-rewrite must still know what the reviewer asked it to change.
 
 **The rewrite is re-built, and its failure does not fall back to the original.** If the rewrite is
@@ -257,28 +257,28 @@ critic asked for no longer does"). A rewritten test nobody re-builds is how a gr
 recorded for a test that stopped reproducing.
 
 If the rewrite does go red, it **replaces** the original: `test` and `red` become the rewrite's, and
-everything downstream — the evidence string, the fixer's brief, the certificate — is about the
+everything downstream — the evidence string, the fix-doer's brief, the certificate — is about the
 reduced test and never about the one the critic faulted.
 
-The proof-critic is **not** asked about the rewrite.
+The reproduce-verifier is **not** asked about the rewrite.
 
-### 4. `fixer` → GREEN
+### 4. `fix-doer` → GREEN
 
 ```
-trace.progress: "fixer: patching"
+trace.progress: "fix-doer: patching"
 evidence = "\nThe failing test:\n" + test + "\nRED:\n" + red.summary()
 input: brief + evidence
 ```
 
 **Evidence is assembled once**, so a retry can never be poorer than the call it replaces.
 
-**There is no patch object.** The fixer edits the working tree through `edit_file`; `patch` is only
+**There is no patch object.** The fix-doer edits the working tree through `edit_file`; `patch` is only
 what it *said*. The tree is what the runner builds and what `git diff` reads back, and the GREEN
-build is run over the same test class as RED (`testClass(trace, test)`), so the fixer cannot change
+build is run over the same test class as RED (`testClass(trace, test)`), so the fix-doer cannot change
 which test decides it.
 
-**Loopback E — the patch does not build.** `patchUntilItBuilds()` gives the fixer the same courtesy
-`reproduce()` gives the reproducer, and for the same reason — a patch that does not compile is not a
+**Loopback E — the patch does not build.** `patchUntilItBuilds()` gives the fix-doer the same courtesy
+`reproduce()` gives the reproduce-doer, and for the same reason — a patch that does not compile is not a
 rejected patch, it is an unfinished one:
 
 ```
@@ -287,30 +287,30 @@ Your patch did not build. The compiler said:
 Fix exactly that. Do not change the test.
 ```
 
-**That re-ask's reply is discarded** — `agents.fixer().run(...)` inside `patchUntilItBuilds()` is
+**That re-ask's reply is discarded** — `agents.fix-doer().run(...)` inside `patchUntilItBuilds()` is
 called for its effect on the tree, not its words, so `patch` still holds the first answer's prose.
 Little is lost by that, because the critic judges the diff and not the prose — but a rebuilder should
-know that "What the fixer says it did" can be one round stale.
+know that "What the fix-doer says it did" can be one round stale.
 
 GREEN `infra` after that → `reproduced` ("the defect is real; no patch of it would build"). GREEN
 ran and failed → `reproduced` ("the defect is real and no patch held"). Both keep the reproduction:
 a failed patch does not retract a demonstrated defect.
 
-### 5. `fix-critic` — the skeptic, who certifies
+### 5. `fix-verifier` — the skeptic, who certifies
 
 ```
 trace.progress: "GREEN passed; fix-skeptic certifying"
 input: brief + evidence
      + "\nGREEN:\n" + green.summary()
-     + "\nWhat the fixer says it did:\n" + patch
+     + "\nWhat the fix-doer says it did:\n" + patch
      + "\nWHAT IT ACTUALLY CHANGED (git diff, tests excluded):\n" + changed
      + "\n" + reachesTheFlaggedLine(changed)
 ```
 
-**The critic judges the diff, not the prose.** It used to be handed the fixer's account — "I added a
+**The critic judges the diff, not the prose.** It used to be handed the fix-doer's account — "I added a
 null check in `resolve()`" — and certified that. Two markers reached pr-ready with the flagged line
 untouched and a sibling class edited instead, because nobody in the chain ever looked at a diff. The
-diff is `git diff -U3 -- . ':(exclude)*src/test/*' ':(exclude)*src/it/*'`; the test the reproducer
+diff is `git diff -U3 -- . ':(exclude)*src/test/*' ':(exclude)*src/it/*'`; the test the reproduce-doer
 wrote is not part of the patch under review. A non-zero exit or an empty diff both become the literal
 `(the working tree is unchanged outside the tests)` — **git failing to speak reads as "nothing was
 changed", which is the direction that gets a patch questioned rather than waved through.**
@@ -350,7 +350,7 @@ The previous patch is quoted because *"do not resubmit the previous one"* is unf
 previous one is there. The replacement is re-built through `patchUntilItBuilds()`; if that build is
 `infra` the marker settles `reproduced` — **a build that never ran is not a failed certification.**
 
-The `fix-critic` is the only critic asked twice, and its second look is **narrower**: the re-ask
+The `fix-verifier` is the only critic asked twice, and its second look is **narrower**: the re-ask
 carries `brief + evidence + GREEN + "\nThe patch it certifies:\n" + patch` — no `git diff`, no
 flagged-line arithmetic.
 
@@ -358,7 +358,7 @@ The stage ends at `needs-review` ("red then green, but the patch was not certifi
 `!green.passed() || rejects(certificate)`. Two ways in, and the message is the same for both: the
 certificate was refused, or the replacement patch built and its test went red again.
 
-### 6. `pr-maker` / `pr-critic` — the curator
+### 6. `propose-doer` / `propose-verifier` — the curator
 
 ```
 trace.progress: "certified; pr-curator deciding"
@@ -373,9 +373,9 @@ its welcome; a wrongly declined one costs nothing anybody notices.
 
 Terminal states: `verified/pr-ready` only when `"make".equals(verdict(curation, "make", "reject"))`;
 otherwise `verified/pr-rejected`. The `curation` read there is the one `reviewed()` returned — the
-pr-maker's second answer where the pr-critic said `redo`, its first where it did not.
+propose-doer's second answer where the propose-verifier said `redo`, its first where it did not.
 
-### 7. `verdict` / `verdict-critic` — only where execution settled nothing
+### 7. `verdict` / `argue-verifier` — only where execution settled nothing
 
 Reached from exactly two places — no test was ever written, and no test could be made to fail — both
 of them through `argued(task)`, which composes and then routes:
@@ -393,7 +393,7 @@ and `task` is `whatThisRunMade() + brief + <why we are here>`.
 **`whatThisRunMade()` marks this run's own output inadmissible.** The verdict agent reads the tree,
 and by the time it is asked the tree contains the test this run wrote and the patch this run
 applied. Thirteen settlements rested on that: `by-design` because "a test depends on this
-behaviour", where the test was the one written eleven minutes earlier by the reproducer, in this
+behaviour", where the test was the one written eleven minutes earlier by the reproduce-doer, in this
 prove, about this marker. Circular, and invisible in the record because the citation reads exactly
 like a citation of the project's own tests. `git status --porcelain` knows: everything untracked or
 modified is ours — each row's status columns are dropped (`substring(3)`) and the rest listed under
@@ -424,7 +424,7 @@ filing its answer under a state chosen by the branch that called it would record
 that way, the other says the claim is untrue. A verdict naming none of the three words settles
 `unprovable`, the residual.
 
-The `verdict-critic` exists because this was the one producer answerable to nobody, and it showed:
+The `argue-verifier` exists because this was the one producer answerable to nobody, and it showed:
 the verdict agent carried **20 of the 77 faults found in a 28-marker read**, and six of the thirteen
 wrong settlements were `by-design` reached because the framing "WebGoat is deliberately vulnerable"
 licenses whichever exit is cheapest. Its question is narrow and its prompt puts it in those words:
@@ -433,7 +433,7 @@ correct and expected answer, and that a `redo` must **name which of the three th
 reaches and what artefact was missing for the one it named** — a complaint that cannot name the
 weaker state cannot be acted on, and comes back word for word.
 
-### 8. `estimator` / `estimator-critic` — last, on every path
+### 8. `estimator` / `price-verifier` — last, on every path
 
 ```java
 private String priced(String disposition, String because)
@@ -441,7 +441,7 @@ record = brief + "\n\nIt settled as: " + disposition + "\n\nThe record:\n" + bec
 ```
 
 **The estimator fires on every terminal path**, including the ones that never built anything. A
-marker the reproducer declined still cost a person the read that decided it, so pricing only the
+marker the reproduce-doer declined still cost a person the read that decided it, so pricing only the
 ones that reach a pull request would measure how often this program succeeds rather than what it
 saved.
 
@@ -498,9 +498,9 @@ private static String reviewed(Agents.Agent critic, Agents.Agent producer,
 
 | Call site | preface |
 |---|---|
-| `pr-critic` → `pr-maker` | `Your decision was rejected by a reviewer` |
-| `verdict-critic` → `verdict` | `A reviewer read your verdict and judged that your argument reaches a weaker state than the word you named` |
-| `estimator-critic` → `estimator` | `A reviewer disputed your figure` |
+| `propose-verifier` → `propose-doer` | `Your decision was rejected by a reviewer` |
+| `argue-verifier` → `verdict` | `A reviewer read your verdict and judged that your argument reaches a weaker state than the word you named` |
+| `price-verifier` → `estimator` | `A reviewer disputed your figure` |
 
 ---
 
@@ -514,7 +514,7 @@ preserve:
   builds a new `SubAgentRuntime` over a new `ChatModel`; each re-ask therefore restates the brief,
   the evidence and the objection in full. Nothing persists a conversation with a model — which is
   also why a postponed marker comes back as a fresh attempt rather than a continuation.
-- **No critic is re-consulted on the answer it caused**, with one exception: `fix-critic` is asked
+- **No critic is re-consulted on the answer it caused**, with one exception: `fix-verifier` is asked
   again about the replacement patch, on the narrower record described above.
 - **The rewrite is always re-built.** The chain runs the build, and re-runs it after any rewrite.
 - **The evidence string is built once** and reused by every later call.
@@ -542,7 +542,7 @@ Two kinds of absence, and they are not the same thing:
   on it.
 - **An unreachable agent** — the call throws. Exactly two places catch a `RuntimeException`: the
   *critic's* call inside `reviewed()`, and the whole estimator block inside `priced()`. Anywhere
-  else — the reproducer, the fixer, the proof-critic, the fix-critic, the pr-maker, the verdict, and
+  else — the reproduce-doer, the fix-doer, the reproduce-verifier, the fix-verifier, the propose-doer, the verdict, and
   any producer re-asked inside `reviewed()` — the exception unwinds to `main`, which writes a
   `failed` row for the marker and exits 1: **a prove that dies still leaves a row, because a dropped
   connection must not look like nothing having happened.**
@@ -553,23 +553,23 @@ nothing is enforced.**
 
 | Agent | Role | Test in code | Empty reply | Unreachable |
 |---|---|---|---|---|
-| `reproducer` | producer | `declined()`, then `testClass(…).isBlank()` | asked once more, then `argued()` — **an empty answer is never a decline** | prove dies, `failed` row |
-| `proof-critic` | objector | `"reducible".equals(verdict(…))` | **waives** — the test stands, chain proceeds to the fixer | prove dies, `failed` row |
-| `fixer` | producer | none — the build and the diff judge it | the tree it already edited still decides; the prose is only quoted | prove dies, `failed` row |
-| `fix-critic` | certifier | `rejects()` = `!"sound".equals(verdict(…))` | **withholds** — patch sent back, then `needs-review` | prove dies, `failed` row |
-| `pr-maker` | certifier | `"make".equals(verdict(…))` | **withholds** — `verified/pr-rejected` | prove dies, `failed` row |
-| `pr-critic` | objector | `"redo".equals(verdict(…))` in `reviewed()` | **waives** — the decision stands | **waives** — answer returned unchanged |
+| `reproduce-doer` | producer | `declined()`, then `testClass(…).isBlank()` | asked once more, then `argued()` — **an empty answer is never a decline** | prove dies, `failed` row |
+| `reproduce-verifier` | objector | `"reducible".equals(verdict(…))` | **waives** — the test stands, chain proceeds to the fix-doer | prove dies, `failed` row |
+| `fix-doer` | producer | none — the build and the diff judge it | the tree it already edited still decides; the prose is only quoted | prove dies, `failed` row |
+| `fix-verifier` | certifier | `rejects()` = `!"sound".equals(verdict(…))` | **withholds** — patch sent back, then `needs-review` | prove dies, `failed` row |
+| `propose-doer` | certifier | `"make".equals(verdict(…))` | **withholds** — `verified/pr-rejected` | prove dies, `failed` row |
+| `propose-verifier` | objector | `"redo".equals(verdict(…))` in `reviewed()` | **waives** — the decision stands | **waives** — answer returned unchanged |
 | `verdict` | producer | `verdict(…, "false-positive","by-design","unprovable")` | falls to `unprovable`, the residual | prove dies, `failed` row |
-| `verdict-critic` | objector | `"redo".equals(verdict(…))` in `reviewed()` | **waives** — the stated verdict stands | **waives** |
-| `estimator-critic` | objector | `"redo".equals(verdict(…))` in `reviewed()` | **waives** — the figure stands | **waives** |
+| `argue-verifier` | objector | `"redo".equals(verdict(…))` in `reviewed()` | **waives** — the stated verdict stands | **waives** |
+| `price-verifier` | objector | `"redo".equals(verdict(…))` in `reviewed()` | **waives** — the figure stands | **waives** |
 | `estimator` | producer | regex `minutes\s*:\s*(\d+)` | `minutes: unknown` prepended | `minutes: unknown (<ExceptionName>)` — **an unreachable estimator costs a number, never a settlement** |
 
 Why they differ, stated in the source: *"an unreachable critic must not reopen a decision nobody
 faulted. It is the opposite of the fix critic, whose silence blocks a pull request — because there a
 certificate must be GIVEN to bite, and here an objection must be RAISED."*
 
-Getting one backwards is silent. A `fix-critic` whose absence waived would ship uncertified patches;
-a `verdict-critic` whose absence blocked would turn a stated verdict into no verdict at all.
+Getting one backwards is silent. A `fix-verifier` whose absence waived would ship uncertified patches;
+a `argue-verifier` whose absence blocked would turn a stated verdict into no verdict at all.
 
 **How a word is read** (the mechanism the whole table depends on). `verdict(reply, allowed…)` runs
 two passes, and a `null` reply reads as `""`:
@@ -591,11 +591,11 @@ two passes, and a `null` reply reads as `""`:
    word, lowest index wins. Substring, so a word inside a longer word counts.
 3. Neither → `""`, which is not equal to anything the chain tests for.
 
-Searching the whole text for a rejection reads every careful acquittal as a conviction: a `pr-maker`
+Searching the whole text for a rejection reads every careful acquittal as a conviction: a `propose-doer`
 on `PasswordResetLink:21` wrote `**reject**` on its last line and was read as a `make`, because
 "makes admin reset links predictable" came first. It would have shipped a patch that breaks a graded
 lesson, against the explicit judgement of both agents that exist to stop that. The same fault in the
-other direction retried a fix nobody had faulted: a `fix-critic` that led with `sound` and then
+other direction retried a fix nobody had faulted: a `fix-verifier` that led with `sound` and then
 explained that the patch was "not over-fit" had its own explanation counted as its verdict.
 
 ---
@@ -606,10 +606,10 @@ explained that the patch was "not over-fit" had its own explanation counted as i
 private static final String DECLINE = "no test";
 ```
 
-**`no test` is the reproducer's only way to say there is nothing to demonstrate, and it is named in
+**`no test` is the reproduce-doer's only way to say there is nothing to demonstrate, and it is named in
 its prompt verbatim.** A decline is a decision; silence is not one. Treating a blank reply as a
 decline let **53 empty answers out of 133 pass for judgements**, and each one reached the verdict
-agent as though the reproducer had considered the marker and ruled on it. The token exists so there
+agent as though the reproduce-doer had considered the marker and ruled on it. The token exists so there
 is something to say instead of nothing.
 
 Where it is honoured:
@@ -617,13 +617,13 @@ Where it is honoured:
 - **Loopback A** stops asking for a file (`!declined(reply)` guards the loop).
 - **Loopback C** breaks out of the green-RED rewrite.
 - A marker declined with nothing written then falls to `argued()` like any other marker with no
-  test: it gets a verdict, a verdict-critic and a price, and its record quotes the decline.
+  test: it gets a verdict, a argue-verifier and a price, and its record quotes the decline.
 
 Detection is `reply.toLowerCase().contains("no test")` — substring, anywhere in the reply. A reply
 that merely says the words in passing reads as a decline.
 
 **A decline never routes a marker on its own.** Outside the two loop guards, every branch asks
-whether a test class is named, not whether the reproducer declined — so a reproducer that wrote a
+whether a test class is named, not whether the reproduce-doer declined — so a reproduce-doer that wrote a
 file and *then* said `no test` has its file built anyway. And **`testWritten` is sticky for the life
 of the prove**: it is a field on the one `JsonlTrace`, set by the last qualifying `write_file` and
 never cleared. Once anything has been written, `testClass()` cannot return blank again, so a later
@@ -631,7 +631,7 @@ reply that writes nothing re-builds whatever was written last rather than readin
 
 The prompts that mention it, and must:
 
-- `reproducer`: *"answer with exactly `no test` on its own line and one line of reason. That is a
+- `reproduce-doer`: *"answer with exactly `no test` on its own line and one line of reason. That is a
   useful answer and it costs nothing. An empty answer is not one: it spends a build and tells the
   next reader nothing."*
 - `GREEN_RED`, as the last exit when no test can be made to fail.
@@ -645,7 +645,7 @@ The prompts that mention it, and must:
   *"the honest answer is very often `no test`, and it is the expected one here. Give it in one line
   and stop."*
 
-  **Fifty-six of eighty-six runaway generations were the reproducer**, going round for half an hour
+  **Fifty-six of eighty-six runaway generations were the reproduce-doer**, going round for half an hour
   on a marker inside an integration test — "this is an integration test class, not a regular source
   class", "the method is private, so I can't directly test it", "let me think about this differently"
   — because the task it was given has no answer and the answer it was allowed to give was one line in

@@ -180,15 +180,15 @@ public final class ModelTest {
 
     private static Agents.Agent agent(Agents agents, String name) {
         return switch (name) {
-            case "reproducer" -> agents.reproducer();
-            case "proof-critic" -> agents.proofCritic();
-            case "fixer" -> agents.fixer();
-            case "fix-critic" -> agents.fixCritic();
-            case "pr-maker" -> agents.prMaker();
-            case "pr-critic" -> agents.prCritic();
-            case "verdict" -> agents.verdict();
-            case "estimator" -> agents.estimator();
-            case "estimator-critic" -> agents.estimatorCritic();
+            case "reproduce-doer" -> agents.reproduceDoer();
+            case "reproduce-verifier" -> agents.reproduceVerifier();
+            case "fix-doer" -> agents.fixDoer();
+            case "fix-verifier" -> agents.fixVerifier();
+            case "propose-doer" -> agents.proposeDoer();
+            case "propose-verifier" -> agents.proposeVerifier();
+            case "argue-doer" -> agents.argueDoer();
+            case "price-doer" -> agents.priceDoer();
+            case "price-verifier" -> agents.priceVerifier();
             default -> throw new IllegalArgumentException("no agent named " + name);
         };
     }
