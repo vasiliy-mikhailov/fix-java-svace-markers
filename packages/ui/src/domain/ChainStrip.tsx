@@ -27,6 +27,34 @@ export type Stage = {
 const ROLES = 3
 
 /**
+ * What each chip says under a stage heading.
+ *
+ * The stage is named once, on the box; these say what each agent does IN it. Verbs rather than
+ * nouns, because read along the row they are the sequence — plan, do, verify — which is the thing
+ * worth seeing at a glance across five stages.
+ */
+const ROLE_WORDS: Readonly<Record<string, string>> = {
+  planner: 'plan',
+  doer: 'do',
+  verifier: 'verify',
+}
+
+/**
+ * The word a chip shows, taken from the AGENT'S OWN NAME rather than from where it sits.
+ *
+ * A positional list — the first chip says `plan`, the second `do` — reads the same on a strip whose
+ * roles have been reordered, and points the word at the wrong agent while doing it. That is the
+ * shape of the bug that put two agents under REPRODUCE and the fix-planner under FIX: arithmetic
+ * about position, correct until the list moved, wrong silently afterwards.
+ *
+ * Reading the suffix cannot drift, because the suffix IS the role. An unrecognised name falls back
+ * to itself, so a new role appears in full rather than as a blank chip.
+ */
+export function roleWord(agent: string): string {
+  return ROLE_WORDS[agent.slice(agent.lastIndexOf('-') + 1)] ?? agent
+}
+
+/**
  * THE CHAIN, GROUPED OFF THE ONE LIST — not typed out again.
  *
  * Java held `STAGES` as a second copy of `Agents.CHAIN` and the copy had drifted: `verdict-critic`
@@ -84,6 +112,17 @@ export type ChainStageProps = {
 
 export type AgentChipProps = {
   agent: AgentName
+  /**
+   * What the chip SAYS, when that differs from what it is.
+   *
+   * Inside a stage the box is already labelled REPRODUCE, so a chip reading `reproduce-planner`
+   * says it a second time and three chips say it three more — the stage name takes most of the
+   * width and none of the meaning. The role alone is what distinguishes them there.
+   *
+   * The full name stays in the title and in the href, so nothing is lost: hovering names the agent
+   * and clicking opens its tab.
+   */
+  label?: string
   runs: number
   active: boolean
   /** Whoever knows the URL passes the URL — the lesson `tab()` learned by ending with no callers. */
@@ -215,7 +254,7 @@ function ChainPill({ href, on, children }: { href: string; on: boolean; children
  * An agent can be both never-run and the tab you are on — it still has a page, which will say so —
  * and the two facts stack rather than one hiding the other.
  */
-export function AgentChip({ agent, runs, active, href }: AgentChipProps) {
+export function AgentChip({ agent, label, runs, active, href }: AgentChipProps) {
   const never = runs === 0
   return (
     <a
@@ -224,7 +263,7 @@ export function AgentChip({ agent, runs, active, href }: AgentChipProps) {
       aria-current={active ? 'page' : undefined}
       title={never ? `${agent} never ran` : `${agent} answered ${runs} time(s)`}
     >
-      {agent}
+      {label ?? agent}
       {never ? null : <b style={COUNT}>{runs}</b>}
     </a>
   )
@@ -269,6 +308,7 @@ export function ChainStage({ label, planner, doer, verifier, markerKey, current 
             ))}
           <AgentChip
             agent={role.agent}
+            label={roleWord(role.agent)}
             runs={role.runs}
             active={current === role.agent}
             href={markerHref(markerKey, role.agent)}

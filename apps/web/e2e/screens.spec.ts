@@ -94,6 +94,31 @@ test('a state the record holds reaches the screen', async ({ page }) => {
   }
 })
 
+test('a chip on the chain says its role, and still names its agent', async ({ page }) => {
+  // A HELPER THAT PASSES ITS OWN TEST CAN STILL BE UNWIRED. `roleWord` was unit-tested green, the
+  // caller passed it, the prop was on the type — and the component went on rendering the full name,
+  // because the one line that reads the prop had never been changed. Typecheck was happy: an unused
+  // prop is legal. Only something that looks at the rendered chip can tell the difference.
+  const api = await (await page.request.get('/api/index')).json()
+  await page.goto(`/marker/?k=${encodeURIComponent(api.markers[0].key)}`)
+  const nav = page.locator('nav[aria-label="the chain"]')
+  await expect(nav).toBeVisible({ timeout: 15_000 })
+
+  // The stage is named on the box, so the chip carries the role and nothing else.
+  for (const [role, word] of [['planner', 'plan'], ['doer', 'do'], ['verifier', 'verify']]) {
+    const chip = nav.locator(`a[title^="reproduce-${role} "]`)
+    await expect(chip, `the reproduce-${role} chip`).toHaveCount(1)
+    // `textContent` with the count stripped, because the run count is a child of the same anchor.
+    const text = ((await chip.textContent()) ?? '').replace(/[0-9]+$/, '').trim()
+    expect(text, 'a chip under REPRODUCE repeating the word REPRODUCE').toBe(word)
+  }
+
+  // NOTHING IS LOST BY SHORTENING: the full name is still what the chip is titled and where it
+  // goes, so the agent stays findable by hover and reachable by click.
+  const planner = nav.locator('a[title^="reproduce-planner "]')
+  expect(await planner.getAttribute('href')).toContain('reproduce-planner')
+})
+
 test('the findings badge agrees with the endpoint that feeds it', async ({ page }) => {
   const badges = await (await page.request.get('/api/badges')).json()
   await page.goto('/')
