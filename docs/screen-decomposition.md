@@ -1280,7 +1280,7 @@ slugs: Record<slug, markerKey> — longest slug first
 *From:* linked() 678-691; map built by slugs() 694-707 from markers.txt
 
 
-> Two hazards baked into the Java, both of which change shape in React. First, order: it escapes and THEN links (comment 675-676), because the text is written by an agent and would otherwise put markup on the page — in React the escaping is free, so only the linking survives. Second, the sentinel dance: slugs are sorted longest-first and each substitution is wrapped in  / so a slug that is a prefix of a longer one does not get its middle relinked. The React equivalent is one split pass over a longest-first alternation, not repeated replaces. If markers.txt is missing or empty the map is empty and the text renders plain — that is the normal state before a run starts, not a failure.
+> Two hazards baked into the Java, both of which change shape in React. First, order: it escapes and THEN links (comment 675-676), because the text is written by an agent and would otherwise put markup on the page — in React the escaping is free, so only the linking survives. Second, the sentinel dance: slugs are sorted longest-first and each substitution is wrapped in \u0000/\u0001 so a slug that is a prefix of a longer one does not get its middle relinked. The React equivalent is one split pass over a longest-first alternation, not repeated replaces. If markers.txt is missing or empty the map is empty and the text renders plain — that is the normal state before a run starts, not a failure.
 
 
 ### RateAnswer *(shared)*

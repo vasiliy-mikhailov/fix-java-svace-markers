@@ -383,6 +383,11 @@ public final class Dashboard {
             }
         });
         route(server, "/api/badges", e -> send(e, "application/json", Zone.badges(here)));
+        // THE FIRST OF THE EIGHT ROUTES THAT COMPUTE IN JAVA AND EMIT HTML. The zone reads this
+        // instead of the table; the page below still renders from the same Run.rows(), so the two
+        // cannot disagree while both exist.
+        route(server, "/api/index", e -> send(e, "application/json",
+                Api.index(settlements, trace, Api.queue(settlements))));
         route(server, "/api/settlements", e -> send(e, "application/json",
                 "[" + String.join(",", lines(settlements)) + "]"));
         route(server, "/api/trace", e -> send(e, "application/json",
@@ -1620,40 +1625,15 @@ public final class Dashboard {
         // prove once started; the row survives a container that was replaced under it, and every
         // interrupted marker then reads as busy forever. The claim directory is the fact: a prover
         // takes one before it works and the run ends with it still there.
-        java.util.Set<String> claimed = new java.util.HashSet<>();
-        Path claims = settlements.resolveSibling("claims");
-        if (Files.isDirectory(claims)) {
-            try (var c = Files.list(claims)) {
-                c.forEach(p -> claimed.add(p.getFileName().toString()));
-            } catch (IOException none) {
-                // No claims directory is a run that has not started, not an error.
-            }
-        }
-
+        // ONE RULE, TWO READERS. This resolution — a `proving` row with no claim is `interrupted`,
+        // a queued key WITH a claim is `proving` — now lives in Run, because the JSON API answers
+        // the same question for the React zone and a second copy of it would drift from this one
+        // without either failing. A client shown the raw state would be wrong at both ends.
         Map<String, String> all = new LinkedHashMap<>();
-        for (String marker : queued) {
-            all.put(marker.trim(), "queued");
-        }
-        latest.forEach((k, row) -> {
-            String state = field(row, "state");
-            if (state.equals("proving")) {
-                // Claimed and unfinished is being proved. Unclaimed and unfinished was interrupted —
-                // a different thing, and one nobody should wait on.
-                state = claimed.contains(slug(k)) ? "proving" : "interrupted";
-            }
-            all.put(k, state);
-        });
-        // Claimed but no row yet: taken seconds ago, before the first stage reported.
-        for (String marker : queued) {
-            String k = marker.trim();
-            if (claimed.contains(slug(k)) && "queued".equals(all.get(k))) {
-                all.put(k, "proving");
-            }
-        }
+        Run.rows(settlements, queued).forEach((key, row) -> all.put(key, row.state()));
+
         int total = all.size();
-        int settled = (int) all.values().stream()
-                .filter(s -> !s.equals("proving") && !s.equals("queued")
-                        && !s.equals("interrupted")).count();
+        int settled = (int) all.values().stream().filter(Run::isSettled).count();
         long began = first.values().stream().mapToLong(Long::longValue).min().orElse(0L);
         long elapsed = began == 0 ? 0 : System.currentTimeMillis() - began;
 
@@ -2467,7 +2447,7 @@ public final class Dashboard {
      *
      * <p>Absent is not an error: a run that has settled nothing yet is the normal first state.
      */
-    private static List<String> lines(Path file) {
+    static List<String> lines(Path file) {
         List<String> all = new ArrayList<>(read(file));
         Path root = file.getParent();
         String name = file.getFileName().toString();
@@ -2717,7 +2697,7 @@ public final class Dashboard {
      * one level of escaping is already gone by the time this sees it. That is why it works: the
      * value arrives as ordinary text with real newlines, not as \n.
      */
-    private static String field(String json, String key) {
+    static String field(String json, String key) {
         int k = json.indexOf('"' + key + "\":");
         if (k < 0) {
             return "";
