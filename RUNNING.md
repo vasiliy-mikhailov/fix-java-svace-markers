@@ -190,8 +190,16 @@ cd agent && mvn test
 Everything there is line-delimited JSON. `GET /api/settlements`, `/api/trace` and `/api/feedback`
 return it as JSON arrays if you would rather not read files.
 
-## Asking it things
+## The three controls in the header
 
-`/chat` (the ✉ beside the gear) puts a question to the agent that watches the run — how a checker
-family is settling, why one marker took an hour, what a stage actually said. It reads the record and
-cannot change it.
+Every page carries the same three, top right:
+
+| | where it goes |
+|---|---|
+| ⚙ | **`/settings`** — every agent's prompt, the model and endpoint, how many markers run at once, and the subject: upload a different marker file, point at another repository, or drop in a source zip. All of it takes effect on the **next marker**, with no rebuild and no restart. |
+| ✉ | **`/chat`** — put a question to the agent that watches the run: how a checker family is settling, why one marker took an hour, what a stage actually said. It reads the record and cannot change it. |
+| ⚠ | **`/overwatch`** — what the supervisor has found wrong with the *pipeline*, as opposed to with a marker. The badge counts findings its critic has not dismissed; no badge means nothing stands. |
+
+The ⚠ count is on every page on purpose. Findings once sat on a page that had to be navigated to,
+and a run's worst faults were reported, judged and left unread for ten hours while somebody
+rediscovered them by hand. A warning nobody is shown is a warning nobody has.
