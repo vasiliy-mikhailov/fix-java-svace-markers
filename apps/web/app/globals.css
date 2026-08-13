@@ -1,0 +1,12 @@
+@import "tailwindcss";
+@import "@fsm/ui/tokens.css";
+@import "@fsm/ui/domain.css";
+
+@source "../app";
+@source "../../../packages/ui/src";
+
+body {
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+}

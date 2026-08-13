@@ -34,3 +34,4 @@ target/
 dist/
 .next/
 node_modules/
+out/

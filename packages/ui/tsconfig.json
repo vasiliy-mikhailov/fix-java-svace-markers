@@ -1,0 +1,1 @@
+{ "extends": "@fsm/config/tsconfig.base.json", "include": ["src/**/*.ts", "src/**/*.tsx"] }

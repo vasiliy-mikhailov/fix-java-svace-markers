@@ -1,0 +1,13 @@
+{
+  "name": "@fsm/ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tokens.css": "./src/tokens.css",
+    "./domain.css": "./src/domain.css",
+    ".": "./src/index.ts"
+  },
+  "scripts": { "typecheck": "tsc -p tsconfig.json", "test": "vitest run --passWithNoTests" },
+  "devDependencies": { "@fsm/config": "workspace:*", "typescript": "^5.9.3", "vitest": "^3.2.4" }
+}
