@@ -1075,6 +1075,13 @@ public final class Dashboard {
                         }
                     }
                 }
+                case "jdk" -> {
+                    String chosen = Upload.text(parts, "jdk").strip();
+                    Subject.saveJdk(results, chosen);
+                    said = Subject.jdk(results).equals(chosen)
+                            ? "builds will run on Java " + chosen + " from the next marker."
+                            : "!" + chosen + " is not one of the JDKs in this image.";
+                }
                 case "zip" -> {
                     if (forget) {
                         Files.deleteIfExists(Subject.zip(results));
@@ -1168,6 +1175,26 @@ public final class Dashboard {
                 .append(host.isBlank() ? ""
                         : " <button name=forget value=1 class=plain>forget it</button>")
                 .append("</form></div>");
+
+        b.append("<div class='ev ").append(Subject.jdk(results).equals("25") ? "tool" : "asked")
+                .append("'><span class=who>which JDK</span><span class=kind>")
+                .append("builds run on ").append(esc(Subject.jdk(results))).append("</span>")
+                .append("<p class=account>Not about compiling: javac 25 targets 8 through 25. This "
+                        + "is what the subject's TESTS RUN ON. Surefire forks a JVM from JAVA_HOME, "
+                        + "so a project written for 8 executes on 25 unless it is pointed elsewhere "
+                        + "&mdash; and there it meets strong encapsulation, removed APIs and "
+                        + "bytecode libraries that cannot read a class file this new. Each of those "
+                        + "arrives as \"the build produced no test result\", which is never taken as "
+                        + "evidence and costs the marker anyway.</p>")
+                .append("<form method=post action='/settings' enctype='multipart/form-data'>")
+                .append(hidden("setting", "jdk"))
+                .append("<select name=jdk class=number>");
+        for (String v : Subject.JDKS) {
+            b.append("<option value='").append(v).append('\'')
+                    .append(v.equals(Subject.jdk(results)) ? " selected" : "").append('>')
+                    .append("Java ").append(v).append("</option>");
+        }
+        b.append("</select> <button>use it</button></form></div>");
 
         b.append("<div class='ev ").append(zip ? "asked" : "tool").append("'>")
                 .append("<span class=who>a source zip</span><span class=kind>")

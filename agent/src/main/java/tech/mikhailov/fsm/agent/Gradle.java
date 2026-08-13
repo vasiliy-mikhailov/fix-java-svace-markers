@@ -13,6 +13,10 @@ import java.nio.file.Path;
  */
 final class Gradle implements Runner {
 
+    /** Where the settings live, so a build can be told which JDK to use. */
+    private static final Path RESULTS =
+            Path.of(System.getenv().getOrDefault("RESULTS", "/results"));
+
     private final Path checkout;
 
     Gradle(Path checkout) {
@@ -27,7 +31,7 @@ final class Gradle implements Runner {
         Path results = checkout.resolve("build/test-results/test");
         long before = stamp(results);
         String wrapper = Files.exists(checkout.resolve("gradlew")) ? "./gradlew" : "gradle";
-        Shell.Output out = Shell.run(checkout, wrapper, "test", "--tests", test, "--console=plain");
+        Shell.Output out = Shell.runWith(checkout, Subject.javaHome(RESULTS), wrapper, "test", "--tests", test, "--console=plain");
         if (out.timedOut()) {
             return new Result(true, false, phase + ": the build did not finish in time\n" + out.text());
         }

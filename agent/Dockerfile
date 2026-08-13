@@ -40,8 +40,33 @@ COPY src ./src
 RUN mvn -q -B -DskipTests package \
     && mvn -q -B dependency:copy-dependencies -DoutputDirectory=target/lib
 
+# ---------------------------------------------------------------- the other JDKs
+#
+# COPIED FROM THE OFFICIAL IMAGES, NOT INSTALLED. apt would pull whatever Debian happens to package,
+# which is not every version and not the same build; these are the Temurin releases themselves, and
+# the copy is reproducible and needs no package index at build time.
+#
+# WHY AT ALL: javac 25 compiles for --release 8 through 25, so nothing here is about compiling. It is
+# about what the SUBJECT'S TESTS RUN ON. Surefire forks a JVM from JAVA_HOME, so a Java 8 project's
+# tests execute on 25 unless there is another JDK to point at — and on 25 they meet strong
+# encapsulation, removed APIs and bytecode libraries that cannot read class file 69. Every one of
+# those arrives here as "the build produced no test result", which this program refuses to treat as
+# evidence and which costs the marker anyway.
+#
+# The cost is about a gigabyte of image. That is the price of being able to prove a marker in a
+# project written before 2018.
+FROM eclipse-temurin:8-jdk   AS jdk8
+FROM eclipse-temurin:11-jdk  AS jdk11
+FROM eclipse-temurin:17-jdk  AS jdk17
+FROM eclipse-temurin:21-jdk  AS jdk21
+
 # ---------------------------------------------------------------- runtime
 FROM maven:3.9-eclipse-temurin-25
+
+COPY --from=jdk8  /opt/java/openjdk /opt/java/8
+COPY --from=jdk11 /opt/java/openjdk /opt/java/11
+COPY --from=jdk17 /opt/java/openjdk /opt/java/17
+COPY --from=jdk21 /opt/java/openjdk /opt/java/21
 
 # Not root: a prove clones a stranger's repository and runs its build. That build is arbitrary code,
 # and it should not be arbitrary code as uid 0.

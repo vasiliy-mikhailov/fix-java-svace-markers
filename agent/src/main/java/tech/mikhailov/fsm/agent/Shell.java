@@ -24,11 +24,30 @@ final class Shell {
     }
 
     static Output run(Path directory, String... command) {
+        return runWith(directory, "", command);
+    }
+
+    /**
+     * The same, under a chosen JDK.
+     *
+     * <p>JAVA_HOME AND THE PATH, BOTH. Maven reads JAVA_HOME to pick the compiler and the JVM it
+     * forks; setting it alone leaves `java` on the PATH resolving to the image's own, so a build
+     * would compile under one and test under another — which fails in a way that reads like the
+     * project rather than like the setting.
+     *
+     * <p>Blank leaves the environment as it is, which is what 25 means here.
+     */
+    static Output runWith(Path directory, String javaHome, String... command) {
         try {
-            Process p = new ProcessBuilder(command)
+            ProcessBuilder builder = new ProcessBuilder(command)
                     .directory(directory.toFile())
-                    .redirectErrorStream(true)
-                    .start();
+                    .redirectErrorStream(true);
+            if (javaHome != null && !javaHome.isBlank()) {
+                builder.environment().put("JAVA_HOME", javaHome);
+                builder.environment().merge("PATH", javaHome + "/bin",
+                        (was, bin) -> bin + ":" + was);
+            }
+            Process p = builder.start();
             String text = new String(p.getInputStream().readAllBytes());
             if (!p.waitFor(TIMEOUT_MINUTES, TimeUnit.MINUTES)) {
                 p.destroyForcibly();

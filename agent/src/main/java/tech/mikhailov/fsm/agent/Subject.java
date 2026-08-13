@@ -26,7 +26,46 @@ import java.util.List;
  */
 final class Subject {
 
+    /**
+     * THE JDKS IN THE IMAGE, newest first. 25 is where the build runs unless somebody says otherwise.
+     *
+     * <p>javac 25 compiles for every one of these, so this is not about compiling — it is about what
+     * the subject's TESTS RUN ON. Surefire forks a JVM from JAVA_HOME, so a project written for 8
+     * executes on 25 unless it is pointed elsewhere, and there it meets strong encapsulation,
+     * removed APIs and bytecode libraries that cannot read a class file this new.
+     */
+    static final List<String> JDKS = List.of("25", "21", "17", "11", "8");
+
     private Subject() {
+    }
+
+    /** Which JDK the builds use. 25 unless one has been chosen. */
+    static String jdk(Path results) {
+        try {
+            String chosen = Files.readString(results.resolve("jdk")).strip();
+            return JDKS.contains(chosen) ? chosen : "25";
+        } catch (IOException | RuntimeException none) {
+            return "25";
+        }
+    }
+
+    /**
+     * Where that JDK lives, or blank for the image's own.
+     *
+     * <p>Blank rather than a path for 25, because the base image's JDK is at a path this program did
+     * not choose and should not hard-code — leaving JAVA_HOME alone is how a build gets it.
+     */
+    static String javaHome(Path results) {
+        String chosen = jdk(results);
+        return chosen.equals("25") ? "" : "/opt/java/" + chosen;
+    }
+
+    static void saveJdk(Path results, String chosen) throws IOException {
+        if (!JDKS.contains(chosen)) {
+            return;
+        }
+        Files.createDirectories(results);
+        Files.writeString(results.resolve("jdk"), chosen + "\n");
     }
 
     static Path markers(Path results) {
