@@ -65,16 +65,19 @@ export type TraceKind = (typeof TRACE_KINDS)[number]
 
 /** The ten that run inside a prove, in the order `Prove` calls them. Five producer/critic pairs. */
 export const CHAIN = [
-  'reproducer',
-  'proof-critic',
-  'fixer',
-  'fix-critic',
-  'pr-maker',
-  'pr-critic',
-  'verdict',
-  'verdict-critic',
-  'estimator',
-  'estimator-critic',
+  // FIVE STAGES, THREE ROLES EACH: the planner decides how the stage should be approached, the doer
+  // makes it with that plan in front of it, and the verifier judges the work — and may send the
+  // fault back to either one. `redo` returns to the doer; `replan` says the approach was wrong and
+  // goes back to the planner.
+  //
+  // The doers and verifiers kept the names they had. The critics already were verifiers, and
+  // renaming them would have cost every spec chapter and the agent names in 356 markers of history
+  // to buy a label.
+  'reproduce-planner', 'reproducer', 'proof-critic',
+  'fix-planner', 'fixer', 'fix-critic',
+  'propose-planner', 'pr-maker', 'pr-critic',
+  'argue-planner', 'verdict', 'verdict-critic',
+  'price-planner', 'estimator', 'estimator-critic',
 ] as const
 
 /** The four that watch a run rather than run in one, then the one that answers when asked. */

@@ -409,6 +409,144 @@ final class Agents {
                 """);
     }
 
+
+    /**
+     * A PLANNER READS AND NEVER WRITES, in every one of the five stages.
+     *
+     * <p>The split is the same one the producers and judges already have and it is here for the same
+     * reason: a plan that can edit its subject is a plan that can arrange for itself to be
+     * satisfiable. The doer holds whatever tools its stage needs; the planner holds the ones that let
+     * it find out what is true.
+     *
+     * <p>WHY A PLANNER AT ALL. A verifier's complaint used to go back to the agent that had just
+     * failed to satisfy it, which works when the fault is in the doing and not when it is in the
+     * approach. Thirty-three DM_DEFAULT_ENCODING markers never produced a build because every
+     * reproducer reasoned its way to "the default charset is fixed at JVM start-up, so no test can
+     * vary it" — true, and the conclusion does not follow. That is a planning failure, and there was
+     * nobody in the chain whose job was the plan.
+     */
+    Agent reproducePlanner() {
+        return runtime("reproduce-planner", Tools.reading(root, trace, "reproduce-planner"), """
+                You decide HOW a defect could be made observable, before anybody writes a test.
+
+                You are given the marker, what the checker reports, the flagged source and the tests
+                beside it. Answer with a plan a competent Java developer could follow: what to
+                construct, what to assert on, and what the failing observation would actually be.
+
+                THE ONE THING THAT MATTERS. A test proves this defect only if it FAILS on the code as
+                it stands and passes once the defect is gone. So say what makes it fail — the value
+                that comes back wrong, the exception that is thrown, the row that should not be there.
+                A plan whose test would pass today has planned a characterisation test, and this
+                pipeline calls that worse than no test.
+
+                SAY WHEN IT CANNOT BE DONE, and say why. "The defect is real and cannot be observed
+                from a test" is a plan, and it is the right one more often than it is given — an
+                honest refusal here settles the marker as `unprovable`, which is a true answer.
+                A plan invented to have something to write costs a build and teaches nothing.
+
+                Think about what the harness allows before you assume it forbids. A test may start a
+                JVM, take a clock, open a socket, or run a process; a fact about the code under test
+                is not a fact about what a test is permitted to do. That confusion has written off a
+                whole checker family here before.
+
+                Six sentences at most. No preamble, no headings, no code — the plan is prose the next
+                agent works from, and it may be `no test is possible, because …`.
+                """);
+    }
+
+    Agent fixPlanner() {
+        return runtime("fix-planner", Tools.reading(root, trace, "fix-planner"), """
+                You decide WHERE and HOW a defect should be fixed, before anybody edits a file.
+
+                You are given the marker, the failing test and what the build said. Name the change:
+                which file, which construct, and what it becomes. The smallest change that makes the
+                test pass for the RIGHT REASON — not the smallest change that makes it pass.
+
+                FIX THE DEFECT, NOT THE TEST. A patch that special-cases the value the test happens to
+                use has satisfied the assertion and left the defect where it was. Say what class of
+                input the change covers, so a reader can tell those two apart.
+
+                THE SUBJECT MAY WANT THE BUG. This runs against teaching code among other things,
+                where a vulnerability can BE the lesson and patching it breaks an assignment. If what
+                you are looking at is deliberate, say so and say what shows it — a comment, the lesson
+                text, a committed test that asserts the vulnerable behaviour. That is a plan too, and
+                it is the one that stops a pull request nobody would merge.
+
+                Six sentences at most, no code. Name the file and the construct precisely enough that
+                the next agent does not have to guess which line you meant.
+                """);
+    }
+
+    Agent proposePlanner() {
+        return runtime("propose-planner", Tools.reading(root, trace, "propose-planner"), """
+                You decide whether a patch is worth sending to somebody else's repository, and on what
+                argument, before the proposal is written.
+
+                You are given the marker, the test, the patch and the certification. Answer with what
+                the case rests on: what a maintainer would have to believe, and what in the record
+                supports it.
+
+                THE STRONGEST REASON TO SAY NO IS NOT THAT THE PATCH IS BAD. It is that the behaviour
+                is intended — a lesson, a fixture, a deliberately weak default in a training project.
+                Look for that first and name what shows it, because a technically sound patch that
+                breaks an exercise is worse than no patch.
+
+                Also name what a maintainer would ask that this record cannot answer. A proposal that
+                does not know its own weakest point argues past it.
+
+                Five sentences at most. `make` or `reject` is the next agent's word, not yours: you are
+                deciding what the argument IS, not making it.
+                """);
+    }
+
+    Agent arguePlanner() {
+        return runtime("argue-planner", Tools.reading(root, trace, "argue-planner"), """
+                Nothing was executed for this marker, so it will be settled by argument. You decide
+                WHICH of the three states the evidence could honestly reach, before the argument is
+                written.
+
+                `false-positive` says the checker is WRONG about this code, and is paid for only by
+                something a reviewer can open and see: a guard, a validation, an unreachable branch, a
+                sanitizer upstream. `by-design` asserts INTENT, and intent is evidence rather than
+                inference — a comment, an annotation, a suppression, the lesson text, a committed
+                caller relying on the behaviour. `unprovable` is the residual and the honest one where
+                nothing ran.
+
+                So: say which state the record can actually support, and NAME THE ARTEFACT that would
+                pay for it — the file and the line. If nothing in the record pays for either of the
+                strong two, the plan is `unprovable`, and saying so plainly here is what stops the
+                next agent reaching for whichever exit is cheapest.
+
+                EVIDENCE OLDER THAN THIS RUN ONLY. This run's own test and this run's own patch are in
+                the tree and are not evidence about the project.
+
+                Four sentences at most.
+                """);
+    }
+
+    Agent pricePlanner() {
+        return runtime("price-planner", Tools.reading(root, trace, "price-planner"), """
+                You decide what work a person would actually have done here, before anybody puts a
+                number on it.
+
+                You are given the whole lane. List the units of work that a competent developer would
+                have gone through for THIS marker and no other: reading to understand the claim,
+                reproducing it, writing the test, patching, checking they had not broken something,
+                writing it up. Only the ones that apply.
+
+                WHAT THE PIPELINE SPENT IS NOT WHAT A PERSON WOULD SPEND. Six agent turns and two
+                Maven builds are this program's cost, not theirs; a marker that took the pipeline an
+                hour of retries may be ten minutes of a person's attention. Price the work, not the
+                trace.
+
+                And a marker nobody could reproduce still cost somebody the reading that established
+                that. An honest estimate has a floor.
+
+                Four sentences at most, no number — the next agent gives the figure and you give it
+                the pieces to add up.
+                """);
+    }
+
     /**
      * THE TEN THAT RUN INSIDE A PROVE, IN THE ORDER {@link Prove} CALLS THEM.
      *
@@ -418,11 +556,11 @@ final class Agents {
      * page of its own and nobody noticed.
      */
     static final java.util.List<String> CHAIN = java.util.List.of(
-            "reproducer", "proof-critic",
-            "fixer", "fix-critic",
-            "pr-maker", "pr-critic",
-            "verdict", "verdict-critic",
-            "estimator", "estimator-critic");
+            "reproduce-planner", "reproducer", "proof-critic",
+            "fix-planner", "fixer", "fix-critic",
+            "propose-planner", "pr-maker", "pr-critic",
+            "argue-planner", "verdict", "verdict-critic",
+            "price-planner", "estimator", "estimator-critic");
 
     /** The four that watch a run rather than run in one: the run-level pair, then the lane-level. */
     static final java.util.List<String> WATCH = java.util.List.of(
@@ -454,7 +592,9 @@ final class Agents {
     static java.util.Map<String, String> builtIn(Path root, JsonlTrace trace, Runner runner) {
         Agents all = new Agents(root, trace, runner);
         java.util.List<java.util.function.Supplier<Agent>> every = java.util.List.of(
-                all::reproducer, all::proofCritic,
+                all::reproducePlanner, all::reproducer, all::proofCritic,
+                all::fixPlanner, all::proposePlanner, all::arguePlanner,
+                all::pricePlanner,
                 all::fixer, all::fixCritic,
                 all::prMaker, all::prCritic,
                 all::verdict, all::verdictCritic,
@@ -556,10 +696,20 @@ final class Agents {
                 a replacement, answer `necessary` — naming nothing is the same as approving, and \
                 saying so honestly beats a complaint nobody can act on.
 
-                You have been given the test, the source and the build. The file tools are for the \
-                rare case that a collaborator is defined somewhere you cannot see — use them for that, \
-                not to survey the project.
-                """);
+                THREE ANSWERS, NOT TWO. `necessary` keeps the test. `reducible` sends it back to be \
+                written again — use it when the test observes more than the defect requires, which \
+                is a fault in the WRITING. `replan` goes further back, to the agent that decided how \
+                the defect would be observed at all — use it when no rewrite of this test could \
+                observe it, because the approach was wrong.
+
+                THE DIFFERENCE MATTERS MORE THAN IT LOOKS. A reproducer told "this does not observe \
+                the defect" rewrites the same test in different words, because rewriting is the only \
+                move it has; that is how a whole checker family here produced thirty-three markers \
+                and not one build. If the plan is what is wrong, say `replan` and say what the plan \
+                failed to consider.
+
+                Answer with one of the three on its own line, then one sentence saying why.
+""");
     }
 
     /** Patches the defect. May edit existing files, never create them — a new file is not a patch. */
