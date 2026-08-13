@@ -1,0 +1,27 @@
+/**
+ * THE PRIMITIVES: everything the dashboard is built from that does not know what a marker is.
+ *
+ * A `Pill` takes a tone, not a disposition. A `TabRow` takes hrefs, not a marker key. That line is
+ * the reason these are testable at all — the Java's equivalents each reached for one particular
+ * page's URLs or one particular payload's vocabulary, so the same markup was written three times
+ * and the three copies drifted (`tab()` ended with zero callers while `supervisorTabs()` and
+ * `settingsTabs()` hand-rolled their own anchors, and only one of the three got its lit-tab bug).
+ *
+ * Anything that has to know what `by-design` means lives in `../domain`.
+ */
+
+export { Account, type AccountProps } from './Account'
+export { CodeBlock, type CodeBlockProps } from './CodeBlock'
+export { DiffBlock, type DiffBlockProps } from './DiffBlock'
+export { Disclosure, type DisclosureProps } from './Disclosure'
+export { EmptyNote, type EmptyNoteProps } from './EmptyNote'
+export { LabeledField, type LabeledFieldProps } from './LabeledField'
+export { Pill, type PillProps, type PillTone } from './Pill'
+export { ProgressBar, type ProgressBarProps } from './ProgressBar'
+export { RelativeTime, type RelativeTimeProps } from './RelativeTime'
+export { SaveRow, type SaveRowProps } from './SaveRow'
+export { SecretField, type SecretFieldProps } from './SecretField'
+export { TabRow, type TabItem, type TabRowProps } from './TabRow'
+export { Tally, type TallyProps } from './Tally'
+export { TextFold, type TextFoldProps } from './TextFold'
+export type { Style } from './style'

@@ -62,6 +62,11 @@
   --code-added: #1A7F37;
   --code-removed: #CF222E;
   --code-flagged-bg: #FFF8C5;
+  /* A diff's `@@` line: not code, not a change, but WHERE the change is. It had no name here and
+     `DiffBlock` needs one — the alternative was a hex in a component, and a component holding a
+     colour is a component that stops matching the portal the day it rethemes. Its file headers
+     (`+++`/`---`) reuse `--code-comment`, which is what they already looked like. */
+  --code-hunk: #8250DF;
 }
 
 .dark {
@@ -97,4 +102,5 @@
   --code-added: #3FB950;
   --code-removed: #F85149;
   --code-flagged-bg: #341A00;
+  --code-hunk: #A371F7;
 }

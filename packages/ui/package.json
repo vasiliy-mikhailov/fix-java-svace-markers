@@ -9,5 +9,13 @@
     ".": "./src/index.ts"
   },
   "scripts": { "typecheck": "tsc -p tsconfig.json", "test": "vitest run --passWithNoTests" },
-  "devDependencies": { "@fsm/config": "workspace:*", "typescript": "^5.9.3", "vitest": "^3.2.4" }
+  "dependencies": { "@fsm/types": "workspace:*" },
+  "peerDependencies": { "react": "^19" },
+  "devDependencies": {
+    "@fsm/config": "workspace:*",
+    "@types/react": "^19",
+    "react": "19.2.3",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
 }
