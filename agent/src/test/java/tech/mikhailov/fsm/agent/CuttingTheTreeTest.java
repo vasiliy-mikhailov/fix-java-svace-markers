@@ -119,6 +119,45 @@ class CuttingTheTreeTest {
     }
 
     @Test
+    @DisplayName("a person's re-prove does not spend the supervisor's allowance")
+    void aPersonIsNotTheAgent(@TempDir Path dir) throws Exception {
+        Path results = dir;
+        Supervisor supervisor = new Supervisor(results, quiet());
+        // Both go in the same log, because the record of what happened to a marker is one file.
+        for (int press = 1; press <= 3; press++) {
+            proving(results);
+            supervisor.reprove(MARKER, "press " + press);
+        }
+        proving(results);
+        String said = supervisor.restart(MARKER, "the endpoint dropped");
+        assertTrue(said.startsWith("RESTARTED"),
+                "three presses of a button a person has to read the page to find are three "
+                        + "decisions, not a runaway. Counting them against the agent's two left the "
+                        + "supervisor unable to restart a marker it had never touched — and both "
+                        + "the javadoc and the route's comment promised the opposite, so nothing "
+                        + "said so: " + said);
+        assertTrue(Files.readString(results.resolve("restarts.jsonl")).contains("\"by\":\"person\""),
+                "and who ordered it is in the record, or the next reader cannot tell a supervisor "
+                        + "that cycled a marker three times from a person who did");
+    }
+
+    @Test
+    @DisplayName("a line written before `by` existed still counts, rather than lifting the limit")
+    void olderLinesStillCount(@TempDir Path dir) throws Exception {
+        Path results = dir;
+        String id = Supervisor.slug(MARKER);
+        Files.writeString(results.resolve("restarts.jsonl"),
+                "{\"at\":\"1\",\"id\":\"" + id + "\",\"attempt\":\"1\",\"why\":\"old\"}\n"
+                        + "{\"at\":\"2\",\"id\":\"" + id + "\",\"attempt\":\"2\",\"why\":\"old\"}\n");
+        proving(results);
+        String said = new Supervisor(results, quiet()).restart(MARKER, "again");
+        assertTrue(said.startsWith("REFUSED"),
+                "a log written before the field existed must not read as two person-ordered "
+                        + "reproves and hand the agent a fresh allowance on every marker it has "
+                        + "already restarted twice: " + said);
+    }
+
+    @Test
     @DisplayName("an unreadable count refuses rather than resets")
     void unreadable(@TempDir Path dir) throws Exception {
         Path results = proving(dir);

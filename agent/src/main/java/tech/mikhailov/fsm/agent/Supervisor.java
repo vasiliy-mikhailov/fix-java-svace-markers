@@ -90,7 +90,7 @@ final class Supervisor {
         keep(out, id, already + 1);
         delete(out);
         delete(claim);
-        record(id, markerKey, why, already + 1, killed);
+        record(id, markerKey, why, already + 1, killed, "supervisor");
         return "RESTARTED " + id + " (" + (already + 1) + " of " + LIMIT + "). "
                 + (killed ? "The running prove was killed. " : "No prove was running. ")
                 + "Its record is kept as " + id + ".restart-" + (already + 1)
@@ -105,6 +105,14 @@ final class Supervisor {
      * that loop: they have read the page, they know why, and if they press it four times that is
      * four decisions rather than a runaway. The record still says who and why, because the next
      * reader needs to know this marker was proved twice and on whose say-so.
+     *
+     * <p>THIS PARAGRAPH DESCRIBED SOMETHING THE CODE DID NOT DO. Both paths append to
+     * {@code restarts.jsonl} — correctly, since the record of what happened to a marker belongs in
+     * one file — and {@link #restarts} counted every line carrying the marker's id, so two presses
+     * of the dashboard's button exhausted the supervisor's allowance for a marker it had never
+     * touched. Nothing reported it: the limit is only felt when the agent next tries to act, and by
+     * then the refusal reads as a supervisor that has already used its two. The line now carries
+     * {@code by}, and {@link #restarts} counts only what the supervisor itself ordered.
      */
     String reprove(String markerKey, String why) {
         String id = slug(markerKey);
@@ -120,7 +128,8 @@ final class Supervisor {
         keep(out, id, restarts(id) + 1);
         delete(out);
         delete(claim);
-        record(id, markerKey, "asked for by a person — " + why, restarts(id) + 1, killed);
+        record(id, markerKey, "asked for by a person — " + why, restarts(id) + 1, killed,
+                "person");
         return "queued again";
     }
 
@@ -167,7 +176,18 @@ final class Supervisor {
             return 0;
         }
         try (Stream<String> lines = Files.lines(log)) {
-            return (int) lines.filter(l -> Json.field(l, "id").equals(id)).count();
+            // THE AGENT'S OWN, NOT EVERY LINE WITH THIS ID. `reprove` writes to the same log — the
+            // record of what happened to a marker has to be one file — and it used to be counted
+            // here, so two presses of the dashboard's button silently exhausted the supervisor's
+            // allowance for that marker. The javadoc on `reprove` and the comment on the route both
+            // promised the opposite, which is the worst version of this: a limit that a person can
+            // spend without being told, on behalf of an agent, while the code says they cannot.
+            //
+            // A line with no `by` is the supervisor's. Older logs were written before this field
+            // existed, so they keep counting — the safe direction, since the alternative retroactively
+            // lifts the limit on every marker restarted so far.
+            return (int) lines.filter(l -> Json.field(l, "id").equals(id))
+                    .filter(l -> !"person".equals(Json.field(l, "by"))).count();
         } catch (IOException | java.io.UncheckedIOException unreadable) {
             // A LOG THAT CANNOT BE READ IS NOT A LICENCE. Reporting zero here would let an
             // unreadable file lift the limit, which is the one direction this must not fail in.
@@ -203,10 +223,12 @@ final class Supervisor {
         }
     }
 
-    private void record(String id, String marker, String why, int attempt, boolean killed) {
+    private void record(String id, String marker, String why, int attempt, boolean killed,
+                        String by) {
         String line = "{\"at\":\"" + System.currentTimeMillis() + "\",\"id\":\"" + id
                 + "\",\"marker\":\"" + Settlement.escape(marker) + "\",\"attempt\":\"" + attempt
-                + "\",\"killed\":\"" + killed + "\",\"why\":\"" + Settlement.escape(why) + "\"}\n";
+                + "\",\"killed\":\"" + killed + "\",\"by\":\"" + by
+                + "\",\"why\":\"" + Settlement.escape(why) + "\"}\n";
         try {
             Files.writeString(results.resolve("restarts.jsonl"), line, StandardOpenOption.CREATE,
                     StandardOpenOption.APPEND);

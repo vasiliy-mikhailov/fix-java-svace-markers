@@ -32,11 +32,14 @@ RUN git clone --depth 1 --branch ${DEEPAGENTS_REF} ${DEEPAGENTS_REPO} /src/deepa
     && mvn -q -f /src/deepagents -DskipTests install
 
 WORKDIR /src/agent
+# BUILT FROM THE REPOSITORY ROOT, not from agent/. The spec is part of the project and has to reach
+# the image, and Docker will not COPY above its context — so the context is the project and these
+# paths carry the agent/ prefix. Build with `docker build -f agent/Dockerfile .` from the root.
 # The pom alone first, so a source-only change does not re-resolve every dependency.
-COPY pom.xml .
+COPY agent/pom.xml .
 RUN mvn -q -B dependency:go-offline
 
-COPY src ./src
+COPY agent/src ./src
 RUN mvn -q -B -DskipTests package \
     && mvn -q -B dependency:copy-dependencies -DoutputDirectory=target/lib
 
@@ -75,7 +78,10 @@ WORKDIR /work
 
 COPY --from=builder /src/agent/target/agent-*.jar      /opt/agent/agent.jar
 COPY --from=builder /src/agent/target/lib              /opt/agent/lib
-COPY entrypoint.sh                                     /opt/agent/entrypoint.sh
+COPY agent/entrypoint.sh                               /opt/agent/entrypoint.sh
+# THE SPEC TRAVELS WITH THE CODE. entrypoint.sh copies it into the results volume at start-up,
+# because that is the only tree the agents' file tools can reach — see the note there.
+COPY spec                                              /opt/agent/spec
 RUN chmod +x /opt/agent/entrypoint.sh && chown -R prover:prover /work
 
 # EVERY VOLUME PATH IS MADE, OWNED, BEFORE IT IS DECLARED. Docker takes a fresh named volume's

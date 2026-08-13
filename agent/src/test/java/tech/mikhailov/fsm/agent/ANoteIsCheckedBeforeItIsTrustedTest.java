@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * present and the sentence the agent most needs — whether the flagged line really holds the
  * construct — is quietly missing or a lie.
  *
- * <p>What is NOT held here is whether a note is true. Thirty-one of these were corrected by a second
+ * <p>What is NOT held here is whether a note is true. Twenty-nine of these carry a correction from a second
  * reader working against a real checkout, one of them a whole family whose recipe pointed at a file
  * carrying no marker at all; that is a job for a reader with the source, not for an assertion.
  */

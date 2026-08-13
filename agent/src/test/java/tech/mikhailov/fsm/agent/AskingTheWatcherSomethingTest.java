@@ -31,6 +31,41 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class AskingTheWatcherSomethingTest {
 
+    /**
+     * ONE FLAG, SHARED BY EVERY TEST IN THIS CLASS.
+     *
+     * <p>"One question at a time" is process-wide because there is one dashboard, which is right in
+     * production and makes these tests order-dependent: a test that asks without waiting leaves the
+     * flag set, and the next one is refused and sees an empty conversation. That failed as
+     * "expected 2 turns but was 0", which reads like the recording is broken rather than like the
+     * test before it has not finished.
+     */
+    @org.junit.jupiter.api.BeforeEach
+    void settle() throws Exception {
+        quiet(200);
+        assertFalse(Chat.answering(), "a previous test left an answer in flight");
+    }
+
+    /**
+     * AND AGAIN AFTERWARDS, because the thread outlives the test method that started it.
+     *
+     * <p>Answering is a daemon writing {@code chat.jsonl} into the {@code @TempDir}, and JUnit
+     * deletes that directory the moment the method returns. A test that asks without waiting left
+     * the two racing, and JUnit failed the CLASS with "Failed to delete temp directory" — an error
+     * with no failing assertion in it, appearing in maybe one run in three, attributed to whichever
+     * test happened to be last.
+     */
+    @org.junit.jupiter.api.AfterEach
+    void quieten() throws Exception {
+        quiet(400);
+    }
+
+    private static void quiet(int tries) throws Exception {
+        for (int wait = 0; wait < tries && Chat.answering(); wait++) {
+            Thread.sleep(25);
+        }
+    }
+
     private static Trace quiet() {
         return new Trace() {
             @Override public void asked(String a, String p, String r) { }
@@ -72,7 +107,11 @@ class AskingTheWatcherSomethingTest {
         int at = source.indexOf("Agent chat(");
         assertTrue(at > 0, "the chat agent has been renamed; this guard now checks nothing");
         String method = source.substring(at, source.indexOf("\n    }", at));
-        assertTrue(method.contains("Tools.reading("), method.substring(0, 200));
+        // `asking` is `reading` plus list_markers and marker_record, both read-only. What the fence
+        // forbids is the SUPERVISING set, and naming the allowed sets explicitly is what made this
+        // guard fire when the wiring moved from one to the other — which is the point of it.
+        assertTrue(method.contains("Tools.asking(") || method.contains("Tools.reading("),
+                method.substring(0, 200));
         assertFalse(method.contains("Tools.supervising("),
                 "supervising() adds restart_prove and postpone_prove. The fence is this line");
     }

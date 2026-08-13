@@ -59,6 +59,77 @@ final class Tools {
     }
 
     /**
+     * THE SAME, PLUS THE TWO QUESTIONS THAT WERE BEING RECONSTRUCTED FROM FILES.
+     *
+     * <p>Asked how many markers there were, an agent with only file tools took the honest route —
+     * grep across every {@code settlements.jsonl} — and answered "at least 60 (the grep output was
+     * suppressed after showing 60 matches)". Careful about its own limits, and not the number.
+     * Counting three hundred files with a tool that returns matching lines is the wrong instrument,
+     * and no prompt makes it the right one.
+     *
+     * <p>Both of these are things the dashboard already computes for its own pages. Read-only: they
+     * report the record and cannot touch it, so this set is still inside the same fence.
+     */
+    static Map<ToolSpecification, ToolExecutor> asking(Path results, Trace trace, String agent) {
+        Map<ToolSpecification, ToolExecutor> tools = only(results, Set.of("list_dir", "read_file"));
+        tools.putAll(registry(results));
+        return recorded(tools, trace, agent);
+    }
+
+    /** The queue with states, and one marker's record. */
+    private static Map<ToolSpecification, ToolExecutor> registry(Path results) {
+        Map<ToolSpecification, ToolExecutor> tools = new LinkedHashMap<>();
+        ToolSpecification list = ToolSpecification.builder()
+                .name("list_markers")
+                .description("The queue and the state of every marker in it. Returns exact counts by "
+                        + "state first — those are always complete — then one row per matching "
+                        + "marker. USE THIS RATHER THAN grep OVER settlements.jsonl: grep returns "
+                        + "matching lines and stops, which reports a partial count as a total.")
+                .parameters(JsonObjectSchema.builder()
+                        .addStringProperty("state", "only markers in this state, e.g. proving, "
+                                + "queued, by-design, false-positive, unprovable, reproduced, "
+                                + "needs-review, verified/pr-ready, verified/pr-rejected, infra. "
+                                + "Omit for all.")
+                        .addStringProperty("checker", "only markers whose checker contains this, "
+                                + "e.g. DM_DEFAULT_ENCODING. Omit for all.")
+                        .addIntegerProperty("limit", "how many rows to return; the counts are "
+                                + "complete regardless. Default " + Registry.ROWS + ".")
+                        .build())
+                .build();
+        tools.put(list, (request, memoryId) -> {
+            String args = request.arguments();
+            int limit = (int) num(field(args, "limit"), Registry.ROWS);
+            return Registry.list(results, field(args, "state"), field(args, "checker"), limit);
+        });
+
+        ToolSpecification one = ToolSpecification.builder()
+                .name("marker_record")
+                .description("One marker: its key, checker, state, how long it took across how many "
+                        + "attempts, why it settled the way it did, and the lane interpreter's "
+                        + "summary of what happened. Use this before reading a trace — the trace is "
+                        + "tens of thousands of characters and this is the part that answers most "
+                        + "questions.")
+                .parameters(JsonObjectSchema.builder()
+                        .addStringProperty("marker", "the id as list_markers prints it, e.g. "
+                                + "Ping.java_34_FB.DM_DEFAULT_ENCODING, or the full marker key")
+                        .required("marker")
+                        .build())
+                .build();
+        tools.put(one, (request, memoryId) ->
+                Registry.one(results, field(request.arguments(), "marker")));
+        return tools;
+    }
+
+    /** A number from the arguments, or the default when it is absent or not one. */
+    private static double num(String value, double fallback) {
+        try {
+            return value == null || value.isBlank() ? fallback : Double.parseDouble(value.strip());
+        } catch (NumberFormatException notANumber) {
+            return fallback;
+        }
+    }
+
+    /**
      * THE TWO FILES UNDER THE RESULTS ROOT THAT ARE NOT PART OF THE RECORD.
      *
      * <p>The watchers are rooted at {@code /results} because that is where the record is — every
@@ -424,14 +495,24 @@ final class Tools {
         return found == 0 ? "no matches" : hits.toString();
     }
 
+    /**
+     * ONE ARGUMENT OUT OF A TOOL CALL, THROUGH THE SCANNER THAT HANDLES UNQUOTED VALUES.
+     *
+     * <p>This scanned for the next {@code "} after the colon, which works for every string parameter
+     * and for nothing else. {@code list_markers} was the first tool here to declare a NUMBER, and a
+     * model emitting the obvious {@code {"limit": 200}} produced no quote to find: the read returned
+     * empty, the caller fell back to the default, and the parameter did nothing at all while
+     * appearing in the tool's schema. With another key after it, {@code {"limit":200,"state":"..."}},
+     * it was worse — the scan ran on and returned {@code state}, the value of the NEXT key.
+     *
+     * <p>{@link Json#field} already solves this, and solves it because of the same bug one file over:
+     * {@code red_verified} read as empty for every marker that had genuinely gone red, because
+     * booleans are unquoted too. Delegating rather than repairing this in place means there is one
+     * scanner to be right, and it also gains escaped quotes in string arguments — a path containing
+     * one used to truncate here.
+     */
     private static String field(String json, String key) {
-        int k = json.indexOf('"' + key + '"');
-        if (k < 0) {
-            return "";
-        }
-        int open = json.indexOf('"', json.indexOf(':', k + key.length()) + 1);
-        int close = open < 0 ? -1 : json.indexOf('"', open + 1);
-        return close < 0 ? "" : json.substring(open + 1, close);
+        return Json.field(json, key);
     }
 
     /** The four built-ins, filtered to the named subset, plus grep. */

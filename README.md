@@ -12,6 +12,12 @@ QWEN_BASE_URL=… QWEN_API_KEY=… QWEN_MODEL=… \
 `entrypoint.sh` takes `prove`, `slice <markers> [concurrency]`, `serve [seconds]`,
 `overwatch [seconds]`, `test [cases]`, `seed [cases]` and `dashboard`.
 
+**[`spec/`](spec/) is the specification**, by chapter — written so that this system could be rebuilt
+from it alone, which means it carries the *reasons*: most rules here exist because something went
+wrong once, and a rebuilder who does not know which failure a rule prevents will simplify it back
+into the bug. This README is the tour; the spec is the contract. It is copied into the results volume
+at container start, so the supervisor and the chat agent can read it with their own file tools.
+
 `serve` is what the deployed container runs: the supervisor in the background and the dashboard in
 the foreground. The asymmetry is deliberate — a watcher that dies must not take the record with it,
 and a dashboard that dies should end the container so the restart policy brings both back.
@@ -88,9 +94,19 @@ The note that mattered most: 33 `DM_DEFAULT_ENCODING` markers had never produced
 every agent reasoned that the default charset is fixed at JVM start-up and concluded no test could
 vary it. The first clause is true and the conclusion does not follow — **a test may start a JVM**.
 
-**Silence has a direction.** An objection must be raised to bite, so an unreachable proof-critic
-waives and the test stands. A certificate must be given to bite, so an unreachable fix-critic or
-pr-critic blocks the pull request.
+**Silence has a direction — and only one kind of silence.** An *empty* critique waives everywhere:
+`verdict()` reads no word, so the producer's answer stands. A critic that THROWS is different, and
+which way it falls depends on who catches it. `verdict-critic`, `pr-critic` and `estimator-critic`
+run inside helpers that catch and return the producer's answer unchanged, so an unreachable one
+waives. Everything else — both producers, `proof-critic`, `fix-critic`, `pr-maker` — is unguarded, so
+a throw ends the prove as `infra` and the marker is re-queued rather than settled.
+
+This paragraph used to claim that an unreachable `fix-critic` or `pr-critic` *blocks the pull
+request*. `pr-critic` goes through `reviewed()`, which catches and returns the `pr-maker`'s decision
+unreviewed, so `verified/pr-ready` can be reached with no second signature on it. Nothing acts on
+that — `pr-maker` decides and nothing pushes — so the cost is a row in the record that looks reviewed
+and was not. The stronger guarantee the sentence described does not exist; stating it was worse than
+not having it, because a reader relies on it.
 
 **Dispositions are computed where the builds settled them.** The verdict agent is asked only where
 they settled nothing — a declined proof, or a test that passed before any patch.

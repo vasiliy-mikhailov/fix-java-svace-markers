@@ -410,9 +410,15 @@ public final class Dashboard {
         // nothing about this" — each a paragraph somebody could have written in a minute and could
         // not, because it was a Java text block behind a build, an image and a redeploy.
         // PROVING IT AGAIN, ORDERED BY A PERSON. The same mechanism the supervisor's critic uses —
-        // kill it, keep its record aside, release the claim, let the pool take it — but not counted
+        // kill it, keep its record aside, release the claim, let the pool take it — and NOT counted
         // against that agent's two, because somebody who has read the page and pressed a button is
         // making a decision rather than looping.
+        //
+        // That sentence was false for as long as it existed. Both paths write to restarts.jsonl,
+        // which is right — the record of what happened to a marker is one file — and the limit
+        // counted every line with the marker's id, so two presses here silently spent the
+        // supervisor's whole allowance on a marker it had never touched. The line now carries
+        // `by`, and the limit counts only the supervisor's own.
         route(server, "/reprove", e -> {
             Map<String, String> form = form(e);
             String marker = form.getOrDefault("marker", "");

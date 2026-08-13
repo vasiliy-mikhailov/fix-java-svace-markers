@@ -1,5 +1,5 @@
 #!/bin/bash
-# prove | slice | test | seed | dashboard. See SPEC.md.
+# prove | slice | serve | overwatch | test | seed | dashboard. See spec/ for what all of this is.
 #
 # bash, not sh: the worker pool waits on `wait -n` and counts with `jobs -p`, neither of which is
 # POSIX. A pool built without them either polls on a sleep or spawns everything at once.
@@ -8,6 +8,21 @@ set -eu
 CP="/opt/agent/agent.jar:/opt/agent/lib/*"
 RESULTS="${RESULTS:-/results}"
 CHECKOUTS="${CHECKOUTS:-/work/checkouts}"
+
+# THE SPEC, PUT WHERE THE AGENTS CAN ACTUALLY REACH IT.
+#
+# Every agent's file tools are rooted at the RESULTS directory. That is deliberate — it is where the
+# record is and it is the only tree they may open — but it means a prompt naming `/opt/agent/spec`
+# would name a file none of them can read, and would teach the model to report that its tools are
+# broken. So the spec is copied in, and the prompts name `spec/` relative to the root they have.
+#
+# Refreshed on every start rather than copied once, so a deploy updates it; the old copy is removed
+# first, so a chapter deleted upstream does not linger as a chapter the watcher still cites.
+if [ -d /opt/agent/spec ]; then
+    rm -rf "$RESULTS/spec" 2>/dev/null || true
+    mkdir -p "$RESULTS/spec" 2>/dev/null || true
+    cp -R /opt/agent/spec/. "$RESULTS/spec/" 2>/dev/null || true
+fi
 
 # THE CHECKOUT IS THIS SCRIPT'S JOB, not the agent's. A prove needs a tree that is exactly the
 # upstream one: a previous prove leaves a test and a patch behind, and inheriting them would let a

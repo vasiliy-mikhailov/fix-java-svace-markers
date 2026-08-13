@@ -7,21 +7,32 @@ import com.deepagents.langchain4j.subagents.SubAgentRuntime;
 
 
 /**
- * THE SIX, EACH WITH ITS OWN TOOLS AND ITS OWN CLOSED SET OF ANSWERS.
+ * EVERY PROMPT IN THIS PROGRAM, EACH WITH ITS OWN TOOLS AND ITS OWN CLOSED SET OF ANSWERS.
  *
- * <p>There is no orchestrator: an agent asked to follow an order it can rewrite will rewrite it.
- * {@link Prove} runs the order; these are the six things it calls.
+ * <p>Fifteen: {@link #CHAIN}'s ten run inside a prove, {@link #WATCH}'s four watch a run from
+ * outside it, and {@link #ASKED}'s one speaks only when a person asks it something. There is no
+ * orchestrator — an agent asked to follow an order it can rewrite will rewrite it. {@link Prove}
+ * runs the order; these are the things it calls.
  *
- * <p>TWO WRITE AND FOUR JUDGE, and the split decides the tools. A writer's output is checked by the
- * compiler and the build, so it gets file access — the reproducer may create a file, the fixer may
- * edit one, and neither may do the other's. A judge's answer is BRANCHED ON, so it gets read-only
- * access and a word list, because a certification that can edit its subject certifies nothing.
+ * <p>TWO WRITE AND THE REST JUDGE OR WATCH, and the split decides the tools. A writer's output is
+ * checked by the compiler and the build, so it gets file access — the reproducer may create a file,
+ * the fixer may edit one, and neither may do the other's. A judge's answer is BRANCHED ON, so it
+ * gets read-only access and a word list, because a certification that can edit its subject certifies
+ * nothing.
  *
- * <p>THE DIRECTIONS OF SILENCE DIFFER, and they are not arbitrary — they follow one rule. An
- * OBJECTION must be raised to bite, so an absent objector waives and the work stands. A CERTIFICATE
- * must be given to bite, so an absent certifier withholds and nothing is enforced. The critic objects;
- * the skeptic and the curator certify. So an unreachable critic keeps the test, and an unreachable
- * skeptic or curator blocks the pull request.
+ * <p>THE DIRECTIONS OF SILENCE DIFFER, and there are two kinds of silence. An EMPTY critique waives
+ * everywhere: {@code verdict()} finds no word and the producer's answer stands, which is right for
+ * an objection — it must be raised to bite. A critic that THROWS is a different thing, and which way
+ * it falls is decided by who catches it rather than by what it is: {@code verdict-critic},
+ * {@code pr-critic} and {@code estimator-critic} are called through helpers that catch and return
+ * the producer's answer, so an unreachable one waives; everything else is unguarded, so a throw ends
+ * the prove as {@code infra} and the marker goes back in the queue rather than settling.
+ *
+ * <p>This javadoc used to say that an unreachable curator "blocks the pull request". It does not —
+ * {@code reviewed()} catches and the {@code pr-maker}'s own decision stands unreviewed. Nothing
+ * pushes a pull request, so the cost is a record that reads as reviewed and was not; the guarantee
+ * described here was never in the code, and describing one that is not there is worse than having
+ * none, because the next reader builds on it.
  */
 final class Agents {
 
@@ -182,6 +193,14 @@ final class Agents {
                 and how it settled. Use read_file on any trace to see an agent's actual words. The \
                 digest tells you where to look; it is not the evidence.
 
+                HOW THIS PIPELINE IS SUPPOSED TO WORK IS WRITTEN DOWN, in `spec/`, by chapter, with \
+                `spec/README.md` as the index. Read the chapter before reporting that something is \
+                wrong with a part you have not checked the intent of. Several of the rules here look \
+                like bugs until you know the failure they were written for — a critic whose silence \
+                permits, a marker deliberately re-queued, a bound that measures silence rather than \
+                elapsed time. A finding that a deliberate design is a fault costs a working prompt a \
+                rewrite, and that is worse than a missed finding.
+
                 REPORT PATTERNS, NOT INCIDENTS. One odd settlement is noise. The same odd settlement \
                 eleven times is a prompt that needs rewriting, and that is what is worth a person's \
                 attention. Say how many times, and name three markers where it happened.
@@ -308,7 +327,7 @@ final class Agents {
      * button, and the person presses it.
      */
     Agent chat(Path results) {
-        return runtime("chat", Tools.reading(results, trace, "chat"), """
+        return runtime("chat", Tools.asking(results, trace, "chat"), """
                 You are the agent that watches this pipeline, answering a person who is watching it \
                 with you. Answer the question they actually asked.
 
@@ -317,9 +336,21 @@ final class Agents {
                 how it settled — and then the conversation so far. The digest tells you WHERE TO \
                 LOOK. It is not the evidence, and it is not the whole queue.
 
-                YOU CAN READ THE RESULTS DIRECTORY, with read_file, list_dir, grep and glob. What is \
-                in it, because a question is usually answerable from one of these and you will not \
-                guess the names:
+                TWO TOOLS ANSWER MOST QUESTIONS ASKED HERE. Reach for them first.
+
+                  list_markers(state?, checker?, limit?)  the queue and the state of every marker in
+                                                          it. The counts it returns are EXACT and
+                                                          complete even when the rows are capped.
+                  marker_record(marker)                   one marker: key, checker, state, what it
+                                                          cost, why it settled so, and the lane
+                                                          interpreter's summary of what happened.
+
+                DO NOT COUNT MARKERS WITH grep. It returns matching lines and stops, so a count taken
+                from it is a floor and not a total — that mistake has already been made here, and the
+                answer given was "at least 60" when the queue held 356.
+
+                YOU CAN ALSO READ THE RESULTS DIRECTORY, with read_file, list_dir, grep and glob. \
+                What is in it, for the questions the two tools above do not answer:
 
                   markers.txt                     the WHOLE QUEUE, one marker per line as
                                                   `repo|file|line|checker`. This is the list to read
@@ -333,6 +364,14 @@ final class Agents {
                   overwatch.jsonl                 findings you have raised before, and their judgements
                   restarts.jsonl                  every restart, with the reason given
                   chat.jsonl                      this conversation
+                  spec/                           THE SPECIFICATION OF THIS PIPELINE, by chapter.
+                                                  `spec/README.md` is the index and says which
+                                                  chapter answers what. Read the relevant one before
+                                                  answering any question about how something is
+                                                  SUPPOSED to work — what a disposition means, why a
+                                                  critic's silence means what it does, what the pool
+                                                  does with a claim. Do not reason it out from the
+                                                  traces when it is written down.
 
                 Read before you assert. Quote the words you found. Counting lines in a file beats \
                 estimating from the digest, and `grep` over `m/*/settlements.jsonl` answers most \
