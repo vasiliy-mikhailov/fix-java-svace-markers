@@ -1,0 +1,29 @@
+@(TestFactory|TestTemplate|ParameterizedTest|RepeatedTest|Test|BeforeEach|AfterEach|BeforeAll|AfterAll)\b
+The checker asserts that a method carrying a test-framework annotation is declared with modifiers that let the framework's discovery actually select it; the marker's line is the annotation, so the modifiers to read are on the next line. In this queue all four fire on the Jupiter form `@TestFactory Iterable<DynamicTest> name()` with default (package-private) access — the complaint is the *absent* `public`, which is the JUnit 3/4 rule. Do not confuse that with the modifiers that genuinely disable a Jupiter test — `private`, `static`, `abstract` — which look almost identical in a diff and are the only ones with any runtime consequence.
+
+HOW YOU MAKE IT VISIBLE.
+The only question worth asking is "would the runner still select this method?", and you can ask JUnit itself instead of running the test. Add `org.junit.platform:junit-platform-launcher` in test scope — it is NOT pulled in by spring-boot-starter-test 4.1.0 (I grepped the 4.1.0 pom: only junit-jupiter and mockito-junit-jupiter; surefire injects the launcher at runtime, so it is missing from the test *compile* classpath) — then discover without executing:
+
+    var req = LauncherDiscoveryRequestBuilder.request()
+        .selectors(DiscoverySelectors.selectClass(CSRFIntegrationTest.class)).build();
+    try (var s = LauncherFactory.openSession()) {
+      TestPlan plan = s.getLauncher().discover(req);   // discover(), not execute()
+      // assert a container named "testCSRFLesson()" appears among the descendants
+    }
+
+`discover()` builds the descriptor tree without invoking any test body or `@BeforeEach`, which is what makes this usable here: these four classes are failsafe integration tests that need a live WebGoat + WebWolf (WEBGOAT_HOST / WEBWOLF_PORT in the failsafe config, pom ~line 509) and would otherwise fail for connection reasons unrelated to modifiers.
+
+I ran exactly this against Jupiter 6.0.3, the version Spring Boot 4.1.0 resolves. Results: a package-private `@TestFactory Iterable<DynamicTest>` in a package-private class — the flagged shape verbatim — is discovered (`[container] factory()`) and its dynamicTest children execute normally. Make the same method `private` or `static` and NOTHING is discovered while the build stays green: Jupiter emits only a WARNING-severity discovery issue, "@TestFactory method '…' must not be private. It will not be executed." A silently vanishing test is the real defect in this family, and the discovery assertion above is what turns it RED — the test count is short before the fix, correct after. If you want the build itself to fail rather than an assertion, set the configuration parameter `junit.platform.discovery.issue.severity.critical=WARNING` (surefire/failsafe `<properties><configurationParameters>`); I verified that this promotes the warning to a `DiscoveryIssueException` and fails the engine container.
+
+For these four markers, that machinery produces no RED, and you should say so rather than manufacture one. Package-private is fully discoverable under Jupiter; I also checked the case people assume breaks it — a package-private `@Test` inherited from a superclass in a *different* package — and it still ran (Jupiter reflects and setAccessible's). Under Jupiter `public`, `protected` and default access are behaviourally indistinguishable, so adding `public` is green-before and green-after and no test can separate the two states. Settle these as an obsolete JUnit-4 rule applied to Jupiter code, with the discovery output as the evidence. The family becomes provable the moment a marker lands on `private`, `static` or `abstract` — or on a test class with no accessible no-arg constructor — and then the recipe above is the whole proof.
+
+WHAT GOES WRONG HERE.
+Asserting the marker back at itself: `assertTrue(Modifier.isPublic(CSRFIntegrationTest.class.getDeclaredMethod("testCSRFLesson").getModifiers()))` goes red before and green after while proving nothing — JUnit's answer to the same question is "it runs either way", and reflection over modifiers is a restatement of the marker, not a behaviour.
+
+Importing the JUnit 4 rule. There is no JUnit 4 in this checkout — zero hits for `org.junit.Test`, `@RunWith`, `org.junit.runner` — everything is Jupiter via Spring Boot 4.1.0, so "not public, therefore never runs" is simply false, and a note or verdict resting on it is wrong for the right-sounding reason.
+
+Inferring the rule from the marker's presence. This tree holds ~190 package-private annotated test methods that drew no marker, including `src/it/java/org/owasp/webgoat/integration/ChallengeIntegrationTest.java:18` (`void testChallenge1()`) — same package, same source root as two of the flagged files. Only the four `@TestFactory` declarations were flagged, so "the checker flags non-public test methods" does not survive contact with the directory; open the declaration and read the modifier that is actually there.
+
+Attributing a "no tests ran" observation to this checker. `mvn test` excludes `**/*IntegrationTest.java`, and failsafe includes only `org/owasp/webgoat/integration/*Test` (pom line 524) — while `PathTraversalIntegrationTest.java` declares `class PathTraversalIT` and `SessionManagementIntegrationTest.java` declares `class SessionManagementIT`. Those two classes are not selected at all, for a class-naming reason that has nothing to do with modifiers; changing a modifier will not fix it and renaming to fix it would newly run a dormant suite.
+
+Reaching for "WebGoat is deliberately vulnerable, so it's intended". That argument has no purchase on a test-tree modifier: these files are the harness that proves the lessons, not a lesson, and a method the runner skips is an ordinary defect here. It is equally wrong to swing the other way and assume nothing nearby is deliberate — decide from the flagged line, not from the repository's reputation.

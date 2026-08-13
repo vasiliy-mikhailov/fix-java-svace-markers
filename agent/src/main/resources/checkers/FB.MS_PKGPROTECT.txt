@@ -1,0 +1,61 @@
+\b(?:public|protected)\s+static\s+(?:(?:final\s+)?\S+(?:\[\s*\]|<[^>]*>)|(?!final\b|class\b|void\b)\S+)\s+\w+\s*[=;]
+MS_PKGPROTECT fires on a static field that is public (or protected) and whose value can still be mutated by anyone able to name it — canonically a `public static final` array, because `final` freezes the reference and not the elements; the same detector family also covers public static collections/Hashtables and public static non-final fields of any type. The complaint is about the declaration's *visibility*, not its contents: the analyzer saw no access from outside the field's own package in the classes it was given, so it says the field could be package-protected. It is not MS_SHOULD_BE_FINAL (a static missing `final`), not MS_EXPOSE_REP (a static getter handing out the internal object), not EI_EXPOSE_REP (the instance-level version), and a `public static final String`/int or any immutable value is never this checker — my regex deliberately also matches `public static final Predicate<String>`-style lines (CrossSiteScriptingLesson5a.java:31, HijackSessionAuthenticationProvider.java:31), which are the shape but not the defect, since the value is immutable.
+
+HOW YOU MAKE IT VISIBLE.
+The defect is demonstrable, but only if you attack the aliasing and not the modifier — and the trap that kills most attempts is that the checker's own remedy (narrow to package-private) makes a straightforward RED test stop COMPILING rather than turn GREEN, and a non-compiling test is not a GREEN.
+
+The shape that survives both states names the field only at runtime, so the same source compiles before and after any fix:
+
+  Object h = null;
+  try { h = HashingAssignment.class.getField("SECRETS").get(null); } catch (Throwable ignored) {}
+  if (h instanceof String[] a) { for (int i = 0; i < a.length; i++) a[i] = "pwned"; }
+
+`Class.getField` only sees public members, so after any real fix (field made package-private, made private behind a cloning accessor, or retyped to `List.of(...)`) the handle simply is not there, the write never lands, and the test goes GREEN — while a cosmetic "fix" that adds a defensive-copy getter but leaves the field public stays RED, which is correct.
+
+For HashingAssignment the consequence is immediate, because line 37 (`SECRETS[new Random().nextInt(SECRETS.length)]`) reads the array per request, after startup. Drive the endpoint directly — no Spring context needed, `getMd5(HttpServletRequest)` is callable with `new org.springframework.mock.web.MockHttpServletRequest()` (a fresh one per call; the method caches into the session), and `org.springframework.mock.web` is already on the test classpath (SecurityQuestionAssignmentTest.java:14). Assert that the returned hex is `DatatypeConverter.printHexBinary(md5(s)).toUpperCase()` for some s in a set of the five ORIGINAL secrets **written out as literals in the test**. RED: the endpoint serves MD5("pwned"), a value the lesson's own answer list does not contain. The test must snapshot the array in @BeforeEach and restore it in @AfterEach — and the fact that it has to, because one write poisons every later test in the forked JVM, is itself the clearest statement of the defect.
+
+For JWTSecretKeyEndpoint the same recipe needs a different oracle, and this is the part that cannot be guessed from the checker name: JWT_SECRET (lines 37-38) snapshots one element during static initialisation, and you cannot front-run that (`get(null)` triggers class init), so a post-init write changes the signing key not at all — the endpoint's own behaviour is immune. What the write does break is the published-table contract that JWTLessonIntegrationTest.java:75 depends on: take a token from `getSecretToken()`, then loop the LIVE `SECRETS` (live is correct here — that lookup is the contract under test) trying `Jwts.parser().setSigningKey(TextCodec.BASE64.encode(key)).parse(token)`, and assert some key verifies. After a foreign write none does — RED; with no writable handle, one does — GREEN.
+
+CHECKED AGAINST THE CHECKOUT BY A SECOND READER WHO RE-RAN THE CLAIMS ABOVE. Where the two disagree, THIS IS THE ONE THAT HOLDS.
+The defect is demonstrable on both markers, but only if you attack the aliasing and not the modifier -- and the trap that kills most attempts is that the checker's own remedy (narrow to package-private) makes a straightforward RED test stop COMPILING rather than turn GREEN, and a non-compiling test is not a GREEN.
+
+The shape that survives both states names the field only at runtime, so the same test source compiles before and after any fix. There are TWO distinct reflective accessors and you must not confuse them -- this is the single thing that decides whether you ever reach GREEN:
+
+  // HOSTILE WRITE -- models an ordinary caller in another package.
+  // Class.getField sees public members only, so this handle DISAPPEARS on any real fix.
+  static String[] publicHandle(Class<?> c) {
+    try { Object h = c.getField("SECRETS").get(null);
+          return (h instanceof String[] a) ? a : null; }
+    catch (Throwable t) { return null; }
+  }
+
+  // HARNESS READ -- the test inspecting the contract. Survives the fix on purpose.
+  static String[] forcedHandle(Class<?> c) throws Exception {
+    java.lang.reflect.Field f = c.getDeclaredField("SECRETS");
+    f.setAccessible(true);
+    Object h = f.get(null);
+    return (h instanceof String[] a) ? a : null;
+  }
+
+Write only through publicHandle; read only through forcedHandle. `setAccessible` on the read is not cheating -- the test is allowed privileges the attacker is not, and the assertion is about whether an UNPRIVILEGED writer can still reach the array. After any real fix (package-private, private behind a cloning accessor, or retyped to List.of(...)) publicHandle returns null, the write never lands, and the test goes GREEN; a cosmetic "fix" that adds a defensive-copy getter but leaves the field public stays RED, which is correct.
+
+HashingAssignment -- the consequence is immediate and needs no forcedHandle at all, because the oracle is five literals. Line 37 (`SECRETS[new Random().nextInt(SECRETS.length)]`) reads the array per request, after startup. Drive the endpoint directly: `AssignmentEndpoint` is an empty marker interface (`public interface AssignmentEndpoint {}`), so `new HashingAssignment()` needs no Spring context, and `getMd5(HttpServletRequest)` takes `new org.springframework.mock.web.MockHttpServletRequest()` -- a fresh one per call, the method caches into the session. `org.springframework.mock.web` is already on the test classpath (SecurityQuestionAssignmentTest.java:14). Poison every element via publicHandle, call the endpoint, and assert the returned hex equals `DatatypeConverter.printHexBinary(md5(s)).toUpperCase()` for some s among the five ORIGINAL secrets WRITTEN OUT AS LITERALS IN THE TEST (equivalently `HashingAssignment.getHash(literal, "MD5")`, line 83 -- a pure function of its argument, so it is not the vacuous oracle). Executed: RED serves 5E93DE3EFA544E85DCD6311732D28F95 = MD5("pwned"); with the field narrowed, the same test bytecode serves a pristine hash and passes. Snapshot in @BeforeEach and restore in @AfterEach -- and the fact that it has to, because one write poisons every later test in the forked JVM, is itself the clearest statement of the defect.
+
+JWTSecretKeyEndpoint -- same write, different oracle, and this is the part that cannot be guessed from the checker name. JWT_SECRET (lines 37-38) snapshots one element during static initialisation and you cannot front-run that (`get(null)` triggers class init), so a post-init write changes the signing key not at all -- the endpoint's own behaviour is immune. What the write breaks is the published-table contract that JWTLessonIntegrationTest.java:75 depends on. Take a token from `new JWTSecretKeyEndpoint().getSecretToken()` (order relative to the poison does not matter; JWT_SECRET is frozen either way), then loop the LIVE table read through forcedHandle -- live is correct here, that lookup is the contract under test -- trying `Jwts.parser().setSigningKey(TextCodec.BASE64.encode(key)).parse(token)` inside try/catch, and assert some key verifies. Executed: after a foreign write none does (RED); with the field narrowed the write never lands, forcedHandle still returns {victory, business, available, shipping, washington}, and "victory" verifies (GREEN).
+
+Do NOT read the live table with `getField` here. It is the obvious move, since `getField` is what the write uses, and it silently destroys the test: after the fix the read handle is gone too, the loop iterates nothing, "some key verifies" is false, and the test is RED in BOTH states. Measured. That dead end is what makes this marker look unprovable when it is not.
+
+Do NOT substitute the five JWT literals for the live read either. JWT_SECRET was snapshotted pre-poison, so a token always verifies against a literal and there is no RED at all.
+
+WHAT GOES WRONG HERE.
+Asserting the marker back at itself: `assertFalse(Modifier.isPublic(f.getModifiers()))` or `assertThrows(NoSuchFieldException.class, ...)`. It does flip RED→GREEN, but it restates the declaration and would pass identically for a public *immutable* field, which is not this checker at all.
+
+The vacuous oracle: building the expected secret set by reading `HashingAssignment.SECRETS`. The mutated array satisfies itself and the test passes in both states. The five expected values must be literals typed into the test.
+
+`SECRETS[0] = "x"; assertEquals("x", SECRETS[0]);` — proves that Java arrays are mutable. True of every array ever written.
+
+Writing the RED in a foreign package with a direct compile-time reference (`HashingAssignment.SECRETS[0] = "pwned";`). It is a fine RED and then it does not compile after the fix; there is no GREEN to reach. Note that the existing unit tests live in the field's own package (JWTSecretKeyEndpointTest is `org.owasp.webgoat.lessons.jwt`), so putting the test "next to the class" quietly destroys the cross-package point.
+
+Fix that breaks a lesson vs. fix that breaks the build — different failures, do not merge them. Changing the CONTENTS (stronger secrets, randomised values) breaks crypto-hashing and jwt-secret, whose whole assignment is brute-forcing exactly these words. Narrowing the VISIBILITY breaks no lesson, but it does break compilation of `src/it/java` — a test source root wired in by build-helper-maven-plugin (pom.xml:501) — because JWTLessonIntegrationTest.java:75 and CryptoIntegrationTest.java:106 read the field from `org.owasp.webgoat.integration`. The tool said "could be package protected" because it was shown main classes only. Grep for cross-package readers before narrowing; here they exist. Retyping to `List.of(...)` is likewise not free: it breaks the `SECRETS[i]` indexing at HashingAssignment.java:37 and :55, EncodingAssignment.java:37, JWTSecretKeyEndpoint.java:38 and both integration tests.
+
+The verdict-word trap in both directions. "WebGoat is deliberately vulnerable, so this is intentional" does not follow: the weak passwords are the lesson, but nothing in the lesson HTML, hints, or assignment asks a student to read a Java field, and the visibility carries no teaching load. Nor is it a plain bug you can call live: no code in this repository writes to either array, so the failure above requires a hostile or careless writer that you introduce. Settle it on the grep for cross-package readers, not on the repository's reputation.

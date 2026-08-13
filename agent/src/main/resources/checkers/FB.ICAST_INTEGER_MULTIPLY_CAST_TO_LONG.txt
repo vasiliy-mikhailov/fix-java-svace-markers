@@ -1,0 +1,34 @@
+(?:\blong\b[^=;]*=|[+\-*]=|\breturn\b|\(\s*long\s*\))[^;]*[\w)\]]\s*(?:<<|\*)\s*[\w(]
+The checker asserts that a multiplication evaluated in 32-bit int has its int result widened to long afterwards, so any overflow has already happened by the time the extra 32 bits arrive. "Multiplication" includes `<<` by a constant, which is a multiply by a power of two — the detector matches the bytecode pair IMUL-or-ISHL immediately followed by I2L, so the flagged line need not contain a `*` at all. The widening is usually invisible in source: `longField += intExpr`, `return intExpr;` from a long-returning method, or `(long) (a * b)` where the cast landed outside the parentheses. Neighbours it gets confused with: ICAST_INT_2_LONG_AS_INSTANT (an int with no arithmetic used as a millisecond timestamp) and ICAST_IDIV_CAST_TO_DOUBLE (integer division widened to double); an int multiply whose result stays in an int is not this pattern at all, because there is no widening.
+
+HOW YOU MAKE IT VISIBLE.
+Nothing here throws, logs, or changes control flow — the only observable is a number, so a test has to (1) drive an operand past the 32-bit boundary and (2) read the wrong result back through the public API. Both halves need arithmetic done on paper first.
+
+Threshold: `a * b` overflows at |a*b| >= 2^31; `x << k` overflows at x >= 2^(31-k). At MD5.java:297 (`state.bitCount += length << 3;`, javac emits `iload length; iconst_3; ishl; i2l; ladd`) k=3, so the first failing length is 2^28 = 268435456 bytes = 256 MiB.
+
+Reachability is where these markers usually die, and it is decided by lines you only get by reading around the flag. In MD5, ten lines above, `if ((length + offset) > buffer.length) { length = buffer.length - offset; }` clamps length to the actual array, so you cannot cheat with a huge `length` and a small `byte[]`; the streaming entry points `getHash(File)` / `getHash(InputStream)` (MD5.java:131-134, 149-152) read 1024 bytes per call, so hashing a 1 GB file never reaches the overflow; and although `bitCount` accumulates across calls, the shift overflows per call, so a million small updates never trigger it either. The one and only route is a single in-memory `byte[]` of >= 2^28 through `MD5.getHash(byte[])` / `update(byte[])`.
+
+Oracle: `bitCount` is a private field of a private inner class (MD5.java:525). Do not reflect into it and do not assert your own recomputation of the count — that asserts the buggy arithmetic against itself. Assert the digest against an independent implementation, `MessageDigest.getInstance("MD5")` fed the same array. I ran this: `byte[] b = new byte[1 << 28]` filled with `(byte) i` gives WebGoat `fc8f3641d4e8106a66b1be42e7d3a838` against the JDK's `c2b8514744d7b678f8a2f7e172a93ea7` — RED for the right reason (the 64-bit length field written into the final padding block by `encode(long)` at MD5.java:609 carries the sign-extended garbage in its high word). Changing the line to `state.bitCount += (long) length << 3;` makes WebGoat return `c2b8514744d7b678f8a2f7e172a93ea7` — GREEN. At `(1 << 28) - 1` the two already agree (`6f21ad1f66af914c233414011667697c`), so the boundary is exact and worth asserting as the second half of the test.
+
+Cost and heap: the run took 1.3 s wall — this is not a slow test, it is a big-allocation test. The surefire `argLine` in pom.xml sets no `-Xmx`, so the fork inherits 1/4 of physical RAM; on a small runner a 256 MiB array will OOM. Add `-Xmx1g` to that argLine. Do NOT reach for `Assumptions.assumeTrue(Runtime.getRuntime().maxMemory() > ...)` or `@Disabled` — a skipped test is not a RED, and it is exactly how this marker gets silently written off as unprovable.
+
+Why the failure is all-or-nothing, which matters when you pick inputs: the computed count and the true count are congruent mod 2^32 (widening a truncated int only ever loses multiples of 2^32), so the buffer index `(int)(bitCount >>> 3) & 0x3f` and the padding length are unaffected and every input below 2^28 hashes bit-identically. There is no "slightly wrong at 1 MiB" to go looking for; a test at any convenient size proves nothing.
+
+When the operands are provably bounded — constant-folded, capped by a validated parameter, or a field that cannot exceed a small value — no reachable input gets the product to 2^31 and the honest settlement is that the defect cannot be made visible; say which bound blocks it and stop, rather than inventing a caller that cannot exist.
+
+WebGoat-specific: MD5 here is a deliberately weak hash — challenge7's password-reset link (PasswordResetLink.java:20) is meant to be guessable, and that weakness is the assignment. The 32-bit overflow is not part of any lesson. The one-token fix leaves every digest the lesson can produce unchanged (I checked "", "abc", "webgoat" before and after: identical), so the existing MD5Test.java assertions stay green. Do not "fix" this by swapping in `MessageDigest` or a stronger hash — that breaks the assignment and deletes the construct instead of correcting it.
+
+WHAT GOES WRONG HERE.
+Grepping line 297 for `*`, finding none, and declaring the marker mislocated or bogus. The shift is the multiplication; `ishl` followed by `i2l` is precisely what the detector matches, and `<< 3` is `* 8`.
+
+Fixing with the cast on the wrong side: `state.bitCount += (long) (length << 3);` casts after the int shift has already overflowed and changes nothing. The cast has to be on the operand — `(long) length << 3` — and the RED must be re-run to confirm, because both spellings compile and look equally "fixed".
+
+Writing a test that reads or recomputes `bitCount` (via reflection into the private inner MD5State, or by mirroring the same shift in the test) — it asserts the defect against itself and passes either way. The assertion has to be the digest, against `MessageDigest`.
+
+Marking the test `@Disabled`, `assumeTrue(...)` on available memory, or "too expensive for CI". It runs in 1.3 s; it needs 256 MiB of heap, which is an argLine change, not a reason to skip.
+
+Generalising "int multiply can always overflow, therefore always a defect" and flagging int-only arithmetic such as SecurePasswordsAssignment.java:85-88 (`int min = (60 * s); int hr = (60 * min); ...`). Those results stay in int and 365*86400 fits comfortably; with no widening to long, this checker has nothing to say. Symmetrically, `long sec = (seconds % min * s)` on line 94 of that file is already long arithmetic because `seconds` is a long — the operand types decide it, not the shape of the line.
+
+Reaching for the other WebGoat reflex — "teaching app, MD5 is intentional, dismiss the marker". The weak hash is the lesson; a digest that disagrees with every other MD5 implementation at 256 MiB is not, and nothing in challenge7 depends on it.
+
+Assuming a large file will reproduce it. `getHash(File)` and `getHash(InputStream)` chunk at 1024 bytes; only a single oversized `byte[]` reaches the overflowing call.

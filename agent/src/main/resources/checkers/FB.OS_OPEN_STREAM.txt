@@ -1,0 +1,65 @@
+\bnew\s+\w*(?:Zip|Jar)File\s*\(|\bnew\s+\w*(?:InputStream|OutputStream|Reader|Writer)\s*\(|\.(?:readLine|getInputStream|getOutputStream)\s*\(
+The checker asserts that a stream or other Closeable is opened into a local variable and can reach a method exit without close() on any path — no try-with-resources, no finally block. Distinguish it from its neighbour OS_OPEN_STREAM_EXCEPTION_PATH, which makes the weaker claim that a close() does exist but is skipped when an exception unwinds; both sites in this queue are the stronger "never closed on any path". Also note the marker line is not reliably the construction site: at VulnerableTaskHolder.java:70 the flagged line is `while ((line = in.readLine()) != null) {`, a *use* of the BufferedReader built two lines earlier at :68, so an agent reading only the flagged line sees a loop and can talk itself into believing the complaint is about readLine or about the loop condition.
+
+HOW YOU MAKE IT VISIBLE.
+The leak changes nothing a normal assertion can see: same return value, same bytes written, same log lines. The only observable is resource accounting outside the method, and whether it exists depends on WHICH handle leaked — so decide that first, and do not assume the two flagged sites settle the same way.
+
+ROUTE 1 — file descriptor accounting. Works for file-backed handles (ZipFile, FileInputStream). Cast ManagementFactory.getOperatingSystemMXBean() to com.sun.management.UnixOperatingSystemMXBean (guard with an Assumption; on Windows it is not that type), read getOpenFileDescriptorCount(), call the method under test ~200 times, assert the delta stays near zero. I ran exactly this against ProfileZipSlip's shape: 200 iterations over DISTINCT zip files leaked 199 descriptors, and the same loop with try-with-resources leaked 0. That is a genuine RED/GREEN.
+
+Two conditions are load-bearing and both silently produce a false GREEN. (a) The zips must be distinct files. Repeating one file 200 times measured a delta of 0, because the JDK keeps a refcounted shared ZipFile.Source keyed by file key + mtime — one descriptor serves all 200 opens. The production code is safe from this only because it writes each upload into a fresh Files.createTempDirectory. (b) No System.gc() anywhere in the test: ZipFile registers a Cleaner, and a forced GC took my measured delta from 199 straight back to 0. The assertion is therefore inherently probabilistic against incidental GC — keep the loop tight and allocate little.
+
+ROUTE 2 — deterministic, and needs no seam in the code. Mockito's inline mock maker can intercept the inline `new ZipFile(...)`: wrap the call in try (MockedConstruction<ZipFile> mc = mockConstruction(ZipFile.class, (m, ctx) -> when(m.entries()).thenReturn(Collections.emptyEnumeration()))) and then verify(mc.constructed().get(0)).close(). I ran it: the flagged shape fails with WantedButNotInvoked, the try-with-resources version passes. Mockito ships via spring-boot-starter-test and is in the local repo. Two mechanics matter: stub every method the code calls on the mock (an unstubbed entries() returns null and you get an NPE, which is a RED for the wrong reason), and modern JDKs need -XX:+EnableDynamicAgentLoading or Mockito self-attaches with a deprecation warning.
+
+ROUTE 3 — the honest "you cannot". A stream taken from Runtime.exec(...).getInputStream() cannot be shown to leak anything, and VulnerableTaskHolder.java:70 is that case. I leaked 1000 BufferedReaders over child processes and measured a descriptor delta of 0; after a child exits the count actually DROPS by 3 with the reader still unclosed, because ProcessImpl.ProcessPipeInputStream.processExited() drains and closes the pipe on the reaper thread. Nor can the method return while the child lives — the loop runs to EOF, which is the child exiting. So there is no resource consequence to assert on. The right settlement is to fix it on inspection as a real unclosed-resource defect and record that no test can distinguish the states, rather than to manufacture a test that passes both before and after.
+
+One correctness point for whichever route: closing the ZipFile is the complete fix, since closing it closes the entry streams it handed out. But do not conclude that `is` at ProfileZipSlip.java:80 is closed by its consumer — I measured that java.nio.file.Files.copy(InputStream, Path, ...) leaves the source open, while Spring's FileCopyUtils.copy(in, out), used seven lines earlier at :73, does close both. Adjacent lines in one method, opposite semantics.
+
+CHECKED AGAINST THE CHECKOUT BY A SECOND READER WHO RE-RAN THE CLAIMS ABOVE. Where the two disagree, THIS IS THE ONE THAT HOLDS.
+The leak changes nothing a normal assertion can see: same return value, same bytes written, same log lines. There is no output difference — the observable is either the close() call itself or resource accounting outside the method. BOTH flagged sites are provable. Do not conclude otherwise for either one.
+
+ROUTE A — construction interception. Deterministic, needs no seam, and works at BOTH sites; prefer it. Mockito's inline mock maker (ships via spring-boot-starter-test, already in the local repo) intercepts an inline `new X(...)` inside production code called from the test thread, and you then verify close() on the constructed mock.
+
+  ProfileZipSlip.java:75 — instantiate the real endpoint against a temp home, post a real zip through the real entry point:
+    var endpoint = new ProfileZipSlip(Files.createTempDirectory("wghome").toString());
+    var file = new MockMultipartFile("uploadedFileZipSlip", "attack.zip", "application/zip", zipBytes);
+    try (MockedConstruction<ZipFile> mc = mockConstruction(ZipFile.class,
+            (m, ctx) -> when(m.entries()).thenReturn(Collections.emptyEnumeration()))) {
+      endpoint.uploadFileHandler(file, "probeuser");
+      verify(mc.constructed().get(0)).close();
+    }
+  I ran this against the class compiled from the repo: WantedButNotInvoked. Against a copy whose only change is `try (ZipFile zip = new ZipFile(...))`: passes. No Spring context needed.
+
+  VulnerableTaskHolder.java:68/70 — same shape, one line shorter, because the mock's default readLine() returns null and the loop exits at once:
+    var payload = serialize(new VulnerableTaskHolder("t", "sleep 1"));   // requestedExecutionTime must be < 10 min old
+    try (MockedConstruction<BufferedReader> mc = mockConstruction(BufferedReader.class)) {
+      new ObjectInputStream(new ByteArrayInputStream(payload)).readObject();
+      verify(mc.constructed().get(0)).close();
+    }
+  I ran this too: unfixed → invocations [readLine()], verify fails with WantedButNotInvoked; try-with-resources → [readLine(), close()], passes. src/test/java/org/owasp/webgoat/lessons/deserialization/DeserializeTest.java already round-trips this class through SerializationHelper and is the obvious place to put it.
+
+  Two mechanics. Stub every method the code calls on the mock — an unstubbed entries() returns null, the NPE escapes processZipUpload (it catches only IOException), and you get a RED for the wrong reason. And modern JDKs may want -XX:+EnableDynamicAgentLoading; on JDK 26 here Mockito self-attached without it.
+
+ROUTE B — file-descriptor accounting. Only for file-backed handles (ZipFile, FileInputStream), and only if you want a second, blunter witness. Cast ManagementFactory.getOperatingSystemMXBean() to com.sun.management.UnixOperatingSystemMXBean (guard with an Assumption; on Windows it is not that type), read getOpenFileDescriptorCount() around a loop over the method under test. Measured on ProfileZipSlip's shape, JDK 26: 200 iterations over DISTINCT zips leaked 121 descriptors, identical across five runs; 50 iterations leaked 50; try-with-resources leaked 0. The leaked count is NOT the iteration count — it is capped by whenever the GC first runs — so assert a large delta (say > N/4), never delta ≈ N.
+
+Three conditions, each of which silently produces a false GREEN. (a) Distinct zip files per iteration: repeating one file 200 times measured a delta of 1, because the JDK refcounts a shared ZipFile.Source keyed by file key + mtime. Production is safe from this only because each upload lands in a fresh Files.createTempDirectory (:67). (b) No System.gc() anywhere — ZipFile registers a Cleaner and a forced GC took the delta straight to 0. (c) Don't measure the leaky and fixed cases in one JVM in that order: the fixed run then reads a delta of −121 as the earlier leaks get cleaned under it.
+
+WHAT IS GENUINELY UNOBSERVABLE — and what that does NOT license. A stream from Runtime.exec(...).getInputStream() leaks no descriptor: I ran 1000-scale loops (300 iterations over /bin/echo) leaving every BufferedReader unclosed and measured +3 immediately, 0 after 500 ms, because ProcessImpl.ProcessPipeInputStream.processExited() drains and closes the pipe on the reaper thread. Nor can the method return while the child lives — the loop runs to EOF. So Route B has nothing to say about VulnerableTaskHolder. That is a statement about descriptor counting, not about testability: Route A settles that site deterministically. "The resource accounting can't see it" is never by itself a reason to skip the build.
+
+One correctness point for whichever route. Closing the ZipFile is the complete fix — it closes the entry streams it handed out, and I verified with SpotBugs that try-with-resources on the ZipFile alone removes the OS_OPEN_STREAM finding for ProfileZipSlip with no new finding landing on `is` at :80. But do not assume `is` is closed by its consumer: java.nio.file.Files.copy(InputStream, Path, ...) leaves the source open (measured), while Spring's FileCopyUtils.copy(InputStream, OutputStream) closes both. The call at :73 is the FileCopyUtils.copy(byte[], File) overload — it creates and closes its own output stream and has no input stream to leak. Adjacent lines, different contracts.
+
+On the marker line: SpotBugs 4.10.3 (effort=Max, threshold=Low) on this checkout puts its primary SourceLine at VulnerableTaskHolder.java:68 and ProfileZipSlip.java:75 — the construction sites — and reports exactly 2 OS_OPEN_STREAM, 0 OS_OPEN_STREAM_EXCEPTION_PATH. If your marker instead points at :70, that line is `while ((line = in.readLine()) != null) {`, a use of the reader built at :68; the subject is `in` either way, never readLine or the loop.
+
+WHAT GOES WRONG HERE.
+Reading only the flagged line. At VulnerableTaskHolder.java:70 that line is a while-loop; the resource is `in`, declared at :68. A note or fix aimed at readLine misses the subject entirely.
+
+Asserting the marker back at itself. There is no output difference to test. In ProfileZipSlip the extracted file's bytes, the AttackResult, and the isSolved comparison are identical with and without the close, so a test that uploads a zip and checks the response is GREEN before and after and proves nothing.
+
+The same-file loop. It is the obvious way to write Route 1 and it measured a delta of 0 against genuinely leaking code — a false GREEN that looks like a clean pass. Distinct files per iteration, always.
+
+Adding System.gc() to "stabilise" the measurement. It does the opposite: the Cleaner closes the leaked handles and the RED evaporates.
+
+Assuming the two markers settle alike because they share a checker. One is provable by descriptor count, the other is not provable at all; the JDK's process reaper already reclaims what VulnerableTaskHolder leaks.
+
+Over-fixing and breaking a lesson. Both files are deliberately vulnerable teaching code, but the unclosed handle is not the lesson in either. ZipSlip's lesson is the unvalidated e.getName() in `new File(tmpZipDirectory.toFile(), e.getName())` at :79; VulnerableTaskHolder's is readObject reaching Runtime.exec at :67. try-with-resources touches neither. The fix must be only the close — an agent that also sanitises the entry name or drops the exec makes the assignment unsolvable, and src/it/java/org/owasp/webgoat/integration/PathTraversalIntegrationTest.java:140 is the guard that still solves zip-slip.
+
+Concluding "resource leaks are untestable" as a family verdict. That is the DM_DEFAULT_ENCODING error in a new costume: true of the process-pipe case, false of the ZipFile case, where I measured 199 leaked descriptors.

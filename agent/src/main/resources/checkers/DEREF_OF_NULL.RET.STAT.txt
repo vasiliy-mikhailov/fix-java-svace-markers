@@ -1,0 +1,37 @@
+\b[a-z][A-Za-z0-9_$]*\s*\.\s*[a-zA-Z_$][A-Za-z0-9_$]*\s*\(
+On the flagged line a value is used as a method receiver without ever having been null-tested, and that value arrived from a call permitted to return null — `.RET` means the null originates in a *returned value*, not in a parameter or a field. The `.STAT` flavour is the inferred kind: the analyzer concluded the callee may return null from how the surrounding code treats it (in WebGoat nearly every other `HttpSession.getAttribute` result is null-tested; these two call sites are not) rather than from proving a concrete null-returning path, so the report points at a *missing check*, not at a proof — establishing that null is genuinely reachable is your job. The neighbouring construct constantly mistaken for it: on a line shaped `T x = (T) v.m();` there are two return values in view, and the flagged one is NOT `m()`'s result being cast — it is `v`, the receiver, whose value was returned by a call on an earlier line.
+
+HOW YOU MAKE IT VISIBLE.
+The defect is directly observable, and cheaply — no Spring context needed.
+
+WHERE THE NULL COMES FROM. At SigningAssignment.java:59 `KeyPair keyPair = (KeyPair) request.getSession().getAttribute("keyPair");` — `getAttribute` returns null for an absent name. That attribute is written only by the *other* endpoint, `getPrivateKey` (line 47), which the lesson page fires from JS on load (`$("#privatekey").load('crypto/signing/getprivate')`, lessons/cryptography/html/Cryptography.html:13). Nothing on the server orders the two. Any HTTP session that POSTs `/crypto/signing/verify` before GETting `/crypto/signing/getprivate` reaches line 60 with `keyPair == null`. The same class null-tests the analogous read ten lines up (line 43) — exactly the asymmetry the STAT inference picked up on.
+
+ARRANGE (two lines). `AssignmentEndpoint` is an empty marker interface and `AttackResultBuilder.failed(this)` reads only `assignment.getClass().getSimpleName()`, so `new SigningAssignment()` works standalone — no Spring Boot, no Flyway, no security. `new MockHttpServletRequest()` (spring-test, already on the classpath via spring-boot-starter-test) auto-creates an empty session, so `getAttribute("keyPair")` returns null with no Mockito stubbing at all.
+
+ASSERT THE GRACEFUL OUTCOME, NOT THE EXCEPTION — one test, unchanged across RED and GREEN:
+
+    MockHttpServletRequest request = new MockHttpServletRequest(); // fresh session: no "keyPair"
+    AttackResult r = new SigningAssignment().completed(request, "AABBCC", "c2ln");
+    assertThat(r.assignmentSolved()).isFalse();
+
+RED, which I ran against this checkout's target/classes (Java 25, so helpful NPE messages are on by default):
+
+    java.lang.NullPointerException: Cannot invoke "java.security.KeyPair.getPublic()" because "keyPair" is null
+        at org.owasp.webgoat.lessons.cryptography.SigningAssignment.completed(SigningAssignment.java:60)
+
+That frame — naming the flagged line AND the null variable — is what "failed for the right reason" means for this family. Read it. Do not settle for "an NPE was thrown".
+
+GREEN. Guard the read and return `failed(this)`; its default feedback key `assignment.not.solved` is already in messages.properties, so no new bundle entry is needed (a missing key surfaces as a different failure). Line 70 dereferences `keyPair` a second time, so the guard must precede both uses. Same test, same assertion, now passes.
+
+WHEN IT CANNOT BE SHOWN. Because STAT infers rather than proves, some markers in this family have no reachable null: the writer always runs before the reader, or the callee returns null on no path that reaches here. Settle those by refutation with the unreachability argument written out — not by bolting on a null check to quiet the tool. You tell the two apart by looking for an entry point that reaches the deref without the writer having run; here that entry point is trivial (a second browser tab, a restarted app, a direct curl), which is why this one is provable.
+
+WHAT GOES WRONG HERE.
+1. `assertThrows(NullPointerException.class, ...)` as the RED. It PASSES on today's buggy code and FAILS after the fix — a regression lock on the defect, inverted. It also fails to pin line 60: a null `modulus` or `signature` would satisfy it just as well.
+
+2. Null-checking `rsaPubKey` — the result of `getPublic()` — because the cast sits on the flagged line. Wrong value entirely: `getPublic()` on a generated KeyPair never returns null, and the NPE fires on the *receiver* before the cast or the assignment happen. That guard compiles, ships, and changes nothing.
+
+3. Driving the RED through `LessonTest`/MockMvc. It boots the whole app (RANDOM_PORT, Flyway migrations, security) and Spring's exception resolution turns the NPE into a 500 whose text no longer names line 60. Worse: `modulus` and `signature` are required `@RequestParam`s, so omitting them yields a 400 — a RED for entirely the wrong reason, and one that would still look RED after a correct fix.
+
+4. Refusing the marker on the grounds that the path says `lessons/cryptography/`. The signing assignment teaches signing a modulus with a handed-out private key; a 500 on an out-of-order POST is no part of that, and returning `failed(...)` leaves every solution path intact. The opposite reflex is equally wrong — read what the assignment's success condition actually checks before deciding the construct is or is not load-bearing.
+
+5. "Fixing" it by making the page or endpoint always populate the session first, or by rerouting through `CryptoUtil.verifyAssignment`. The latter null-checks `modulus` and `signature` but takes a `PublicKey`, so the caller still has to evaluate `keyPair.getPublic()` — the flagged deref survives untouched.

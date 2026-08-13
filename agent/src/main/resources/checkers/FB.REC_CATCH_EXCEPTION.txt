@@ -1,0 +1,49 @@
+catch\s*\(\s*(?:final\s+)?(?:java\.lang\.)?Exception\s+\w+\s*\)
+SpotBugs reports REC_CATCH_EXCEPTION on a `catch (Exception e)` header when nothing inside the try is declared to throw `java.lang.Exception` itself and no sibling clause over the same range catches RuntimeException — so the only thing the clause reaches beyond the checked exceptions the author had in mind is the unchecked ones, which it swallows silently. The checker is about the TYPE in the catch header, not about what the handler body does; an empty or log-only body is the separate ignored-exception family (DE_MIGHT_IGNORE), and `catch (Throwable)` is a different pattern again. A try block that calls something literally declared `throws Exception` does not fire it, and confidence drops when several catch clauses share the range or the try can throw many distinct types — which is why an identical-looking `catch (Exception e)` a few lines below a flagged one (line 71 of the flagged file; 33 such clauses exist under src/main/java) may carry no marker without meaning the marked one is different in kind.
+
+HOW YOU MAKE IT VISIBLE.
+The catch header is a behavioural fact, so it is testable — but only through a seam that lets the test CHOOSE the exception type thrown inside the try. At the flagged site the try body is `dataSource.getConnection()` / `prepareStatement` / `execute`, and `SqlInjectionLesson5` receives its `LessonDataSource` through the constructor, so the constructor is the seam. Plain JUnit, no Spring context:
+
+  DataSource inner = mock(DataSource.class);
+  when(inner.getConnection()).thenThrow(new IllegalStateException("pool closed"));
+  var lesson = new SqlInjectionLesson5(new LessonDataSource(inner));
+  assertThrows(IllegalStateException.class, lesson::createUser);
+
+I ran this. RED today: "Expected java.lang.IllegalStateException to be thrown, but nothing was thrown" — the handler eats it and `createUser()` returns as if the user had been created. GREEN after changing line 48 to `catch (SQLException e)` (SQLException is already imported at line 13; nothing else changes).
+
+That test ALONE is a tautology — it just reads the catch header back out loud. It becomes a statement about behaviour only when paired with a second test that pins the swallow the author intended: stub `getConnection()` to throw `new SQLException("user already exists")` and `assertDoesNotThrow(lesson::createUser)`, green before AND after. The pair states the real defect: the clause cannot tell "CREATE USER failed because the user already exists" (deliberately ignored, per the comment on lines 41-42) from "the connection machinery is broken", and continues silently on both. I also ran the lesson's own SqlInjectionLesson5Test with the catch narrowed — 3 tests, 0 failures — which is the guard that the fix did not touch the assignment.
+
+Build note for this checkout: the pom sets java.version=25 and only a JDK 21 is installed here; `./mvnw -o -Djava.version=21 -Dtest=<Test> test` compiles and runs. Do not conclude the tree is unbuildable.
+
+When there is NO seam — the datasource/client/parser is constructed inside the method — this type-discrimination test cannot be written, and the honest fallback is to ask whether the handler produces an observable VALUE instead of returning void. Line 71 of the same file is that case: the catch converts any exception into `failed(this).output(getClass().getName() + " : " + e.getMessage() + ...)`, so a broken component reaches the student as HTTP 200 with lessonCompleted=false, indistinguishable from a wrong answer — observable through MockMvc with a @MockitoBean datasource (LessonTest already uses @MockitoBean). If neither a constructor seam nor an observable handler result exists, settle the marker as not demonstrable and say why, rather than asserting on source text or on a log line.
+
+CHECKED AGAINST THE CHECKOUT BY A SECOND READER WHO RE-RAN THE CLAIMS ABOVE. Where the two disagree, THIS IS THE ONE THAT HOLDS.
+The catch header is a behavioural fact, so it is testable — but only through a seam that lets the test CHOOSE the exception type thrown inside the try. At the flagged site the try body is `dataSource.getConnection()` / `prepareStatement` / `execute`, and `SqlInjectionLesson5` receives its `LessonDataSource` through the constructor (line 35), so the constructor is the seam. `LessonDataSource.getConnection()` calls the wrapped datasource BEFORE building its ConnectionProxy, so an unchecked exception from a mock arrives at line 43 unwrapped. Plain JUnit, no Spring context:
+
+  DataSource inner = mock(DataSource.class);
+  when(inner.getConnection()).thenThrow(new IllegalStateException("pool closed"));
+  var lesson = new SqlInjectionLesson5(new LessonDataSource(inner));
+  assertThrows(IllegalStateException.class, lesson::createUser);
+
+I ran this. RED today: "Expected java.lang.IllegalStateException to be thrown, but nothing was thrown" — the handler eats it and `createUser()` returns as if the user had been created. GREEN after changing line 48 to `catch (SQLException e)` (SQLException is already imported at line 13; nothing else changes).
+
+That test ALONE is a tautology — it just reads the catch header back out loud. It becomes a statement about behaviour only when paired with a second test that pins the swallow the author intended: stub `getConnection()` to throw `new SQLException("user already exists")` and `assertDoesNotThrow(lesson::createUser)`, green before AND after. The pair states the real defect: the clause cannot tell "CREATE USER failed because the user already exists" (deliberately ignored, per the comment on lines 41-42) from "the connection machinery is broken", and continues silently on both. I also ran the lesson's own SqlInjectionLesson5Test with the catch narrowed — 3 tests, 0 failures — which is the guard that the fix did not touch the assignment.
+
+BUILD, for this checkout. The pom sets java.version=25. A JDK 25 IS installed (/opt/homebrew/opt/openjdk@25, 25.0.4) and PATH java is 26, but bare `./mvnw` resolves JAVA_HOME through /usr/libexec/java_home, which returns temurin 21, and dies with "release version 25 not supported". Point Maven at the JDK 25 rather than downgrading the release:
+
+  JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home ./mvnw -o -Dtest=<Test> test
+
+Do NOT reach for `-Djava.version=21`: target/classes in this tree is already compiled at release 25, main compile reports "Nothing to compile - all classes are up to date", and testCompile at release 21 then fails with a wall of "bad class file ... class file has wrong version 69.0, should be 65.0" against WebGoat.class, LessonDataSource.class and others. That wall is a JDK/target mismatch, not an unbuildable tree; `-Djava.version=21` only works after a `clean`, or once you have edited a main source and forced the whole module to recompile.
+
+Where the handler does not return void, the same seam still applies — you assert on the RESULT instead of on propagation. The `catch (Exception e)` at line 71 is that case, NOT a seamless one: `injectableQuery` is protected and lives in the same class behind the same constructor-injected datasource. I ran it with the identical mock: `lesson.injectableQuery("select 1")` returns `lessonCompleted=false` with output "org.owasp...SqlInjectionLesson5 : pool closed<br> Your query was: select 1" — a broken component reaching the student as HTTP 200 and a wrong-answer page, in plain JUnit with no MockMvc and no @MockitoBean needed. Prefer that over a Spring context: replacing the LessonDataSource bean wholesale affects every lesson's @PostConstruct and the Flyway migration LessonTest runs in @BeforeEach.
+
+A genuinely seamless site is one where the datasource/client/parser is constructed INSIDE the method and no argument or field can carry a substitute. If neither a constructor seam nor an observable handler result exists there, settle the marker as not demonstrable and say why, rather than asserting on source text or on a log line.
+
+WHAT GOES WRONG HERE.
+- Asserting the marker back at itself: stubbing a RuntimeException and asserting it propagates, with nothing else, only restates the catch header. It must be paired with the SQLException case that has to stay swallowed.
+- Offering the SQLException case as the RED. It is green before and after the fix; it is a regression guard, not a demonstration.
+- Reaching for a log assertion. The body at line 48 is a bare comment — no logger, no appender, no message to match.
+- "Fixing" by deleting the catch or rethrowing everything. `createUser()` is `@PostConstruct` and the CREATE USER genuinely fails on every start after the first (HSQLDB has no CREATE USER IF NOT EXISTS); letting that SQLException out fails bean creation and takes the whole lesson down. Narrow the type, keep the swallow.
+- Assuming WebGoat's deliberateness covers this. The taught defect in this file is `statement.executeQuery(query)` on line 65 with a student-supplied string — leave it. The exception handling solves no assignment, and the lesson's own tests stay green once the catch is narrowed. But line 71 IS student-facing: it renders the SQL error text back into the lesson page, feedback the lessons rely on, so a change there must keep SQLException handled and be re-checked against the lesson tests, not only against the new one.
+- Reading an unflagged `catch (Exception e)` nearby as proof the marker means something else. There are 33 in src/main/java and one in this queue.
+- Asserting on `e.getMessage()` text for an unchecked exception; NPE messages are JDK-version dependent and prove nothing about the catch width.

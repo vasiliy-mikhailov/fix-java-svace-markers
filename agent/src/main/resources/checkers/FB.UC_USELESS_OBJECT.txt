@@ -1,0 +1,24 @@
+=\s*new\s+[\w.$]+\s*(?:<[^;]*>)?\s*[(\[]
+The checker asserts that a particular `new` allocation, stored into a local variable, never influences anything the method does: it does not escape (not returned, not stored in a field, not passed on, not thrown), and any mutation applied to it is lost when the reference is dropped. It is a claim about one *allocation site*, not about the variable — the variable may be reassigned later and used heavily, as it is here. Two neighbours are routinely mistaken for it: DLS_DEAD_LOCAL_STORE is about a *value assigned and never read* regardless of whether it is freshly allocated, and UC_USELESS_OBJECT_STACK is the same useless-object defect where the object was never even assigned to a local (`new Foo();` standing alone as a statement).
+
+HOW YOU MAKE IT VISIBLE.
+Read the code first and decide which of two variants you have, because they settle differently and only one is testable.
+
+(1) NOTHING WAS EVER PUT IN IT. Salaries.java:64 allocates `new HashMap<>()` into `employeeJson`; line 79 enters the loop with i=0, line 80 tests `i % columns == 0` with columns=5, so line 81 overwrites the reference on the very first iteration, before the only read (`employeeJson.put(...)` at line 85). If the loop never runs, the object is dropped untouched. On every path the line-64 object dies unread and unmutated.
+
+This variant cannot be made visible by a JUnit test, and the demonstration already exists in the tree: ClientSideFilteringFreeAssignmentTest.getSalaries() (src/test/java/org/owasp/webgoat/lessons/clientsidefiltering/ClientSideFilteringFreeAssignmentTest.java:44-50) GETs /clientSideFiltering/salaries and asserts 12 entries each carrying a "UserID" key. That test passes identically with line 64 present and with it removed, because the two programs compute the same value — that is precisely what "useless" means. There is no reachable state, response field, or log line that differs. So do not attempt a RED here; write down that the finding is TRUE and NOT TEST-OBSERVABLE, and settle it as a behaviour-preserving deletion whose warrant is the reading above (first iteration index and modulus) with the existing getSalaries() test standing as the GREEN regression guard: the change is correct exactly when that test still passes unchanged.
+
+(2) IT WAS POPULATED AND THEN DISCARDED. If, between the allocation and the point where the reference is lost, there are `add`/`put`/setter calls carrying real data, the checker may have found a genuine lost-data bug — values the author meant to reach a caller that silently never arrive. That IS observable: call the public entry point (method, or endpoint via MockMvc as above) with an input whose value is distinguishable, and assert at the boundary that the value appears in the returned collection / response body / field. RED before the fix is a missing key or a short collection, not an exception. GREEN after.
+
+The discriminator between (1) and (2) is mechanical and requires opening the file: does any mutation reach *this* allocation before the reference is overwritten or falls out of scope? Salaries.java:64 has none, so it is variant (1).
+
+WHAT GOES WRONG HERE.
+Asserting the marker back at itself. Because variant (1) has no observable effect, agents reach for a "test" that reads the source text, counts bytecode allocations, or profiles the heap. Those fail on the marker's text, not on a defect, and they are why this family stalls.
+
+"Harmless, therefore false positive." Not the same claim. The allocation at Salaries.java:64 really is dead; the honest verdict is a true finding that no test can distinguish, and collapsing that into "false positive" states something about the code that is false.
+
+Deleting the initializer breaks the build. `Map<String, Object> employeeJson;` with the reassignment sitting inside `if (i % columns == 0)` fails javac with "variable employeeJson might not have been initialized" at line 85 — I compiled the reduction to confirm. The minimal fix is `= null`, which can trade this marker for a null-dereference warning on line 85; the clean alternative is to restructure so the map is appended to `json` and written through `json.get(json.size()-1)`.
+
+Deleting the variable. `employeeJson` is live at lines 81, 82 and 85. An agent that greps the name, sees uses, and declares the report bogus has checked the variable when the checker spoke about one allocation.
+
+Fixing the lesson instead of the defect. This sits in the clientsidefiltering lesson, whose whole point is that the endpoint ships SSN and Salary to the browser for JavaScript to filter; ClientSideFilteringFreeAssignmentTest expects the salary 450000 to be discoverable in that payload. The useless HashMap is ordinary redundancy and not part of the lesson, but any "while I'm here" tidying that filters server-side or drops a field makes the assignment unsolvable. The returned JSON must come out byte-identical.

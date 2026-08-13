@@ -1,0 +1,28 @@
+(?:this\s*\.\s*)?getClass\s*\(\s*\)\s*\.\s*getResource(?:AsStream)?\s*\(
+Fires on `getClass().getResource(...)` / `getClass().getResourceAsStream(...)` invoked on `this` inside an instance method of a public, non-final class: `getClass()` returns the *runtime* class, so the package and the class loader that resolve the resource are chosen by whoever subclasses you, not by the file you are reading. Two neighbouring constructs are routinely mistaken for this one and are not it: `Foo.class.getResource(...)`, where the class literal is fixed at compile time (the detector explicitly clears its state on a class constant), and `getClass().getClassLoader().getResourceAsStream(...)`, which is a `ClassLoader` call with different naming rules. A leading `/` in the name does not suppress the warning — it only drops it to LOW priority, because an absolute name fixes the package half of the hazard and leaves the class-loader half intact.
+
+HOW YOU MAKE IT VISIBLE.
+Decide first WHICH of two claims you are proving, because they need different tests and only one of them is usually reachable.
+
+(1) The inheritance claim. If the name is RELATIVE (no leading `/`), it is cheap and genuine: declare `class Sub extends TheFlaggedClass {}` in a *different test package*, call the inherited method on a `Sub` instance, and the lookup now resolves against `Sub`'s package and returns null. That is a real RED with no gymnastics. If the name is ABSOLUTE, as at ProfileUploadBase.java:126 (`"/images/account.png"`), that trick proves nothing — the package is irrelevant once the name starts with `/`, and only a class loader with a different resource view could change the answer. Constructing such a loader in-process tests the JDK, not this repository. Say so plainly rather than faking it: with an absolute name the inheritance story is not demonstrable here.
+
+(2) The claim that actually pays, and the one to reach for on an absolute name: does the name resolve AT ALL on today's classpath? Run the lookup and look. I did: with `target/classes` on the classpath, `getResourceAsStream("/images/account.png")` returns **null**, while `"/lessons/pathtraversal/images/account.png"` returns a stream. The file was moved by refactoring commit 71164992 out of a per-lesson module root (where `/images/...` was correct) into `lessons/pathtraversal/images/`, and the string literal was never updated.
+
+The reason nobody noticed is the thing to assert on. Spring's `FileCopyUtils.copyToByteArray(InputStream)` is null-tolerant — its bytecode opens `aload_0; ifnonnull; iconst_0; newarray byte; areturn` — so a null stream yields `new byte[0]`. No NPE, no log. `defaultImage()` returns a zero-length array and `GET /PathTraversal/profile-picture` answers 200 with `Content-Type: image/jpeg` and an empty body for every user who has not uploaded a picture.
+
+RED: a plain JUnit test in `org.owasp.webgoat.lessons.pathtraversal` (that test package already exists) — `assertThat(new ProfileUploadBase("target/webgoat").defaultImage()).isNotEmpty()`. `defaultImage()` is protected and the constructor is public, so no Spring context is needed. It fails today on an empty array. GREEN once the literal names the resource's real location. A heavier MockMvc variant on `LessonTest` asserting non-empty content from `/PathTraversal/profile-picture` also works and is closer to what a user sees, but costs a context boot.
+
+Assert on the returned bytes, never on the literal or on `getResourceAsStream` returning null — see traps. And when you write the settlement, say what the test proved: that this resource lookup is broken, not that inheritance broke it.
+
+WHAT GOES WRONG HERE.
+Asserting the marker back at itself: a test whose body is `assertNull(obj.getClass().getResourceAsStream("/images/account.png"))` restates line 126 and passes forever. Assert on `defaultImage()`'s output instead — that is the observable the caller depends on.
+
+Expecting an exception. `assertThrows(NullPointerException.class, ...)` never goes RED here, because `FileCopyUtils.copyToByteArray` swallows the null and returns an empty array. The symptom is emptiness, not a throw.
+
+Subclassing to demonstrate an absolute-name marker. `ProfileUpload`, `ProfileUploadFix`, `ProfileUploadRemoveUserInput` and `ProfileZipSlip` all extend this class and all sit in the same package, so instantiating any of them changes nothing — and neither would a different-package subclass while the name begins with `/`.
+
+Fixing the wrong line and unsolving a lesson. The unsanitised `new File(uploadDirectory, fullName)` at line 51 and the traversal it permits ARE the path-traversal assignment — `ProfileUploadFix` and `ProfileUploadRemoveUserInput` exist as the contrasting hardened variants the lesson teaches against. The marker is not on that code. Correcting the resource name on line 126 touches only the fallback avatar and breaks no assignment; hardening `execute()` or `getProfilePictureAsBase64()` would.
+
+A verdict that does not follow: "the path is absolute, therefore the checker is wrong." Absolute removes only the package hazard, the detector still reports it, and in this case the absolute name is itself the wrong name.
+
+Silencing rather than proving: switching to `ProfileUploadBase.class.getResourceAsStream(...)` satisfies the checker while leaving the empty-avatar bug in place — your test stays RED, which is the correct signal that nothing was fixed.

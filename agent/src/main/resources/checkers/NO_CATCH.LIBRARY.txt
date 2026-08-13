@@ -1,0 +1,29 @@
+\bnew\s+(?:File|FileInputStream|FileOutputStream|FileReader|FileWriter|RandomAccessFile|Scanner|URI|URL|ProcessBuilder)\s*\(|\b(?:Integer|Long|Double|Float)\.parse[A-Za-z]+\s*\(|\b(?:URI|UUID)\.(?:create|fromString)\s*\(|\bEnum\.valueOf\s*\(|\bPaths\.get\s*\(
+A call to a JDK or third-party method on the flagged line can raise an exception that no handler between that call and the top of the enclosing method covers, so it escapes; the `.LIBRARY` suffix names the *origin* of the exception — an unanalyzed library method, identified from its documented `@throws` — not the absence of a `try`. That is the whole difficulty of this family: a `try/catch` is usually sitting right there on the flagged line and is irrelevant, because it names a checked type (`IOException`) while the escaping exception is unchecked. Do not confuse it with the swallowed-exception family (empty or over-broad `catch`), which complains that something *was* caught and discarded — NO_CATCH.LIBRARY complains that nothing catches it at all.
+
+HOW YOU MAKE IT VISIBLE.
+Work the line in three steps: (1) list the *library* calls on it — project methods are not the origin; (2) read their javadoc `@throws`, including the unchecked ones; (3) find which of those types no enclosing `catch` covers. On MD5.java:53 the library call is `new File(element)` (`java.io.File.<init>` throws `NullPointerException` for a null pathname); `MD5.getHashString` is project code and `System.out.println` throws nothing. The only handler is `catch (IOException x)` on line 54, which does not cover it.
+
+The observable is NOT the exception — it is the loop's intent. Lines 51-57 mean "for each argument, print the hash, or print an error and move to the next argument." An unchecked exception aborts the whole loop, so the *later arguments are never hashed*. Assert on that, and `main` is directly callable because it is `public static`:
+
+- Control (must pass today, proves the harness works): capture stdout via `System.setOut(new PrintStream(baos))`, call `MD5.main(new String[]{"/no/such/file", realFile})`, restore stdout in a `finally`, assert stdout contains the hash of `realFile`. `FileNotFoundException` is an `IOException`, so the loop survives and continues.
+- RED: same capture, `MD5.main(new String[]{null, realFile})` — the NPE escapes `main` and stdout is **empty**; `realFile` is never hashed. GREEN once the handler covers the unchecked case (`catch (IOException | RuntimeException x)`, or a guard on `element`) while keeping report-and-continue.
+
+I compiled MD5.java standalone on the project's JDK and ran exactly this: the control printed `3a315533c0f34762e0c45e3d4e9d525c <path>`; the null case escaped with `java.lang.NullPointerException` and captured stdout was `[]`. The demonstration is a direct programmatic invocation, and a note settling such a marker should say so plainly rather than imply the JVM launcher produces a null argv — `main` is public API of the class, which is what makes the test legitimate.
+
+Lesson-safety, since this one sits under `lessons/challenges/challenge7`: the challenge ships `src/main/resources/lessons/challenges/challenge7/git.zip`, a leaked `.git` holding *compiled* `MD5.class` and `PasswordResetLink.class` that the student decompiles to derive the admin reset link. The frozen surface is therefore hashing *behavior* — `Assignment7.ADMIN_PASSWORD_LINK = "375afe1104f4a487a73823c50a9292a2"` must stay reproducible from `PasswordResetLink.createPasswordReset` → `MD5.getHashString(String)`. `main()` is on no such path (nothing in the repo calls `MD5.main`), and the zip is a fixed binary that repo edits cannot desynchronize, so repairing the handler in `main` cannot unsolve the challenge. Decide this per call site, not per repository.
+
+WHAT GOES WRONG HERE.
+1. "There is a `try` right here, false positive." The commonest wrong verdict on this family. Line 52 opens a try and line 54 catches — but it catches `IOException`, and the escaping exception is unchecked, so it walks straight past. Presence of a handler is not coverage of the type.
+
+2. Widening to `catch (Exception e)` and then asserting "no exception is thrown." That asserts the marker back at itself and swallows real failures. The behavioral claim is that the *remaining arguments still get hashed*; assert stdout, not the absence of a throwable.
+
+3. Asserting on the stderr text. `java.io.File` throws a bare `new NullPointerException()` with no message, so a naive `catch (... x) { System.err.println(x.getMessage()); }` prints `null`. I confirmed the message is absent. Any assertion on stderr content here is fragile.
+
+4. Reaching for a `SecurityManager` to make `FileInputStream` throw the unchecked `SecurityException`. Dead end on this project: `pom.xml` sets `<java.version>25</java.version>` and the installed JDK is 26 — the SecurityManager can no longer be installed. Do not spend a build on it.
+
+5. Hunting for file *contents* that make MD5 throw. I traced `update()` at line 282: `length` is clamped to the buffer, `state.buffer` indexing stays below 64 on both branches, and the shared 16-int `decodeBuffer` is never over-run at len=64. No ordinary file makes the hashing throw — the exception originates in the library call on the line, not in the algorithm.
+
+6. "argv from the launcher is never null, therefore unprovable." True premise, wrong conclusion — the same shape as the 33 DM_DEFAULT_ENCODING markers that died on "the charset is fixed at JVM start-up." A test may call a `public static` method directly.
+
+7. "It is WebGoat and this is MD5, so it is deliberate." MD5's weakness *is* challenge 7's lesson; an uncaught NPE in a vendored CLI harness is not. Wrong axis — the checker is about the handler, not the digest.

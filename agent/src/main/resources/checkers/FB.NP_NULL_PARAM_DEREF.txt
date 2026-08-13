@@ -1,0 +1,38 @@
+(?:new\s+[A-Z]\w*|\.\w+|\b\w+)\s*\(\s*[A-Za-z_$][\w$]*\s*[,)]|=\s*$
+The claim is about an ARGUMENT: at the flagged call the analyzer believes some value passed in can be null, and the callee dereferences that parameter (or declares it non-null) — `new String(resource, UTF_8)` where `resource` is reachable as null, not `resource.length` on a null receiver. The anchor is the call site, not where the null was produced and not where the NPE is thrown; the throw lands one frame deeper, inside the callee. Its neighbours in this queue make different claims and must be settled separately: DEREF_AFTER_NULL, DEREF_OF_NULL.RET(.LIB) and NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE are about a receiver or a returned value dereferenced in this method's own frame — note that LessonTemplateResolver.java:61 carries a DEREF_AFTER_NULL marker on the very same statement, and answering one does not answer the other. Second-order detail that decides several of these: the reported line is the first line of the statement, and under this repo's google-java-format wrapping that is often just the assignment head (`var resource =`), with the call on the next line.
+
+HOW YOU MAKE IT VISIBLE.
+Yes, this family is demonstrable, and with a plain JUnit test — no Spring context, no JVM flags, no mocking framework in the easy cases. Three things have to be arranged.
+
+(1) DRIVE THE NULL-PRODUCING PATH WITH REAL OBJECTS WHERE YOU CAN. In this file the null is born at LessonTemplateResolver.java:69 (`catch (IOException e) { ... return null; }`) and the way to reach it is a template name that is not on the classpath: `new DefaultResourceLoader().getResource("classpath:/NoSuchLesson.html").getInputStream()` throws FileNotFoundException. Put the test in `src/test/java/org/owasp/webgoat/container/` — the SAME package — because `computeTemplateResource` is protected; same-package access is what removes the reflection. I ran exactly this (compiled into package `org.owasp.webgoat.container` against `target/classes` plus the project classpath, as a bare `main`, no Spring):
+
+    var resolver = new LessonTemplateResolver(new DefaultResourceLoader());
+    var r = resolver.computeTemplateResource(
+        null, null, "lesson:NoSuchLesson.html", "lesson:NoSuchLesson.html", "UTF-8", Map.of());
+    // assert on the contract:
+    assertThat(new BufferedReader(r.reader()).readLine()).contains("Unable to find lesson HTML");
+
+At HEAD it returns "Unable to find lesson HTML: NoSuchLesson.html". Compiled against the pre-fix body of the same class it throws. When the null comes from a collaborator instead of a filesystem/classpath miss, the equivalent arrangement is `when(repo.findByUsername("Jerry")).thenReturn(null)` — see src/test/java/org/owasp/webgoat/lessons/missingac/MissingFunctionACYourHashAdminMissingUserTest.java, an accepted RED for this family.
+
+(2) KNOW THE FAILING OBSERVATION, AND ASSERT THE CONTRACT INSTEAD OF THE CRASH. The pre-fix run produced, verbatim:
+
+    java.lang.NullPointerException: Cannot read the array length because "bytes" is null
+       at java.base/java.lang.String.<init>(String.java:1641)
+       at org.owasp.webgoat.container.<Resolver>.computeTemplateResource(...:59)
+
+That is the family's fingerprint and the way to tell it from its neighbours: the JEP 358 message names the CALLEE'S PARAMETER ("bytes" — the parameter of `String(byte[], Charset)`), and the throwing frame is inside the callee, with the flagged line as the frame below. A receiver deref instead reads `Cannot invoke "X.y()" because "<local1>" is null` and throws in the flagged frame itself. Do not assert that string. Assert the method's contract — a fallback value, a non-null return, an unsolved AttackResult — so the test errors with the NPE before the fix and passes after, and so it does not pin one particular repair.
+
+(3) CHECK THE LINE STILL HOLDS THE CONSTRUCT BEFORE SPENDING A BUILD. This CSV was produced against an older tree than the checkout (2 of its 356 files no longer exist; 3 of its lines are past end-of-file at HEAD). For this marker the drift is decisive: before commit b3dec8bd ("fix: challenge introduction page loads"), line 61 of LessonTemplateResolver.java was `return new StringTemplateResource(new String(resource, StandardCharsets.UTF_8));` with `resource` still null on the IOException path — a textbook instance, and it explains the twin DEREF_AFTER_NULL at the same line too. At HEAD, line 61 is the wrapped head `var resource =` of a statement whose only argument is `"classpath:/" + templateName`, a string concatenation, which JLS 15.18.1 guarantees is never null. So run `git log -L61,61:src/main/java/.../LessonTemplateResolver.java`; if a commit interposed the guard, the settlement is "already fixed at HEAD", and you can prove that pair honestly: the test above GREEN at HEAD, and the same test RED against a copy of the pre-commit class body compiled in a scratch directory (rename the class; strip @Slf4j) without touching the repo.
+
+Where it genuinely cannot be shown: when the possibly-null argument is only null on a path no caller can produce — a private helper whose every call site passes a substring, a JDK method the analyzer mis-modelled as nullable. Then there is no test, and the settlement is a refutation naming the unreachable path, not a defensive `Objects.requireNonNull`.
+
+WHAT GOES WRONG HERE.
+`assertThrows(NullPointerException.class, ...)` is the wrong assertion and the most likely one to be reached for: it is GREEN on the broken code and RED after the repair — it asserts the marker back at itself. The existing src/test/java/org/owasp/webgoat/integration/LabelAndHintPropertiesNullDerefTest.java says so in its own javadoc ("deliberately the *inverse* of assertThrows") and is worth copying.
+
+Adding `Objects.requireNonNull(templateName)` (or a null check on the concatenated argument at line 61-62) is a fix that changes nothing observable — string concatenation cannot yield null, so no test can distinguish before from after. If that is the only fix you can write, the finding is refuted, not fixed.
+
+Grepping for "NullPointerException" lands in VerboseErrorTask.java:35, where the NPE is a String LITERAL inside the securitymisconfiguration lesson: a fake stack trace the student is meant to read for the leaked token. Nothing is dereferenced there; editing it deletes the lesson.
+
+Do not settle this family as "it's WebGoat, it's on purpose". The SQL injections and weak crypto are the lessons; an NPE is not one. MissingFunctionACYourHashAdmin.java:46 dereferenced a repository result inside a lesson endpoint and the crash stopped the assignment from being answerable — a real defect in lesson code. The discipline that keeps both true: pair the RED with a test pinning the assignment's success path (MissingFunctionACYourHashAdminMissingUserTest#stillSolvesWhenJerryIsPresent), so the repair cannot be a guard that quietly disables the attack.
+
+Do not conclude "unreachable" from the flagged line alone when its arguments look non-null — under google-java-format the reported line is frequently just `var x =` and the call is on the next line. And "the analyzer is wrong about this argument" does not settle the DEREF_AFTER_NULL marker sitting on the same statement; that is a separate claim about the receiver/local.
