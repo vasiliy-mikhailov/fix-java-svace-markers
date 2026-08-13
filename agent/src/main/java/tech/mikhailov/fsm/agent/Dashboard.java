@@ -1112,7 +1112,7 @@ public final class Dashboard {
      * and the prompts are the first of those to become data rather than code. The bar exists so the
      * next one has somewhere to go.
      */
-    private static String settings(Map<String, String> builtIns, String tab, Path results) {
+    static String settings(Map<String, String> builtIns, String tab, Path results) {
         return switch (tab) {
             case "run" -> theRun(results);
             case "model" -> theModel();
@@ -1384,6 +1384,16 @@ public final class Dashboard {
                 .append(Tuning.keyed() ? "a key is set, from " + Tuning.keyFrom()
                         : "NO KEY SET — nothing will answer")
                 .append("</span>")
+                // THE FORM OPENS HERE, BEFORE THE KEY FIELD, AND THAT IS THE WHOLE FIX.
+                //
+                // It used to open below, after the key input and the forget checkbox — so both sat
+                // OUTSIDE the form and were never submitted. Saving a key from this page had never
+                // once worked: the field accepted it, the eye and the clipboard buttons read it back
+                // from the DOM, `save` posted every other setting, and the key was silently dropped.
+                // Nothing failed, and the page redrew showing the environment's key, which reads
+                // exactly like a key that had been saved.
+                .append("<form method=post action='/settings'>")
+                .append(hidden("setting", "model"))
                 // MASKED, WITH THE TWO BUTTONS THAT MAKE A MASKED FIELD USABLE. The value is in this
                 // page's source for the eye and the clipboard to reach — that is the cost of being
                 // able to see and copy it, and it is the reason this page is behind basic auth.
@@ -1410,9 +1420,7 @@ public final class Dashboard {
                         ? "<label class=field><span class=k><input type=checkbox name=forget_key "
                                 + "value=1> forget the key stored here and use the environment's"
                                 + "</span></label>"
-                        : "")
-                .append("<form method=post action='/settings'>")
-                .append(hidden("setting", "model"));
+                        : "");
         for (Field f : fields) {
             b.append("<label class=field><span class=fl>").append(esc(f.label())).append("</span>")
                     .append("<input type=").append(f.type()).append(" name=").append(f.name())
@@ -2280,7 +2288,7 @@ public final class Dashboard {
      * clicks and no navigation. The prompt and the reply ride along as hidden fields so the row the
      * server writes is a complete training example without a second read of the trace.
      */
-    private static String rate(String marker, String agent, int event, String back,
+    static String rate(String marker, String agent, int event, String back,
                                String prompt, String reply) {
         StringBuilder f = new StringBuilder("<form class=rate method=post action='/feedback'>")
                 .append(hidden("marker", marker)).append(hidden("agent", agent))
@@ -2787,8 +2795,25 @@ public final class Dashboard {
         return URLEncoder.encode(s, StandardCharsets.UTF_8);
     }
 
+    /**
+     * THE QUOTES TOO, BECAUSE THIS ESCAPES ATTRIBUTE VALUES AS WELL AS TEXT.
+     *
+     * <p>It escaped {@code & < >} only, and {@code hidden()} writes {@code value='…'}. So the first
+     * apostrophe in a value ENDED the attribute: the rest of the prompt became stray markup and the
+     * corpus row kept everything up to "don" of "don't".
+     *
+     * <p>What flows through {@code hidden()} is the feedback form's {@code prompt} and {@code reply}
+     * — whole model answers, in prose, where an apostrophe is close to certain. That corpus exists to
+     * be trained on, and a truncation there is not a display bug: it is a wrong example, recorded as
+     * a right one, with nothing to say it was cut. Nothing has been rated yet on the live run, so
+     * nothing is damaged; the first rating would have been.
+     *
+     * <p>Safe for the colouring, which matches the RAW source and escapes each piece afterwards, so
+     * a quote is found before it becomes an entity.
+     */
     private static String esc(String s) {
-        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace("\"", "&quot;").replace("'", "&#39;");
     }
 
     /**
