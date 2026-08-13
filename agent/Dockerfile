@@ -72,7 +72,12 @@ COPY apps ./apps
 # --ignore-scripts: this build runs on a machine that also proves markers, and a postinstall from the
 # dependency tree is arbitrary code nobody reviewed. Next needs none of them for a static export.
 RUN pnpm install --frozen-lockfile --ignore-scripts
-ENV BASE_PATH=/ui
+# NO BASE_PATH. It was /ui while both UIs were up, and stayed here after the zone moved to the
+# root — so the image built an export that fetched /ui/api/index against a server that no longer
+# answered there. The page loaded and every request it made 404'd.
+#
+# A shell that mounts this tool sets BASE_PATH at build time; unset means the root, which is what
+# this container serves.
 RUN pnpm --filter @fsm/web build
 
 FROM eclipse-temurin:8-jdk   AS jdk8

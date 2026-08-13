@@ -60,6 +60,17 @@ final class Web {
             send(e, 403, "text/plain", "no".getBytes(java.nio.charset.StandardCharsets.UTF_8));
             return;
         }
+        // A DIRECTORY IS ITS index.html, which is what every static host does and what the export
+        // assumes. `trailingSlash: true` makes Next write `/overwatch/index.html`, but the links in
+        // the page — the header's own icons among them — point at `/overwatch`. Without this, every
+        // one of those 404s: the page renders, and its own navigation is broken.
+        if (Files.isDirectory(file)) {
+            Path index = file.resolve("index.html");
+            if (Files.isReadable(index)) {
+                send(e, 200, "text/html; charset=utf-8", Files.readAllBytes(index));
+                return;
+            }
+        }
         if (!Files.isReadable(file) || Files.isDirectory(file)) {
             // Next's export writes a 404.html; a zone with no answer should look like the zone.
             Path missing = root.resolve("404.html");

@@ -123,3 +123,37 @@ test('an unknown path is the zone\'s own 404', async ({ page }) => {
   const response = await page.request.get('/no-such-page')
   expect(response.status()).toBe(404)
 })
+
+test('everything the page references actually resolves', async ({ page }) => {
+  // THE TEST THIS SUITE DID NOT HAVE, and the bug it would have caught in a second.
+  //
+  // The image built the export with BASE_PATH=/ui, left over from when both UIs were up. Every
+  // asset URL and every fetch in the bundle then carried that prefix, against a server serving the
+  // root — so the page loaded and everything it asked for 404'd. The suite stayed green because it
+  // builds the export itself and never sees the image's build.
+  //
+  // Watching the responses rather than the markup catches it whatever the cause: a wrong base path,
+  // a renamed route, a bundle referring to a chunk that was not copied in.
+  const missing: string[] = []
+  page.on('response', r => {
+    if (r.status() >= 400) missing.push(`${r.status()} ${new URL(r.url()).pathname}`)
+  })
+  for (const screen of SCREENS) {
+    await page.goto(screen.path)
+    await page.waitForLoadState('networkidle')
+  }
+  expect(missing, `the page asked for things that are not there: ${missing.join(', ')}`).toEqual([])
+})
+
+test('the bundle is built for the path it is served from', async ({ page }) => {
+  // The same fault, caught statically: an asset prefix that is not where the server serves assets
+  // means a page that renders and does nothing.
+  const html = await (await page.request.get('/')).text()
+  const refs = [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map(m => m[1] ?? '')
+  const local = refs.filter(u => u.startsWith('/'))
+  expect(local.length, 'the export references its own assets').toBeGreaterThan(0)
+  for (const url of local) {
+    const response = await page.request.get(url)
+    expect(response.status(), `${url} is referenced by / and is not served`).toBeLessThan(400)
+  }
+})

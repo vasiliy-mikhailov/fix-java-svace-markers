@@ -8,15 +8,22 @@
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? ''
 
 export class ApiError extends Error {
-  constructor(readonly status: number, readonly path: string) {
-    super(`${path} answered ${status}`)
+  /**
+   * THE URL THAT WAS ACTUALLY REQUESTED, not the path that was asked for.
+   *
+   * <p>This reported the bare path, so a build whose base path was wrong showed "/api/index answered
+   * 404" while the request had gone to "/ui/api/index" — the one fact that would have named the
+   * cause, hidden by the message meant to report it.
+   */
+  constructor(readonly status: number, readonly url: string) {
+    super(`${url} answered ${status}`)
   }
 }
 
 export async function read<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE}${path}`, { ...init, cache: 'no-store' })
   if (!response.ok) {
-    throw new ApiError(response.status, path)
+    throw new ApiError(response.status, `${BASE}${path}`)
   }
   return (await response.json()) as T
 }
