@@ -108,6 +108,14 @@ public final class Dashboard {
                    color:#6e7681;text-decoration:none;padding:.2rem .35rem;border-radius:5px}
             a.gear:hover{color:#c9d1d9;background:#161b22}
             a.gear.ask{right:2.6rem}
+            /* Third along, and the only one that ever carries a number. */
+            a.gear.findings{right:4.7rem}
+            a.gear.findings.some-hold{color:#d29922}
+            a.gear.findings.some-hold:hover{color:#f0b72f;background:#161b22}
+            a.gear .badge{position:absolute;top:-.15rem;right:-.3rem;background:#d29922;
+                          color:#0d1117;border-radius:999px;padding:0 .3rem;font-size:.62rem;
+                          font-weight:600;line-height:1.35;min-width:1rem;text-align:center}
+            a.gear.findings{position:absolute}
             .chat{padding:14px 24px;display:flex;flex-direction:column;gap:12px}
             .say{max-width:64rem}
             .say .who{color:#7d8590;font-size:11px;text-transform:uppercase;
@@ -340,6 +348,7 @@ public final class Dashboard {
         // own, so without this it could show what an agent is being told and not what it would be
         // told if the override were removed.
         Path here = settlements.getParent() == null ? Path.of(".") : settlements.getParent();
+        serving(here);
         BUILT_INS.putAll(Agents.builtIn(here,
                 new JsonlTrace(here.resolve("dashboard-trace.jsonl"),
                         here.resolve("dashboard-settlements.jsonl"), "dashboard"),
@@ -782,70 +791,21 @@ public final class Dashboard {
     }
 
     /**
-     * WHAT THE SUPERVISOR FOUND, WHERE IT CANNOT BE MISSED.
+     * HOW MANY FINDINGS STILL STAND, which is what the header's badge shows.
      *
-     * <p>Only what survived its critic: `holds` earns the banner and `refuted` does not appear.
-     * `unjudged` does — a finding the critic never reached is not one it dismissed, and the
-     * direction that costs least is to show it.
-     *
-     * <p>Newest first, and the count is the point. One finding is a curiosity; nineteen holding
-     * findings on a run that is still going is the reason to stop and read them.
+     * <p>Only what survived its critic, and `unjudged` counts: a finding the critic never reached is
+     * not one it dismissed, and the direction that costs least is to show it. `refuted` does not,
+     * because a count that only ever grows is a count nobody reads twice.
      */
-    private static String warnings(Path findings) {
-        // THE POSITION IN THE FILE IS THE NAME. The findings page groups by verdict, so its
-        // display order is not the file's — an anchor computed from where a finding happens to be
-        // rendered would move the moment its critic answered. This one does not.
-        // WHAT SURVIVED FIRST, AND WHAT DID NOT STILL SHOWN. A refuted finding was left off this
-        // banner as noise, and that was wrong twice over: it made a list of twenty-two closed and
-        // open complaints look like twenty-two open ones, and it hid the one thing a reader needs
-        // to decide where to spend ten minutes — whether anybody has checked this yet. Holding
-        // first, unjudged next because nobody has looked, refuted last and greyed.
-        List<String> all = read(findings);
-        List<String> live = new ArrayList<>();
-        List<Integer> at = new ArrayList<>();
-        Map<String, Integer> tally = new LinkedHashMap<>();
-        for (String want : new String[] {"holds", "unjudged", "refuted"}) {
-            for (int i = all.size() - 1; i >= 0; i--) {
-                if (verdictOf(all.get(i)).equals(want)) {
-                    live.add(all.get(i));
-                    at.add(i);
-                    tally.merge(want, 1, Integer::sum);
-                }
+    static int holding(Path findings) {
+        int open = 0;
+        for (String line : read(findings)) {
+            String verdict = verdictOf(line);
+            if (verdict.equals("holds") || verdict.equals("unjudged")) {
+                open++;
             }
         }
-        if (live.isEmpty()) {
-            return "";
-        }
-        // THE BOX IS NOT THE ALARM. A red banner on every run teaches a reader to see past it,
-        // and most of what is in here is a complaint that has already been answered. Only the
-        // findings that survived their critic are coloured, and only they tint the border.
-        int holding = tally.getOrDefault("holds", 0);
-        StringBuilder sub = new StringBuilder();
-        tally.forEach((v, n) -> sub.append(sub.length() == 0 ? "" : " \u00b7 ")
-                .append(v.equals("holds") ? "<span class=hold>" + n + " hold</span>"
-                        : n + " " + v));
-        StringBuilder b = new StringBuilder("<div class='alarm"
-                + (holding > 0 ? " some-hold" : "") + "'><a href='/overwatch'><b>")
-                .append(live.size()).append(live.size() == 1 ? " finding" : " findings")
-                .append(" from the supervisor</b> \u2014 ").append(sub).append("</a><ul>");
-        int shown = Math.min(SHOWN, live.size());
-        for (int i = 0; i < shown; i++) {
-            b.append(item(live.get(i), at.get(i)));
-        }
-        b.append("</ul>");
-        // THE REST OPEN WHERE THEY ARE. "and 17 more" was a link to the findings page, so reading
-        // them meant leaving the run you were watching and finding your place again — and a count
-        // is the one thing a list of complaints must not be reduced to, because the number is the
-        // alarm and the complaints are the reason. Every line was already read from the file.
-        if (live.size() > shown) {
-            b.append("<details id=more class=rest><summary>and ").append(live.size() - shown)
-                    .append(" more</summary><ul>");
-            for (int i = shown; i < live.size(); i++) {
-                b.append(item(live.get(i), at.get(i)));
-            }
-            b.append("</ul></details>");
-        }
-        return b.append("</div>").toString();
+        return open;
     }
 
     /**
@@ -861,23 +821,6 @@ public final class Dashboard {
     private static String verdictOf(String finding) {
         String verdict = field(finding, "verdict");
         return verdict.isBlank() ? "unjudged" : verdict;
-    }
-
-    /**
-     * One line of the banner: what the critic made of the finding, then the finding's own first
-     * line, linked to itself on the findings page.
-     *
-     * <p>The heading marks come off because these were written as markdown for a page that renders
-     * none, and a banner reading "## Finding:" five times says nothing five times.
-     */
-    private static String item(String finding, int position) {
-        String first = field(finding, "finding").strip()
-                .replaceAll("^[#*\\s]*(Finding:)?\\s*", "");
-        int newline = first.indexOf('\n');
-        String verdict = verdictOf(finding);
-        return "<li><span class='v " + verdict + "'>" + verdict + "</span>"
-                + "<a href='/overwatch#f" + position + "'>"
-                + esc(newline < 0 ? first : first.substring(0, newline)) + "</a></li>";
     }
 
     /**
@@ -1610,7 +1553,7 @@ public final class Dashboard {
         }
     }
 
-    private static String index(Path settlements, Path trace, List<String> queued) {
+    static String index(Path settlements, Path trace, List<String> queued) {
         Map<String, String> latest = new LinkedHashMap<>();
         for (String line : lines(settlements)) {
             latest.put(field(line, "suspicion_key"), line);
@@ -1702,13 +1645,18 @@ public final class Dashboard {
             return b.append("<div class=empty>No markers queued and no prove has run.</div>")
                     .toString();
         }
-        // THE SUPERVISOR FOUND ALL OF THIS TEN HOURS BEFORE ANYONE READ IT. Its findings sat in
-        // overwatch.jsonl and on a page that had to be navigated to, so the runaway reproducer, the
-        // passing REDs and the whole DM_DEFAULT_ENCODING family were each reported, judged, marked
-        // `holds` — and then rediscovered from scratch by a person who never opened the page. A
-        // warning nobody is shown is a warning nobody has. It goes at the top of the page everybody
-        // already has open.
-        b.append(warnings(settlements.resolveSibling("overwatch.jsonl")));
+        // THE FINDINGS ARE A BUTTON NOW, AND THE COUNT GOES WITH IT.
+        //
+        // They were a banner here because of what happened when they were not: the runaway
+        // reproducer, the passing REDs and the whole DM_DEFAULT_ENCODING family were each reported,
+        // judged and marked `holds` ten hours before anybody read them, then rediscovered from
+        // scratch by a person who never opened the page. A warning nobody is shown is a warning
+        // nobody has, and that has not stopped being true.
+        //
+        // So what moved is the LIST, not the alarm. The header carries how many findings still
+        // stand — on EVERY page rather than only on this one, which is more reach than the banner
+        // had — and the count was the part doing the work. The five-line preview was a sample of a
+        // list you had to open anyway.
         // NO LIVE PANEL HERE. The supervisor's stream was on this page because the front page is
         // where a live view seemed to belong, and it earned its space for about a day: the findings
         // banner above says what the supervisor has CONCLUDED, which is what a reader of this page
@@ -2440,6 +2388,28 @@ public final class Dashboard {
     }
 
     /** A page with no way out of it: the list, which is where out goes. */
+    /**
+     * WHAT THE SUPERVISOR HAS FOUND, AS A COUNT ON EVERY PAGE.
+     *
+     * <p>The findings were a banner on the front page, and they were there for a reason worth not
+     * losing: reported, judged and left unread for ten hours while somebody rediscovered the same
+     * faults by hand. Moving them behind a click is exactly how that happened the first time — so
+     * the number comes to the header instead, where it is on every page rather than only on the one
+     * the banner reached.
+     *
+     * <p>It is drawn only when something stands. A badge reading zero on a clean run is a control
+     * that teaches a reader to ignore it, and this one has to still mean something on the day it
+     * says nineteen.
+     */
+    private static String findingsButton() {
+        int open = holding(root.resolve("overwatch.jsonl"));
+        return "<a class='gear findings" + (open > 0 ? " some-hold" : "")
+                + "' href='/overwatch' title='"
+                + (open > 0 ? open + " finding(s) the critic has not dismissed"
+                        : "what is wrong with the pipeline")
+                + "'>\u26a0" + (open > 0 ? "<span class=badge>" + open + "</span>" : "") + "</a>";
+    }
+
     private static StringBuilder head(String title, String sub) {
         return head(title, sub, "");
     }
@@ -2461,6 +2431,7 @@ public final class Dashboard {
                 // reader looking for either looks in the same corner.
                 .append("<header><a class=gear href='/settings' title='settings'>\u2699</a>")
                 .append("<a class='gear ask' href='/chat' title='ask the supervisor'>\u2709</a>")
+                .append(findingsButton())
                 .append(back.isEmpty() ? ""
                         : "<a class=crumb href='/'>&larr; " + esc(back) + "</a>")
                 .append("<h1>").append(esc(title)).append("</h1><div class=sub>")
@@ -2513,6 +2484,28 @@ public final class Dashboard {
      * marker proved under the built-in from one proved under an edit that has since been reverted.
      */
     private static final Map<String, String> BUILT_INS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * WHICH RESULTS DIRECTORY THIS DASHBOARD SERVES. Configuration, not state.
+     *
+     * <p>It is fixed for the life of the process — the path comes from the command line and nothing
+     * can change it — so it is here rather than in the signature of all thirteen pages. {@code head}
+     * takes a title and a subtitle; threading a path through every one of them to draw one badge
+     * would put the results directory into functions that have no other use for it.
+     *
+     * <p>The FILE under it is read fresh on every request, so the count moves while the run does.
+     *
+     * <p>Set through {@link #serving}, by {@code main} and by the tests, because a page whose header
+     * is right only after {@code main} has run is a page no test can check — which is how the first
+     * version of this went in: the badge worked over HTTP and was silently absent when the renderer
+     * was called directly.
+     */
+    private static volatile Path root = Path.of(".");
+
+    /** Names the results directory. Called by {@code main}, and by tests before they render. */
+    static void serving(Path results) {
+        root = results;
+    }
 
     private static final Path CHECKOUTS =
             Path.of(System.getenv().getOrDefault("CHECKOUTS", "/work/checkouts"));
