@@ -2854,8 +2854,15 @@ public final class Dashboard {
             com.sun.net.httpserver.HttpHandler handler) {
         com.sun.net.httpserver.HttpHandler wrapped = guarded(handler);
         server.createContext(path, wrapped);
+        // ONLY THE DATA ROUTES, and that restriction is load-bearing.
+        //
+        // Duplicating EVERY route under the prefix registered `/ui/` for the root page — and
+        // HttpServer matches the longest prefix, so `/ui/` (four characters) beat the zone's own
+        // `/ui` (three) and the new UI served the old dashboard. The pages do not belong under the
+        // mount prefix at all: that space is the zone's, and the zone is what replaces them.
         String base = Zone.basePath();
-        if (!base.isEmpty() && !path.startsWith(base)) {
+        boolean data = path.startsWith("/api") || path.startsWith("/.well-known");
+        if (data && !base.isEmpty() && !path.startsWith(base)) {
             server.createContext(base + path, wrapped);
         }
     }
