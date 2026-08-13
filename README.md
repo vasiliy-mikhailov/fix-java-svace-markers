@@ -225,6 +225,27 @@ truncating the reasoning that caused it.
 **The API key is not on that page and cannot be set from it.** Everything there is a parameter; a
 credential is not one, and a page that shows a key leaks it to whoever is looking at the screen.
 
+## The subject
+
+`/settings` → **the subject**: which markers, and how to reach the tree they are about. Both were
+fixed at deploy — the queue was a file in the image and the tree came from a public clone — so
+pointing this at another project meant editing the repository and building an image.
+
+**The markers** are uploaded or pasted, and every line is checked before any of it replaces the
+queue: a bad line does not fail at upload, it fails eight hours later as one marker that never ran,
+which a reader cannot tell from a marker that ran and decided nothing. Complaints name their line
+numbers and stop at a dozen. The old queue is kept beside the new one, because results already
+recorded may name markers the new queue has never heard of.
+
+**A credential** for a private GitHub or GitLab repository goes into git's own store, owner-only —
+never into the clone URL, where a token is in the process list every prover can read and in the log
+the pool writes.
+
+**A source zip** is for a tree that is not in a repository this container can reach. While one is
+present it IS the subject and nothing goes to the network. Extracted with `jar`, which the JDK
+already ships, rather than adding `unzip` to the image; a zip holding a single directory is
+unwrapped so marker paths resolve against the project.
+
 ## The order of the queue
 
 `markers.txt` is sorted **severity, then path, then line, then checker** — Critical, Major, Normal,

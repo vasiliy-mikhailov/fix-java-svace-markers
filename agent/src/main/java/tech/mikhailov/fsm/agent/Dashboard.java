@@ -412,6 +412,13 @@ public final class Dashboard {
             e.close();
         });
         route(server, "/settings", e -> {
+            if (e.getRequestMethod().equalsIgnoreCase("POST") && Upload.isMultipart(e)) {
+                // THE SUBJECT ARRIVES AS FILES, so it does not go through form(), which reads a
+                // query string. Answered in place rather than redirected, because what a reader
+                // needs after an upload is which lines were wrong.
+                send(e, "text/html; charset=utf-8", subjectPosted(e, here));
+                return;
+            }
             if (e.getRequestMethod().equalsIgnoreCase("POST")) {
                 Map<String, String> form = form(e);
                 if (form.getOrDefault("setting", "").equals("model")) {
@@ -982,6 +989,7 @@ public final class Dashboard {
         return switch (tab) {
             case "run" -> theRun(results);
             case "model" -> theModel();
+            case "subject" -> theSubject(results, "");
             default -> prompts(builtIns);
         };
     }
@@ -994,6 +1002,8 @@ public final class Dashboard {
                 + "the run</a>"
                 + "<a class='" + (current.equals("model") ? "on" : "")
                 + "' href='/settings?a=model'>the model</a>"
+                + "<a class='" + (current.equals("subject") ? "on" : "")
+                + "' href='/settings?a=subject'>the subject</a>"
                 + ""
                 + "<a href='/overwatch'>the supervisor</a></nav>";
     }
@@ -1017,6 +1027,170 @@ public final class Dashboard {
      * <p>No key field. Everything here is a parameter and a credential is not one; a page that shows
      * a key leaks it to whoever gets a look at the screen.
      */
+    /**
+     * WHAT IS BEING PROVED, AND HOW TO REACH IT.
+     *
+     * <p>The queue was a file in the image and the tree came from a public clone, so pointing this
+     * at another project meant editing the repository and building an image. Three ways in, and
+     * they are not alternatives to each other: the markers say which defects, the credential says
+     * how to reach a private repository, and the zip is for a tree that is not in a reachable
+     * repository at all.
+     */
+    /** One upload, applied and reported on. A leading `!` means it was refused. */
+    private static String subjectPosted(HttpExchange e, Path results) {
+        String said;
+        try {
+            Map<String, byte[]> parts = Upload.parts(e);
+            String what = Upload.text(parts, "setting").strip();
+            boolean forget = !Upload.text(parts, "forget").isBlank();
+            switch (what) {
+                case "markers" -> {
+                    byte[] file = parts.get("file");
+                    String text = file != null && file.length > 0
+                            ? new String(file, java.nio.charset.StandardCharsets.UTF_8)
+                            : Upload.text(parts, "text");
+                    if (text.isBlank()) {
+                        said = "!nothing was uploaded and nothing was pasted.";
+                    } else {
+                        List<String> wrong = Subject.saveMarkers(results, text);
+                        said = wrong.isEmpty()
+                                ? Subject.count(results) + " marker(s) queued. The old queue is "
+                                        + "kept beside it."
+                                : "!the queue was NOT replaced:\n  " + String.join("\n  ", wrong);
+                    }
+                }
+                case "token" -> {
+                    if (forget) {
+                        Subject.forgetToken(results);
+                        said = "the credential is gone; clones are public again.";
+                    } else {
+                        String host = Upload.text(parts, "host").strip();
+                        String token = Upload.text(parts, "token").strip();
+                        if (host.isBlank() || token.isBlank()) {
+                            said = "!a host and a token are both needed.";
+                        } else {
+                            Subject.saveToken(results, host, token);
+                            said = "a credential for " + host + " is stored, owner-only, in git's "
+                                    + "own store.";
+                        }
+                    }
+                }
+                case "zip" -> {
+                    if (forget) {
+                        Files.deleteIfExists(Subject.zip(results));
+                        said = "the zip is gone; the markers' repository is cloned again.";
+                    } else {
+                        byte[] file = parts.get("file");
+                        if (file == null || file.length == 0) {
+                            said = "!no file was uploaded.";
+                        } else if (!(file.length > 4 && file[0] == 'P' && file[1] == 'K')) {
+                            said = "!that is not a zip — it does not start with PK.";
+                        } else {
+                            Files.write(Subject.zip(results), file);
+                            said = (file.length / 1024) + "KB stored. Nothing will be cloned while "
+                                    + "it is here.";
+                        }
+                    }
+                }
+                default -> said = "!nothing to do.";
+            }
+        } catch (IOException | RuntimeException failed) {
+            said = "!" + failed.getClass().getSimpleName() + ": " + failed.getMessage();
+        }
+        return theSubject(results, said);
+    }
+
+    private static String theSubject(Path results, String said) {
+        int markers = Subject.count(results);
+        List<String> repos = Subject.repos(results);
+        boolean zip = Subject.hasZip(results);
+        String host = Subject.tokenHost(results);
+
+        StringBuilder b = head("the subject", markers + " marker(s) queued", "all markers")
+                .append(settingsTabs("subject"));
+        if (!said.isBlank()) {
+            b.append("<div class='ev ").append(said.startsWith("!") ? "asked" : "tool")
+                    .append("'><span class=who>").append(said.startsWith("!") ? "refused" : "done")
+                    .append("</span><pre>").append(esc(said.replaceFirst("^!", "")))
+                    .append("</pre></div>");
+        }
+
+        b.append("<div class='ev tool'><span class=who>the markers</span>")
+                .append("<span class=kind>").append(markers).append(" queued")
+                .append(repos.isEmpty() ? "" : " &middot; " + esc(repos.get(0))
+                        + (repos.size() > 1 ? " and " + (repos.size() - 1) + " more" : ""))
+                .append("</span>")
+                .append("<p class=account>One per line, repo|file|line|checker. Taken in the order "
+                        + "given &mdash; sort it before uploading if you want the worst first, "
+                        + "because two runs are only comparable if they take the markers the same "
+                        + "way. Every line is checked before any of it replaces the queue, and the "
+                        + "old queue is kept beside it.</p>")
+                .append("<form method=post action='/settings' enctype='multipart/form-data'>")
+                .append(hidden("setting", "markers"))
+                .append("<input type=file name=file accept='.txt,text/plain'> ")
+                .append("<button>upload</button></form>")
+                .append("<details><summary>or paste them</summary>")
+                .append("<form method=post action='/settings' enctype='multipart/form-data'>")
+                .append(hidden("setting", "markers"))
+                .append("<textarea name=text rows=10 class=prompt placeholder='")
+                .append("https://github.com/owner/repo.git|src/main/java/A.java|42|CHECKER")
+                .append("'></textarea><button>use these</button></form></details>")
+                .append("</div>");
+
+        b.append("<div class='ev ").append(host.isBlank() ? "tool" : "asked").append("'>")
+                .append("<span class=who>a private repository</span><span class=kind>")
+                .append(host.isBlank() ? "no credential &mdash; public clones only"
+                        : "a token for " + esc(host))
+                .append("</span>")
+                .append("<p class=account>GitHub or GitLab over HTTPS. Stored in git's own "
+                        + "credential store rather than pasted into the clone URL, because a token "
+                        + "in a URL is in the process list every prover can read and in the log "
+                        + "this writes. GitHub wants a personal access token with repo scope; "
+                        + "GitLab one with read_repository.</p>")
+                .append("<form method=post action='/settings' enctype='multipart/form-data'>")
+                .append(hidden("setting", "token"))
+                .append("<label class=field><span class=fl>host</span>")
+                .append("<input type=text name=host class=wide placeholder='github.com' value='")
+                .append(esc(host)).append("'></label>")
+                .append("<label class=field><span class=fl>token</span><span class=keyrow>")
+                .append("<input type=password name=token id=gittok autocomplete=off value='")
+                .append(esc(Subject.token(results))).append("' class=wide>")
+                .append("<button type=button class=icon onclick=\"var f=document.getElementById("
+                        + "'gittok');f.type=f.type==='password'?'text':'password';"
+                        + "this.textContent=f.type==='password'?'👁':'🙈'\" "
+                        + "title='show or hide'>👁</button>")
+                .append("<button type=button class=icon onclick=\"var f=document.getElementById("
+                        + "'gittok');navigator.clipboard.writeText(f.value).then(()=>{"
+                        + "var t=this.textContent;this.textContent='✓';"
+                        + "setTimeout(()=>this.textContent=t,1200)})\" title='copy'>"
+                        + "📋</button></span></label>")
+                .append("<button>save</button>")
+                .append(host.isBlank() ? ""
+                        : " <button name=forget value=1 class=plain>forget it</button>")
+                .append("</form></div>");
+
+        b.append("<div class='ev ").append(zip ? "asked" : "tool").append("'>")
+                .append("<span class=who>a source zip</span><span class=kind>")
+                .append(zip ? "uploaded &mdash; nothing is cloned while it is here"
+                        : "none; the markers' repository is cloned")
+                .append("</span>")
+                .append("<p class=account>For a tree that is not in a repository this container can "
+                        + "reach. While one is here it IS the subject and nothing goes to the "
+                        + "network. A zip holding a single directory is unwrapped, so the paths in "
+                        + "your markers resolve against the project rather than one level above "
+                        + "it.</p>")
+                .append("<form method=post action='/settings' enctype='multipart/form-data'>")
+                .append(hidden("setting", "zip"))
+                .append("<input type=file name=file accept='.zip,application/zip'> ")
+                .append("<button>upload</button>")
+                .append(zip ? " <button name=forget value=1 class=plain>remove it</button>" : "")
+                .append("</form></div>");
+
+        return b.append("<p class=account><span class=k>Any of these takes effect on the next "
+                + "marker a prover starts. A prove already running keeps the tree it was given."
+                + "</span></p>").toString();
+    }
+
     private static String theModel() {
         Map<String, String> now = Tuning.all();
         record Field(String name, String label, String type, String why) { }

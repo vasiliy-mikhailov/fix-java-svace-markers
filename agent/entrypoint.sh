@@ -17,6 +17,42 @@ checkout() {
     # ONE CHECKOUT PER WORKER. Four provers resetting and cleaning one tree would delete each
     # other's test between the write and the build.
     dir="$CHECKOUTS/$(echo "$repo" | sed 's|.*/||; s|\.git$||')"
+
+    # AN UPLOADED TREE IS NOT CLONED. A source zip is for a subject that is not in a repository this
+    # container can reach — an export, a vendor drop, something behind a VPN — and when one is there
+    # it IS the subject, so nothing goes to the network at all.
+    if [ -f "$RESULTS/source.zip" ]; then
+        if [ ! -d "$dir" ] || [ "$RESULTS/source.zip" -nt "$dir" ]; then
+            rm -rf "$dir"; mkdir -p "$dir"
+            # `jar` RATHER THAN `unzip`, because the JDK is already here and unzip is not. A jar
+            # IS a zip, and the tool that reads one reads the other; adding a package to the image
+            # to avoid noticing that would be a dependency bought with nothing.
+            ( cd "$dir" && jar xf "$RESULTS/source.zip" ) 2>/dev/null \
+                || unzip -q "$RESULTS/source.zip" -d "$dir" 2>/dev/null || true
+            # A zip of a project usually contains one directory holding it. Unwrap that, so the
+            # marker paths — which start at src/ — resolve against the tree rather than one above it.
+            if [ ! -f "$dir/pom.xml" ] && [ ! -f "$dir/build.gradle" ]; then
+                inner=$(find "$dir" -maxdepth 2 -name pom.xml -o -maxdepth 2 -name build.gradle \
+                    | head -1 | xargs -r dirname)
+                [ -n "$inner" ] && [ "$inner" != "$dir" ] && mv "$inner"/* "$inner"/.[!.]* "$dir/" 2>/dev/null
+            fi
+            # A tree with no history is still a tree, and the worktree machinery wants a repository.
+            if [ ! -d "$dir/.git" ]; then
+                git -C "$dir" init -q 2>/dev/null || true
+                git -C "$dir" add -A >/dev/null 2>&1 || true
+                git -C "$dir" -c user.email=a@b -c user.name=fsm commit -qm "uploaded" >/dev/null 2>&1 || true
+            fi
+        fi
+        echo "$dir"
+        return 0 2>/dev/null || { echo "$dir"; }
+    fi
+
+    # A CREDENTIAL GOES IN GIT'S STORE, NOT IN THE URL. A token pasted into the clone address is in
+    # the process list every prover can read and in the log this writes.
+    if [ -f "$RESULTS/git-credentials" ]; then
+        git config --global credential.helper "store --file=$RESULTS/git-credentials" 2>/dev/null || true
+    fi
+
     if [ -d "$dir/.git" ]; then
         # -x, NOT just -fd. clean skips ignored files by default, and target/ is ignored — so a
         # class compiled from the previous marker's PATCH survives a reset that restored its source,
