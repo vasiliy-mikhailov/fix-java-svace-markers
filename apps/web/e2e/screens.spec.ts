@@ -94,6 +94,48 @@ test('a state the record holds reaches the screen', async ({ page }) => {
   }
 })
 
+test('a question that fails is answered in words, not in a stack trace', async ({ page }) => {
+  // WHAT A PERSON WAS SHOWN: they asked "show me number of markers verified in last 5 hours" and got
+  // back `could not answer: java.lang.IllegalArgumentException: text cannot be null or blank`. The
+  // cause was a tool reading a zero-byte file (pinned in AnEmptyFileIsAnAnswerTest); this pins the
+  // OTHER half, which is that no failure whatsoever reaches the page as a Java class name. That half
+  // needs a browser and a real server: the reply is composed in Java, written to a file, and read
+  // back by a poll, and nothing below the whole round trip can tell you what the reader ends up with.
+  //
+  // The fixture server's model points at a closed port, so the ask fails immediately and always — the
+  // test is about presentation, and any failure at all is the right input for it.
+  const asked = `e2e ${Date.now()} how many markers verified in the last 5 hours`
+  const posted = await page.request.post('/chat', { form: { q: asked } })
+  expect(posted.ok(), 'POST /chat').toBe(true)
+
+  await expect
+    .poll(
+      async () => {
+        const chat = await (await page.request.get('/api/chat')).json()
+        const mine = chat.turns.findIndex((t: { text: string }) => t.text === asked)
+        // The reply is the turn after the question; `answering` drops when it has been written.
+        return mine >= 0 && !chat.answering ? (chat.turns[mine + 1]?.text ?? null) : null
+      },
+      { timeout: 30_000, message: 'the supervisor never wrote a turn for the question' },
+    )
+    .not.toBeNull()
+
+  const chat = await (await page.request.get('/api/chat')).json()
+  const reply: string = chat.turns[chat.turns.findIndex((t: { text: string }) => t.text === asked) + 1]
+    .text
+
+  for (const leak of ['java.lang.', 'Exception', 'at tech.mikhailov', '\tat ']) {
+    expect(reply, `a person asked a question and was shown "${leak}"`).not.toContain(leak)
+  }
+  expect(reply.length, 'a failure with nothing in it is the blank page again').toBeGreaterThan(20)
+
+  // And it must reach the SCREEN, not just the endpoint — the page renders turns itself.
+  await page.goto('/chat/')
+  await expect(page.getByText(asked)).toBeVisible({ timeout: 15_000 })
+  const body = await page.locator('body').innerText()
+  expect(body, 'the chat screen is showing a Java class name').not.toContain('java.lang.')
+})
+
 test('a chip on the chain says its role, and still names its agent', async ({ page }) => {
   // A HELPER THAT PASSES ITS OWN TEST CAN STILL BE UNWIRED. `roleWord` was unit-tested green, the
   // caller passed it, the prop was on the type — and the component went on rendering the full name,
