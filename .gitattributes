@@ -1,0 +1,3 @@
+# Scripts that run in the Linux image. CRLF makes the kernel look for /bin/bash\r
+# and the container dies with "no such file or directory".
+*.sh text eol=lf

@@ -88,6 +88,10 @@ FROM eclipse-temurin:21-jdk  AS jdk21
 # ---------------------------------------------------------------- runtime
 FROM maven:3.9-eclipse-temurin-25
 
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=jdk8  /opt/java/openjdk /opt/java/8
 COPY --from=jdk11 /opt/java/openjdk /opt/java/11
 COPY --from=jdk17 /opt/java/openjdk /opt/java/17
@@ -105,7 +109,8 @@ COPY agent/entrypoint.sh                               /opt/agent/entrypoint.sh
 # because that is the only tree the agents' file tools can reach — see the note there.
 COPY spec                                              /opt/agent/spec
 COPY --from=web /src/apps/web/out                      /opt/agent/web
-RUN chmod +x /opt/agent/entrypoint.sh && chown -R prover:prover /work
+RUN sed -i 's/\r$//' /opt/agent/entrypoint.sh \
+    && chmod +x /opt/agent/entrypoint.sh && chown -R prover:prover /work
 
 # EVERY VOLUME PATH IS MADE, OWNED, BEFORE IT IS DECLARED. Docker takes a fresh named volume's
 # ownership from the image directory underneath it — and creates it root-owned when there is nothing
