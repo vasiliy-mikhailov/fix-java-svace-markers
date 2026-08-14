@@ -302,8 +302,8 @@ unchanged. This is what the per-marker prompts tab uses to say "changed since th
 The editable names are `Agents.ORDER`, in pipeline order rather than alphabetical:
 
 ```
-CHAIN : reproducer, proof-critic, fixer, fix-critic, pr-maker, pr-critic,
-        verdict, verdict-critic, estimator, estimator-critic
+CHAIN : reproduce-doer, reproduce-verifier, fix-doer, fix-verifier, propose-doer, propose-verifier,
+        verdict, argue-verifier, estimator, price-verifier
 WATCH : overwatch, overwatch-critic, interpreter, interpreter-critic
 ASKED : chat
 ```
@@ -322,7 +322,7 @@ building the model instead, and on any box where `QWEN_BASE_URL` is unset the ma
 `removeIf` empties the list, and the prompts page renders no agents at all rather than an error.
 
 The order in `ORDER` is also what the per-marker tabs and the collector use. **One list, not three:**
-the tabs were once a separate copy and were missing `verdict-critic` entirely, so the agent that can
+the tabs were once a separate copy and were missing `argue-verifier` entirely, so the agent that can
 send a settlement back for rework had no page and nobody noticed.
 
 ---

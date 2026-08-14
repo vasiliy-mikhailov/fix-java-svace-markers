@@ -81,7 +81,7 @@ To PROVE a marker is to make the build contradict itself, in this order and no o
 2. **GREEN** — the same test, after a patch, which the build runs and which PASSES.
 
 A test that fails before the patch and passes after it is the whole standard of proof. Nothing else
-substitutes: not a plan, not a re-delegation, not confident prose, not the fixer's own account of
+substitutes: not a plan, not a re-delegation, not confident prose, not the fix-doer's own account of
 what it changed.
 
 **No agent may invoke the deciding build.** Whether RED runs before the patch is not a decision, so
@@ -123,9 +123,9 @@ path it has seen and nothing clears it, which has two consequences a rebuilder w
 call will lose: once any test file has been written, the "no file written" check can never fire
 again, and the GREEN build is guaranteed to run the same class the RED build ran.
 
-The tool split keeps this stable across the phases: the reproducer holds `write_file` and not
-`edit_file`, the fixer holds `edit_file` and not `write_file` — so the reproducer can never make its
-own test pass, and the fixer can never change which test is about to certify it.
+The tool split keeps this stable across the phases: the reproduce-doer holds `write_file` and not
+`edit_file`, the fix-doer holds `edit_file` and not `write_file` — so the reproduce-doer can never make its
+own test pass, and the fix-doer can never change which test is about to certify it.
 
 **A rewritten test is re-built.** A rewritten test nobody re-builds is how a green proof gets
 recorded for a test that stopped reproducing.
@@ -208,7 +208,7 @@ implication is not a record.
 ## A RED that passes has demonstrated nothing
 
 The first RED build runs against the revision the marker was raised against. This is certain rather
-than heuristic: **the reproducer holds no `edit_file` and no fixer has run**, so the tree that build
+than heuristic: **the reproduce-doer holds no `edit_file` and no fix-doer has run**, so the tree that build
 ran against IS the unmodified subject. A test that is green there has DOCUMENTED the defect, not
 observed it — `assertThrows` for the very exception the marker names is satisfied BY the defect and
 would go red the moment it was fixed, which is backwards.
@@ -216,7 +216,7 @@ would go red the moment it was fixed, which is backwards.
 In one run, 16 of the 33 markers that reached a build had their first RED pass, and 13 of them
 settled on it — six `by-design`, seven `false-positive`, every one argued from a build that showed
 nothing. The chain routed that fact to the verdict agent, which cannot rewrite a test, and never
-told the reproducer, which can. One reproducer had already worked it out and shipped anyway:
+told the reproduce-doer, which can. One reproduce-doer had already worked it out and shipped anyway:
 *"this test won't actually fail on most platforms because the default charset is typically UTF-8"*,
 followed by *"But actually, let me just submit the test."*
 
@@ -282,7 +282,7 @@ and that is an argument, not a build failure.
 ## Silence is not a decision
 
 **A blank reply is not a decline.** Treating one as a decline let 53 empty answers out of 133 pass
-for judgements, each reaching the verdict agent as though the reproducer had considered the marker
+for judgements, each reaching the verdict agent as though the reproduce-doer had considered the marker
 and ruled on it. A model whose last turn is a tool call returns no text, and that is not a
 judgement.
 
@@ -297,10 +297,10 @@ own — `no test could demonstrate this` declines, and so does any sentence that
 the two words. It is checked in two places: before the missing-file re-ask below (a reply that
 declined is not asked again for a file) and on the rewrite after a passing RED.
 
-**Nothing is built until a file exists.** The build used to run first, so a reproducer that wrote
+**Nothing is built until a file exists.** The build used to run first, so a reproduce-doer that wrote
 nothing cost two Maven invocations before anyone looked — 78 of 153 builds in a 67-marker run
 executed no test at all. A written file is a fact this program can check, and it checks it before
-the runner is called. A reproducer that wrote nothing is asked once, plainly:
+the runner is called. A reproduce-doer that wrote nothing is asked once, plainly:
 
 > You wrote no test file. Either use write_file to create one, or answer with exactly `no test` and
 > a one-line reason. An empty answer is not a decision.
@@ -326,10 +326,10 @@ qualifier, and nothing may split them.
 
 | disposition | decided by | reached when |
 |---|---|---|
-| `verified/pr-ready` | execution, then an agent for the suffix | RED failed, GREEN passed, the fix-critic certified `sound`, and the pr-maker's word is `make` |
-| `verified/pr-rejected` | execution, then an agent for the suffix | as above, and the pr-maker's word is anything other than `make` |
+| `verified/pr-ready` | execution, then an agent for the suffix | RED failed, GREEN passed, the fix-verifier certified `sound`, and the propose-doer's word is `make` |
+| `verified/pr-rejected` | execution, then an agent for the suffix | as above, and the propose-doer's word is anything other than `make` |
 | `reproduced` | execution alone | RED failed and no patch held: the patch would not build, or GREEN did not pass, or the replacement patch would not build |
-| `needs-review` | execution alone | RED failed but the record is inconsistent: the proof-critic's requested rewrite would not build, or no longer reproduces; or, after the fix-critic objected and the fixer was re-asked once, GREEN did not pass or the patch was still not certified |
+| `needs-review` | execution alone | RED failed but the record is inconsistent: the reproduce-verifier's requested rewrite would not build, or no longer reproduces; or, after the fix-verifier objected and the fix-doer was re-asked once, GREEN did not pass or the patch was still not certified |
 | `unprovable` | execution **or** an agent | execution: the FIRST test never built, after its re-ask with the compiler's own words — a later rewrite that will not build is argued instead. Agent: the verdict agent's word, and the fallback when its argument names none of the three |
 | `false-positive` | an agent | the verdict agent's word |
 | `by-design` | an agent | the verdict agent's word |
@@ -392,7 +392,7 @@ inputs that test used — and nothing more than that.
 
 By the time the verdict agent reads the tree, the tree holds this run's test and this run's patch.
 Thirteen settlements rested on that: `by-design` because *"a test depends on this behaviour"*, where
-the test was the one written eleven minutes earlier by the reproducer, in this prove, about this
+the test was the one written eleven minutes earlier by the reproduce-doer, in this prove, about this
 marker. Circular, and invisible in the record because the citation reads exactly like a citation of
 the project's own tests.
 
@@ -410,9 +410,9 @@ Judges answer in closed vocabularies, and the routing of that word is code, not 
 
 | stage | allowed words |
 |---|---|
-| proof-critic | `reducible`, `necessary` |
-| fix-critic | `sound`, `over-fit`, `regression-risk` |
-| pr-maker | `make`, `reject` |
+| reproduce-verifier | `reducible`, `necessary` |
+| fix-verifier | `sound`, `over-fit`, `regression-risk` |
+| propose-doer | `make`, `reject` |
 | verdict | `false-positive`, `by-design`, `unprovable` |
 | every critic that only re-asks | `sound`, `redo` |
 
@@ -438,7 +438,7 @@ The rule, in order:
    reply, which is right for a judge that opens with its answer and never emphasises it.
 3. **If the reply contains none of them, the result is empty.**
 
-Step 1 exists because step 2 alone read a pr-maker that wrote `**reject**` as a `make`: the phrase
+Step 1 exists because step 2 alone read a propose-doer that wrote `**reject**` as a `make`: the phrase
 *"makes admin reset links predictable"* came earlier in the text. It would have shipped a patch that
 breaks the lesson, against the explicit judgement of both agents that exist to stop that.
 
@@ -454,24 +454,24 @@ of absence exist and they are not the same:
   recorded as `infra` and hands the marker back to the queue. Exactly two callers catch: the shared
   re-ask helper catches a throw from the CRITIC (never from the producer it then re-asks), and the
   pricing step wraps the estimator whole. Every other call is unguarded — both producers, the
-  proof-critic, the fix-critic and the pr-maker — so a throw there re-queues the marker rather than
+  reproduce-verifier, the fix-verifier and the propose-doer — so a throw there re-queues the marker rather than
   settling it on an answer nobody gave.
 
 Given that, the directions:
 
 - **An objection must be RAISED to bite**, so an absent objector waives and the work stands. An
-  empty or unreadable critique is not an objection: it is not `reducible` for the proof-critic and
-  not `redo` for the three that go through the shared re-ask helper (verdict-critic, pr-critic,
-  estimator-critic), and the producer's answer is passed on exactly as it was.
+  empty or unreadable critique is not an objection: it is not `reducible` for the reproduce-verifier and
+  not `redo` for the three that go through the shared re-ask helper (argue-verifier, propose-verifier,
+  price-verifier), and the producer's answer is passed on exactly as it was.
 - **Waiving an empty answer is not the same as surviving a throw**, and the two must not be
-  conflated. Only the three helper-mediated critics waive when the CALL fails; a proof-critic or
-  fix-critic that throws ends the prove as `infra`. Both are safe directions — the marker is either
+  conflated. Only the three helper-mediated critics waive when the CALL fails; a reproduce-verifier or
+  fix-verifier that throws ends the prove as `infra`. Both are safe directions — the marker is either
   unreviewed-but-standing or back in the queue — and neither settles it on silence.
-- **A certificate must be GIVEN to bite**, so an absent certifier withholds. The fix-critic
+- **A certificate must be GIVEN to bite**, so an absent certifier withholds. The fix-verifier
   certifies: anything that is not exactly `sound` — an empty reply, prose the parser cannot read, a
   hedge — is a rejection, and a patch reaches a pull request only on a certificate somebody actually
   gave.
-- **The pr-maker's word defaults closed**: anything that is not `make` is `verified/pr-rejected`.
+- **The propose-doer's word defaults closed**: anything that is not `make` is `verified/pr-rejected`.
 - **The verdict agent's word defaults to the residual**: an argument naming none of the three
   settles `unprovable`, which leaves the marker open for a person rather than exonerating it.
 - **The estimator defaults to a missing number, never to a missing settlement**: an unreachable
@@ -589,14 +589,14 @@ minutes: N
 <three to six lines itemising what was charged>
 ```
 
-The estimator runs on **every** path, including a marker the reproducer declined: a declined marker
+The estimator runs on **every** path, including a marker the reproduce-doer declined: a declined marker
 still cost a person the read that decided it, and pricing only the ones that reach a pull request
 would measure how often this program succeeds rather than what it saved.
 
 **The figure is validated by a regex, not by a critic** — `minutes\s*:\s*(\d+)` — because whether the
 reply contains a number is a question a parser answers reliably and a model answers less reliably;
 the estimator's own critic once passed an estimate with no figure in it. The order is: ask, re-ask
-once if the regex finds no figure, then the estimator-critic loop, then check again — because a
+once if the regex finds no figure, then the price-verifier loop, then check again — because a
 re-ask can lose the shape the first answer had. If the figure is still missing, the line
 `minutes: unknown` is PREPENDED to whatever the estimator said rather than replacing it, so the
 account always opens with a figure and the reasoning is not thrown away. **An unreachable estimator

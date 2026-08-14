@@ -15,21 +15,21 @@ import com.deepagents.langchain4j.subagents.SubAgentRuntime;
  * runs the order; these are the things it calls.
  *
  * <p>TWO WRITE AND THE REST JUDGE OR WATCH, and the split decides the tools. A writer's output is
- * checked by the compiler and the build, so it gets file access — the reproducer may create a file,
- * the fixer may edit one, and neither may do the other's. A judge's answer is BRANCHED ON, so it
+ * checked by the compiler and the build, so it gets file access — the reproduce-doer may create a file,
+ * the fix-doer may edit one, and neither may do the other's. A judge's answer is BRANCHED ON, so it
  * gets read-only access and a word list, because a certification that can edit its subject certifies
  * nothing.
  *
  * <p>THE DIRECTIONS OF SILENCE DIFFER, and there are two kinds of silence. An EMPTY critique waives
  * everywhere: {@code verdict()} finds no word and the producer's answer stands, which is right for
  * an objection — it must be raised to bite. A critic that THROWS is a different thing, and which way
- * it falls is decided by who catches it rather than by what it is: {@code verdict-critic},
- * {@code pr-critic} and {@code estimator-critic} are called through helpers that catch and return
+ * it falls is decided by who catches it rather than by what it is: {@code argue-verifier},
+ * {@code propose-verifier} and {@code price-verifier} are called through helpers that catch and return
  * the producer's answer, so an unreachable one waives; everything else is unguarded, so a throw ends
  * the prove as {@code infra} and the marker goes back in the queue rather than settling.
  *
  * <p>This javadoc used to say that an unreachable curator "blocks the pull request". It does not —
- * {@code reviewed()} catches and the {@code pr-maker}'s own decision stands unreviewed. Nothing
+ * {@code reviewed()} catches and the {@code propose-doer}'s own decision stands unreviewed. Nothing
  * pushes a pull request, so the cost is a record that reads as reviewed and was not; the guarantee
  * described here was never in the code, and describing one that is not there is worse than having
  * none, because the next reader builds on it.
@@ -44,11 +44,11 @@ final class Agents {
      * wrong settlements were `by-design` reached because the framing "WebGoat is deliberately
      * vulnerable" licenses whichever of the three exits is cheapest.
      *
-     * <p>Its silence WAIVES, like the proof-critic's: an objection must be raised to bite, and an
+     * <p>Its silence WAIVES, like the reproduce-verifier's: an objection must be raised to bite, and an
      * unreachable critic must not be able to turn a stated verdict into no verdict at all.
      */
-    Agent verdictCritic() {
-        return runtime("verdict-critic", Tools.reading(root, trace, "verdict-critic"), """
+    Agent argueVerifier() {
+        return runtime("argue-verifier", Tools.reading(root, trace, "argue-verifier"), """
                 You are reviewing ONE argument another model wrote to settle a marker that no test \
                 demonstrated. It named one of three states, and you are the only reader between it \
                 and the record. Your question is narrow: DOES THE ARGUMENT REACH THE STATE IT NAMED, \
@@ -94,7 +94,7 @@ final class Agents {
     /**
      * READS ONE LANE AND SAYS WHAT HAPPENED IN IT, for somebody who does not know this pipeline.
      *
-     * <p>The table used to show the verdict agent's first sentence, which is an argument addressed
+     * <p>The table used to show the argue-doer's first sentence, which is an argument addressed
      * to the next agent and not an account addressed to a person: "false-positive — the claim does
      * not hold in this code" tells a reader the word and nothing about how it was reached, whether
      * anything was executed, or whether to believe it.
@@ -116,6 +116,13 @@ final class Agents {
                   - whether anything was actually EXECUTED, and what it showed — a test that failed \
                     before a patch and passed after it is the strongest thing this pipeline can say, \
                     and no test at all is the weakest
+                  - WHAT THE PROPOSED CHANGE ACTUALLY IS, when one was written: which file, which \
+                    construct, and what it becomes — "the result of getConnection() is closed in a \
+                    try-with-resources", not "the leak was fixed". A reader deciding whether to take \
+                    this patch needs to know what it does to their code, and the summary is where \
+                    they decide. If a patch went green but the record does not hold the change \
+                    itself, say that the diff is missing rather than describing one from the prose \
+                    around it — an invented patch is worse than an absent one
                   - what was concluded and on what grounds
                   - anything a reader would want to know before trusting it: a stage that never ran, \
                     a loop back, a judge that answered in one word, a test that passed when it was \
@@ -152,24 +159,42 @@ final class Agents {
                   - does it report a conclusion more confidently than the record supports
                   - does it leave out the thing a reader would most want to know — nothing ran, a \
                     judge said one word, a test passed when it was meant to fail
+                  - WHERE A PATCH WAS WRITTEN, does it say what the patch actually does — which file, \
+                    which construct, what it becomes. A summary that says a defect "was fixed" has \
+                    told the reader nothing they can act on, and this is the page where somebody \
+                    decides whether to take the change
+                  - does it describe a patch the record does not hold. A green build proves a change \
+                    existed, not what it was; if the diff is missing, the summary says so and does \
+                    not reconstruct one from the prose around it
                   - does it use this pipeline's jargon at a reader who does not have it
 
                 Then WRITE THE SUMMARY YOURSELF, in TWO PARTS, corrected where the draft was wrong \
                 and kept where it was right. Not a critique, not a list of corrections — yours is \
                 the text a person reads, and nothing else from this pair is shown anywhere.
 
-                Exactly this shape, and nothing before or after it:
+                ANSWER AS JSON, exactly these two keys and nothing before or after the object:
 
-                SHORT: one sentence, under 140 characters, that would let a reader skimming a table \
-                of 356 rows decide whether to open this one. What was concluded and on what \
+                {"short": "…", "full": "…"}
+
+                `short` — one sentence, under 140 characters, that would let a reader skimming a \
+                table of 356 rows decide whether to open this one. What was concluded and on what \
                 strength of evidence. Not the checker's name, not the state word on its own.
 
-                (a blank line, then two to four sentences: what was claimed, what was actually run \
-                and what it showed, what was concluded and on what grounds, and anything a reader \
-                should know before trusting it.)
+                `full` — two to five sentences: what was claimed, what was actually run and what it \
+                showed, WHAT THE PATCH DOES where there is one, what was concluded and on what \
+                grounds, and anything a reader should know before trusting it. Do not repeat the \
+                `short` sentence inside it.
 
-                Plain sentences in both. No headings, no bullets, no markdown, no preamble, and no \
-                mention of the draft, of yourself, or of this instruction.
+                THE KEYS ARE `short` AND `full` WHATEVER LANGUAGE YOU ANSWER IN. Write the values in \
+                the language this instruction is written in; leave the keys exactly as they are. \
+                They were a labelled line once — `SHORT:` — and a prompt translated into Russian \
+                produced `КРАТКОЕ ИЗЛОЖЕНИЕ:` instead, so nothing found the label, the whole first \
+                sentence became the table's line with the label still on the front of it, and the \
+                same sentence was left duplicated in the account below. A key is not prose and does \
+                not get translated with the rest of the answer.
+
+                Plain sentences in both values. No headings, no bullets, no markdown, no preamble, \
+                and no mention of the draft, of yourself, or of this instruction.
                 """);
     }
 
@@ -179,7 +204,7 @@ final class Agents {
      * <p>Every other agent in this program sees one marker and cannot know that the answer it is
      * about to give is the fortieth identical one. A pattern is invisible from inside a prove: a
      * critic that has said `sound` in one word thirty times running, a checker family that always
-     * settles the same way, a reproducer whose tests keep passing before any patch. Those are
+     * settles the same way, a reproduce-doer whose tests keep passing before any patch. Those are
      * findings about the pipeline and nothing in the pipeline was positioned to see them.
      */
     Agent overwatch(Path results, Supervisor supervisor) {
@@ -211,7 +236,7 @@ final class Agents {
                   - a judge answering in one word where its job is to check something
                   - an agent citing this run's own test or patch as evidence about the project
                   - a settlement whose word does not match its own argument
-                  - an estimate for work that did not happen — a patch priced where no fixer ran
+                  - an estimate for work that did not happen — a patch priced where no fix-doer ran
                   - a stage that never runs because an earlier one silently fell through
                   - the same checker family always reaching the same verdict, whatever the code says
                   - a prove that has stopped: claimed, no new events, nothing failed
@@ -399,6 +424,144 @@ final class Agents {
                 """);
     }
 
+
+    /**
+     * A PLANNER READS AND NEVER WRITES, in every one of the five stages.
+     *
+     * <p>The split is the same one the producers and judges already have and it is here for the same
+     * reason: a plan that can edit its subject is a plan that can arrange for itself to be
+     * satisfiable. The doer holds whatever tools its stage needs; the planner holds the ones that let
+     * it find out what is true.
+     *
+     * <p>WHY A PLANNER AT ALL. A verifier's complaint used to go back to the agent that had just
+     * failed to satisfy it, which works when the fault is in the doing and not when it is in the
+     * approach. Thirty-three DM_DEFAULT_ENCODING markers never produced a build because every
+     * reproducer reasoned its way to "the default charset is fixed at JVM start-up, so no test can
+     * vary it" — true, and the conclusion does not follow. That is a planning failure, and there was
+     * nobody in the chain whose job was the plan.
+     */
+    Agent reproducePlanner() {
+        return runtime("reproduce-planner", Tools.reading(root, trace, "reproduce-planner"), """
+                You decide HOW a defect could be made observable, before anybody writes a test.
+
+                You are given the marker, what the checker reports, the flagged source and the tests
+                beside it. Answer with a plan a competent Java developer could follow: what to
+                construct, what to assert on, and what the failing observation would actually be.
+
+                THE ONE THING THAT MATTERS. A test proves this defect only if it FAILS on the code as
+                it stands and passes once the defect is gone. So say what makes it fail — the value
+                that comes back wrong, the exception that is thrown, the row that should not be there.
+                A plan whose test would pass today has planned a characterisation test, and this
+                pipeline calls that worse than no test.
+
+                SAY WHEN IT CANNOT BE DONE, and say why. "The defect is real and cannot be observed
+                from a test" is a plan, and it is the right one more often than it is given — an
+                honest refusal here settles the marker as `unprovable`, which is a true answer.
+                A plan invented to have something to write costs a build and teaches nothing.
+
+                Think about what the harness allows before you assume it forbids. A test may start a
+                JVM, take a clock, open a socket, or run a process; a fact about the code under test
+                is not a fact about what a test is permitted to do. That confusion has written off a
+                whole checker family here before.
+
+                Six sentences at most. No preamble, no headings, no code — the plan is prose the next
+                agent works from, and it may be `no test is possible, because …`.
+                """);
+    }
+
+    Agent fixPlanner() {
+        return runtime("fix-planner", Tools.reading(root, trace, "fix-planner"), """
+                You decide WHERE and HOW a defect should be fixed, before anybody edits a file.
+
+                You are given the marker, the failing test and what the build said. Name the change:
+                which file, which construct, and what it becomes. The smallest change that makes the
+                test pass for the RIGHT REASON — not the smallest change that makes it pass.
+
+                FIX THE DEFECT, NOT THE TEST. A patch that special-cases the value the test happens to
+                use has satisfied the assertion and left the defect where it was. Say what class of
+                input the change covers, so a reader can tell those two apart.
+
+                THE SUBJECT MAY WANT THE BUG. This runs against teaching code among other things,
+                where a vulnerability can BE the lesson and patching it breaks an assignment. If what
+                you are looking at is deliberate, say so and say what shows it — a comment, the lesson
+                text, a committed test that asserts the vulnerable behaviour. That is a plan too, and
+                it is the one that stops a pull request nobody would merge.
+
+                Six sentences at most, no code. Name the file and the construct precisely enough that
+                the next agent does not have to guess which line you meant.
+                """);
+    }
+
+    Agent proposePlanner() {
+        return runtime("propose-planner", Tools.reading(root, trace, "propose-planner"), """
+                You decide whether a patch is worth sending to somebody else's repository, and on what
+                argument, before the proposal is written.
+
+                You are given the marker, the test, the patch and the certification. Answer with what
+                the case rests on: what a maintainer would have to believe, and what in the record
+                supports it.
+
+                THE STRONGEST REASON TO SAY NO IS NOT THAT THE PATCH IS BAD. It is that the behaviour
+                is intended — a lesson, a fixture, a deliberately weak default in a training project.
+                Look for that first and name what shows it, because a technically sound patch that
+                breaks an exercise is worse than no patch.
+
+                Also name what a maintainer would ask that this record cannot answer. A proposal that
+                does not know its own weakest point argues past it.
+
+                Five sentences at most. `make` or `reject` is the next agent's word, not yours: you are
+                deciding what the argument IS, not making it.
+                """);
+    }
+
+    Agent arguePlanner() {
+        return runtime("argue-planner", Tools.reading(root, trace, "argue-planner"), """
+                Nothing was executed for this marker, so it will be settled by argument. You decide
+                WHICH of the three states the evidence could honestly reach, before the argument is
+                written.
+
+                `false-positive` says the checker is WRONG about this code, and is paid for only by
+                something a reviewer can open and see: a guard, a validation, an unreachable branch, a
+                sanitizer upstream. `by-design` asserts INTENT, and intent is evidence rather than
+                inference — a comment, an annotation, a suppression, the lesson text, a committed
+                caller relying on the behaviour. `unprovable` is the residual and the honest one where
+                nothing ran.
+
+                So: say which state the record can actually support, and NAME THE ARTEFACT that would
+                pay for it — the file and the line. If nothing in the record pays for either of the
+                strong two, the plan is `unprovable`, and saying so plainly here is what stops the
+                next agent reaching for whichever exit is cheapest.
+
+                EVIDENCE OLDER THAN THIS RUN ONLY. This run's own test and this run's own patch are in
+                the tree and are not evidence about the project.
+
+                Four sentences at most.
+                """);
+    }
+
+    Agent pricePlanner() {
+        return runtime("price-planner", Tools.reading(root, trace, "price-planner"), """
+                You decide what work a person would actually have done here, before anybody puts a
+                number on it.
+
+                You are given the whole lane. List the units of work that a competent developer would
+                have gone through for THIS marker and no other: reading to understand the claim,
+                reproducing it, writing the test, patching, checking they had not broken something,
+                writing it up. Only the ones that apply.
+
+                WHAT THE PIPELINE SPENT IS NOT WHAT A PERSON WOULD SPEND. Six agent turns and two
+                Maven builds are this program's cost, not theirs; a marker that took the pipeline an
+                hour of retries may be ten minutes of a person's attention. Price the work, not the
+                trace.
+
+                And a marker nobody could reproduce still cost somebody the reading that established
+                that. An honest estimate has a floor.
+
+                Four sentences at most, no number — the next agent gives the figure and you give it
+                the pieces to add up.
+                """);
+    }
+
     /**
      * THE TEN THAT RUN INSIDE A PROVE, IN THE ORDER {@link Prove} CALLS THEM.
      *
@@ -408,11 +571,11 @@ final class Agents {
      * page of its own and nobody noticed.
      */
     static final java.util.List<String> CHAIN = java.util.List.of(
-            "reproducer", "proof-critic",
-            "fixer", "fix-critic",
-            "pr-maker", "pr-critic",
-            "verdict", "verdict-critic",
-            "estimator", "estimator-critic");
+            "reproduce-planner", "reproduce-doer", "reproduce-verifier",
+            "fix-planner", "fix-doer", "fix-verifier",
+            "propose-planner", "propose-doer", "propose-verifier",
+            "argue-planner", "argue-doer", "argue-verifier",
+            "price-planner", "price-doer", "price-verifier");
 
     /** The four that watch a run rather than run in one: the run-level pair, then the lane-level. */
     static final java.util.List<String> WATCH = java.util.List.of(
@@ -444,11 +607,13 @@ final class Agents {
     static java.util.Map<String, String> builtIn(Path root, JsonlTrace trace, Runner runner) {
         Agents all = new Agents(root, trace, runner);
         java.util.List<java.util.function.Supplier<Agent>> every = java.util.List.of(
-                all::reproducer, all::proofCritic,
-                all::fixer, all::fixCritic,
-                all::prMaker, all::prCritic,
-                all::verdict, all::verdictCritic,
-                all::estimator, all::estimatorCritic,
+                all::reproducePlanner, all::reproduceDoer, all::reproduceVerifier,
+                all::fixPlanner, all::proposePlanner, all::arguePlanner,
+                all::pricePlanner,
+                all::fixDoer, all::fixVerifier,
+                all::proposeDoer, all::proposeVerifier,
+                all::argueDoer, all::argueVerifier,
+                all::priceDoer, all::priceVerifier,
                 () -> all.overwatch(root, null), () -> all.overwatchCritic(root, null),
                 () -> all.interpreter(root), () -> all.interpreterCritic(root),
                 () -> all.chat(root));
@@ -461,7 +626,7 @@ final class Agents {
             }
         }
         // IN PIPELINE ORDER, not the hash's. A page of prompts sorted alphabetically puts
-        // estimator-critic first and reproducer eleventh, which is the reverse of how anybody
+        // price-verifier first and reproduce-doer eleventh, which is the reverse of how anybody
         // thinks about this.
         java.util.Map<String, String> ordered = new java.util.LinkedHashMap<>();
         for (String agent : ORDER) {
@@ -492,8 +657,8 @@ final class Agents {
     }
 
     /** Writes ONE JUnit test that must fail because of the defect. May create files, never edit them. */
-    Agent reproducer() {
-        return runtime("reproducer", Tools.writing(root, runner, trace, "reproducer"), """
+    Agent reproduceDoer() {
+        return runtime("reproduce-doer", Tools.writing(root, runner, trace, "reproduce-doer"), """
                 You write ONE JUnit test that fails because of the defect the marker names.
 
                 Read the flagged file first. Read whatever else you need to understand it — the classes \
@@ -523,8 +688,8 @@ final class Agents {
      * <p>Asked ONLY after the build has agreed the test compiles and goes red: grading the mocking of
      * a test that never built spends a model call on nothing.
      */
-    Agent proofCritic() {
-        return runtime("proof-critic", Tools.reading(root, trace, "proof-critic"), """
+    Agent reproduceVerifier() {
+        return runtime("reproduce-verifier", Tools.reading(root, trace, "reproduce-verifier"), """
                 This test compiles and it goes RED for the right defect. Both facts are established; \
                 do not re-litigate them.
 
@@ -546,15 +711,25 @@ final class Agents {
                 a replacement, answer `necessary` — naming nothing is the same as approving, and \
                 saying so honestly beats a complaint nobody can act on.
 
-                You have been given the test, the source and the build. The file tools are for the \
-                rare case that a collaborator is defined somewhere you cannot see — use them for that, \
-                not to survey the project.
-                """);
+                THREE ANSWERS, NOT TWO. `necessary` keeps the test. `reducible` sends it back to be \
+                written again — use it when the test observes more than the defect requires, which \
+                is a fault in the WRITING. `replan` goes further back, to the agent that decided how \
+                the defect would be observed at all — use it when no rewrite of this test could \
+                observe it, because the approach was wrong.
+
+                THE DIFFERENCE MATTERS MORE THAN IT LOOKS. A reproduce-doer told "this does not observe \
+                the defect" rewrites the same test in different words, because rewriting is the only \
+                move it has; that is how a whole checker family here produced thirty-three markers \
+                and not one build. If the plan is what is wrong, say `replan` and say what the plan \
+                failed to consider.
+
+                Answer with one of the three on its own line, then one sentence saying why.
+""");
     }
 
     /** Patches the defect. May edit existing files, never create them — a new file is not a patch. */
-    Agent fixer() {
-        return runtime("fixer", Tools.patching(root, runner, trace, "fixer"), """
+    Agent fixDoer() {
+        return runtime("fix-doer", Tools.patching(root, runner, trace, "fix-doer"), """
                 You patch the defect the marker names, minimally.
 
                 Edit the source so the failing test passes. The smallest edit that removes the defect, \
@@ -569,11 +744,11 @@ final class Agents {
     }
 
     /** Criticises the patch. Its silence REFUSES: an absent certificate enforces nothing. */
-    Agent fixCritic() {
-        return runtime("fix-critic", Tools.reading(root, trace, "fix-critic"), """
+    Agent fixVerifier() {
+        return runtime("fix-verifier", Tools.reading(root, trace, "fix-verifier"), """
                 You judge ONE question: is this patch sound, or does it only satisfy the test?
 
-                You get two accounts of the patch: what the fixer SAYS it did, and the `git diff` of \
+                You get two accounts of the patch: what the fix-doer SAYS it did, and the `git diff` of \
                 what it actually did. THEY ARE NOT ALWAYS THE SAME, and the diff is the one that will \
                 be shipped. Judge the diff. Where the prose claims something the diff does not show, \
                 say so — that is `over-fit` at best.
@@ -593,8 +768,8 @@ final class Agents {
     }
 
     /** Decides whether to propose the patch. Its silence REFUSES. */
-    Agent prMaker() {
-        return runtime("pr-maker", Tools.reading(root, trace, "pr-maker"), """
+    Agent proposeDoer() {
+        return runtime("propose-doer", Tools.reading(root, trace, "propose-doer"), """
                 You decide ONE thing: should this patch be proposed to the repository's maintainers?
 
                 Before you answer, look for evidence that the code is deliberately this way. Read the \
@@ -610,14 +785,14 @@ final class Agents {
     }
 
     /**
-     * Criticises the decision to propose, or not to. Loops back to the pr-maker.
+     * Criticises the decision to propose, or not to. Loops back to the propose-doer.
      *
      * <p>The expensive mistake here is one-sided: proposing a patch that breaks a lesson costs a
      * maintainer's afternoon and this project's credibility, and declining a good one costs nothing
      * anyone notices. So it is asked to be hardest on `make`.
      */
-    Agent prCritic() {
-        return runtime("pr-critic", Tools.reading(root, trace, "pr-critic"), """
+    Agent proposeVerifier() {
+        return runtime("propose-verifier", Tools.reading(root, trace, "propose-verifier"), """
                 A colleague decided whether to propose this patch upstream. Judge the DECISION.
 
                 If they said `make`: is this a change a maintainer would actually merge, unsolicited, \
@@ -635,14 +810,14 @@ final class Agents {
     }
 
     /**
-     * Criticises the estimate. Loops back to the estimator.
+     * Criticises the estimate. Loops back to the price-doer.
      *
      * <p>An estimate nobody argues with drifts, and it drifts high: every step looks like work when
      * you are the one describing it. This reads the same record and says whether the number is one a
      * developer would recognise.
      */
-    Agent estimatorCritic() {
-        return runtime("estimator-critic", Tools.reading(root, trace, "estimator-critic"), """
+    Agent priceVerifier() {
+        return runtime("price-verifier", Tools.reading(root, trace, "price-verifier"), """
                 A colleague estimated what this marker would have cost a developer. Judge the NUMBER.
 
                 Read the same record. Would a competent Java developer, new to this code, recognise \
@@ -661,12 +836,12 @@ final class Agents {
      * Estimates what this marker would have cost a person. Fires last, after every other agent.
      *
      * <p>It reads the record rather than applying a table, because the record is what varies: a
-     * marker a reproducer declined in one call cost a triage, and one that went red, green and two
+     * marker a reproduce-doer declined in one call cost a triage, and one that went red, green and two
      * rounds with a skeptic cost most of a day. A fixed per-outcome charge would price those the same
      * whenever the outcome matched, which is the case where the number stops meaning anything.
      */
-    Agent estimator() {
-        return runtime("estimator", Tools.reading(root, trace, "estimator"), """
+    Agent priceDoer() {
+        return runtime("price-doer", Tools.reading(root, trace, "price-doer"), """
                 You read a completed attempt to prove a static-analysis marker and estimate what the \
                 same work would have cost a competent Java developer who had not seen this code before.
 
@@ -696,8 +871,8 @@ final class Agents {
      * pipeline entered five of its eight dispositions that way, and routing them through a model would
      * turn five deterministic outcomes into sampled ones.
      */
-    Agent verdict() {
-        return runtime("verdict", Tools.reading(root, trace, "verdict"), """
+    Agent argueDoer() {
+        return runtime("argue-doer", Tools.reading(root, trace, "argue-doer"), """
                 No test demonstrated this marker either way. You argue what it should be.
 
                 Read the flagged file and whatever explains it — callers, tests, lesson documentation. \

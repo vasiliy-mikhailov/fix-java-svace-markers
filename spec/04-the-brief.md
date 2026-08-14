@@ -6,8 +6,8 @@ either demonstrates the defect with a build or argues it away. The **brief** is 
 prove assembles before it calls anybody, and it is the trunk of every prompt in that prove.
 
 **The brief is constructed exactly once, before the first agent call, and no agent prompt in the
-prove contains less than the whole of it.** The reproducer gets `brief`; the proof-critic gets
-`brief + the test + the RED summary`; the fixer gets `brief + evidence`; the estimator gets
+prove contains less than the whole of it.** The reproduce-doer gets `brief`; the reproduce-verifier gets
+`brief + the test + the RED summary`; the fix-doer gets `brief + evidence`; the estimator gets
 `brief + how it settled`. There is no second construction and no per-agent variant. A rebuilder who
 lets each stage assemble its own context will find stages disagreeing about which line was flagged.
 
@@ -282,7 +282,7 @@ minutes a marker.
 
 Two incidents are folded into this paragraph:
 
-- **Fifty-six of eighty-six runaway generations were the reproducer on this one kind of marker.** Its
+- **Fifty-six of eighty-six runaway generations were the reproduce-doer on this one kind of marker.** Its
   captured reasoning: *"Wait, but this is an integration test class (src/it/java), not a regular
   source class"* … *"The uploadTrickHtml method is private, so I can't directly test it"* … *"Let me
   think about this differently."* Round and round for half an hour, because the task has no answer
@@ -318,7 +318,7 @@ still correct source; it simply makes no claim.
 **Unnumbered source makes the marker's line an assertion nobody in the chain can check.** These
 markers came off an analyser run against an older revision and some have drifted: `EncDec:67` points
 past the end of a 64-line file; `TokenTest:47` lands on a blank line. Handed unnumbered
-source, the reproducer decided for itself what the marker must have meant and wrote a test for that,
+source, the reproduce-doer decided for itself what the marker must have meant and wrote a test for that,
 with nothing in the record saying it had substituted its own judgement.
 
 ### Drift past the end of the file
@@ -374,7 +374,7 @@ An existing test beside it, <FileName.java> — this is how this project stands 
 Order comes from `Files.list`, which is unspecified — "the first two the filesystem lists", not the
 two most relevant. Two, because the brief pays for them by length.
 
-**Why in full:** they are what a reproducer reads to learn how this project stands a subject up —
+**Why in full:** they are what a reproduce-doer reads to learn how this project stands a subject up —
 the harness, the datasource, the annotations — and it reads them every time, one tool call each,
 against a budget that used to be 25 calls total.
 
@@ -398,8 +398,8 @@ This block is **not part of the brief**. It is prepended to the brief on exactly
 reach the verdict agent, where an argument rather than a build is going to settle the marker:
 
 ```java
-argued(whatThisRunMade() + brief + "\nNo test was written for this marker. The reproducer said:\n" + …);
-argued(whatThisRunMade() + brief + "\nNO TEST COULD BE MADE TO FAIL ON THIS CODE. The reproducer was asked twice; the last build was:\n" + …);
+argued(whatThisRunMade() + brief + "\nNo test was written for this marker. The reproduce-doer said:\n" + …);
+argued(whatThisRunMade() + brief + "\nNO TEST COULD BE MADE TO FAIL ON THIS CODE. The reproduce-doer was asked twice; the last build was:\n" + …);
 ```
 
 Those are the only two call sites of `argued`, and `argued` itself appends
@@ -414,7 +414,7 @@ is read.
 The verdict agent reads the tree, and by the time it is asked the tree contains the test this run
 wrote and the patch this run applied. **Thirteen settlements in a 67-marker run rested on that:
 `by-design`, because "a test depends on this behaviour", where the test was the one written eleven
-minutes earlier by the reproducer, in this prove, about this marker.** Circular — and invisible in
+minutes earlier by the reproduce-doer, in this prove, about this marker.** Circular — and invisible in
 the record, because a citation of our test reads exactly like a citation of theirs.
 
 ### How the line is drawn
@@ -444,9 +444,9 @@ noting the caveat and citing it anyway.
 
 ### The three failure directions, all toward silence
 
-- **A clean tree produces nothing.** Before the reproducer runs there is nothing of ours, and saying
+- **A clean tree produces nothing.** Before the reproduce-doer runs there is nothing of ours, and saying
   so at length would train the judge to skim past the notice on the runs that need it.
-- **A modified file is ours as surely as a new one.** The fixer edits in place, so a committed file
+- **A modified file is ours as surely as a new one.** The fix-doer edits in place, so a committed file
   the patch touched becomes inadmissible — even though the same file, untouched, would have been
   admissible evidence about the project.
 - **`git status` failing produces nothing.** Somewhere that is not a repository says nothing rather
@@ -462,12 +462,12 @@ itself is chapter 02):
 
 | appended to `brief` | when | contains |
 |---|---|---|
-| the empty-answer re-ask | reproducer wrote no file | `use write_file`, or answer with exactly `` `no test` `` and a one-line reason; "An empty answer is not a decision." |
+| the empty-answer re-ask | reproduce-doer wrote no file | `use write_file`, or answer with exactly `` `no test` `` and a one-line reason; "An empty answer is not a decision." |
 | `Prove.GREEN_RED` | first RED compiled and PASSED | why a passing RED documents the defect instead of observing it, the fork-a-JVM escape, and the `no test` exit. Across one run, 16 of the 33 markers that reached a build had their first RED pass and 13 settled on it — six `by-design`, seven `false-positive`, every one argued from a build that showed nothing |
-| the compiler's own words | RED or GREEN would not build | `build.summary()` verbatim, with "Fix exactly that" (plus "write the file again, and end with the test class name" for the reproducer, "Do not change the test." for the fixer) |
-| the critique | proof-critic answered `reducible` | the reviewer's objection, carried through subsequent build retries |
-| `evidence` | from the fixer onward | `"\nThe failing test:\n" + test + "\nRED:\n" + red.summary()` — assembled once so a retry is never poorer than the call it replaces |
-| the diff and the reach sentence | fix-critic, **first call only** | `git diff -U3 -- . :(exclude)*src/test/* :(exclude)*src/it/*`, plus a computed sentence on whether a hunk spans the flagged line. The re-certification after a rejected patch carries neither |
+| the compiler's own words | RED or GREEN would not build | `build.summary()` verbatim, with "Fix exactly that" (plus "write the file again, and end with the test class name" for the reproduce-doer, "Do not change the test." for the fix-doer) |
+| the critique | reproduce-verifier answered `reducible` | the reviewer's objection, carried through subsequent build retries |
+| `evidence` | from the fix-doer onward | `"\nThe failing test:\n" + test + "\nRED:\n" + red.summary()` — assembled once so a retry is never poorer than the call it replaces |
+| the diff and the reach sentence | fix-verifier, **first call only** | `git diff -U3 -- . :(exclude)*src/test/* :(exclude)*src/it/*`, plus a computed sentence on whether a hunk spans the flagged line. The re-certification after a rejected patch carries neither |
 | the settlement | estimator | `"\n\nIt settled as: " + disposition + "\n\nThe record:\n" + because` |
 
 The one constant across all of them: **no stage ever receives less than the brief**, and no stage

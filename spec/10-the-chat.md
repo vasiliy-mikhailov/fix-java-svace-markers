@@ -93,7 +93,7 @@ and then asserts that none of `restart_prove`, `postpone_prove`, `write_file`, `
 `run_test` is among them — *the introspection is additive; the fence is unchanged.*
 
 **`chat` is the only agent that gets `asking`.** `overwatch`, the interpreter pair and every judge
-get `reading`'s four; the reproducer gets `writing` and the fixer `patching`; `overwatch-critic`
+get `reading`'s four; the reproduce-doer gets `writing` and the fix-doer `patching`; `overwatch-critic`
 gets `supervising`. Three separate refusals stack on this one.
 
 `only` counts what it kept and **throws `IllegalStateException` at construction if it is not
@@ -923,16 +923,16 @@ arriving.*
 There are **fifteen prompts**: `CHAIN`'s ten, `WATCH`'s four, `ASKED`'s one.
 
 `Agents.ASKED = List.of("chat")` — its own list, after `CHAIN` (the ten that run inside a prove:
-`reproducer`, `proof-critic`, `fixer`, `fix-critic`, `pr-maker`, `pr-critic`, `verdict`,
-`verdict-critic`, `estimator`, `estimator-critic`) and `WATCH` (`overwatch`, `overwatch-critic`,
+`reproduce-doer`, `reproduce-verifier`, `fix-doer`, `fix-verifier`, `propose-doer`, `propose-verifier`, `verdict`,
+`argue-verifier`, `estimator`, `price-verifier`) and `WATCH` (`overwatch`, `overwatch-critic`,
 `interpreter`, `interpreter-critic`). `ORDER` is `CHAIN`, then `WATCH`, then `ASKED`, flattened —
 so `chat` is last, and the comment says why: **the one that speaks only when spoken to. Last, because
 it runs on nobody's schedule.**
 
 That ordering is what the prompts page renders in — *pipeline order, not the hash's: a page of
-prompts sorted alphabetically puts `estimator-critic` first and `reproducer` eleventh, which is the
+prompts sorted alphabetically puts `price-verifier` first and `reproduce-doer` eleventh, which is the
 reverse of how anybody thinks about this.* It is one list rather than three because **three copies of
-an order drift and the drift is invisible**: *the marker tabs were missing `verdict-critic` entirely,
+an order drift and the drift is invisible**: *the marker tabs were missing `argue-verifier` entirely,
 so an agent that can send a settlement back for rework had no page of its own and nobody noticed.*
 
 `chat`'s built-in prompt reaches the editor the same way every other one does. `Agents.builtIn`

@@ -25,6 +25,34 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 
+  <!--
+    SIX VULNERABILITIES THIS SHIPS, NONE OF THEM OURS, ALL OF THEM ARRIVING THROUGH LANGCHAIN4J.
+
+    Neither library is a dependency this project declares. Both come in transitively, at whatever
+    version langchain4j 1.9.1 happens to pin, and a scan of the published image found six issues at
+    CRITICAL or HIGH in exactly those two:
+
+      opennlp-tools 2.5.4   CVE-2026-40682, CVE-2026-42027 (CRITICAL), CVE-2026-42440 — fixed 2.5.9
+      jackson 2.20.1        CVE-2026-54512, CVE-2026-54513, GHSA-r7wm-3cxj-wff9      — fixed 2.21.4
+
+    `dependencyManagement` and NOT a direct dependency, because this project does not use either
+    library and adding it to `<dependencies>` would say it does. This raises the floor for whoever
+    pulls them in and changes nothing else about the build.
+
+    Jackson goes through its BOM so that core, databind and annotations move together — the three
+    are version-locked in practice, and pinning `jackson-databind` alone is how a build ends up with
+    a databind that its own core cannot serialise for.
+
+    THE COST OF A PIN IS THE CEILING IT ALSO SETS. `dependencyManagement` wins over a transitive
+    version in both directions: if a later langchain4j needs something newer, this holds it back and
+    the failure is a NoSuchMethodError rather than a resolution error. Raise these with the upgrade
+    rather than leaving them to be discovered.
+
+    Found by Sergey Boykov (PR #1), which also carried CRLF handling and an `apt-get upgrade` in the
+    runtime stage. The upgrade fixed nothing at CRITICAL or HIGH — the OS layer was already clean at
+    those severities — and it makes two builds of one commit differ, so only the part that removes
+    the vulnerabilities is taken here.
+  -->
   <dependencyManagement>
     <dependencies>
       <dependency>

@@ -52,30 +52,43 @@ class OneOrderNotThreeTest {
     }
 
     @Test
-    @DisplayName("each producer is immediately followed by its own critic")
-    void pairs() {
-        // WRITTEN OUT, because the names do not follow a rule: it is fixer/fix-critic, not
-        // fixer-critic, and reproducer/proof-critic shares no stem at all. A test that derived the
-        // critic's name from the producer's would be testing a convention this code does not have.
+    @DisplayName("each stage is planner, then doer, then verifier, in that order")
+    void triples() {
+        // WRITTEN OUT even though the names now DO follow a rule, because the rule is the thing
+        // worth pinning: every agent says its stage and its role, and a stage that quietly loses one
+        // of the three is what this catches. Deriving the names from the rule would test nothing.
+        //
+        // They were reproducer/proof-critic/fixer/pr-maker/verdict/estimator until the roles became
+        // three. The record written before that carries the old names, and the marker page appends
+        // any agent it does not recognise — so 356 markers of history keep their tabs.
         List<List<String>> expected = List.of(
-                List.of("reproducer", "proof-critic"),
-                List.of("fixer", "fix-critic"),
-                List.of("pr-maker", "pr-critic"),
-                List.of("verdict", "verdict-critic"),
-                List.of("estimator", "estimator-critic"));
+                List.of("reproduce-planner", "reproduce-doer", "reproduce-verifier"),
+                List.of("fix-planner", "fix-doer", "fix-verifier"),
+                List.of("propose-planner", "propose-doer", "propose-verifier"),
+                List.of("argue-planner", "argue-doer", "argue-verifier"),
+                List.of("price-planner", "price-doer", "price-verifier"));
         List<List<String>> actual = new ArrayList<>();
-        for (int i = 0; i < Agents.CHAIN.size(); i += 2) {
-            actual.add(List.of(Agents.CHAIN.get(i), Agents.CHAIN.get(i + 1)));
+        for (int i = 0; i < Agents.CHAIN.size(); i += 3) {
+            actual.add(List.of(Agents.CHAIN.get(i), Agents.CHAIN.get(i + 1), Agents.CHAIN.get(i + 2)));
         }
         assertEquals(expected, actual,
-                "the chain is five producer/critic pairs and the page reads as pairs; a producer "
-                        + "separated from its critic is two prompts nobody edits together");
+                "the chain is five planner/doer/verifier triples and the page reads as triples; a "
+                        + "planner separated from the doer that works from it is two prompts nobody "
+                        + "edits together");
+        assertEquals(0, Agents.CHAIN.size() % 3, "no stage may be missing a role");
+        for (String agent : Agents.CHAIN) {
+            assertTrue(agent.endsWith("-planner") || agent.endsWith("-doer")
+                            || agent.endsWith("-verifier"),
+                    agent + " does not say which role it is. Every name in the chain is "
+                            + "<stage>-<role>, so a reader of a trace, a tab or a settings page "
+                            + "knows what they are looking at without being told");
+        }
     }
 
     @Test
     @DisplayName("the chain is what runs inside a prove, and the watchers are not in it")
     void chainIsTheProve() {
-        assertTrue(Agents.CHAIN.contains("verdict-critic"),
+        assertTrue(Agents.CHAIN.contains("argue-verifier"),
                 "it can send a settlement back for rework, so it runs in the chain and needs a tab");
         for (String watcher : Agents.WATCH) {
             assertTrue(!Agents.CHAIN.contains(watcher),

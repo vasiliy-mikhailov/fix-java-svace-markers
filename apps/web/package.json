@@ -1,0 +1,33 @@
+{
+  "name": "@fsm/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui"
+  },
+  "dependencies": {
+    "@fsm/types": "workspace:*",
+    "@fsm/ui": "workspace:*",
+    "next": "^16.2.4",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@fsm/config": "workspace:*",
+    "@playwright/test": "^1.62.1",
+    "@tailwindcss/postcss": "^4",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "happy-dom": "^20.11.2",
+    "tailwindcss": "^4",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

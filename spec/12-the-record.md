@@ -208,7 +208,7 @@ are looking at.
 - `infra`, `passed`, `red`, `green` are the strings `"true"`/`"false"` — **quoted**, unlike the
   booleans in a settlement row. A rebuilder must not "fix" one to match the other; readers of each
   file were written against what that file holds.
-- `agent` is the bare agent name (`reproducer`, `fix-critic`, `verdict`, …). The runtime is given
+- `agent` is the bare agent name (`reproduce-doer`, `fix-verifier`, `verdict`, …). The runtime is given
   `"agent:" + name` for its own purposes; that string does not reach the trace.
 - `prompt` on an `asked` row is the whole thing: the agent's system prompt, then `\n\n---\n\n`, then
   the task. **In full, both of them.** Truncating here would save disk and cost the corpus: prompt
@@ -433,7 +433,7 @@ answer, appended by the dashboard's `/feedback` handler from a plain form and a 
 the reader was on.
 
 ```json
-{"marker":"…","agent":"reproducer","event":7,"note":"…","at":"1754812345678",
+{"marker":"…","agent":"reproduce-doer","event":7,"note":"…","at":"1754812345678",
  "prompt":"…","reply":"…"}
 ```
 
@@ -443,7 +443,7 @@ the reader was on.
   prompt and the reply are carried in full and nothing has to go back to the trace to use the row.
 - **It points at one event, not at a marker.** Prompt tuning optimises ONE agent's prompt, so a
   complaint filed against a whole prove cannot be attributed: a marker that settled badly may have
-  had a fine reproducer and a careless skeptic.
+  had a fine reproduce-doer and a careless skeptic.
 - **`prompt` and `reply` are carried in full, not referenced.** A row here is a complete training
   example, so a tuning run needs this file and nothing else. Keeping only an index would make the
   corpus depend on a trace that is rotated, regenerated from a re-run, or simply larger than anyone

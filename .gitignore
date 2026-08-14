@@ -34,4 +34,7 @@ target/
 dist/
 .next/
 node_modules/
+out/
+playwright-report/
+test-results/
 trivy-report*.*

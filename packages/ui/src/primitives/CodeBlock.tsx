@@ -1,0 +1,88 @@
+import type { ReactNode } from 'react'
+import { BLOCK } from './block'
+
+export type CodeBlockProps = {
+  code: string
+  /**
+   * Colour it as this language, or leave it uncoloured.
+   *
+   * The Java's `block()` (2618-2622) ran `colourJava()` over EVERYTHING it was given, whatever the
+   * file actually was — a Kotlin or XML fragment came out with `int` and `class` highlighted
+   * wherever they happened to appear as words. This prop is here so that stops being silent:
+   * absent means no colouring, which is the honest render for a language nothing here can lex.
+   */
+  language?: 'java'
+}
+
+/**
+ * Java's words, its strings and its comments. Three colours, which is what a reader uses.
+ *
+ * ONE PASS, IN ONE ALTERNATION (Java `JAVA` pattern 2665-2679). A keyword inside a string has to
+ * stay inside the string and a quote inside a comment must not open one; colouring by running four
+ * separate replacements over the same text is how `// the "public" API` comes out with half a
+ * comment and a stray keyword in it. Order in the alternation is the precedence: comment, then
+ * string, then word, then number.
+ */
+const JAVA =
+  /(?<comment>\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(?<string>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(?<word>\b(?:abstract|assert|boolean|break|byte|case|catch|char|class|const|continue|default|do|double|else|enum|extends|final|finally|float|for|goto|if|implements|import|instanceof|int|interface|long|native|new|package|private|protected|public|return|short|static|strictfp|super|switch|synchronized|this|throw|throws|transient|try|var|void|volatile|while|true|false|null|record|sealed|yield)\b)|(?<number>\b\d[\w.]*)/g
+
+/** The four token colours, from `domain.css`. A colour never appears here as a literal. */
+const COLOUR = {
+  comment: 'var(--code-comment)',
+  string: 'var(--code-string)',
+  word: 'var(--code-keyword)',
+  number: 'var(--code-number)',
+} as const
+
+type TokenKind = keyof typeof COLOUR
+
+function kindOf(groups: Record<string, string | undefined>): TokenKind {
+  return groups['comment'] !== undefined
+    ? 'comment'
+    : groups['string'] !== undefined
+      ? 'string'
+      : groups['word'] !== undefined
+        ? 'word'
+        : 'number'
+}
+
+function colourJava(source: string): ReactNode[] {
+  const out: ReactNode[] = []
+  let at = 0
+  // `matchAll` needs the /g flag and gives a fresh iterator, so this is re-entrant where a shared
+  // `lastIndex` on `exec` would not be — two code blocks on one page must not read each other's.
+  for (const match of source.matchAll(JAVA)) {
+    // A match always carries both; the fallbacks are for the type, which cannot know that.
+    const text = match[0] ?? ''
+    const start = match.index ?? at
+    if (start > at) {
+      out.push(source.slice(at, start))
+    }
+    const kind = kindOf(match.groups ?? {})
+    out.push(
+      <span
+        key={start}
+        style={{ color: COLOUR[kind], fontStyle: kind === 'comment' ? 'italic' : 'normal' }}
+      >
+        {text}
+      </span>,
+    )
+    at = start + text.length
+  }
+  out.push(source.slice(at))
+  return out
+}
+
+/**
+ * A block of source, escaped by React and coloured by what it is.
+ *
+ * Blank renders NOTHING (Java `block()` returned "" for null or blank). A marker whose tree could
+ * not be read has no flagged source, and an empty bordered box claims there is source and that it
+ * is empty — a different and wrong statement.
+ */
+export function CodeBlock({ code, language }: CodeBlockProps) {
+  if (code.trim().length === 0) {
+    return null
+  }
+  return <pre style={BLOCK}>{language === 'java' ? colourJava(code) : code}</pre>
+}

@@ -198,6 +198,32 @@ final class Tools {
     }
 
     /**
+     * AN EMPTY TOOL RESULT KILLS THE AGENT THAT ASKED FOR IT, so it is never handed back empty.
+     *
+     * <p>{@code read_file} on a zero-byte file returns {@code ""}. LangChain4j's
+     * {@code ToolExecutionResultMessage} requires non-blank text and throws
+     * {@code IllegalArgumentException: text cannot be null or blank} while building the message that
+     * carries the result back — so the exception does not come from the tool, or from the model, but
+     * from the frame between them, and it takes down the whole run rather than the one call.
+     *
+     * <p>This is not a rare shape. {@code /results} holds {@code settlements.jsonl},
+     * {@code trace.jsonl} and {@code overwatch.log} at zero bytes for the whole start of a run, and
+     * they are the first files anybody asks about. A person asked the supervisor how many markers had
+     * been verified; it read the empty settlements file and died with a Java exception where the
+     * answer goes. Every agent holding {@code read_file} has the same hole, including inside a prove.
+     *
+     * <p>An empty file is also a real answer — "nothing has settled yet" — so the fix is to SAY that
+     * rather than to substitute something. The sentence is phrased as an observation about the file so
+     * a model cannot mistake it for the file's contents.
+     */
+    private static String said(String result) {
+        return result == null || result.isBlank()
+                ? "(the tool returned nothing: it succeeded and there was no content — an empty file, "
+                        + "an empty directory, or a match with no text)"
+                : result;
+    }
+
+    /**
      * The same tools, reporting themselves in full.
      *
      * <p>A tool that throws is recorded as having thrown and then rethrown: an agent must still see
@@ -209,8 +235,10 @@ final class Tools {
         tools.forEach((spec, executor) -> wrapped.put(spec, (request, memoryId) -> {
             try {
                 String result = executor.execute(request, memoryId);
+                // RECORD WHAT IT RETURNED, HAND ON SOMETHING SAYABLE. The trace keeps the raw value,
+                // including the empty one, because that is what happened.
                 trace.tool(agent, spec.name(), request.arguments(), result);
-                return result;
+                return said(result);
             } catch (RuntimeException e) {
                 trace.tool(agent, spec.name(), request.arguments(),
                         "threw " + e.getClass().getSimpleName() + ": " + e.getMessage());

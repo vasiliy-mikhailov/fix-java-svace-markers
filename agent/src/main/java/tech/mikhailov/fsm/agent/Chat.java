@@ -142,6 +142,31 @@ final class Chat {
      * becomes a turn, including the ones that are somebody's configuration being wrong — which is
      * the case a person most needs to see, because it is the one they can fix.
      */
+    /**
+     * A FAILURE SAID TO A PERSON, WITH THE STACK KEPT WHERE STACKS BELONG.
+     *
+     * <p>This used to be {@code "could not answer: " + failed}, so a question got back
+     * {@code could not answer: java.lang.IllegalArgumentException: text cannot be null or blank} —
+     * a sentence with no subject, naming a class the reader does not have and a parameter called
+     * "text" that belongs to neither their question nor this program. It told them nothing they could
+     * do, and it hid what had actually gone wrong: a tool had read an empty file.
+     *
+     * <p>The class name is not deleted, it is MOVED. The reader gets a sentence and is told where the
+     * detail is; {@code chat-trace.jsonl} gets the exception, which is the file somebody debugging
+     * would open anyway. The two audiences are different and were being served one string.
+     */
+    private static String broke(Path results, Throwable failed) {
+        try {
+            new JsonlTrace(results.resolve("chat-trace.jsonl"),
+                    results.resolve("chat-settlements.jsonl"), "chat").failed("chat", failed);
+        } catch (RuntimeException | Error notRecorded) {
+            // The reply below is still owed to the person waiting for it.
+        }
+        return "I could not answer that one — something failed while I was working on it, and the "
+                + "question is still on the record above. Asking again is worth a try; if it keeps "
+                + "failing, the reason is in chat-trace.jsonl.";
+    }
+
     private static void answer(Path results, String question) {
         String reply;
         try {
@@ -163,7 +188,7 @@ final class Chat {
         } catch (RuntimeException | Error failed) {
             // Error too: an OutOfMemoryError from a large digest would otherwise take the flag with
             // it and wedge the page.
-            reply = "could not answer: " + failed;
+            reply = broke(results, failed);
         }
         try {
             append(results, "supervisor", reply);

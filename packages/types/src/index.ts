@@ -65,16 +65,19 @@ export type TraceKind = (typeof TRACE_KINDS)[number]
 
 /** The ten that run inside a prove, in the order `Prove` calls them. Five producer/critic pairs. */
 export const CHAIN = [
-  'reproducer',
-  'proof-critic',
-  'fixer',
-  'fix-critic',
-  'pr-maker',
-  'pr-critic',
-  'verdict',
-  'verdict-critic',
-  'estimator',
-  'estimator-critic',
+  // FIVE STAGES, THREE ROLES EACH: the planner decides how the stage should be approached, the doer
+  // makes it with that plan in front of it, and the verifier judges the work — and may send the
+  // fault back to either one. `redo` returns to the doer; `replan` says the approach was wrong and
+  // goes back to the planner.
+  //
+  // EVERY NAME SAYS ITS ROLE. The record written before this change carries the old ones —
+  // reproducer, proof-critic, fixer — and the marker page appends any agent it does not recognise,
+  // so 356 markers of history stay readable rather than losing their tabs.
+  'reproduce-planner', 'reproduce-doer', 'reproduce-verifier',
+  'fix-planner', 'fix-doer', 'fix-verifier',
+  'propose-planner', 'propose-doer', 'propose-verifier',
+  'argue-planner', 'argue-doer', 'argue-verifier',
+  'price-planner', 'price-doer', 'price-verifier',
 ] as const
 
 /** The four that watch a run rather than run in one, then the one that answers when asked. */

@@ -3,7 +3,7 @@
 Every agent inside a **prove** — one JVM, one **marker**, one settlement — is handed one marker and
 cannot know that the answer it is about to give is the fortieth identical one. That is the right
 scope for proving a defect and the wrong scope for noticing that the pipeline has developed a habit:
-a critic answering `sound` in one word thirty times, a reproducer whose tests keep passing before any
+a critic answering `sound` in one word thirty times, a reproduce-doer whose tests keep passing before any
 patch, a checker family that always settles the same way whatever the code says. Each of those was
 found by a person reading a finished run, which is the expensive way and the late way.
 
@@ -192,7 +192,7 @@ that used to end a runaway is gone — it was a literal in `SubAgentRuntime`
 (`.maxSequentialToolsInvocations(25)`) and the Dockerfile `sed`s it to `Integer.MAX_VALUE` before the
 install. Twenty-five sequential calls is not many for an agent reading a class, its callers and its
 tests, and a prove lost to that budget was lost to nothing about its marker; the ceiling did not
-degrade, it threw and ended the prove. With no ceiling, `reproducer=0/0t140` is the only thing that
+degrade, it threw and ended the prove. With no ceiling, `reproduce-doer=0/0t140` is the only thing that
 shows the shape of a loop, which is why the digest counts them and why an agent with no answers at all
 still gets a row.
 
@@ -326,7 +326,7 @@ running costs a quarter of the pool while the whole queue waits behind it.
 ### What a restart is, exactly
 
 An agent is a synchronous call inside `SubAgentRuntime`: there is no process behind it to kill and no
-mailbox to drain, so "restart the reproducer" is not a thing that can be done. **A prove is a process,
+mailbox to drain, so "restart the reproduce-doer" is not a thing that can be done. **A prove is a process,
 and the process is the supervised unit** — the Erlang answer rather than a departure from it: you do
 not restart a function, you restart the process that owns it, and it comes back with nothing carried
 over.

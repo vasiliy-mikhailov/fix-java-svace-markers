@@ -171,14 +171,25 @@ public final class Prove {
                 + "The flagged file, " + fileOf(marker) + ":\n" + source(checkout, marker)
                 + siblingTests(checkout, marker);
 
-        trace.progress(marker, "reproducer: writing a failing test");
-        // NOTHING IS BUILT UNTIL A FILE EXISTS. The build used to run first, so a reproducer that
-        // wrote nothing cost two Maven invocations before anyone looked — 78 of 153 builds in a
+        // NOTHING IS BUILT UNTIL A FILE EXISTS. The build used to run first, so a reproduce-doer
+        // that wrote nothing cost two Maven invocations before anyone looked — 78 of 153 builds in a
         // 67-marker run executed no test at all. A written file is a fact this program can check.
-        String reply = agents.reproducer().run(brief);
+        //
+        // PLAN, THEN DO. The plan is written before any file is, and it travels with the brief into
+        // every re-ask — a doer that loses the plan on the second turn is a doer rewording its own
+        // first answer, which is the loop this stage had before.
+        //
+        // EACH NOTE FIRES BEFORE THE AGENT IT NAMES, because the note IS what the table shows while
+        // that agent is thinking. Announcing the doer before the planner had been asked put a
+        // stage's own order backwards on the one column most people read.
+        trace.progress(marker, "reproduce-planner: deciding how to observe it");
+        String plan = agents.reproducePlanner().run(brief);
+        brief = brief + "\n\nThe plan you are working from:\n" + plan;
+        trace.progress(marker, "reproduce-doer: writing a failing test");
+        String reply = agents.reproduceDoer().run(brief);
         for (int again = 0; again < REASK
                 && !declined(reply) && testClass(trace, reply).isBlank(); again++) {
-            reply = agents.reproducer().run(brief + "\n\nYou wrote no test file. Either use "
+            reply = agents.reproduceDoer().run(brief + "\n\nYou wrote no test file. Either use "
                     + "write_file to create one, or answer with exactly `" + DECLINE + "` and a "
                     + "one-line reason. An empty answer is not a decision.");
         }
@@ -207,7 +218,7 @@ public final class Prove {
         // one argued from a build that showed nothing. The verdict agent cannot fix a test.
         for (int again = 0; again < REASK && !a.build().infra() && a.build().passed(); again++) {
             trace.progress(marker, "RED passed before any patch; asking for a test that fails");
-            String rewrite = agents.reproducer().run(brief + GREEN_RED);
+            String rewrite = agents.reproduceDoer().run(brief + GREEN_RED);
             if (declined(rewrite) || testClass(trace, rewrite).isBlank()) {
                 break;
             }
@@ -222,10 +233,33 @@ public final class Prove {
         String test = a.test();
         Runner.Result red = a.build();
 
-        trace.progress(marker, "RED reproduced; proof-critic reading the test");
-        String critique = agents.proofCritic().run(brief + "\nThe test, which compiles and goes RED:\n"
+        trace.progress(marker, "RED reproduced; reproduce-verifier reading the test");
+        String critique = agents.reproduceVerifier().run(brief + "\nThe test, which compiles and goes RED:\n"
                 + test + "\n" + red.summary());
-        if ("reducible".equals(verdict(critique, "reducible", "necessary"))) {
+        // `replan` REACHES THE PLANNER, which `reducible` never could. A test that does not
+        // observe the defect is usually not a badly written test — it is a test written to a plan
+        // that was never going to observe it, and sending that back to the writer produces the same
+        // test in different words.
+        String proofSaid = verdict(critique, "reducible", "necessary", "replan");
+        if ("replan".equals(proofSaid)) {
+            plan = agents.reproducePlanner().run(brief
+                    + "\n\nYour plan was sent back:\n" + critique
+                    + "\n\nPlan it a different way. Do not restate the plan that was refused.");
+            String asked = "\n\nThe plan you are working from:\n" + plan;
+            // Through `reproduce`, like every other write here: it is what carries the compile
+            // retries, so a test written to the new plan that does not build gets the compiler's
+            // words rather than being thrown away.
+            Attempt replanned = reproduce(runner, agents, brief, asked,
+                    agents.reproduceDoer().run(brief + asked), trace);
+            // KEPT ONLY IF IT IS BETTER. A replan that will not build, or that goes green, leaves
+            // the original RED standing — the first plan did observe the defect, and trading a
+            // working reproduction for a tidier one that proves nothing is the wrong direction.
+            if (!replanned.build().infra() && !replanned.build().passed()) {
+                red = replanned.build();
+                test = replanned.test();
+            }
+        }
+        if ("reducible".equals(proofSaid)) {
             for (int again = 0; again < REASK; again++) {
                 // The critique travels WITH the compile retries: a reproducer being told to fix a
                 // build error mid-rewrite must still know what the reviewer asked it to change.
@@ -233,7 +267,7 @@ public final class Prove {
                         + "needs to:\n" + critique + "\nWrite it again. Keep only what the defect "
                         + "requires.";
                 Attempt rewrite = reproduce(runner, agents, brief, asked,
-                        agents.reproducer().run(brief + asked), trace);
+                        agents.reproduceDoer().run(brief + asked), trace);
                 if (rewrite.build().infra()) {
                     return priced("needs-review", "the original test reproduced; the rewrite the "
                             + "critic asked for would not build:\n" + rewrite.build().summary());
@@ -250,8 +284,11 @@ public final class Prove {
         // EVIDENCE, ASSEMBLED ONCE, so a retry can never be poorer than the call it replaces.
         String evidence = "\nThe failing test:\n" + test + "\nRED:\n" + red.summary();
 
-        trace.progress(marker, "fixer: patching");
-        String patch = agents.fixer().run(brief + evidence);
+        trace.progress(marker, "fix-planner: deciding where to fix it");
+        String fixPlan = agents.fixPlanner().run(brief + evidence);
+        trace.progress(marker, "fix-doer: patching");
+        String patch = agents.fixDoer().run(brief + evidence
+                + "\n\nThe plan you are working from:\n" + fixPlan);
         Runner.Result green = patchUntilItBuilds(runner, agents, brief, evidence, test, trace);
         if (green.infra()) {
             return priced("reproduced", "the defect is real; no patch of it would build:\n"
@@ -262,9 +299,9 @@ public final class Prove {
         }
 
         // The skeptic CERTIFIES, and a certificate must be given to bite: silence enforces nothing.
-        trace.progress(marker, "GREEN passed; fix-skeptic certifying");
+        trace.progress(marker, "GREEN passed; fix-verifier certifying");
         String changed = diff();
-        String certificate = agents.fixCritic().run(brief + evidence + "\nGREEN:\n" + green.summary()
+        String certificate = agents.fixVerifier().run(brief + evidence + "\nGREEN:\n" + green.summary()
                 + "\nWhat the fixer says it did:\n" + patch
                 + "\nWHAT IT ACTUALLY CHANGED (git diff, tests excluded):\n" + changed
                 + "\n" + reachesTheFlaggedLine(changed));
@@ -272,7 +309,7 @@ public final class Prove {
             for (int again = 0; again < REASK; again++) {
                 // "Do not resubmit the previous one" is unfollowable unless the previous one is here.
                 String rejected = patch;
-                patch = agents.fixer().run(brief + evidence
+                patch = agents.fixDoer().run(brief + evidence
                         + "\nYour previous patch was REJECTED and discarded:\n" + rejected
                         + "\nThe reviewer's objection:\n" + certificate
                         + "\nWrite a DIFFERENT patch answering it. Do not widen the test.");
@@ -282,7 +319,7 @@ public final class Prove {
                     return priced("reproduced", "the defect is real; the replacement patch would "
                             + "not build:\n" + green.summary());
                 }
-                certificate = agents.fixCritic().run(brief + evidence + "\nGREEN:\n" + green.summary()
+                certificate = agents.fixVerifier().run(brief + evidence + "\nGREEN:\n" + green.summary()
                         + "\nThe patch it certifies:\n" + patch);
             }
         }
@@ -293,11 +330,11 @@ public final class Prove {
 
         // The curator decides whether this reaches a stranger's repository, so it gets the whole
         // record rather than the patch alone.
-        trace.progress(marker, "certified; pr-curator deciding");
+        trace.progress(marker, "certified; propose-doer deciding");
         String proposal = brief + evidence + "\nGREEN:\n" + green.summary()
                 + "\nThe certified patch:\n" + patch + "\nThe certification:\n" + certificate;
-        String curation = agents.prMaker().run(proposal);
-        curation = reviewed(agents.prCritic(), agents.prMaker(), proposal, curation,
+        String curation = agents.proposeDoer().run(proposal);
+        curation = reviewed(agents.proposeVerifier(), agents.proposeDoer(), proposal, curation,
                 "Your decision was rejected by a reviewer");
         return priced("make".equals(verdict(curation, "make", "reject"))
                 ? "verified/pr-ready" : "verified/pr-rejected", curation);
@@ -323,7 +360,7 @@ public final class Prove {
         for (int again = 0; again < REASK && build.infra(); again++) {
             // Only a build that produced no test result is re-asked. A test that ran and FAILED is
             // the goal here, not a fault.
-            reply = agents.reproducer().run(brief + context
+            reply = agents.reproduceDoer().run(brief + context
                     + "\nYour test did not build. The compiler said:\n" + build.summary()
                     + "\nFix exactly that, write the file again, and end with the test class name.");
             build = built(runner, trace, "red", testClass(trace, reply));
@@ -340,7 +377,7 @@ public final class Prove {
                                                     String evidence, String test, Trace trace) {
         Runner.Result green = built(runner, trace, "green", testClass(trace, test));
         for (int again = 0; again < REASK && green.infra(); again++) {
-            agents.fixer().run(brief + evidence
+            agents.fixDoer().run(brief + evidence
                     + "\nYour patch did not build. The compiler said:\n" + green.summary()
                     + "\nFix exactly that. Do not change the test.");
             green = built(runner, trace, "green", testClass(trace, test));
@@ -384,8 +421,8 @@ public final class Prove {
      */
     private String argued(String task) {
         String record = task + "\n\n" + whatExecutionProduced();
-        String argument = agents.verdict().run(record);
-        argument = reviewed(agents.verdictCritic(), agents.verdict(), record, argument,
+        String argument = agents.argueDoer().run(record);
+        argument = reviewed(agents.argueVerifier(), agents.argueDoer(), record, argument,
                 "A reviewer read your verdict and judged that your argument reaches a weaker state "
                         + "than the word you named");
         String kind = verdict(argument, "false-positive", "by-design", "unprovable");
@@ -432,16 +469,16 @@ public final class Prove {
         String estimate;
         try {
             String record = brief + "\n\nIt settled as: " + disposition + "\n\nThe record:\n" + because;
-            estimate = agents.estimator().run(record);
+            estimate = agents.priceDoer().run(record);
             // A MISSING NUMBER IS CAUGHT HERE, NOT BY THE CRITIC. Whether the reply contains
             // `minutes: N` is a question a regex answers, and asking a model to check it spends a
             // call to be told something less reliably — the critic passed an estimate with no figure
             // in it, which is exactly the failure a parser cannot have.
             for (int again = 0; again < REASK && minutes(estimate).isBlank(); again++) {
-                estimate = agents.estimator().run(record
+                estimate = agents.priceDoer().run(record
                         + "\n\nYour answer had no figure in it. Begin with exactly `minutes: N`.");
             }
-            estimate = reviewed(agents.estimatorCritic(), agents.estimator(), record, estimate,
+            estimate = reviewed(agents.priceVerifier(), agents.priceDoer(), record, estimate,
                     "A reviewer disputed your figure");
             // And again after the critic, because a re-ask can lose the shape the first answer had.
             if (minutes(estimate).isBlank()) {
@@ -502,6 +539,58 @@ public final class Prove {
      *
      * @return the word, or empty when the reply contains none of them
      */
+    /**
+     * ASK THE PLANNER, THEN THE DOER, AND LET THE VERIFIER REACH EITHER.
+     *
+     * <p>The chain was producer/critic: one agent did the work and one judged it, and every complaint
+     * the judge had went back to the same agent that had just failed to satisfy it. That works when
+     * the fault is in the DOING. It does not when the fault is in the APPROACH — a reproducer told
+     * "this test does not observe the defect" rewrites the same test, because rewriting is the only
+     * move it has, and the second answer is the first one reworded.
+     *
+     * <p>So there are three roles. The PLANNER decides how the stage should be approached and writes
+     * that down before anything is made; the DOER makes it, with the plan in front of it; the
+     * VERIFIER judges the work and — this is the part that is new — may send the fault to either one.
+     * `redo` returns to the doer with the critique. `replan` says the plan itself was wrong, and goes
+     * back to the planner, whose next plan the doer then works from.
+     *
+     * <p>ONE OF EACH, EVER. A stage that can replan without bound is a stage that argues with itself
+     * for the length of the run; the second failure of the same kind is a finding for a person, which
+     * is what the supervisor is for. And the loop-back word is a DECLARATION rather than a mention,
+     * because a verifier reasoning about whether to replan says the word long before it means it.
+     *
+     * @param work what the doer produced, given the plan
+     * @return the plan and the work as they finally stood
+     */
+    private static String[] planned(Agents.Agent planner, Agents.Agent doer, Agents.Agent verifier,
+                                    String task, String hint) {
+        String plan = planner.run(task + hint);
+        String work = doer.run(task + "\n\nThe plan you are working from:\n" + plan);
+        boolean replanned = false;
+        boolean redone = false;
+        for (int turn = 0; turn < 2; turn++) {
+            String judged = verifier.run(task + "\n\nThe plan:\n" + plan
+                    + "\n\nWhat was made from it:\n" + work);
+            String said = verdict(judged, "sound", "redo", "replan");
+            if (said.equals("replan") && !replanned) {
+                replanned = true;
+                plan = planner.run(task + hint + "\n\nYour last plan was sent back:\n" + judged
+                        + "\n\nPlan it a different way. Do not restate the plan that was refused.");
+                work = doer.run(task + "\n\nThe plan you are working from:\n" + plan);
+                continue;
+            }
+            if (said.equals("redo") && !redone) {
+                redone = true;
+                work = doer.run(task + "\n\nThe plan you are working from:\n" + plan
+                        + "\n\nYour work was sent back:\n" + judged
+                        + "\n\nAnswer the objection. Do not simply restate what you did.");
+                continue;
+            }
+            break;
+        }
+        return new String[] {plan, work};
+    }
+
     private static String verdict(String reply, String... allowed) {
         if (reply == null) {
             return "";

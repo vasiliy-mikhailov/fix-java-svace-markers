@@ -28,7 +28,7 @@ into the bug.
 | [`03-the-build.md`](03-the-build.md) | The build is the arbiter | The three-outcome `Result`, the Maven and Gradle commands and the two different tests for "a test executed", who may run a build and who may not, JDK selection, and the 30-minute bound |
 | [`04-the-brief.md`](04-the-brief.md) | What a prove hands an agent | The one block of text prefixed to every prompt: the checker note, the `src/it` warning, numbered source, sibling tests, and the inadmissibility block on the two argued paths |
 | [`05-checker-notes.md`](05-checker-notes.md) | Checker notes | How a per-checker note is laid out, the exact sentences `Checkers` emits when the line does or does not hold the construct, what a good note must contain, and why a missing note is safe while a wrong one is invisible |
-| [`06-tools-and-the-fence.md`](06-tools-and-the-fence.md) | Tools, and who is allowed what | The tool sets, exactly which of the fifteen agents holds each and at which root, why the reproducer writes and the fixer edits, and the two-layer credential fence |
+| [`06-tools-and-the-fence.md`](06-tools-and-the-fence.md) | Tools, and who is allowed what | The tool sets, exactly which of the fifteen agents holds each and at which root, why the reproduce-doer writes and the fix-doer edits, and the two-layer credential fence |
 | [`07-the-model.md`](07-the-model.md) | Talking to the model | How a prove reaches the endpoint: the streamed model, patience versus ceiling, the reasoning-field mismatch and its three sources in trust order, every tunable with its clamp, and where the API key lives |
 | [`08-the-supervisor.md`](08-the-supervisor.md) | The supervisor | The run-level watcher pair: its counted digest, the `## Finding:` split, its two levers and their on-disk effects, the two-restart limit, and Pace's relative outlier rule |
 | [`09-the-lane-watch.md`](09-the-lane-watch.md) | The lane-level watch | How one settled lane becomes plain English: which lanes are selected, the counted-and-quoted digest, the `SHORT:` split rule for `summary.txt`, and the two places the short line is read |
@@ -67,8 +67,8 @@ repealed the `settled` gate three lines above it — both gates read correctly o
 order was wrong, so reading either one found nothing. → [11](11-the-pool.md)
 
 **An objection must be RAISED to bite; a certificate must be GIVEN to bite.** So an absent objector
-waives and the work stands (`proof-critic`, `pr-critic`, `verdict-critic`, `estimator-critic`), and
-an absent certifier withholds and nothing is enforced (`fix-critic`, `pr-maker`). Getting one
+waives and the work stands (`reproduce-verifier`, `propose-verifier`, `argue-verifier`, `price-verifier`), and
+an absent certifier withholds and nothing is enforced (`fix-verifier`, `propose-doer`). Getting one
 backwards ships uncertified patches, or turns a stated verdict into no verdict at all. A judge's own
 blank or unreadable reply **rejects** — silence certifies nothing. → [02](02-the-chain.md),
 [16](16-invariants-and-tests.md)
@@ -81,16 +81,16 @@ case-insensitive substring of the whole reply. And nothing is built until a file
 **The verdict is the word that is DECLARED, not any word that appears.** Scan lines for one that IS
 an allowed word after stripping markup, last such line wins; only with nothing declared fall back to
 the earliest mention anywhere. Searching the text for a rejection read `**reject**` as a `make` and
-read a `fix-critic`'s "not over-fit" as a rejection. And **the state follows the argument, not the
+read a `fix-verifier`'s "not over-fit" as a rejection. And **the state follows the argument, not the
 branch that asked for it.** → [01](01-purpose-and-proof.md), [02](02-the-chain.md)
 
 **A RED that passes has demonstrated nothing, and the agent told about it must be the one that can
 rewrite the test.** 16 of the 33 markers that reached a build had their first RED pass and 13 of them
 settled on it, every one argued from a build that showed nothing — because the fact was routed to the
-verdict agent, which cannot write a test, and never to the reproducer, which can.
+verdict agent, which cannot write a test, and never to the reproduce-doer, which can.
 → [03](03-the-build.md), [01](01-purpose-and-proof.md)
 
-**Which test class is built comes from what the reproducer WROTE, not from what it said** — the last
+**Which test class is built comes from what the reproduce-doer WROTE, not from what it said** — the last
 `write_file` under `src/test/`, `src/it/` or `src/integrationTest/` ending in `Test.java` — and the
 name is remembered for the whole prove, never per reply, so GREEN is guaranteed to run the class RED
 ran. → [01](01-purpose-and-proof.md), [03](03-the-build.md)
