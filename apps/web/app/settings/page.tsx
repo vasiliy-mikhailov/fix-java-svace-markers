@@ -124,6 +124,17 @@ const FIELDS = [
       'mid-thought.',
   },
   {
+    name: 'thinking_tokens',
+    label: 'thinking budget',
+    why:
+      'How much REASONING to allow before the model must answer. Qwen\u2019s own ' +
+      '`thinking_token_budget`, and not the same thing as the token cap above: that one bounds the ' +
+      'OUTPUT and cuts a reply off wherever it had got to, this one makes the model stop thinking ' +
+      'and write. With neither set, a task that has no answer is reasoned about until the context ' +
+      'window fills \u2014 which has taken every concurrent request down twice in a morning. ' +
+      '0 leaves it unbounded, which is what that was.',
+  },
+  {
     name: 'patience_minutes',
     label: 'silence, minutes',
     why:
@@ -141,7 +152,7 @@ const FIELDS = [
 ] as const
 
 /**
- * The six field specs are a compile-time constant in the Java (`theModel()` 1351-1376) and stay one
+ * The seven field specs are a compile-time constant in the Java (`theModel()` 1351-1376) and stay one
  * here: they are prose about what a value does, not a value, and an API that shipped them would grow
  * its payload every time somebody improved a sentence.
  *
@@ -154,12 +165,13 @@ type FieldName = (typeof FIELDS)[number]['name']
 
 type ModelValues = Record<FieldName, string>
 
-/** A missing key reads as blank rather than as a hole; `Tuning.all()` sends all six. */
+/** A missing key reads as blank rather than as a hole; `Tuning.all()` sends all seven. */
 const NO_VALUES: ModelValues = {
   model: '',
   base_url: '',
   temperature: '',
   max_tokens: '',
+  thinking_tokens: '',
   patience_minutes: '',
   ceiling_minutes: '',
 }

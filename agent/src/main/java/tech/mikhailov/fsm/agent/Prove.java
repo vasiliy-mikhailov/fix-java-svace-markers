@@ -3,6 +3,7 @@ package tech.mikhailov.fsm.agent;
 import com.deepagents.langchain4j.subagents.SubAgentRuntime;
 import dev.langchain4j.http.client.jdk.JdkHttpClientBuilder;
 import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import java.io.IOException;
 import java.net.http.HttpClient;
@@ -961,6 +962,21 @@ public final class Prove {
         // The last one truncated the reasoning it was meant to bound.
         if (Tuning.maxTokens() > 0) {
             built = built.maxTokens(Tuning.maxTokens());
+        }
+        // HOW MUCH THINKING IS EXPECTED, WHICH THIS NEVER SAID. `thinking_token_budget` is Qwen's own
+        // field and it bounds the REASONING: at the budget the model is made to stop thinking and
+        // answer, rather than being cut off wherever it had got to. That is the difference between it
+        // and `max_tokens`, and it is why removing the old sixteen-thousand-token cap left nothing
+        // behind — that cap was on the output, so its removal did not restore a bound on the
+        // thinking, because there had never been one.
+        //
+        // It travels as a custom parameter because OpenAI's schema has no field for it; LangChain4j
+        // merges `customParameters` into the request body, which is what `extra_body` means here.
+        if (Tuning.thinkingTokens() > 0) {
+            built = built.defaultRequestParameters(OpenAiChatRequestParameters.builder()
+                    .customParameters(java.util.Map.of(
+                            "thinking_token_budget", Tuning.thinkingTokens()))
+                    .build());
         }
         return new Thinking(built.build(), overheard, trace, agent, patience, Tuning.ceiling());
     }

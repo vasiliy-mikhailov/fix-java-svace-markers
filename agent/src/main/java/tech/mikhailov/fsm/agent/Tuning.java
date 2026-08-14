@@ -48,6 +48,26 @@ final class Tuning {
     /** No token cap: the streaming client bounds silence instead. Zero means unset. */
     static final int MAX_TOKENS = 0;
 
+    /**
+     * HOW MUCH THINKING IS EXPECTED, WHICH THE MODEL WAS NEVER TOLD.
+     *
+     * <p>Qwen takes {@code thinking_token_budget} in the request body and it bounds the REASONING
+     * rather than the answer: at the budget the model is made to stop thinking and write its reply,
+     * instead of being cut off wherever it happened to be.
+     *
+     * <p>That distinction is the whole point, and getting it wrong once cost this program the
+     * mechanism. A sixteen-thousand-token {@code max_tokens} was tried, truncated answers mid-thought,
+     * and the conclusion drawn was that caps are the wrong shape — so the cap was removed entirely
+     * and nothing replaced it. But {@code max_tokens} bounds the OUTPUT; only this bounds the
+     * thinking, and with neither set a reasoning model given a task that has no answer reasons until
+     * the context window runs out. That has happened eighty-six times in one run
+     * ({@code Prove.aTestThisBuildCannotRun}) and twice today, each time taking every concurrent
+     * request with it, because temperature is 0 and greedy decoding cannot leave a cycle it enters.
+     *
+     * <p>Zero means unset, as with {@link #MAX_TOKENS}.
+     */
+    static final int THINKING_TOKENS = 4_000;
+
     private Tuning() {
     }
 
@@ -69,6 +89,11 @@ final class Tuning {
     /** How much of one answer to allow, or 0 for no cap. Capped output truncates reasoning. */
     static int maxTokens() {
         return (int) Math.max(0, Math.min(200_000, number("max_tokens", MAX_TOKENS)));
+    }
+
+    /** How much REASONING to allow before the model must answer, or 0 to leave it unbounded. */
+    static int thinkingTokens() {
+        return (int) Math.max(0, Math.min(200_000, number("thinking_tokens", THINKING_TOKENS)));
     }
 
     /**
@@ -118,6 +143,7 @@ final class Tuning {
         now.put("base_url", baseUrl());
         now.put("temperature", trim(temperature()));
         now.put("max_tokens", String.valueOf(maxTokens()));
+        now.put("thinking_tokens", String.valueOf(thinkingTokens()));
         now.put("patience_minutes", String.valueOf(patience().toMinutes()));
         now.put("ceiling_minutes", String.valueOf(ceiling().toMinutes()));
         return now;
