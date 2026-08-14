@@ -15,6 +15,7 @@ import {
   KeyStatus,
   LabeledField,
   MarkerPaste,
+  MirrorRules,
   MarkerQueue,
   PageHeader,
   ParallelProvers,
@@ -190,6 +191,12 @@ type ApiSubject = {
   credential: { present: boolean; host: string | null }
   jdk: { chosen: string; available: string[]; default: string }
   zip: { present: boolean }
+  /**
+   * `<from> <to>` per line, or blank. Where clones actually go when the network cannot reach the
+   * host every marker names — the markers keep naming the canonical repository, which is the
+   * identifier a settlement is read against later.
+   */
+  mirror: string
 }
 
 /**
@@ -688,6 +695,15 @@ function SubjectTab({ findingsOpen }: { findingsOpen: number }) {
           client that serialises its state walks straight into. */}
       <UploadForm key={`markers:${applied}`} setting="markers" onUpload={file => void write({ setting: 'markers', file })} />
       <MarkerPaste key={`paste:${applied}`} onUse={text => void write({ setting: 'markers', text })} />
+      {/* THE MIRROR IS NOT A SECRET, so unlike the credential it is sent back and shown. A field
+          that starts blank when a rule IS in force would invite somebody to retype it and get two.
+          It is on this tab rather than the model tab because it is about the SUBJECT — where the
+          code under test is fetched from — and not about the endpoint that thinks about it. */}
+      <MirrorRules
+        key={`mirror:${applied}`}
+        rules={data.mirror}
+        onSave={rules => void write({ setting: 'mirror', mirror: rules })}
+      />
       <GitCredential
         key={`credential:${applied}`}
         // Host and presence are the whole of what the record sends: the token is kept in git's own

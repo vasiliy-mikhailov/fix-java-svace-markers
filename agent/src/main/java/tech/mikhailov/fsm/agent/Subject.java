@@ -201,6 +201,53 @@ final class Subject {
         }
     }
 
+    /**
+     * WHERE THE FETCH ACTUALLY GOES, when it is not where the markers say.
+     *
+     * <p>A marker's first field is the canonical repository and a settlement records it, so on a
+     * network that cannot reach that host the answer is NOT to rewrite three hundred markers — that
+     * loses the one identifier the finding will be read against later. Git has {@code insteadOf} for
+     * exactly this: the marker keeps naming the true repository, the fetch goes to the mirror.
+     *
+     * <p>Stored rather than run once, because {@code git config --global} lives in the container's
+     * own home directory and every deploy recreates the container. A mirror configured by hand
+     * reverts on the next deploy, silently, and the clone that follows fails with a message about a
+     * missing {@code pom.xml}.
+     *
+     * <p>One {@code <from> <to>} pair per line. Blank clears it.
+     */
+    static void saveMirror(Path results, String pairs) throws IOException {
+        Path file = results.resolve("git-mirror");
+        if (pairs.isBlank()) {
+            Files.deleteIfExists(file);
+            return;
+        }
+        StringBuilder kept = new StringBuilder();
+        for (String line : pairs.strip().split("\\R")) {
+            String[] parts = line.strip().split("\\s+");
+            // A LINE THAT IS NOT A PAIR IS DROPPED RATHER THAN WRITTEN. `git config` would take a
+            // half-line without complaining and rewrite URLs to nothing, and the failure would then
+            // look like the host being unreachable rather than like this field being wrong.
+            if (parts.length >= 2 && !parts[0].startsWith("#")) {
+                kept.append(parts[0]).append(' ').append(parts[1]).append('\n');
+            }
+        }
+        if (kept.isEmpty()) {
+            Files.deleteIfExists(file);
+            return;
+        }
+        Files.writeString(file, kept.toString());
+    }
+
+    /** What the mirror file holds, or blank. Shown on the page so it can be corrected. */
+    static String mirror(Path results) {
+        try {
+            return Files.readString(results.resolve("git-mirror")).strip();
+        } catch (IOException | RuntimeException none) {
+            return "";
+        }
+    }
+
     static void forgetToken(Path results) throws IOException {
         Files.deleteIfExists(results.resolve("git-credentials"));
     }

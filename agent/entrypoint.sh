@@ -81,6 +81,24 @@ checkout() {
         git config --global credential.helper "store --file=$RESULTS/git-credentials" 2>/dev/null || true
     fi
 
+    # THE MIRROR, FOR A MACHINE THAT CANNOT REACH THE HOST THE MARKERS NAME.
+    #
+    # A marker's first field is where its code lives, and 356 of them name the same public host. On a
+    # network that cannot reach it, the choice was to rewrite every marker or to run one `git config`
+    # by hand after every deploy — the second silently reverts the moment the container is recreated,
+    # which is on each deploy, and nothing says so.
+    #
+    # `insteadOf` is git's own answer: the markers keep naming the canonical repository, which is what
+    # a settlement should record, and the fetch goes wherever this network can actually reach. One
+    # `<from> <to>` pair per line, applied before anything clones.
+    if [ -f "$RESULTS/git-mirror" ]; then
+        while read -r from to _rest; do
+            [ -n "$from" ] && [ -n "$to" ] || continue
+            case "$from" in \#*) continue;; esac
+            git config --global "url.$to.insteadOf" "$from" 2>/dev/null || true
+        done < "$RESULTS/git-mirror"
+    fi
+
     if [ -d "$dir/.git" ]; then
         # -x, NOT just -fd. clean skips ignored files by default, and target/ is ignored — so a
         # class compiled from the previous marker's PATCH survives a reset that restored its source,
@@ -93,7 +111,23 @@ checkout() {
         git -C "$dir" clean -xfdq
     else
         mkdir -p "$CHECKOUTS"
-        git clone --depth 1 "$repo" "$dir" >/dev/null 2>&1
+        # WHAT GIT SAID, KEPT. This discarded both streams, so a machine with no route to the host
+        # cloned nothing, said nothing, and left an empty directory — and the failure surfaced twenty
+        # seconds later as `no pom.xml and no build.gradle`, which points at the build system for a
+        # problem that was the network. Somebody lost an afternoon to that.
+        #
+        # To STDERR and not stdout: this function returns the checkout path by command substitution,
+        # so a word printed on stdout becomes part of the path its caller uses.
+        if ! clone_said=$(git clone --depth 1 "$repo" "$dir" 2>&1); then
+            {
+                echo "fsm: could not clone $repo"
+                echo "$clone_said" | sed 's/^/    /'
+                echo "    Nothing here reaches that host. Three ways round it, in spec/18 and the"
+                echo "    README: put the tree at $RESULTS/source.zip, place a clone at $dir, or"
+                echo "    set a mirror in $RESULTS/git-mirror as '<from> <to>'."
+            } >&2
+            rm -rf "$dir"
+        fi
     fi
     echo "$dir"
 }

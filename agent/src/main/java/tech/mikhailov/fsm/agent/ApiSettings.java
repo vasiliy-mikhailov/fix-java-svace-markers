@@ -134,6 +134,10 @@ final class ApiSettings {
         // byte count is reported once in the flash message after the upload and is gone on the next
         // read. Sending anything more would mean inventing it.
         b.append(",\"zip\":{\"present\":").append(Subject.hasZip(results)).append('}');
+        // WHERE FETCHES ACTUALLY GO. Not a secret and not derived — the markers name one host
+        // and this says where that host is reached, which a reader of a settlement needs in
+        // order to know the code was the code the marker names.
+        b.append(",\"mirror\":").append(quote(Subject.mirror(results)));
         return b.append('}').toString();
     }
 
@@ -294,6 +298,15 @@ final class ApiSettings {
                                     + "own store.";
                         }
                     }
+                }
+                case "mirror" -> {
+                    String pairs = Upload.text(parts, "mirror");
+                    Subject.saveMirror(results, pairs);
+                    String now = Subject.mirror(results);
+                    said = now.isBlank()
+                            ? "no mirror; clones go to the host each marker names."
+                            : "clones are rewritten by " + now.lines().count()
+                                    + " rule(s), from the next marker a prover starts.";
                 }
                 case "jdk" -> {
                     String chosen = Upload.text(parts, "jdk").strip();

@@ -314,6 +314,43 @@ present it IS the subject and nothing goes to the network. Extracted with `jar`,
 already ships, rather than adding `unzip` to the image; a zip holding a single directory is
 unwrapped so marker paths resolve against the project.
 
+**A git mirror** is for a network that cannot reach the host the markers name. Every marker's first
+field is the repository its code lives in, and on an air-gapped machine none of them resolves. The
+two obvious ways out are both wrong: rewriting three hundred markers throws away the canonical
+identifier a settlement is read against months later, and a hand-run `git config --global` inside the
+container reverts on the next deploy, because a deploy recreates the container.
+
+So the rules live with the run, in `git-mirror`, one `<from> <to>` pair per line, applied through
+git's own `insteadOf` before anything clones:
+
+```
+https://github.com/    https://gitlab.internal/mirror/
+```
+
+The markers go on naming the true repository; the fetch goes wherever this network can reach. A line
+that is not a whole pair is dropped rather than half-written — `git config` would accept it and
+rewrite URLs to nothing, and that failure looks exactly like the host being unreachable. If the
+mirror needs a login, the credential above covers it. Blank removes the rules.
+
+Two other ways to run with no network at all, when a mirror is not what you want:
+
+```bash
+docker cp WebGoat.zip fsm:/results/source.zip     # the tree itself; nothing goes to the network
+docker cp WebGoat fsm:/work/checkouts/WebGoat     # a clone already on the machine
+```
+
+The checkout directory is named after the repository URL's last segment, so
+`https://github.com/WebGoat/WebGoat.git` is `/work/checkouts/WebGoat`. A pre-placed clone must
+contain `.git`, and each prove runs `git reset --hard` and `git clean -xfd` over it before the marker
+— uncommitted state there is discarded by design, so that one marker's patch cannot become the next
+marker's starting point.
+
+**When a clone fails you are told why.** This used to discard both of git's streams, so a machine with
+no route to the host cloned nothing, said nothing, and left an empty directory — and the failure
+surfaced twenty seconds later as `no pom.xml and no build.gradle in /work/checkouts/WebGoat`, which
+sends the reader to the build system for a problem that was the network. Git's own words are now kept
+and printed with the three ways round it.
+
 ## The order of the queue
 
 `markers.txt` is sorted **severity, then path, then line, then checker** — Critical, Major, Normal,
