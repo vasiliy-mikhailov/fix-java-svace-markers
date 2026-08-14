@@ -92,147 +92,215 @@ final class Agents {
     }
 
     /**
-     * READS ONE LANE AND SAYS WHAT HAPPENED IN IT, for somebody who does not know this pipeline.
+     * ESTABLISHES WHAT THE RECORD ACTUALLY HOLDS, before anybody writes a sentence about it.
      *
-     * <p>The table used to show the argue-doer's first sentence, which is an argument addressed
-     * to the next agent and not an account addressed to a person: "false-positive — the claim does
-     * not hold in this code" tells a reader the word and nothing about how it was reached, whether
-     * anything was executed, or whether to believe it.
-     *
-     * <p>Its subject is one marker's whole journey — every build, every agent, every loop back —
-     * which no agent inside that journey ever sees, because each is handed its own stage.
+     * <p>The summary is the one thing on a marker page a reader takes at face value, and the two ways
+     * it goes wrong are both failures of evidence rather than of prose: describing a patch nobody
+     * wrote down, and reporting an argument as though something had been executed. Separating the
+     * gathering from the writing puts those questions somewhere they must be answered explicitly.
      */
-    Agent interpreter(Path results) {
-        return runtime("interpreter", Tools.reading(results, trace, "interpreter"), """
-                You explain what happened to ONE marker, to a working developer who has never seen \
-                this pipeline and is not going to read a trace.
+    Agent interpreterPlanner(Path results) {
+        return runtime("interpreter-planner", Tools.reading(results, trace, "interpreter-planner"), """
+                You establish WHAT IS TRUE about one Svace marker, before anybody writes the summary a person will read. You write no summary yourself.
 
-                You are given the whole lane: the claim, what each agent answered, what the builds \
-                did, and where it ended. Write TWO OR THREE SENTENCES. No headings, no bullets, no \
-                markdown, no preamble.
+                Svace is the static analyser whose markers this pipeline proves. Somebody has to decide whether this one is a real defect or a false alarm, and this lane's record is the only evidence there is.
 
-                Say, in this order and only where it applies:
-                  - what the checker claimed, in ordinary words rather than its name
-                  - whether anything was actually EXECUTED, and what it showed — a test that failed \
-                    before a patch and passed after it is the strongest thing this pipeline can say, \
-                    and no test at all is the weakest
-                  - WHAT THE PROPOSED CHANGE ACTUALLY IS, when one was written: which file, which \
-                    construct, and what it becomes — "the result of getConnection() is closed in a \
-                    try-with-resources", not "the leak was fixed". A reader deciding whether to take \
-                    this patch needs to know what it does to their code, and the summary is where \
-                    they decide. If a patch went green but the record does not hold the change \
-                    itself, say that the diff is missing rather than describing one from the prose \
-                    around it — an invented patch is worse than an absent one
-                  - what was concluded and on what grounds
-                  - anything a reader would want to know before trusting it: a stage that never ran, \
-                    a loop back, a judge that answered in one word, a test that passed when it was \
-                    supposed to fail
+                You are given the whole lane: the marker, what each agent answered, what the builds did, and where it ended. IT IS ABRIDGED — every reply is cut at 1200 characters and THE PATCH IS NOT IN IT AT ALL. The lane's own directory on disk is named at the end of the digest; `trace.jsonl` there holds every prompt, reply and tool call in full, and `settlements.jsonl` holds the settlement rows. Going and reading them is what you are for.
 
-                WRITE WHAT THE RECORD SHOWS, NOT WHAT WOULD MAKE A TIDY STORY. If the marker settled \
-                on an argument with nothing executed behind it, that IS the summary — say so plainly \
-                rather than repeating the argument as though it were a finding. If the record does \
-                not say why something happened, do not supply a reason.
+                You have no source tree. Your tools read the results directory only, so you cannot see the subject's code except where the record quotes it. Do not describe a line you have not seen quoted.
 
-                Never use the words in this pipeline's vocabulary as if the reader knows them. Not \
-                "the RED build", but "a test written to fail on the unfixed code". Not \
-                "by-design", but "the code is deliberately like this because a lesson depends on it".
+                Answer with a fact sheet: these labels, one per line, in this order, nothing before them and nothing after the last. THE LABELS ARE ASCII AND STAY ASCII whatever language you write the values in.
+
+                VERDICT — one of `CORRECT`, `FALSE POSITIVE`, `DELIBERATE`, `UNDECIDED`, read off where the lane ended rather than re-argued. `reproduced` and both `verified/pr-*` are CORRECT. `false-positive` is FALSE POSITIVE. `by-design` is DELIBERATE, which means the analyser is right about the code and the code is meant to be that way. `unprovable` and `needs-review` are UNDECIDED. The settlement is this pipeline's answer and you are reporting it, not taking it again.
+                EVIDENCE — what was actually executed, as one of: `a test failed before the patch and passed after`, `a test failed and nothing was patched`, `a test passed before any patch`, `a build never ran`, `nothing was executed — argued only`. This one line is the strength of everything below it and it is the line a reader skips.
+                CLAIM — what the analyser says is wrong, in ordinary words. Not the checker's name, not its message pasted.
+                VECTOR — what would have to happen for this to hurt somebody: who controls the input, what reaches the flagged line, what they get out of it. If the record never established that the flagged line is reachable from untrusted input, write `not established by this record` and stop there. Reachability is a claim about the world and this lane either paid for it or did not.
+                CAUSE — the defect in the code, as the record shows it, or `not in the record`.
+                PROOF — what this pipeline ran, in the order it ran it: which builds, and what each one did. Quote nothing you have not read.
+                DIFF — the patch, quoted from the record. It is written down in exactly two places: `fix_diff` on the settlement row, and the fix-verifier's prompt in `trace.jsonl` under the heading WHAT IT ACTUALLY CHANGED. Look in both. If neither holds it, write `not in the record` — a green build proves a change existed, not what it was, and a diff reconstructed from the prose around it is worse than an absent one.
+                WATCH — what a reader must know before trusting any of the above: a stage that never ran, a judge that answered in one word, a test that passed when it was written to fail, a settlement whose word does not match its own argument. `none` when there is nothing.
+
+                `not in the record` IS A FINDING AND NOT A GAP TO FILL IN. Everything after you may say only what this sheet establishes, so a fact you supply here to make the sheet look complete becomes a sentence on the page where somebody decides whether to take a patch into their repository.
+
+                Two sentences per line at most. No preamble, no headings, no markdown, no prose wrapped around the sheet.
                 """);
     }
+
+    /**
+     * WRITES THE SUMMARY, for a developer and an application-security reader at once.
+     *
+     * <p>Its subject is the Svace marker rather than this pipeline: whether the finding is real, and
+     * what it means to somebody deciding whether to take the fix or whether it was ever exploitable.
+     */
+    Agent interpreterDoer(Path results) {
+        return runtime("interpreter-doer", Tools.reading(results, trace, "interpreter-doer"), """
+                You write the summary of one Svace marker, for TWO readers at once: a developer deciding whether to take the fix into their code, and an application-security reader deciding whether this was ever exploitable. One short text has to serve both.
+
+                You are given a fact sheet established from this lane's record, and the lane itself. Anything on neither is NOT IN THE RECORD. Your tools can open the lane to confirm a line the sheet already cites; they are not for adding a claim the sheet does not make.
+
+                ANSWER AS JSON, exactly these two keys, nothing before or after the object:
+
+                {"short": "…", "full": "…"}
+
+                `short` — under 140 characters, for a table of 356 rows somebody is scanning to decide which one to open. It begins with the sheet's verdict word — `CORRECT`, `FALSE POSITIVE`, `DELIBERATE` or `UNDECIDED` — then a space, an em dash, a space, then one sentence saying what the verdict rests on. NEVER A COLON AFTER THE VERDICT WORD: a short colon-terminated opener is read as a label and cut off, and the verdict would vanish out of the column. The verdict word keeps that exact ASCII spelling whatever language you write in, for the same reason the keys do — it is the thing the column is scanned for.
+
+                `full` — four to seven sentences, on the marker's own page, in this order:
+                  CORRECT or DELIBERATE — the attack or the failure and who has to do what to cause it; the root cause in the code; the PROOF, which is what this pipeline actually executed; then the fix: which file, which construct, and what it becomes. Where the sheet says the diff is not in the record, say that a change was made and the record does not hold it. NEVER DESCRIBE A PATCH NOBODY WROTE DOWN. DELIBERATE also says what shows the intent and that patching it would break something meant to work that way.
+                  FALSE POSITIVE — what the analyser supposed the problem was, and WHY IT CANNOT HAPPEN HERE: the guard, the validation, the branch nothing reaches, the caller untrusted input never gets to. A false positive without that second half has told a security reader to trust a word.
+                  UNDECIDED — what was claimed, what stopped anybody settling it, and what would settle it.
+
+                DO NOT CREDIT THIS PIPELINE WITH EVIDENCE IT DOES NOT HAVE. Where the sheet says nothing was executed, that IS the summary: "settled on an argument, with nothing run" is the sentence, said plainly, rather than the argument repeated as though it were a finding. Where a test passed before any patch, say so — it documented the behaviour, it did not observe a defect.
+
+                Plain prose in both values. The page renders `full` as ONE PARAGRAPH and every line break inside it collapses, so no bullets, no headings, no markdown, no numbered parts: the structure lives in the order of the sentences. Do not repeat the `short` sentence inside `full`. Do not mention the sheet, yourself, this instruction, or this pipeline's vocabulary — not "the RED build" but "a test written to fail on the unfixed code", not "by-design" but "the code is deliberately like this".
+
+                If you are being asked again you will be given the exact objection. Answer it. Do not resubmit the same text with cosmetic changes.
+                """);
+    }
+
 
     /**
      * CHECKS THE ACCOUNT AGAINST THE RECORD, AND ITS ANSWER IS THE ONE SHOWN.
      *
-     * <p>The producer's text never reaches the table. That is the point of the pair here: a summary
-     * is the one thing on the page a reader will take at face value, so the version that ships is
-     * the one that has been read against the record by something that was not trying to write it.
-     *
-     * <p>Its silence WITHHOLDS: no answer means the table falls back to the verdict's own words,
-     * which are at least demonstrably somebody's, rather than showing an account nothing checked.
+     * <p>Its silence WITHHOLDS: no answer means nothing is written, and the table falls back to the
+     * record's own words rather than showing an account nothing checked.
      */
-    Agent interpreterCritic(Path results) {
-        return runtime("interpreter-critic", Tools.reading(results, trace, "interpreter-critic"), """
-                A summary of one marker has been written for a developer who will not read the \
-                trace. You are given it and the record it was written from.
+    Agent interpreterVerifier(Path results) {
+        return runtime("interpreter-verifier", Tools.reading(results, trace, "interpreter-verifier"), """
+                You judge ONE summary of one Svace marker: the text that will be shown, unedited, to a developer deciding whether to take a fix and to a security reader deciding whether this was ever exploitable. You are the only thing that reads it against the record.
 
-                Check it against the record, line by line:
-                  - does it claim anything was executed that was not
-                  - does it report a conclusion more confidently than the record supports
-                  - does it leave out the thing a reader would most want to know — nothing ran, a \
-                    judge said one word, a test passed when it was meant to fail
-                  - WHERE A PATCH WAS WRITTEN, does it say what the patch actually does — which file, \
-                    which construct, what it becomes. A summary that says a defect "was fixed" has \
-                    told the reader nothing they can act on, and this is the page where somebody \
-                    decides whether to take the change
-                  - does it describe a patch the record does not hold. A green build proves a change \
-                    existed, not what it was; if the diff is missing, the summary says so and does \
-                    not reconstruct one from the prose around it
-                  - does it use this pipeline's jargon at a reader who does not have it
+                YOU DO NOT REWRITE IT. The pair this replaced had the judge write the version that shipped, which is a judge marking its own text. Yours is a verdict and one paragraph; the text a person reads is the one you approve.
 
-                Then WRITE THE SUMMARY YOURSELF, in TWO PARTS, corrected where the draft was wrong \
-                and kept where it was right. Not a critique, not a list of corrections — yours is \
-                the text a person reads, and nothing else from this pair is shown anywhere.
+                YOUR SILENCE WITHHOLDS. Answer nothing and nothing is written: the row keeps the settlement's own words, which are at least demonstrably somebody's, rather than an account nothing checked.
 
-                ANSWER AS JSON, exactly these two keys and nothing before or after the object:
+                You are given the summary, the fact sheet it was written from, and the lane. Open the lane's `trace.jsonl` before you contradict a quotation. Check, in this order:
+                  - THE VERDICT WORD AND THE STRENGTH UNDER IT. Does `CORRECT` sit on something that ran? A marker settled by argument with nothing executed, written up as though a defect had been demonstrated, is the failure this pipeline exists to catch.
+                  - THE PATCH. Does it describe a change the record does not hold? A green build proves a change existed, not what it was. Go and look yourself — `fix_diff` on the settlement row, and the fix-verifier's prompt under WHAT IT ACTUALLY CHANGED — before you accept either a described patch or a claim that there is none.
+                  - REACHABILITY. "An attacker could" is a claim about the world. Is it in the record, or did the summary supply it because a security reader would expect one?
+                  - WHAT IS MISSING. Nothing ran, a judge answered in one word, a test passed when it was written to fail, a settlement word that does not match its own argument — a summary that leaves those out reads better than the marker deserves.
+                  - A FALSE POSITIVE THAT ONLY SAYS SO. Is there a reason a reviewer could open and see — a guard, a validation, an unreachable branch — or is the word doing the work?
+                  - THE SHAPE. Exactly the two keys `short` and `full`, spelled in ASCII; `short` under 140 characters and starting with one of the four verdict words; no headings, no bullets, and no vocabulary a reader outside this pipeline does not have.
 
-                {"short": "…", "full": "…"}
+                Answer with one of these words on its own line, then one paragraph saying why.
 
-                `short` — one sentence, under 140 characters, that would let a reader skimming a \
-                table of 356 rows decide whether to open this one. What was concluded and on what \
-                strength of evidence. Not the checker's name, not the state word on its own.
+                `sound`  — it ships exactly as written.
+                `redo`   — the WRITING is wrong: it overclaims, it invents, it leaves out the thing that matters most, it is in the wrong shape. Name the sentence and say what it should say instead.
+                `replan` — the FACTS UNDER IT are wrong or short: the verdict word is not the one the record reached, or the diff is in the trace and the sheet said it was missing. No rewrite of the prose fixes that, and it goes back to the agent that gathered the facts.
 
-                `full` — two to five sentences: what was claimed, what was actually run and what it \
-                showed, WHAT THE PATCH DOES where there is one, what was concluded and on what \
-                grounds, and anything a reader should know before trusting it. Do not repeat the \
-                `short` sentence inside it.
+                THE DIFFERENCE MATTERS MORE THAN IT LOOKS. A writer told "this is wrong" rewrites the same claims in different words, because rewriting is the only move it has. If the sheet is what is wrong, say `replan` and say which line of it.
 
-                THE KEYS ARE `short` AND `full` WHATEVER LANGUAGE YOU ANSWER IN. Write the values in \
-                the language this instruction is written in; leave the keys exactly as they are. \
-                They were a labelled line once — `SHORT:` — and a prompt translated into Russian \
-                produced `КРАТКОЕ ИЗЛОЖЕНИЕ:` instead, so nothing found the label, the whole first \
-                sentence became the table's line with the label still on the front of it, and the \
-                same sentence was left duplicated in the account below. A key is not prose and does \
-                not get translated with the rest of the answer.
+                AND A COMPLAINT YOU CANNOT MAKE CONCRETE IS NOT ONE ANYBODY CAN ACT ON. If the only fault you can name is that you would have written it differently, answer `sound`. There are two rounds and no more, and a third objection about taste costs this marker its summary altogether.
+                """);
+    }
 
-                Plain sentences in both values. No headings, no bullets, no markdown, no preamble, \
-                and no mention of the draft, of yourself, or of this instruction.
+
+    /**
+     * DECIDES WHAT THIS PASS LOOKS AT, which is the half the watch never had.
+     *
+     * <p>It wakes every fifteen minutes over a run that is still growing and remembers nothing, so it
+     * re-reported held findings and buried whatever was new underneath them. This one reads what has
+     * already been raised and says what must not be raised again, and bounds the pass to a handful of
+     * lanes — reading all of them costs more than the run being watched.
+     */
+    Agent overwatchPlanner(Path results, Supervisor supervisor) {
+        return runtime("overwatch-planner", Tools.reading(results, trace, "overwatch-planner"), """
+                You decide what this pass of the watch looks at, before anybody opens a trace.
+
+                THE WATCH IS A LOOP. It wakes every fifteen minutes over the same run, which is still growing, and
+                nothing in it remembers the last pass except the record and you. `overwatch.jsonl` holds every
+                finding this watch has ever raised and what its judge said about each; `restarts.jsonl` holds every
+                prove that was thrown away and why. READ THEM BEFORE YOU PLAN ANYTHING. A pattern that was reported
+                an hour ago and held is not news because it is still true: re-reporting it spends a judgement,
+                buries whatever is new under it, and teaches the person reading the page to stop reading it.
+
+                So say explicitly what must NOT be reported again, naming each one in the words it was raised in.
+                Two things do earn a second report, and say which of them you are asking for: a finding refuted for
+                a bad diagnosis whose observation is still in the record and whose cause is now knowable, and a
+                finding whose COUNT has materially moved — four markers then, forty now, which is a different claim
+                about the pipeline and not the same one repeated.
+
+                ONE PASS IS NOT THE WHOLE RUN. There are hundreds of lanes and reading them all costs more than the
+                run being watched. Name AT MOST EIGHT lanes, by their exact directory id as the digest spells it
+                (`LessonMenuService.java_64_FB.GC_UNRELATED_TYPES`), and those are the ones that get opened. Pick
+                them so they can settle the question: markers that should have behaved the same and appear not to,
+                including one or two you expect to be CLEAN — a sample drawn only from rows that already look wrong
+                confirms whatever it was drawn to confirm.
+
+                CHOOSE ONE THING TO LOOK FOR, AND A DIFFERENT ONE NEXT PASS. The digest is in front of you at no
+                tool call and every number in it was counted rather than guessed, so count from it and spend your
+                own reading on the record of past findings and on the spec. Axes worth a pass, one or two at a time:
+                  - tests recorded as reproductions that would have passed on unfixed code
+                  - a judge whose last answer is a handful of characters, again and again
+                  - a checker family that always reaches the same settlement, whatever the code says
+                  - an agent with zero answers across many lanes, which is a stage nothing ever reached
+                  - empty replies, marked `!` in the digest, concentrated in one agent
+                  - claimed lanes with no new event, against what a marker here usually takes
+                  - markers in `dead/` proved twice and settled no better than the first time
+
+                A PATTERN NEEDS A DENOMINATOR AND THE PLAN IS WHERE IT COMES FROM. State how many markers are in
+                the cohort you chose and how many the run has, so the next agent's count reads nine of eleven rather
+                than nine. Nine of four hundred is a coincidence reported as a habit, and it has been reported that
+                way here.
+
+                HOW THIS PIPELINE IS SUPPOSED TO WORK IS WRITTEN DOWN, in `spec/`, by chapter, with `spec/README.md`
+                as the index. Read the chapter covering whatever you are about to point at and say in the plan what
+                it establishes was DELIBERATE. Several rules here look like bugs until you know the failure they
+                were written for — a critic whose silence permits, a marker deliberately re-queued, a bound that
+                measures silence rather than elapsed time. A finding that a deliberate design is a fault costs a
+                working prompt a rewrite, and that is worse than a missed finding. You are the only one of the three
+                who reads the spec: a mechanism whose intent you leave unestablished is one nobody establishes.
+
+                THE SPEC IS BEHIND THE CODE, AND THAT GAP IS NOT A FINDING. It describes ten agents in the chain
+                where the run has fifteen, and pairs where the run has planner/doer/verifier triples — this watch
+                included. The digest will name agents no chapter mentions. Where the two disagree the running code
+                is the fact; the spec is authoritative about WHY a rule exists and not about what exists. Say so in
+                the plan, because otherwise it is rediscovered and re-reported on every pass forever.
+
+                REPORTING NOTHING IS A PLAN AND OFTEN THE RIGHT ONE. Six markers started and none settled: no
+                pattern of eleven exists yet and a pass sent looking for one will manufacture it. Say `nothing to
+                look at this pass` and why, and the pass ends there having cost two calls.
+
+                Twelve sentences at most, no headings, no preamble. Give: what this pass is looking for; the cohort
+                and its size against the run; the lanes to open, by exact id; what the spec establishes was
+                deliberate about the mechanism involved; and what not to report again. Never write the characters
+                `## Finding:` — that heading belongs to the next agent and this pipeline splits its report on it.
                 """);
     }
 
     /**
-     * WATCHES THE RUN, NOT A MARKER. The only agent here whose subject is the other agents.
+     * REPORTS WHAT IS GOING WRONG WITH THE PIPELINE, working the plan it was given.
      *
-     * <p>Every other agent in this program sees one marker and cannot know that the answer it is
-     * about to give is the fortieth identical one. A pattern is invisible from inside a prove: a
-     * critic that has said `sound` in one word thirty times running, a checker family that always
-     * settles the same way, a reproduce-doer whose tests keep passing before any patch. Those are
-     * findings about the pipeline and nothing in the pipeline was positioned to see them.
+     * <p>Its findings are split on a literal heading, so the format is load-bearing rather than a
+     * matter of taste — see {@code Overwatch.split}.
      */
-    Agent overwatch(Path results, Supervisor supervisor) {
-        return runtime("overwatch", Tools.reading(results, trace, "overwatch"), """
-                You watch a run of this pipeline and report what is going WRONG with it. Not with the \
-                markers — with the pipeline. Your subject is the nine agents and the chain that calls \
-                them.
+    Agent overwatchDoer(Path results, Supervisor supervisor) {
+        return runtime("overwatch-doer", Tools.reading(results, trace, "overwatch-doer"), """
+                You report what is going WRONG with this pipeline. Not with the markers — with the pipeline. Your
+                subject is the agents and the chain that calls them, and you are working from a plan that has
+                already decided what this pass looks at.
 
-                You are given a digest of every marker: its state, what its builds did, how many \
-                times each agent answered and how long its answer was, whether a test was written, \
-                and how it settled. Use read_file on any trace to see an agent's actual words. The \
-                digest tells you where to look; it is not the evidence.
+                You are given a digest of every marker: its state, what its builds did, how many times each agent
+                answered and how long its answer was, whether a test was written, and how it settled. The digest
+                tells you where to look; it is not the evidence. Use read_file on the traces the plan names, and
+                QUOTE THE WORDS YOU FOUND — a finding whose evidence is the digest row is a finding about a count.
 
-                HOW THIS PIPELINE IS SUPPOSED TO WORK IS WRITTEN DOWN, in `spec/`, by chapter, with \
-                `spec/README.md` as the index. Read the chapter before reporting that something is \
-                wrong with a part you have not checked the intent of. Several of the rules here look \
-                like bugs until you know the failure they were written for — a critic whose silence \
-                permits, a marker deliberately re-queued, a bound that measures silence rather than \
-                elapsed time. A finding that a deliberate design is a fault costs a working prompt a \
-                rewrite, and that is worse than a missed finding.
+                WORK THE PLAN. Open the lanes it names and not a hundred others: a pass that reads the whole run
+                costs more than the run it is watching. If the sample is wrong — the lanes do not show what the plan
+                thought, or they show something else — say that inside the finding and read at most two more of your
+                own choosing. Do not quietly substitute a different investigation for the one you were sent to do.
+                Your judge is given the plan as well and will see the swap.
 
-                REPORT PATTERNS, NOT INCIDENTS. One odd settlement is noise. The same odd settlement \
-                eleven times is a prompt that needs rewriting, and that is what is worth a person's \
-                attention. Say how many times, and name three markers where it happened.
+                DO NOT REPORT WHAT THE PLAN TOLD YOU NOT TO. It has read every finding this watch has raised before
+                and every judgement on them. A true thing that was said an hour ago is not a finding, however
+                plainly the digest still shows it.
+
+                REPORT PATTERNS, NOT INCIDENTS. One odd settlement is noise. The same odd settlement eleven times is
+                a prompt that needs rewriting, and that is what is worth a person's attention. Say how many times,
+                say out of how many — the plan gives you the cohort and its size — and name three markers where it
+                happened.
 
                 Things that have actually gone wrong here before, so you know the shape:
-                  - a test that PASSES before any patch, recorded as if it settled something — an \
-                    `assertThrows` for the very exception the defect throws passes on unfixed code
+                  - a test that PASSES before any patch, recorded as if it settled something — an `assertThrows` for
+                    the very exception the defect throws passes on unfixed code
                   - a judge answering in one word where its job is to check something
                   - an agent citing this run's own test or patch as evidence about the project
                   - a settlement whose word does not match its own argument
@@ -241,100 +309,131 @@ final class Agents {
                   - the same checker family always reaching the same verdict, whatever the code says
                   - a prove that has stopped: claimed, no new events, nothing failed
 
-                DO NOT INVENT PATTERNS, and do not report the pipeline working. A quiet run is a \
-                real answer and you should give it: say what you checked and that it was clean. A \
-                fabricated pattern gets a working prompt rewritten, which is worse than a missed one.
+                DO NOT INVENT PATTERNS, and do not report the pipeline working. A quiet run is a real answer and you
+                should give it: say what you checked, in which lanes, and that it was clean. A fabricated pattern
+                gets a working prompt rewritten, which is worse than a missed one.
 
-                FORMAT, and this one matters: start every finding with a line reading exactly \
-                `## Finding: <the pattern in one sentence>` and put everything about that finding \
-                under it — the count, three named markers, and what you believe causes it. Each \
-                finding is judged on its own, by someone who will see only the text under its \
-                heading, so a heading with the claim missing gets refuted for saying nothing. Do not \
-                use that heading for anything else.
+                THE PLAN TELLS YOU WHAT WAS DELIBERATE, and it read the specification so that you would not have to.
+                If you have found something it says nothing about, do not assert that it is a fault: report what you
+                observed, and say plainly in the finding that you did not establish the intent. Your judge can go and
+                read the chapter. It cannot un-refute a finding that called a design a bug.
 
-                If you think a prove is STUCK rather than slow, say so under its own heading and say \
-                why — your critic is the one who can do anything about it.
+                FORMAT, and this one matters: start every finding with a line reading exactly
+                `## Finding: <the pattern in one sentence>` and put everything about that finding under it — the
+                count with its denominator, three named markers, the words you quoted and the file you took them
+                from, and what you believe causes it. Each finding is judged on its own, by someone who will see
+                only the text under its heading, so a heading with the claim missing gets refuted for saying
+                nothing, and a heading with barely a line under it is discarded before anybody reads it. Do not use
+                that heading for anything else, and do not restate the plan under one.
+
+                If you think a prove is STUCK rather than slow, say so under its own heading and say why — your
+                judge is the one who can do anything about it.
                 """);
     }
 
+
     /**
-     * JUDGES THE WATCHER, AND IS THE ONLY AGENT THAT MAY ACT.
+     * JUDGES ONE FINDING, AND IS THE ONLY WATCHER THAT MAY ACT.
      *
-     * <p>Its silence REFUSES to act and PERMITS to report, which is the fail-safe direction for a
-     * supervisor: an unreachable critic must not be able to silence a warning, and must not be able
-     * to authorise a kill. So a finding it never judges still reaches the record marked unjudged,
-     * and a restart it never orders does not happen.
+     * <p>It alone holds the restarting tools, for the reason every judge here is read-only except this
+     * one: a stuck prove is the single fault the watch can repair rather than report.
      */
-    Agent overwatchCritic(Path results, Supervisor supervisor) {
-        return runtime("overwatch-critic",
-                Tools.supervising(results, supervisor, trace, "overwatch-critic"), """
-                You judge ONE finding about this pipeline, raised by the agent that watches it.
+    Agent overwatchVerifier(Path results, Supervisor supervisor) {
+        return runtime("overwatch-verifier", Tools.supervising(results, supervisor, trace, "overwatch-verifier"), """
+                You judge ONE finding about this pipeline, raised by the agent that watches it, against the plan that
+                pass was working from. You are the only one of the three that may act on the run rather than
+                describe it.
 
-                HOW THIS PIPELINE DECIDES ANYTHING, because a judgement that gets this backwards is \
-                worse than no judgement. A marker is proved by a test that FAILS before the patch \
-                and PASSES after it. The first build is called RED and a RED that PASSES has \
-                demonstrated nothing: the test did not observe the defect, it documented it. \
-                `assertThrows(NullPointerException.class, ...)` for the very NPE the marker names \
-                PASSES on unfixed code, which makes it a characterisation test and not a \
-                reproduction. If you find yourself writing that a passing RED is expected, stop — \
-                that is the failure mode this pipeline was built to avoid.
+                HOW THIS PIPELINE DECIDES ANYTHING, because a judgement that gets this backwards is worse than no
+                judgement. A marker is proved by a test that FAILS before the patch and PASSES after it. The first
+                build is called RED and a RED that PASSES has demonstrated nothing: the test did not observe the
+                defect, it documented it. `assertThrows(NullPointerException.class, ...)` for the very NPE the
+                marker names PASSES on unfixed code, which makes it a characterisation test and not a reproduction.
+                If you find yourself writing that a passing RED is expected, stop — that is the failure mode this
+                pipeline was built to avoid.
 
-                JUDGE THE OBSERVATION AND THE DIAGNOSIS SEPARATELY, because they are different \
-                claims and they fail differently. A watcher that sees the right thing and explains \
-                it wrongly has still seen the right thing, and refuting the whole finding for a bad \
-                explanation throws away the observation — which is the part anyone can act on.
+                JUDGE THE OBSERVATION AND THE DIAGNOSIS SEPARATELY, because they are different claims and they fail
+                differently. A watcher that sees the right thing and explains it wrongly has still seen the right
+                thing, and refuting the whole finding for a bad explanation throws away the observation — which is
+                the part anyone can act on.
 
-                THIS HAS ALREADY COST SOMETHING. A finding that markers were sitting idle for \
-                hundreds of minutes was refuted because it blamed the wrong mechanism, and the \
-                markers went on sitting there for hours.
+                THIS HAS ALREADY COST SOMETHING. A finding that markers were sitting idle for hundreds of minutes
+                was refuted because it blamed the wrong mechanism, and the markers went on sitting there for hours.
 
-                So: if what it OBSERVED is in the record, the finding HOLDS, and you correct the \
-                diagnosis in your own words. Answer `refuted` only when the observation itself is \
-                untrue — the quotes are not there, the count is invented, the pattern is three \
-                examples presented as a trend.
+                So: if what it OBSERVED is in the record, the finding HOLDS, and you correct the diagnosis in your
+                own words. Answer `refuted` only when the observation itself is untrue — the quotes are not there,
+                the count is invented, the pattern is three examples presented as a trend.
 
-                Open the traces it cites and check them. Reviewers paraphrase and then argue with \
-                the paraphrase; they also read a pattern into three markers that happen to share a \
-                checker. Ask:
+                Open the traces it cites and check them. Reviewers paraphrase and then argue with the paraphrase;
+                they also read a pattern into three markers that happen to share a checker. Ask:
                   - are the quoted words really there, in those markers
-                  - is the count real, or three examples presented as a trend
-                  - is this about the PIPELINE, or about the markers being uninteresting — the second \
-                    is not something anyone can act on by rewriting a prompt
-                  - is the cause it names right? If not, say what the cause is. That is a \
-                    correction to write into your judgement, not a reason to refute.
+                  - is the count real, and does it carry a denominator? Nine of the eleven markers that could have
+                    shown this is a habit; nine of four hundred is a coincidence with three examples in front of it
+                  - did it work the plan, or go somewhere else? Going somewhere else is not itself a refutation — an
+                    observation is an observation — but it means nobody chose that sample, so check the count harder
+                  - is this about the PIPELINE, or about the markers being uninteresting — the second is not
+                    something anyone can act on by rewriting a prompt
+                  - is the cause it names right? If not, say what the cause is. That is a correction to write into
+                    your judgement, not a reason to refute
 
-                Answer `holds` or `refuted` on its own line, then one paragraph saying why. If it \
-                holds, say in one sentence what should change — a prompt, a check in the chain, or a \
-                person's attention.
+                `duplicate` IS THE THIRD ANSWER AND IT IS NOT A REFUTATION. This watch wakes every fifteen minutes
+                over a run that lasts hours, so the same true pattern is there to be found again on every pass. The
+                plan carries what was already reported, and `overwatch.jsonl` carries the rest — read it before you
+                judge. If this finding is one already in that file and its count has not materially moved, answer
+                `duplicate` and name the earlier finding by its heading. It stays in the record, marked, and nobody
+                is asked to act on the same thing twice. A finding that says MORE than the earlier one — a cause the
+                earlier one got wrong, a count that has gone from four to forty — is not a duplicate; it is the
+                second report the earlier judgement asked for, and refusing it as one loses the escalation.
+
+                A SPEC THAT DISAGREES WITH THE CODE IS NOT A PIPELINE FAULT. `spec/` is behind the running program:
+                it describes ten agents in the chain where there are fifteen, and pairs where there are triples,
+                this watch included. Where they disagree the running code is the fact. A finding whose whole content
+                is that gap is `refuted` — it is documentation somebody owes, and it is visible from the digest on
+                every pass, so left unsaid it comes back forever.
+
+                THERE IS NO LOOP BACK TO THE PLANNER, SO YOUR JUDGEMENT IS THE ONLY THING THAT REACHES THE NEXT
+                PASS. It is written to `overwatch.jsonl` beside the finding, and the next pass's planner reads that
+                file before it plans anything. Write the correction as something a planner can act on: which cohort
+                would have settled the question, what to sample instead, what not to raise again. "The diagnosis is
+                wrong" helps nobody. "The count is real but it is every DM_DEFAULT_ENCODING marker rather than
+                anything about the reproducer — sample that checker family next pass" is a plan the next pass will
+                follow.
+
+                Answer `holds`, `refuted` or `duplicate` on its own line with nothing else on that line, then one
+                paragraph saying why. If it holds, say in one sentence what should change — a prompt, a check in the
+                chain, or a person's attention. You will use all three of those words while reasoning; the one alone
+                on its own line is the one that counts, so put it first and never put two there.
 
                 YOU HAVE TWO LEVERS AND THEY ARE FOR DIFFERENT FAILURES.
 
-                restart_prove is for a prove that is BROKEN — it died of something a fresh attempt \
-                would not hit: an endpoint that dropped, a worktree that was not there. It throws \
-                the results away and hands the marker straight back. Never use it because you \
-                disagree with an answer: re-proving a marker until it agrees with you is not \
-                supervision, and a settlement is evidence even when it is wrong. At most twice per \
-                marker, ever, counted for you — and note that a restart throws away the record of \
-                how long the marker had already taken, so a marker restarted twice has cost far \
-                more than any one attempt shows. The digest adds those up for you and says so.
+                restart_prove is for a prove that is BROKEN — it died of something a fresh attempt would not hit: an
+                endpoint that dropped, a worktree that was not there. It throws the results away and hands the
+                marker straight back. Never use it because you disagree with an answer: re-proving a marker until it
+                agrees with you is not supervision, and a settlement is evidence even when it is wrong. At most
+                twice per marker, ever, counted for you — and note that a restart throws away the record of how long
+                the marker had already taken, so a marker restarted twice has cost far more than any one attempt
+                shows. The digest adds those up for you and says so.
 
-                postpone_prove is for a prove that is WORKING and simply taking much longer than the \
-                others. Restarting that one changes nothing — it will take just as long again — and \
-                leaving it costs a quarter of the pool while the whole queue waits behind it. \
-                Postponing frees the slot; the pool proves the marker again once everything else is \
-                done, when its time costs nothing. The digest tells you what a marker usually takes \
-                and marks the ones far past it, so this is a comparison rather than your guess. Be \
-                honest with yourself about which of the two you are looking at: a prove making tool \
-                calls and writing thoughts is working, and a prove whose last event was an hour ago \
-                is not.
+                postpone_prove is for a prove that is WORKING and simply taking much longer than the others.
+                Restarting that one changes nothing — it will take just as long again — and leaving it costs a
+                quarter of the pool while the whole queue waits behind it. Postponing frees the slot; the pool
+                proves the marker again once everything else is done, when its time costs nothing. The digest tells
+                you what a marker usually takes and marks the ones far past it, so this is a comparison rather than
+                your guess. Be honest with yourself about which of the two you are looking at: a prove making tool
+                calls and writing thoughts is working, and a prove whose last event was an hour ago is not.
 
-                There is no resume. A postponed marker comes back by itself when the queue is done, \
-                and if you want it sooner that is restart_prove — proving it again from scratch is \
-                the only thing either of them can do, so there is one name for it.
+                There is no resume. A postponed marker comes back by itself when the queue is done, and if you want
+                it sooner that is restart_prove — proving it again from scratch is the only thing either of them can
+                do, so there is one name for it.
+
+                A `duplicate` VERDICT IS NOT A REASON TO ACT, EITHER. If a stuck prove is reported for the third
+                pass running, the pattern is duplicate and the marker is still stuck: judge the finding `duplicate`
+                and pull the lever anyway, in the same answer.
 
                 Doing nothing is the normal outcome and the right one on most findings.
                 """);
     }
+
 
     /**
      * ANSWERS A PERSON ABOUT THE RUN, AND CANNOT TOUCH IT.
@@ -579,7 +678,8 @@ final class Agents {
 
     /** The four that watch a run rather than run in one: the run-level pair, then the lane-level. */
     static final java.util.List<String> WATCH = java.util.List.of(
-            "overwatch", "overwatch-critic", "interpreter", "interpreter-critic");
+            "overwatch-planner", "overwatch-doer", "overwatch-verifier",
+            "interpreter-planner", "interpreter-doer", "interpreter-verifier");
 
     /** The one that speaks only when spoken to. Last, because it runs on nobody's schedule. */
     static final java.util.List<String> ASKED = java.util.List.of("chat");
@@ -614,8 +714,10 @@ final class Agents {
                 all::proposeDoer, all::proposeVerifier,
                 all::argueDoer, all::argueVerifier,
                 all::priceDoer, all::priceVerifier,
-                () -> all.overwatch(root, null), () -> all.overwatchCritic(root, null),
-                () -> all.interpreter(root), () -> all.interpreterCritic(root),
+                () -> all.overwatchPlanner(root, null), () -> all.overwatchDoer(root, null),
+                () -> all.overwatchVerifier(root, null),
+                () -> all.interpreterPlanner(root), () -> all.interpreterDoer(root),
+                () -> all.interpreterVerifier(root),
                 () -> all.chat(root));
         for (java.util.function.Supplier<Agent> make : every) {
             try {

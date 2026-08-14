@@ -116,7 +116,7 @@ test('the markers page says how long ago anything last happened', async ({ page 
   expect(api.run.serverNow).toBeGreaterThanOrEqual(api.run.lastEventAt)
 })
 
-test('the prompts page lays the chain out as five stages of three', async ({ page }) => {
+test('the prompts page lays every stage out as three', async ({ page }) => {
   // THE PAGE WHOSE JOB IS THE CHAIN'S PROMPTS WAS THE ONE PLACE ITS SHAPE WAS INVISIBLE: twenty
   // full-width boxes in a column, nothing between reproduce-verifier and fix-planner to say a stage
   // had ended. A planner and the doer that works from its plan are one thought in two boxes, and the
@@ -129,8 +129,11 @@ test('the prompts page lays the chain out as five stages of three', async ({ pag
   await expect(page.getByRole('heading', { name: 'inside a prove' })).toBeVisible({ timeout: 15_000 })
 
   const stages = await page.locator('section[aria-label] > h3').allInnerTexts()
-  expect(stages, 'the five stages, in the order a prove calls them').toEqual([
-    'REPRODUCE', 'FIX', 'PROPOSE', 'ARGUE', 'PRICE',
+  // FIVE IN THE CHAIN, THEN THE TWO THAT WATCH IT. The watchers became triples too, so they group
+  // the same way; what keeps them apart is the heading above them, which says they take no part in
+  // a prove. A page that grouped five of the seven and left two loose would draw the old shape.
+  expect(stages, 'the stages, in the order the server lists their agents').toEqual([
+    'REPRODUCE', 'FIX', 'PROPOSE', 'ARGUE', 'PRICE', 'OVERWATCH', 'INTERPRETER',
   ])
 
   // Each stage holds its own three, and holds them in role order.

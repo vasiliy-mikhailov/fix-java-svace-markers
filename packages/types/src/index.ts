@@ -81,7 +81,14 @@ export const CHAIN = [
 ] as const
 
 /** The four that watch a run rather than run in one, then the one that answers when asked. */
-export const WATCH = ['overwatch', 'overwatch-critic', 'interpreter', 'interpreter-critic'] as const
+export const WATCH = [
+  'overwatch-planner',
+  'overwatch-doer',
+  'overwatch-verifier',
+  'interpreter-planner',
+  'interpreter-doer',
+  'interpreter-verifier',
+] as const
 export const ASKED = ['chat'] as const
 
 export const AGENTS = [...CHAIN, ...WATCH, ...ASKED] as const

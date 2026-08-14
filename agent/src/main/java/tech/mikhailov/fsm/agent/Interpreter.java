@@ -71,17 +71,35 @@ final class Interpreter {
         if (digest.isBlank()) {
             return;
         }
-        String draft = agents.interpreter(results).run(digest);
+        String marker = lane.getFileName().toString();
+        // WHAT THE RECORD HOLDS, ESTABLISHED BEFORE ANYBODY WRITES ABOUT IT. The two ways a summary
+        // goes wrong here are both failures of evidence — describing a patch nobody wrote down, and
+        // reporting an argument as though something had been executed — so the gathering is a stage
+        // of its own and the writer works from its sheet rather than from the whole lane at once.
+        trace.progress(marker, "interpreter-planner: establishing what the record holds");
+        String sheet = agents.interpreterPlanner(results).run(digest);
+        if (sheet == null || sheet.isBlank()) {
+            // A LANE SKIPPED, NOT A SUMMARY GUESSED. Same direction as a blank draft below: the
+            // fallback is the record's own words, which are at least demonstrably somebody's.
+            trace.progress(marker, "interpreter-planner said nothing; lane left for the next pass");
+            return;
+        }
+        trace.progress(marker, "interpreter-doer: writing it for a developer and for security");
+        String draft = agents.interpreterDoer(results).run(
+                "The facts established from this marker's record:\n\n" + sheet
+                        + "\n\n---\n\nThe record itself:\n\n" + digest);
         if (draft == null || draft.isBlank()) {
             return;
         }
-        String checked = agents.interpreterCritic(results).run(
+        trace.progress(marker, "interpreter-verifier: checking it against the record");
+        String checked = agents.interpreterVerifier(results).run(
                 "The summary written for this marker:\n\n" + draft
-                        + "\n\n---\n\nThe record it was written from:\n\n" + digest);
+                        + "\n\n---\n\nThe facts it was written from:\n\n" + sheet
+                        + "\n\n---\n\nThe record itself:\n\n" + digest);
         if (checked == null || checked.isBlank()) {
             // SILENCE WITHHOLDS. Writing the unchecked draft here would put the one thing a reader
             // trusts on the page with nothing behind it.
-            trace.progress(lane.getFileName().toString(), "summary written but not checked; not shown");
+            trace.progress(marker, "summary written but not checked; not shown");
             return;
         }
         write(lane, checked);

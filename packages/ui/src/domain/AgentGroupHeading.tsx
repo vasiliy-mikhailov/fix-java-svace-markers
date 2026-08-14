@@ -42,7 +42,7 @@ export function groupOf(agent: AgentName): AgentGroup {
 const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
   'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen'] as const
 
-function spelt(n: number): string {
+export function spelt(n: number): string {
   return WORDS[n] ?? String(n)
 }
 

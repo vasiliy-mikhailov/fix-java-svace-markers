@@ -139,5 +139,7 @@ class TheFixedCodeCameOutOfAPromptTest {
      */
     private static final List<String> RETIRED = List.of("fix-critic", "fix-skeptic", "proof-critic",
             "pr-curator", "pr-maker", "verdict-critic", "estimator-critic", "reproduce-critic",
-            "propose-critic", "argue-critic", "price-critic");
+            "propose-critic", "argue-critic", "price-critic",
+            // The watchers became triples too: overwatch/interpreter now plan, do and verify.
+            "overwatch-critic", "interpreter-critic");
 }

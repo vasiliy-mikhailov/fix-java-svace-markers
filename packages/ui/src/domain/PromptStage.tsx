@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { CHAIN, type AgentName } from '@fsm/types'
+import { CHAIN, WATCH, type AgentName } from '@fsm/types'
 import type { Style } from '../primitives'
 
 /**
@@ -42,7 +42,14 @@ export type PromptStageProps = {
  * shape, and three copies have gone stale in a day.
  */
 export function stageOf(agent: AgentName): string | null {
-  if (!(CHAIN as readonly string[]).includes(agent)) {
+  // THE WATCHERS ARE TRIPLES TOO NOW, and a page that grouped five of the seven stages and left the
+  // other two as a loose column would be describing the old shape. What separates them is the
+  // heading they sit under — "watching the run … never take part in one" — not the layout.
+  //
+  // Still driven off the name rather than a list of stages: every agent in either group is
+  // `<stage>-<role>`, and `chat` is neither, so it falls through to null and stays ungrouped.
+  const known = [...CHAIN, ...WATCH] as readonly string[]
+  if (!known.includes(agent)) {
     return null
   }
   const cut = agent.lastIndexOf('-')

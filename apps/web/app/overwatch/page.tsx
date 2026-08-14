@@ -15,7 +15,7 @@ import {
   type TabItem,
   type TraceEventRecord,
 } from '@fsm/ui'
-import { VERDICTS } from '@fsm/types'
+import { VERDICTS, WATCH } from '@fsm/types'
 import type { AgentName, MarkerId, MarkerKey, MarkerState, Verdict } from '@fsm/types'
 
 import { href, read } from '../../lib/api'
@@ -118,7 +118,11 @@ type ApiOverwatch = {
 
 /* ------------------------------------------------------------------ the views */
 
-type View = 'findings' | 'overwatch' | 'overwatch-critic' | 'trace'
+// THE PER-AGENT VIEWS ARE THE WATCHERS, and there are six of them now rather than two. Typing them
+// here was a second copy of a list the Java already owns: when overwatch and interpreter became
+// planner/doer/verifier triples, both names in this union stopped naming anything and every
+// per-agent tab would have fallen through to findings with the URL still saying otherwise.
+type View = 'findings' | 'trace' | (typeof WATCH)[number]
 
 /**
  * WHICH BODY TO DRAW. An unrecognised `?a=` falls through to the findings body, which is the Java's
@@ -126,7 +130,7 @@ type View = 'findings' | 'overwatch' | 'overwatch-critic' | 'trace'
  * kept, because a lit "findings" tab would tell a reader that `?a=banna` was understood.
  */
 function viewOf(a: string): View {
-  return a === 'overwatch' || a === 'overwatch-critic' || a === 'trace' ? a : 'findings'
+  return a === 'trace' || (WATCH as readonly string[]).includes(a) ? (a as View) : 'findings'
 }
 
 /** This route's URL for a view, with the reader's fold choice carried along. */
@@ -146,12 +150,8 @@ function urlFor(a: string, folded: boolean): string {
 function tabs(a: string, folded: boolean): TabItem[] {
   return [
     { href: urlFor('', folded), label: 'findings', on: a === '' },
-    { href: urlFor('overwatch', folded), label: 'overwatch', on: a === 'overwatch' },
-    {
-      href: urlFor('overwatch-critic', folded),
-      label: 'overwatch-critic',
-      on: a === 'overwatch-critic',
-    },
+    // One tab per watcher, in the order the Java lists them — plan, do, verify, twice.
+    ...WATCH.map(agent => ({ href: urlFor(agent, folded), label: agent, on: a === agent })),
     { href: urlFor('trace', folded), label: 'the record', on: a === 'trace' },
   ]
 }

@@ -95,24 +95,44 @@ final class Overwatch {
             trace.progress("overwatch", "nothing has run yet");
             return;
         }
-        trace.progress("overwatch", "reading the run");
-        String found = agents.overwatch(results, supervisor).run("""
-                Here is the run as it stands. Report what is going wrong with the PIPELINE.
+        // WHAT THIS PASS LOOKS AT, decided before anything is opened. The watch wakes every fifteen
+        // minutes over the same growing run and remembers nothing, so it re-reported findings that
+        // already held and buried whatever was new underneath them. The planner reads what has been
+        // raised before, says what must not be raised again, and bounds the pass to a few lanes —
+        // reading all of them costs more than the run being watched.
+        trace.progress("overwatch", "overwatch-planner: deciding what this pass looks at");
+        String plan = agents.overwatchPlanner(results, supervisor).run("""
+                Here is the run as it stands. Decide what this pass of the watch looks at.
 
                 """ + digest);
+        if (plan == null || plan.isBlank()) {
+            trace.progress("overwatch", "no plan for this pass; nothing read");
+            return;
+        }
+        trace.progress("overwatch", "overwatch-doer: reading the run");
+        String found = agents.overwatchDoer(results, supervisor).run("""
+                Report what is going wrong with the PIPELINE, working the plan below.
+
+                The plan for this pass:
+
+                """ + plan + "\n\n---\n\nThe run as it stands:\n\n" + digest);
         if (found == null || found.isBlank()) {
             trace.progress("overwatch", "the watcher had nothing to say");
             return;
         }
 
-        // A FINDING AT A TIME, so the critic judges one claim rather than agreeing with a mood.
+        // A FINDING AT A TIME, so the judge weighs one claim rather than agreeing with a mood.
         List<String> findings = split(found);
         trace.progress("overwatch", findings.size() + " finding(s) to judge");
         for (String finding : findings) {
-            String judged = agents.overwatchCritic(results, supervisor).run("""
+            // THE PLAN GOES TO THE JUDGE TOO. It names what the pass was sent to look at and what
+            // the spec says was deliberate, so a doer that quietly investigated something else, or
+            // called a documented design a fault, is visible rather than merely unconvincing.
+            String judged = agents.overwatchVerifier(results, supervisor).run("""
                     The watcher raised this about the run. Judge it, and act only if a prove is stuck.
 
-                    """ + finding + "\n\n---\n\nThe run as it stands:\n\n" + digest);
+                    """ + finding + "\n\n---\n\nThe plan it was working from:\n\n" + plan
+                    + "\n\n---\n\nThe run as it stands:\n\n" + digest);
             write(finding, judged);
         }
     }

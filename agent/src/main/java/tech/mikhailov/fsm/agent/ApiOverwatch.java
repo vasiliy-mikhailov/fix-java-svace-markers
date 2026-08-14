@@ -61,7 +61,7 @@ final class ApiOverwatch {
      * convenience has later turned out to remove the field somebody needed.
      *
      * @param results the results directory; every file this reads sits directly under it
-     * @param view    {@code findings|overwatch|overwatch-critic|trace}; anything else is findings
+     * @param view    {@code findings|trace|<any name in Agents.WATCH>}; anything else is findings
      */
     static String overwatch(Path results, String view) {
         String served = served(view);
@@ -319,10 +319,17 @@ final class ApiOverwatch {
      */
     private static String served(String view) {
         String asked = view == null ? "" : view;
-        return switch (asked) {
-            case "overwatch", "overwatch-critic", "trace" -> asked;
-            default -> "findings";
-        };
+        if (asked.equals("trace")) {
+            return asked;
+        }
+        // THE PER-AGENT VIEWS ARE THE WATCHERS, TAKEN FROM THE LIST RATHER THAN TYPED. This was
+        // `case "overwatch", "overwatch-critic"`, and the day those two became six triple members
+        // both names stopped matching anything: every per-agent link would have fallen through to
+        // the findings view, silently, with the URL still saying which agent it meant.
+        //
+        // `events()` filters on an exact `agent` field match, so whatever is allowed here must be a
+        // real agent name — which is precisely why it should come from the same list the agents do.
+        return Agents.WATCH.contains(asked) ? asked : "findings";
     }
 
     /**

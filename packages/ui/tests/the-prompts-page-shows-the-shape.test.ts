@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ASKED, CHAIN, WATCH } from '@fsm/types'
 
-import { AGENT_GROUP_SAYS } from '../src/domain/AgentGroupHeading'
+import { AGENT_GROUP_SAYS, spelt } from '../src/domain/AgentGroupHeading'
 import { STAGES } from '../src/domain/ChainStrip'
 import { stageOf } from '../src/domain/PromptStage'
 
@@ -31,7 +31,10 @@ describe('the prompts page', () => {
   })
 
   it('says how many watchers there are by counting them', () => {
-    expect(AGENT_GROUP_SAYS.watch.account).toContain(`${['no', 'one', 'two', 'three', 'four'][WATCH.length]} that look`)
+    // THE LADDER IS SHARED. This test kept its own copy of the number words, which stopped at
+    // four — so the day the watchers became two triples the caption was right and the test was
+    // wrong, which is the same two-copies fault the caption itself was written to end.
+    expect(AGENT_GROUP_SAYS.watch.account).toContain(`${spelt(WATCH.length)} that look`)
   })
 
   it('puts every chain agent in the stage its own name gives', () => {
@@ -54,11 +57,23 @@ describe('the prompts page', () => {
     )
   })
 
-  it('gives no stage to an agent that takes no part in a prove', () => {
-    // A WATCHER LAID OUT AS A THIRD OF A TRIPLE would say it was part of one. It shares the grid —
-    // one card width for the whole page — but not the heading.
-    for (const agent of [...WATCH, ...ASKED]) {
-      expect(stageOf(agent), `${agent} does not run in a prove`).toBeNull()
+  it('groups the watchers into their own triples, because that is what they are', () => {
+    // THEY USED TO HAVE NO STAGE and the assertion here was that they had none. They are two triples
+    // now — overwatch and interpreter, each planner/doer/verifier — and a page that grouped five of
+    // the seven and left two as a loose column would be drawing the old shape. What still separates
+    // them is the heading above them, which says they take no part in a prove.
+    const stages = new Set(WATCH.map(a => stageOf(a)))
+    expect([...stages].sort()).toEqual(['interpreter', 'overwatch'])
+    for (const agent of WATCH) {
+      expect(stageOf(agent), `${agent} belongs to a stage`).not.toBeNull()
+    }
+  })
+
+  it('leaves the agent that is asked rather than scheduled ungrouped', () => {
+    // `chat` is not `<stage>-<role>` and is not a triple. It falls through to null and renders in
+    // the flow, which is what it is: one thing, not a third of one.
+    for (const agent of ASKED) {
+      expect(stageOf(agent), `${agent} is neither a stage nor a role`).toBeNull()
     }
   })
 
