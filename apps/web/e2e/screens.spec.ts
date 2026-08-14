@@ -94,6 +94,28 @@ test('a state the record holds reaches the screen', async ({ page }) => {
   }
 })
 
+test('the markers page says how long ago anything last happened', async ({ page }) => {
+  // A RUN WEDGED FOR FIFTY-FIVE MINUTES RENDERED IDENTICALLY TO A WORKING ONE. Every number on this
+  // page describes what HAS happened; none said when, so the only way to tell a stopped run from a
+  // busy one was to read a total, wait, and read it again. The age is the one figure that answers it.
+  const api = await (await page.request.get('/api/index')).json()
+  expect(api.run.lastEventAt, 'the wire must carry it before the page can show it').toBeGreaterThan(0)
+
+  await page.goto('/')
+  await page.waitForFunction(() => document.querySelectorAll('tbody tr').length > 1, undefined, {
+    timeout: 15_000,
+  })
+  const head = await page.locator('body').innerText()
+  expect(head, 'the subtitle must say when, not only how many').toMatch(
+    /last event \d+[smhd] ago/,
+  )
+
+  // AND IT MUST BE THE SERVER'S ARITHMETIC, not a browser clock — both ends of the subtraction ship
+  // together for exactly that reason, and a page that used Date.now() would drift with the laptop.
+  expect(api.run.serverNow, 'serverNow travels with lastEventAt').toBeGreaterThan(0)
+  expect(api.run.serverNow).toBeGreaterThanOrEqual(api.run.lastEventAt)
+})
+
 test('the prompts page lays the chain out as five stages of three', async ({ page }) => {
   // THE PAGE WHOSE JOB IS THE CHAIN'S PROMPTS WAS THE ONE PLACE ITS SHAPE WAS INVISIBLE: twenty
   // full-width boxes in a column, nothing between reproduce-verifier and fix-planner to say a stage

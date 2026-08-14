@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import {
-  MarkerTable,
-  PageHeader,
-  RunProgress,
-  StateCounts,
   EmptyNote,
   type MarkerRowData,
+  MarkerTable,
+  PageHeader,
+  RelativeTime,
+  RunProgress,
+  StateCounts,
 } from '@fsm/ui'
 import type { MarkerState, Severity } from '@fsm/types'
 
@@ -54,6 +55,14 @@ type ApiIndex = {
     beganAt: number
     serverNow: number
     traceEvents: number
+    /**
+     * WHEN THE NEWEST EVENT IN THE RUN LANDED, or 0 when nothing has run.
+     *
+     * Everything else in this payload describes what HAS happened; none of it says when. A run wedged
+     * for fifty-five minutes rendered byte-identically to a working one — same totals, same tiles,
+     * same rows — and the only way to notice was to read a number, wait, and read it again.
+     */
+    lastEventAt: number
     humanMinutes: number
     findingsOpen: number
     countsByState: Record<string, number>
@@ -140,7 +149,23 @@ export default function MarkersScreen() {
     <>
       <PageHeader
         title="markers"
-        subtitle={`${run.total} marker(s) · ${run.traceEvents.toLocaleString()} trace event(s)`}
+        subtitle={
+          <>
+            {`${run.total} marker(s) · ${run.traceEvents.toLocaleString()} trace event(s)`}
+            {/*
+              THE ONE NUMBER ON THIS PAGE THAT ANSWERS "IS IT ALIVE". It ticks by itself — under
+              ninety seconds `RelativeTime` re-renders every second — so a run that stops is visible
+              by watching rather than by reloading. Omitted rather than shown as a huge age when
+              nothing has run: 0 is "no events", and "56 years ago" is what printing it would say.
+            */}
+            {run.lastEventAt > 0 ? (
+              <>
+                {' · last event '}
+                <RelativeTime at={run.lastEventAt} variant="conversation" />
+              </>
+            ) : null}
+          </>
+        }
         findingsOpen={run.findingsOpen}
       />
       {markers.length === 0 ? (

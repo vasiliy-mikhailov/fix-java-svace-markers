@@ -116,6 +116,13 @@ final class Agents {
                   - whether anything was actually EXECUTED, and what it showed — a test that failed \
                     before a patch and passed after it is the strongest thing this pipeline can say, \
                     and no test at all is the weakest
+                  - WHAT THE PROPOSED CHANGE ACTUALLY IS, when one was written: which file, which \
+                    construct, and what it becomes — "the result of getConnection() is closed in a \
+                    try-with-resources", not "the leak was fixed". A reader deciding whether to take \
+                    this patch needs to know what it does to their code, and the summary is where \
+                    they decide. If a patch went green but the record does not hold the change \
+                    itself, say that the diff is missing rather than describing one from the prose \
+                    around it — an invented patch is worse than an absent one
                   - what was concluded and on what grounds
                   - anything a reader would want to know before trusting it: a stage that never ran, \
                     a loop back, a judge that answered in one word, a test that passed when it was \
@@ -152,6 +159,13 @@ final class Agents {
                   - does it report a conclusion more confidently than the record supports
                   - does it leave out the thing a reader would most want to know — nothing ran, a \
                     judge said one word, a test passed when it was meant to fail
+                  - WHERE A PATCH WAS WRITTEN, does it say what the patch actually does — which file, \
+                    which construct, what it becomes. A summary that says a defect "was fixed" has \
+                    told the reader nothing they can act on, and this is the page where somebody \
+                    decides whether to take the change
+                  - does it describe a patch the record does not hold. A green build proves a change \
+                    existed, not what it was; if the diff is missing, the summary says so and does \
+                    not reconstruct one from the prose around it
                   - does it use this pipeline's jargon at a reader who does not have it
 
                 Then WRITE THE SUMMARY YOURSELF, in TWO PARTS, corrected where the draft was wrong \
@@ -166,9 +180,10 @@ final class Agents {
                 table of 356 rows decide whether to open this one. What was concluded and on what \
                 strength of evidence. Not the checker's name, not the state word on its own.
 
-                `full` — two to four sentences: what was claimed, what was actually run and what it \
-                showed, what was concluded and on what grounds, and anything a reader should know \
-                before trusting it. Do not repeat the `short` sentence inside it.
+                `full` — two to five sentences: what was claimed, what was actually run and what it \
+                showed, WHAT THE PATCH DOES where there is one, what was concluded and on what \
+                grounds, and anything a reader should know before trusting it. Do not repeat the \
+                `short` sentence inside it.
 
                 THE KEYS ARE `short` AND `full` WHATEVER LANGUAGE YOU ANSWER IN. Write the values in \
                 the language this instruction is written in; leave the keys exactly as they are. \

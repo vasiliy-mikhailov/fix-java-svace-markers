@@ -55,8 +55,14 @@ final class Api {
             events.merge(marker, 1, Integer::sum);
             long at = num(Dashboard.field(line, "at"));
             if (at > 0) {
-                first.putIfAbsent(marker, at);
-                last.put(marker, at);
+                // EARLIEST AND LATEST, NOT FIRST-SEEN AND LAST-SEEN. The trace is appended by four
+                // provers at once and read back merged, so file order is whichever lane flushed last
+                // and not the order things happened. `putIfAbsent`/`put` took the first and final
+                // LINES, which produced a negative `spanMs` the moment two lanes interleaved — and
+                // would have reported a wedged run as fresh whenever a slow lane wrote last, which is
+                // exactly the case the age on the page exists to catch.
+                first.merge(marker, at, Math::min);
+                last.merge(marker, at, Math::max);
             }
             String kind = Dashboard.field(line, "kind");
             switch (kind) {
@@ -101,6 +107,16 @@ final class Api {
         rows.values().forEach(r -> byState.merge(r.state(), 1, Integer::sum));
 
         long began = first.values().stream().mapToLong(Long::longValue).min().orElse(0L);
+        // THE NEWEST EVENT IN THE WHOLE RUN, WHICH IS THE ONLY THING THAT SAYS ANYTHING IS ALIVE.
+        //
+        // A run wedged for fifty-five minutes was indistinguishable from a working one on this page:
+        // the marker count, the event count, the state tiles and every row were byte-identical either
+        // way, because all of them describe what HAS happened and none of them says when. The only way
+        // to notice was to read a number, wait, and read it again.
+        //
+        // Zero when nothing has run, and the client is trusted to tell that apart from a real instant
+        // rather than being shown "56 years ago".
+        long newest = last.values().stream().mapToLong(Long::longValue).max().orElse(0L);
         int humanMinutes = priced.values().stream().mapToInt(Integer::intValue).sum();
         int allEvents = events.values().stream().mapToInt(Integer::intValue).sum();
 
@@ -110,6 +126,7 @@ final class Api {
         b.append(",\"beganAt\":").append(began);
         b.append(",\"serverNow\":").append(System.currentTimeMillis());
         b.append(",\"traceEvents\":").append(allEvents);
+        b.append(",\"lastEventAt\":").append(newest);
         b.append(",\"humanMinutes\":").append(humanMinutes);
         b.append(",\"findingsOpen\":").append(open(settlements.resolveSibling("overwatch.jsonl")));
         b.append(",\"countsByState\":{");
