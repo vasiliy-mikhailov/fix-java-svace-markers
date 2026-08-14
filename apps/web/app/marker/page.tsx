@@ -363,6 +363,10 @@ function tabUrl(key: string, tab: string, folded: boolean): string {
  * `BuildEvent` draws them from the rows that carry them.
  */
 function SummaryTab({ marker, expanded }: { marker: ApiMarker; expanded: boolean }) {
+  // A PROPOSAL EXISTS OR IT DOES NOT, and the state is where that is written. `pr-ready` and
+  // `pr-rejected` are both proposals — one accepted upstream-ready, one this pipeline declined to
+  // send — and in both the verdict text is a merge request rather than an argument about the code.
+  const proposed = (marker.state ?? '').startsWith('verified/pr-')
   const state = marker.state as MarkerState | null
   const account = accountOf(marker.summary)
   const nothing =
@@ -400,11 +404,19 @@ function SummaryTab({ marker, expanded }: { marker: ApiMarker; expanded: boolean
       {/* Whole and unabridged, folded: a reason cut at two hundred characters is a reason nobody
           can check. An empty body renders no fold at all, which is the absence a reader should
           see rather than a fold that opens onto nothing. */}
+      {/*
+        THE SAME FIELD IS TWO DIFFERENT DOCUMENTS AND WAS LABELLED AS ONE. On a marker that settled
+        `by-design` or `false-positive` this text is an argument — the case for not changing the code
+        — and folding it away is right. On one that reached a proposal it is the MERGE REQUEST: a
+        title and a body written to be sent to a stranger's repository. Calling that "the argument it
+        settled on" and collapsing it hid the deliverable behind a label that described something
+        else, on the markers where there IS a deliverable.
+      */}
       <TextFold
         id={`verdict:${marker.id}`}
-        label="the argument it settled on"
+        label={proposed ? 'the merge request' : 'the argument it settled on'}
         body={marker.verdictText ?? ''}
-        defaultOpen={expanded}
+        defaultOpen={expanded || proposed}
       />
       <TextFold
         id={`infra:${marker.id}`}

@@ -307,11 +307,31 @@ final class ApiMarker {
      * FRAGILE: rewording either prompt makes the fix disappear from this screen with nothing
      * failing. It ends the day {@code fix_diff} is written into the settlement.
      */
+    /**
+     * The agent whose prompt carries the diff — read off the chain, never retyped.
+     *
+     * <p>{@code Prove} hands the fix stage's judge a section headed WHAT IT ACTUALLY CHANGED holding
+     * the real {@code git diff}, and that prompt is the only place the patch is written down. So the
+     * page recovers the diff from it, and the name of that judge is a load-bearing string.
+     */
+    private static final String FIX_VERIFIER =
+            Agents.CHAIN.stream().filter(a -> a.startsWith("fix-") && a.endsWith("-verifier"))
+                    .findFirst().orElseThrow(() -> new IllegalStateException(
+                            "the fix stage has no verifier; the diff on every marker page comes out "
+                                    + "of its prompt: " + Agents.CHAIN));
+
     private static String patch(List<String> events) {
         String found = "";
         for (String e : events) {
+            // THE NAME IS THE MATCH KEY, AND A RENAME BROKE IT SILENTLY. This read "fix-critic"
+            // until that agent became `fix-verifier`; from then on the loop matched nothing, `patch()`
+            // returned "", and every marker settled with no fixed code on its page — while the diff
+            // sat in the trace exactly where it always had. Nothing failed: an extractor that finds
+            // nothing looks identical to a prove that changed nothing.
+            //
+            // Taken from Agents.CHAIN rather than typed, so the next rename moves it or fails a test.
             if (!Dashboard.field(e, "kind").equals("asked")
-                    || !who(e).equals("fix-critic")) {
+                    || !who(e).equals(FIX_VERIFIER)) {
                 continue;
             }
             String prompt = Dashboard.field(e, "prompt");
