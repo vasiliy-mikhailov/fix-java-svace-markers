@@ -31,14 +31,30 @@ export function groupOf(agent: AgentName): AgentGroup {
   return 'asked'
 }
 
-const SAYS: Record<AgentGroup, { title: string; account: string }> = {
+/**
+ * COUNTED, NOT TYPED. The caption read "ten agents, five producer-and-critic pairs" for the nine
+ * hours after the chain became fifteen agents in five planner/doer/verifier triples — on the page
+ * whose whole purpose is editing those prompts, above the fifteen boxes that disproved it.
+ *
+ * A number written as a word is a copy of a fact, and this is the third copy of the chain's shape to
+ * go stale in a day. Counting the list cannot.
+ */
+const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+  'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen'] as const
+
+function spelt(n: number): string {
+  return WORDS[n] ?? String(n)
+}
+
+export const AGENT_GROUP_SAYS: Record<AgentGroup, { title: string; account: string }> = {
   chain: {
     title: 'inside a prove',
-    account: 'ten agents, five producer-and-critic pairs, in the order a prove calls them',
+    account: `${spelt(CHAIN.length)} agents, ${spelt(CHAIN.length / 3)} planner/doer/verifier `
+      + 'triples, in the order a prove calls them',
   },
   watch: {
     title: 'watching the run',
-    account: 'four that look at a run from outside it and never take part in one',
+    account: `${spelt(WATCH.length)} that look at a run from outside it and never take part in one`,
   },
   asked: {
     title: 'answering when asked',
@@ -52,7 +68,7 @@ const ACCOUNT: Style = { margin: '2px 0 0', fontSize: '11.5px', color: 'var(--te
 
 /** The heading over a group of agent prompts. */
 export function AgentGroupHeading({ group }: AgentGroupHeadingProps) {
-  const said = SAYS[group]
+  const said = AGENT_GROUP_SAYS[group]
   return (
     <div>
       <h2 style={HEAD}>{said.title}</h2>

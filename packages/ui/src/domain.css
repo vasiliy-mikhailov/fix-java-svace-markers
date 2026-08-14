@@ -104,3 +104,36 @@
   --code-flagged-bg: #341A00;
   --code-hunk: #A371F7;
 }
+
+/**
+ * THE PROMPT GRID — three across, because a stage is three.
+ *
+ * This is CSS rather than an inline style because it is the one thing an inline style cannot express:
+ * a column count that changes with the viewport. `auto-fit` was tried and is wrong here in both
+ * directions — it made four columns for the four watchers where the chain had three, and it stretched
+ * a lone agent across the whole page, so the boxes came out three different widths on one screen.
+ * The count is therefore fixed per breakpoint and the same for every section, which is what makes
+ * fifteen prompts and five prompts read as one page.
+ *
+ * `minmax(0, 1fr)` and not `1fr`: a textarea's intrinsic minimum width is wide, and a bare `1fr`
+ * track grows to honour it — three boxes then push the row past the viewport and the page scrolls
+ * sideways, which is the opposite of laying them out evenly.
+ */
+.fsm-prompt-grid {
+  display: grid;
+  gap: 12px;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 62rem) {
+  .fsm-prompt-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 94rem) {
+  .fsm-prompt-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

@@ -6,6 +6,8 @@ import {
   Account,
   AgentGroupHeading,
   AgentPromptEditor,
+  PromptStage,
+  stageOf,
   EmptyNote,
   ForgetKeyChoice,
   GitCredential,
@@ -344,17 +346,48 @@ function PromptsTab({ findingsOpen }: { findingsOpen: number }) {
 
   const rows: ReactNode[] = []
   let heading: AgentGroup | null = null
+  // THE OPEN STAGE, and the editors gathered into it. A stage's three roles are laid out as three
+  // (`PromptStage`), so they are held back until the stage changes rather than pushed as they come.
+  // Every editor is laid out in a grid; what differs is whether the grid carries a stage name. A
+  // section is opened by its KEY — the stage for a chain agent, the group for anything else — so a
+  // watcher's boxes are the same width as a planner's without pretending to be a triple.
+  let section: string | null = null
+  let labelled: string | undefined
+  let held: ReactNode[] = []
+  const close = () => {
+    if (held.length > 0) {
+      rows.push(
+        <PromptStage key={`section:${section ?? ''}`} {...(labelled === undefined ? {} : { label: labelled })}>
+          {held}
+        </PromptStage>,
+      )
+    }
+    section = null
+    labelled = undefined
+    held = []
+  }
   // ARRAY ORDER IS THE CONTRACT — `Agents.ORDER`, which is pipeline order, then anything the order
   // does not name, sorted (`ApiSettings.prompts` 152-154). Sorting it here would put estimator-critic
   // first and reproducer eleventh, which is the reverse of how anybody thinks about this chain, so
-  // the group headings are emitted as the group CHANGES rather than by grouping the list.
+  // the group headings are emitted as the group CHANGES rather than by grouping the list. The stage
+  // sections ride on the same property: a triple is contiguous BECAUSE the order is the call order,
+  // so grouping never reorders anything and an agent this build has not heard of still lands where
+  // the server put it.
   for (const row of data) {
     const group = groupFrom(row.group)
+    const at = stageOf(row.agent as AgentName)
+    const key = at ?? group
     if (group !== heading) {
+      close()
       heading = group
       rows.push(<AgentGroupHeading key={`group:${group}`} group={group} />)
     }
-    rows.push(
+    if (key !== section) {
+      close()
+      section = key
+      labelled = at ?? undefined
+    }
+    const editor = (
       <AgentPromptEditor
         // KEYED BY WHAT THE RECORD HOLDS, so a revert remounts the box and re-seeds it from the
         // built-in. The editor does not re-seed from props by design — a payload arriving while
@@ -375,9 +408,12 @@ function PromptsTab({ findingsOpen }: { findingsOpen: number }) {
         differs={row.differs}
         onSave={prompt => void write({ agent: row.agent, prompt })}
         onRevert={() => void write({ agent: row.agent, revert: '1' })}
-      />,
+      />
     )
+    held.push(editor)
   }
+  // The last section has no successor to close it.
+  close()
 
   return (
     <Screen

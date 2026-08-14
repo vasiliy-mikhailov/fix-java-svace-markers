@@ -63,6 +63,7 @@ export { MarkerRow, type MarkerRowData, type MarkerRowProps } from './MarkerRow'
 export { MarkerTable, type MarkerTableProps } from './MarkerTable'
 export { PageHeader, type Crumb, type PageHeaderProps } from './PageHeader'
 export { ParallelProvers, type ParallelProversProps } from './ParallelProvers'
+export { PromptStage, stageOf, type PromptStageProps } from './PromptStage'
 export { ProveFinishedNotice, type ProveFinishedNoticeProps } from './ProveFinishedNotice'
 export { RateAnswer, type RateAnswerProps } from './RateAnswer'
 /**

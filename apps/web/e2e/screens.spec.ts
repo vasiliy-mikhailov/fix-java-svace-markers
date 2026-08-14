@@ -94,6 +94,52 @@ test('a state the record holds reaches the screen', async ({ page }) => {
   }
 })
 
+test('the prompts page lays the chain out as five stages of three', async ({ page }) => {
+  // THE PAGE WHOSE JOB IS THE CHAIN'S PROMPTS WAS THE ONE PLACE ITS SHAPE WAS INVISIBLE: twenty
+  // full-width boxes in a column, nothing between reproduce-verifier and fix-planner to say a stage
+  // had ended. A planner and the doer that works from its plan are one thought in two boxes, and the
+  // page showed them a screen apart.
+  //
+  // Widths are the half a unit test cannot see: the columns are a media query, so the count depends
+  // on a real viewport and a real stylesheet.
+  await page.setViewportSize({ width: 1800, height: 1000 })
+  await page.goto('/settings/')
+  await expect(page.getByRole('heading', { name: 'inside a prove' })).toBeVisible({ timeout: 15_000 })
+
+  const stages = await page.locator('section[aria-label] > h3').allInnerTexts()
+  expect(stages, 'the five stages, in the order a prove calls them').toEqual([
+    'REPRODUCE', 'FIX', 'PROPOSE', 'ARGUE', 'PRICE',
+  ])
+
+  // Each stage holds its own three, and holds them in role order.
+  for (const stage of stages) {
+    const names = await page
+      .locator(`section[aria-label="${stage.toLowerCase()}"] .fsm-prompt-grid > * header > span:first-child`)
+      .allInnerTexts()
+    expect(names, `${stage} holds its three roles`).toEqual([
+      `${stage.toLowerCase()}-planner`,
+      `${stage.toLowerCase()}-doer`,
+      `${stage.toLowerCase()}-verifier`,
+    ])
+  }
+
+  // ONE WIDTH FOR THE WHOLE PAGE, watchers included. The first attempt used `auto-fit`, which gave
+  // the four watchers four columns where the chain had three and stretched the lone `chat` across
+  // the full width — three different box widths on one screen, which is the imbalance moved rather
+  // than fixed.
+  const widths = await page
+    .locator('.fsm-prompt-grid > *')
+    .evaluateAll(cards => [...new Set(cards.map(c => Math.round(c.getBoundingClientRect().width)))])
+  expect(widths, `cards came out ${widths.length} different widths`).toHaveLength(1)
+
+  // And nothing pushes the row wider than the window — a textarea's intrinsic width will do that to
+  // a grid track given the chance, and the whole page then scrolls sideways.
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  )
+  expect(overflow, 'the page scrolls sideways').toBeLessThanOrEqual(0)
+})
+
 test('a question that fails is answered in words, not in a stack trace', async ({ page }) => {
   // WHAT A PERSON WAS SHOWN: they asked "show me number of markers verified in last 5 hours" and got
   // back `could not answer: java.lang.IllegalArgumentException: text cannot be null or blank`. The
