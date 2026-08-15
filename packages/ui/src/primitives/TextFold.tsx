@@ -1,13 +1,24 @@
-import { Disclosure } from './Disclosure'
+'use client'
+
+import { useState } from 'react'
 import type { Style } from './style'
 
 export type TextFoldProps = {
-  /** See {@link DisclosureProps.id} — keyed by the thing, never by position. */
+  /** Stable, and carried by the thing being shown — an event id, `code:<agent>`. Never a position. */
   id: string
-  /** The bare label. The `(N chars)` is computed here from `body`; never pass a count. */
+  /** The bare label. The size is computed here from `body`; never pass a count. */
   label: string
   body: string
+  /** Start expanded. A reader who asked for everything open, from `?fold=`, gets everything open. */
   defaultOpen?: boolean
+  /** Lines shown before clipping. Below this no control is drawn at all. */
+  lines?: number
+}
+
+const LABEL: Style = {
+  color: 'var(--text-tertiary)',
+  fontSize: '11px',
+  userSelect: 'none',
 }
 
 const BODY: Style = {
@@ -17,32 +28,62 @@ const BODY: Style = {
   border: '1px solid var(--border-soft)',
   borderRadius: '6px',
   padding: '10px',
-  margin: '8px 0',
+  margin: '4px 0 0',
   overflowX: 'auto',
   fontSize: '12px',
   lineHeight: 1.5,
   color: 'var(--text-secondary)',
 }
 
+const MORE: Style = {
+  marginTop: '6px',
+  padding: 0,
+  border: 0,
+  background: 'none',
+  color: 'var(--accent-primary)',
+  fontSize: '11px',
+  cursor: 'pointer',
+}
+
 /**
- * A fold over a blob of text, labelled with how much text it is.
+ * A LONG BODY, CLIPPED — NEVER HIDDEN, AND NEVER DUMPED WHOLE.
  *
- * The size belongs in the label because the decision a reader makes at a closed fold is whether it
- * is worth opening, and "the prompt" answers that differently at 300 characters and at 30,000.
+ * <p>This was a `<details>`, and it failed at both ends of the same page. Open, which was the
+ * default, it put a 13,549-character task on the screen as one wall of text and every fold below it
+ * was somewhere past the fold of the browser. Shut, which is what the standing prompt was, it showed
+ * a label and a byte count — so the reader who asked "where is the system prompt?" was looking at a
+ * page that had it, behind a word.
  *
- * AN EMPTY BODY RENDERS NOTHING AT ALL — not an empty fold (Java `fold()` 2363-2367 returned "").
- * That is load-bearing in two places and both are absences a reader is meant to notice: a tool call
- * that produced no result shows ONE fold instead of two, and an unjudged finding's "what the critic
- * said" simply is not on the page. A fold that opens onto nothing says the critic answered with
- * silence, which is not what happened.
+ * <p>Neither is a choice a reader can make from what they can see. A count answers "how much" and
+ * never "is this the thing I am looking for", and the whole reason to open one of these is to find
+ * out which it is. So the first lines are always on the page: enough to recognise, and a control to
+ * get the rest. Nothing here truncates anything permanently — the whole body travelled, and the
+ * decision about how much to draw is the page's, made where it can be reversed.
+ *
+ * <p>AN EMPTY BODY RENDERS NOTHING AT ALL — not an empty box. That is load-bearing in two places and
+ * both are absences a reader is meant to notice: a tool call that produced no result shows ONE body
+ * instead of two, and an unjudged finding's "what the critic said" simply is not on the page. A fold
+ * that opens onto nothing says the critic answered with silence, which is not what happened.
  */
-export function TextFold({ id, label, body, defaultOpen = true }: TextFoldProps) {
+export function TextFold({ id, label, body, defaultOpen = false, lines = 12 }: TextFoldProps) {
+  const [open, setOpen] = useState(defaultOpen)
   if (body.length === 0) {
     return null
   }
+  const all = body.split('\n')
+  const long = all.length > lines
+  const shown = open || !long ? body : all.slice(0, lines).join('\n')
   return (
-    <Disclosure id={id} defaultOpen={defaultOpen} summary={`${label} (${body.length} chars)`}>
-      <pre style={BODY}>{body}</pre>
-    </Disclosure>
+    <div id={id}>
+      <div style={LABEL}>
+        {label} ({body.length} chars)
+      </div>
+      <pre style={BODY}>{shown}</pre>
+      {long ? (
+        <button type="button" onClick={() => setOpen(!open)} style={MORE}>
+          {open ? 'show less' : `show all ${all.length} lines`}
+        </button>
+      ) : null}
+    </div>
   )
 }
