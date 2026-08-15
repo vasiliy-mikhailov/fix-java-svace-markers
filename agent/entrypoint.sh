@@ -122,7 +122,7 @@ checkout() {
             {
                 echo "fsm: could not clone $repo"
                 echo "$clone_said" | sed 's/^/    /'
-                echo "    Nothing here reaches that host. Three ways round it, in spec/18 and the"
+                echo "    Nothing here reaches that host. Three ways round it, in the subject tab and the"
                 echo "    README: put the tree at $RESULTS/source.zip, place a clone at $dir, or"
                 echo "    set a mirror in $RESULTS/git-mirror as '<from> <to>'."
             } >&2

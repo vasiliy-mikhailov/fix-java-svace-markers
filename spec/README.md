@@ -39,6 +39,8 @@ into the bug.
 | [`14-the-dashboard.md`](14-the-dashboard.md) | The dashboard | Every route and what it renders, the page skeleton and formats, the three live mechanisms, fold persistence, the escape-once rule, and the fact that the server authenticates nobody |
 | [`15-deployment.md`](15-deployment.md) | The image and the deploy | How the image is built (deepagents patched at source, five JDKs, non-root), what persists on the volumes and what dies with the container, every environment variable, and the two-step host deploy |
 | [`16-invariants-and-tests.md`](16-invariants-and-tests.md) | What the tests hold | The testing philosophy, the meta-rule that a check passing on both answers is not a check, the JUnit classes and the 2 shell scripts with the incident behind each, the pinned constants, and a table of asserted failure directions |
+| [`17-mounting-this-tool.md`](17-mounting-this-tool.md) | Mounting this tool | The contract a shell container needs to host this zone beside other tools: the manifest, the health endpoint, the badges, and why `basePath` is normalised rather than trusted |
+| [`18-the-baseline-and-how-to-compare.md`](18-the-baseline-and-how-to-compare.md) | The baseline | Where the kept run lives, the one number worth comparing (`argued`/`settled`, 219 of 343), what that run is a BEFORE picture of, and how to clear the volume for a rerun without losing the queue or the prompt overrides |
 
 Chapters 01–05 are the standard of proof and what an agent is told. 06–07 are what an agent can
 reach. 08–10 are the watchers. 11–15 are the machinery around a prove. 16 is what is nailed down.
