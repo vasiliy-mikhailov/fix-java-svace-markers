@@ -55,6 +55,10 @@ export const TRACE_KINDS = [
   // pair prompt tuning replays — so it is written when the call returns, and on the page it landed
   // after every thought it had caused. This one goes first, and carries only the task.
   'asking',
+  // WHAT ACTUALLY WENT DOWN THE WIRE, written by LangChain4j's own listener rather than by anything
+  // remembering to. One row per message the first time it is sent — a tool loop resends the whole
+  // conversation every turn, so recording each request whole would be quadratic in the turns.
+  'sent',
   'asked',
   'thought',
   'tool',

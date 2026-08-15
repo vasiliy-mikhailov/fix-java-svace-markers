@@ -36,7 +36,7 @@ class TheReasoningIsNotThrownAwayTest {
 
         @Override
         public void asking(String a, String s, String t) { }
-        @Override public void sent(String a, int shared, String added) { }
+        @Override public void sent(String a, String role, String text) { }
 
         @Override
         public void thought(String agent, String text) {
@@ -55,7 +55,7 @@ class TheReasoningIsNotThrownAwayTest {
 
     /** An HTTP layer that heard nothing, for the cases that test the other two sources. */
     private static Overheard nothing() {
-        return new Overheard(new dev.langchain4j.http.client.jdk.JdkHttpClientBuilder(), null, "test");
+        return new Overheard(new dev.langchain4j.http.client.jdk.JdkHttpClientBuilder());
     }
 
     /** An endpoint that says exactly what the test tells it to, on the calling thread. */
@@ -166,7 +166,7 @@ class TheReasoningIsNotThrownAwayTest {
             @Override public Duration readTimeout() { return Duration.ofSeconds(5); }
             @Override public dev.langchain4j.http.client.HttpClientBuilder readTimeout(
                     Duration t) { return this; }
-        }, null, "test");
+        });
     }
 
     /** Runs one stream through the decorator the way OpenAiStreamingChatModel would. */

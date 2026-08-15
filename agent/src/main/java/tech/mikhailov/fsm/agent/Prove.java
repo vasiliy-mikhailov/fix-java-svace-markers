@@ -942,10 +942,14 @@ public final class Prove {
                 ? HttpClient.Version.HTTP_2
                 : HttpClient.Version.HTTP_1_1;
         Overheard overheard = new Overheard(new JdkHttpClientBuilder()
-                .httpClientBuilder(HttpClient.newBuilder().version(version)), trace, agent);
+                .httpClientBuilder(HttpClient.newBuilder().version(version)));
         OpenAiStreamingChatModel.OpenAiStreamingChatModelBuilder built =
                 OpenAiStreamingChatModel.builder()
                         .httpClientBuilder(overheard)
+                        // WHAT IS SENT IS RECORDED BY WHAT SENDS IT. This is LangChain4j's own hook:
+                        // it is handed every request, response and failure, so the record cannot be
+                        // missing a turn because somebody forgot to write one down.
+                        .listeners(java.util.List.of(new Connector(trace, agent)))
                         .baseUrl(base)
                         // THE KEY IS NOT A SETTING. Everything else here is a parameter; a
                         // credential is not, and it stays where a deploy put it.

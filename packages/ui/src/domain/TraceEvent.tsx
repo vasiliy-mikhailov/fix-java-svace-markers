@@ -44,6 +44,8 @@ export type TraceEventRecord = Omit<TraceRow, 'kind'> & {
   task?: string
   /** The standing instructions on an `asking` row, as sent on that call. */
   standing?: string
+  /** Which message this was, on a `sent` row: `system`, `user`, `assistant`, or `failed`. */
+  role?: string
   /**
    * Two names for one field: `arguments` is what is on disk and in the payload (`field(e,
    * "arguments")`, 2214), `args` is what `@fsm/types` calls it. Both are read below until the shared
@@ -272,6 +274,44 @@ export function AskingEvent({ agent, task, standing, defaultOpen }: AskingEventP
         label="the system prompt it was running under"
         body={standing}
         defaultOpen={false}
+      />
+    </>
+  )
+}
+
+/**
+ * ONE MESSAGE, AS THE CONNECTOR SENT IT.
+ *
+ * <p>Every other row here exists because somewhere in the Java somebody called a `trace` method, and
+ * every one of those places has been wrong at least once. These rows are written by LangChain4j's
+ * own listener, from the request it is about to send — so what is here is what went, and a reader
+ * comparing an agent's account of itself against the record is comparing it against the wire.
+ *
+ * <p>THE ROLE IS THE LABEL, because that is the only thing that distinguishes these from each other
+ * and it is what a reader is scanning for: the system prompt as it was finally assembled, the task,
+ * a turn taken between tool calls. Folded, because a system prompt is 17k characters and the lane
+ * would be nothing else.
+ */
+export function SentEvent({
+  agent,
+  role,
+  text,
+  defaultOpen,
+}: {
+  agent: string
+  role: string
+  text: string
+  defaultOpen: boolean
+}) {
+  return (
+    <>
+      <span style={WHO}>{agentLabel(agent)}</span>
+      <span style={KIND}>sent</span>
+      <TextFold
+        id={`sent:${agent}:${role}:${text.length}`}
+        label={role}
+        body={text}
+        defaultOpen={defaultOpen}
       />
     </>
   )
@@ -525,6 +565,15 @@ function bodyOf(event: TraceEventRecord, defaultOpen: boolean, back: string): Re
           agent={event.agent}
           task={event.task ?? ''}
           standing={event.standing ?? ''}
+          defaultOpen={defaultOpen}
+        />
+      )
+    case 'sent':
+      return (
+        <SentEvent
+          agent={event.agent}
+          role={event.role ?? ''}
+          text={event.text ?? ''}
           defaultOpen={defaultOpen}
         />
       )
