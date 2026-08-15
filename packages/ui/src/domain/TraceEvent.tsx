@@ -46,6 +46,13 @@ export type TraceEventRecord = Omit<TraceRow, 'kind'> & {
   standing?: string
   /** Which message this was, on a `sent` row: `system`, `user`, `assistant`, or `failed`. */
   role?: string
+  /** On a `metered` row: the server's own reason for stopping — `STOP`, `LENGTH`, `ERROR`. */
+  finish?: string
+  /** Tokens the server charged for the prompt, and for what it generated. */
+  input?: number | string
+  output?: number | string
+  /** Wall clock for the one call, milliseconds. */
+  ms?: number | string
   /**
    * Two names for one field: `arguments` is what is on disk and in the payload (`field(e,
    * "arguments")`, 2214), `args` is what `@fsm/types` calls it. Both are read below until the shared
@@ -317,6 +324,45 @@ export function SentEvent({
   )
 }
 
+/**
+ * WHAT THE CALL COST AND WHY IT STOPPED.
+ *
+ * <p>One line, no fold: it is four numbers and they are only worth anything at a glance, scanned
+ * down a lane. The reason it exists is `finish` — this program sets a thinking budget and a token
+ * cap and then had no way to see either take effect, so a generation stopped AT the cap read
+ * exactly like one that had finished, and every truncation was found by a human noticing a reply
+ * ended mid-sentence.
+ *
+ * <p>LENGTH is called out rather than shown as one word among four, because it is the one that
+ * means the record above it is incomplete.
+ */
+export function MeteredEvent({
+  agent,
+  finish,
+  input,
+  output,
+  ms,
+}: {
+  agent: AgentName | null
+  finish: string
+  input: number
+  output: number
+  ms: number
+}) {
+  const cut = finish === 'LENGTH'
+  return (
+    <>
+      <span style={WHO}>{agentLabel(agent)}</span>
+      <span style={KIND}>{cut ? 'was cut off at the cap' : 'cost'}</span>
+      <span style={{ ...KIND, opacity: cut ? 1 : 0.75 }}>
+        {input.toLocaleString()} in / {output.toLocaleString()} out
+        {ms > 0 ? ` / ${(ms / 1000).toFixed(1)}s` : ''}
+        {finish !== '' && !cut ? ` / ${finish}` : ''}
+      </span>
+    </>
+  )
+}
+
 /** What an agent was asked, what it said, and its standing prompt folded underneath. */
 export function AnsweredEvent({
   agent,
@@ -575,6 +621,16 @@ function bodyOf(event: TraceEventRecord, defaultOpen: boolean, back: string): Re
           role={event.role ?? ''}
           text={event.text ?? ''}
           defaultOpen={defaultOpen}
+        />
+      )
+    case 'metered':
+      return (
+        <MeteredEvent
+          agent={event.agent}
+          finish={event.finish ?? ''}
+          input={Number(event.input ?? 0)}
+          output={Number(event.output ?? 0)}
+          ms={Number(event.ms ?? 0)}
         />
       )
     case 'asked':

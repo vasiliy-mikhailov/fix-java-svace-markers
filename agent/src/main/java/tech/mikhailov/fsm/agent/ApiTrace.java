@@ -149,6 +149,13 @@ final class ApiTrace {
             // `system` is a real kind and easy to miss — the run-level prompt, which reached this
             // page with its name and nothing else.
             case "system" -> b.append(",\"prompt\":").append(quote(Dashboard.field(e, "prompt")));
+            // WHAT THE CALL COST. `finish` is the server's own reason, so LENGTH — a
+            // generation stopped at the cap — is distinguishable from a model that ended.
+            case "metered" -> b.append(",\"finish\":")
+                    .append(quote(Dashboard.field(e, "finish")))
+                    .append(",\"input\":").append(number(Dashboard.field(e, "input")))
+                    .append(",\"output\":").append(number(Dashboard.field(e, "output")))
+                    .append(",\"ms\":").append(number(Dashboard.field(e, "ms")));
             case "sent" -> b.append(",\"role\":").append(quote(Dashboard.field(e, "role")))
                     .append(",\"text\":").append(quote(Dashboard.field(e, "text")));
             case "thought" -> b.append(",\"text\":").append(quote(Dashboard.field(e, "text")));

@@ -59,6 +59,10 @@ export const TRACE_KINDS = [
   // remembering to. One row per message the first time it is sent — a tool loop resends the whole
   // conversation every turn, so recording each request whole would be quadratic in the turns.
   'sent',
+  // WHAT THE CALL COST AND WHY IT STOPPED, from the server's own report rather than inferred from
+  // the reply. `finish` of LENGTH is a generation that hit the cap; a reply cut off mid-sentence
+  // used to be the only way anyone found out.
+  'metered',
   'asked',
   'thought',
   'tool',

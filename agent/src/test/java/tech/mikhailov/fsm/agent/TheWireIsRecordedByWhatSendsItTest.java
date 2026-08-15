@@ -51,6 +51,14 @@ class TheWireIsRecordedByWhatSendsItTest {
             rows.add(new Sent(agent, role, text));
         }
 
+        record Cost(String agent, String finish, long input, long output, long ms) { }
+
+        final List<Cost> costs = new ArrayList<>();
+
+        @Override public void metered(String a, String finish, long in, long out, long ms) {
+            costs.add(new Cost(a, finish, in, out, ms));
+        }
+
         List<String> roles() {
             return rows.stream().map(Sent::role).toList();
         }
@@ -181,6 +189,86 @@ class TheWireIsRecordedByWhatSendsItTest {
         request(c, UserMessage.from("task"));
         c.onError(new ChatModelErrorContext(new IllegalStateException("x"), some(), null,
                 new java.util.HashMap<>()));
+    }
+
+    private static void replied(Connector c, AiMessage message, int in, int out, String finish) {
+        c.onResponse(new ChatModelResponseContext(
+                ChatResponse.builder().aiMessage(message)
+                        .metadata(dev.langchain4j.model.chat.response.ChatResponseMetadata.builder()
+                                .tokenUsage(new dev.langchain4j.model.output.TokenUsage(in, out))
+                                .finishReason(dev.langchain4j.model.output.FinishReason.valueOf(finish))
+                                .build())
+                        .build(),
+                some(), null, new java.util.HashMap<>()));
+    }
+
+    @Test
+    @DisplayName("what the call cost, from what the server said rather than from the reply")
+    void theCallIsMetered() {
+        Wire wire = new Wire();
+        Connector c = new Connector(wire, "reproduce-doer");
+        request(c, UserMessage.from("task"));
+        replied(c, AiMessage.from("an answer"), 24_310, 1_205, "STOP");
+        assertEquals(1, wire.costs.size());
+        Wire.Cost cost = wire.costs.get(0);
+        assertEquals(24_310, cost.input(), "the prompt tokens the server actually charged for — this "
+                + "program budgets thinking tokens and had been measuring characters");
+        assertEquals(1_205, cost.output());
+        assertEquals("STOP", cost.finish());
+    }
+
+    @Test
+    @DisplayName("a generation stopped AT the cap is distinguishable from one that finished")
+    void truncationIsVisible() {
+        Wire wire = new Wire();
+        Connector c = new Connector(wire, "a");
+        request(c, UserMessage.from("task"));
+        replied(c, AiMessage.from("half a sen"), 1_000, 16_000, "LENGTH");
+        assertEquals("LENGTH", wire.costs.get(0).finish(),
+                "every truncation this pipeline has had was found by a human reading a reply and "
+                        + "noticing it stopped mid-sentence; the server says so on every call");
+    }
+
+    @Test
+    @DisplayName("a call that failed is still counted, because it still took the time")
+    void failureCostsTime() {
+        Wire wire = new Wire();
+        Connector c = new Connector(wire, "a");
+        request(c, UserMessage.from("task"));
+        c.onError(new ChatModelErrorContext(new IllegalStateException("upstream closed"),
+                some(), null, new java.util.HashMap<>()));
+        assertEquals("ERROR", wire.costs.get(0).finish(),
+                "on this endpoint a failed call is often most of a lane's wall clock, and a reader "
+                        + "adding up a marker would lose the minutes entirely");
+    }
+
+    @Test
+    @DisplayName("a standing prompt that changed under the cursor is recorded again")
+    void aChangedPromptIsSeen() {
+        Wire wire = new Wire();
+        Connector c = new Connector(wire, "a");
+        request(c, SystemMessage.from("the first prompt"), UserMessage.from("task"));
+        // Index zero is below the cursor from the second turn on, so a prompt edited between calls
+        // is not a new message — it is the same slot holding different text.
+        request(c, SystemMessage.from("the prompt, edited"), UserMessage.from("task"),
+                UserMessage.from("more"));
+        assertEquals(List.of("system", "user", "system", "user"), wire.roles(),
+                "the standing prompt decides what the agent does, and a change to it that the "
+                        + "record does not show is a change nobody can attribute an answer to");
+        assertTrue(wire.rows.get(2).text().contains("edited"));
+    }
+
+    @Test
+    @DisplayName("and one that did not change is not written on every turn")
+    void anUnchangedPromptIsNotRepeated() {
+        Wire wire = new Wire();
+        Connector c = new Connector(wire, "a");
+        SystemMessage same = SystemMessage.from("standing");
+        request(c, same, UserMessage.from("one"));
+        request(c, same, UserMessage.from("one"), UserMessage.from("two"));
+        request(c, same, UserMessage.from("one"), UserMessage.from("two"), UserMessage.from("three"));
+        assertEquals(1, wire.roles().stream().filter("system"::equals).count(),
+                "it is thousands of characters and identical on every call of this agent");
     }
 
     @Test

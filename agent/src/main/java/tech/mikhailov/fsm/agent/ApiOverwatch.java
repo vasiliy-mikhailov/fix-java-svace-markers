@@ -219,6 +219,13 @@ final class ApiOverwatch {
             case "asking" -> b.append(",\"standing\":")
                     .append(quote(Dashboard.field(line, "standing")))
                     .append(",\"task\":").append(quote(Dashboard.field(line, "task")));
+            // WHAT THE CALL COST. `finish` is the server's own reason, so LENGTH — a
+            // generation stopped at the cap — is distinguishable from a model that ended.
+            case "metered" -> b.append(",\"finish\":")
+                    .append(quote(Dashboard.field(line, "finish")))
+                    .append(",\"input\":").append(number(Dashboard.field(line, "input")))
+                    .append(",\"output\":").append(number(Dashboard.field(line, "output")))
+                    .append(",\"ms\":").append(number(Dashboard.field(line, "ms")));
             case "sent" -> b.append(",\"role\":").append(quote(Dashboard.field(line, "role")))
                     .append(",\"text\":").append(quote(Dashboard.field(line, "text")));
             case "progress" -> b.append(",\"note\":").append(quote(Dashboard.field(line, "note")));

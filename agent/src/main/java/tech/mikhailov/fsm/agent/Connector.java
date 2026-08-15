@@ -63,6 +63,20 @@ final class Connector implements ChatModelListener {
      */
     private String saidLast = "";
 
+    /**
+     * THE STANDING PROMPT THIS AGENT IS RUNNING UNDER, as of the last request.
+     *
+     * <p>The cursor above never looks at index zero again, so a system prompt that CHANGED mid-lane
+     * would be invisible: it is not a new message, it is the same slot holding different text. That
+     * is the case worth catching — a prompt edited between calls, or one the runtime rewrote — and
+     * the reason the sibling harness marks a re-sent prompt "unchanged" on every request. Comparing
+     * is the same information without a row per turn.
+     */
+    private String standing = "";
+
+    /** Where the clock for one call is kept: the map is per call and survives to the response. */
+    private static final String STARTED = "fsm.started";
+
     Connector(Trace trace, String agent) {
         this.trace = trace;
         this.agent = agent;
@@ -81,12 +95,26 @@ final class Connector implements ChatModelListener {
         if (trace == null || context == null || context.chatRequest() == null) {
             return;
         }
+        context.attributes().put(STARTED, System.currentTimeMillis());
         List<ChatMessage> messages = context.chatRequest().messages();
         if (messages == null) {
             return;
         }
         if (messages.size() < recorded) {
             recorded = 0;
+        }
+        // FIRST, THE ONE THE CURSOR CANNOT SEE. Index zero is below the cursor from the second turn
+        // on, so a standing prompt that changed under it is not a new message — it is the same slot
+        // holding different text, and nothing would ever look at it again. Before the new messages,
+        // because it governed them.
+        for (ChatMessage m : messages) {
+            if (m instanceof SystemMessage system && !system.text().equals(standing)) {
+                if (!standing.isEmpty()) {
+                    trace.sent(agent, "system", system.text());
+                }
+                standing = system.text();
+                break;
+            }
         }
         for (int i = recorded; i < messages.size(); i++) {
             record(messages.get(i));
@@ -101,10 +129,29 @@ final class Connector implements ChatModelListener {
      */
     @Override
     public void onResponse(ChatModelResponseContext context) {
-        if (context != null && context.chatResponse() != null
-                && context.chatResponse().aiMessage() != null) {
+        if (context == null || context.chatResponse() == null) {
+            return;
+        }
+        if (context.chatResponse().aiMessage() != null) {
             saidLast = text(context.chatResponse().aiMessage());
         }
+        // WHAT IT COST AND WHY IT STOPPED, which nothing here has ever recorded. This program tunes
+        // `thinking_token_budget` and `maxTokens` and then measures neither: a reply was long or
+        // short by its character count, which is not what the server charged for, and a generation
+        // that hit the cap was indistinguishable from one that finished.
+        var meta = context.chatResponse().metadata();
+        var usage = meta == null ? null : meta.tokenUsage();
+        trace.metered(agent,
+                meta == null || meta.finishReason() == null ? "" : meta.finishReason().name(),
+                usage == null || usage.inputTokenCount() == null ? 0 : usage.inputTokenCount(),
+                usage == null || usage.outputTokenCount() == null ? 0 : usage.outputTokenCount(),
+                since(context.attributes()));
+    }
+
+    /** How long this call took, from the stamp {@link #onRequest} left in its own attributes. */
+    private static long since(java.util.Map<Object, Object> attributes) {
+        Object started = attributes == null ? null : attributes.get(STARTED);
+        return started instanceof Long ms ? System.currentTimeMillis() - ms : 0;
     }
 
     /**
@@ -119,6 +166,9 @@ final class Connector implements ChatModelListener {
         Throwable cause = context.error();
         trace.sent(agent, "failed", cause.getClass().getSimpleName()
                 + (cause.getMessage() == null ? "" : ": " + cause.getMessage()));
+        // A FAILED CALL STILL TOOK TIME, and on this endpoint it is often most of a lane's wall
+        // clock. Counted as ERROR so a reader adding up a marker does not lose the minutes.
+        trace.metered(agent, "ERROR", 0, 0, since(context.attributes()));
     }
 
     /**

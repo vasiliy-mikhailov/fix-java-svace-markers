@@ -250,6 +250,13 @@ final class ApiMarker {
         // Which message a `sent` row was, which is what labels it. The text rode this shape
         // already; without the role it drew a fold with no name on it.
         b.append(",\"role\":").append(text(Dashboard.field(e, "role")));
+        // The accounting of one call: why it stopped, what the server charged, how long it
+        // took. Text rather than numbers here because this shape sends every field the
+        // same way and a reader that wants arithmetic does it once, on the client.
+        b.append(",\"finish\":").append(text(Dashboard.field(e, "finish")));
+        b.append(",\"input\":").append(text(Dashboard.field(e, "input")));
+        b.append(",\"output\":").append(text(Dashboard.field(e, "output")));
+        b.append(",\"ms\":").append(text(Dashboard.field(e, "ms")));
         // The reasoning, which is the only account of what an agent seven tool calls in is doing.
         b.append(",\"text\":").append(text(Dashboard.field(e, "text")));
         b.append(",\"tool\":").append(text(Dashboard.field(e, "tool")));

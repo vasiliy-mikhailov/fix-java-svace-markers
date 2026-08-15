@@ -48,6 +48,25 @@ interface Trace {
      */
         void sent(String agent, String role, String text);
 
+    /**
+     * WHAT ONE CALL COST AND WHY IT STOPPED — written by {@link Connector} from what the server
+     * actually reported, not inferred from the text that came back.
+     *
+     * <p>This program sets {@code thinking_token_budget} and {@code maxTokens} and then measured
+     * neither. A reply was long or short by its CHARACTER count, which is not the thing being
+     * budgeted; and a generation cut off at the cap looked exactly like one that had finished, so
+     * every truncation this pipeline has had was found by reading the reply and noticing it stopped
+     * mid-sentence.
+     *
+     * <p>A default no-op, like {@link #streaming}: a Trace that keeps no accounts is a Trace, and
+     * `@fsm/types` fails the build if the one that does write it goes unrendered.
+     *
+     * @param finish the server's own reason — {@code STOP}, {@code LENGTH}, or {@code ERROR} for a
+     *               call that never returned. Empty when the endpoint said nothing.
+     */
+    default void metered(String agent, String finish, long input, long output, long ms) {
+    }
+
     void asked(String agent, String prompt, String reply);
 
     /**

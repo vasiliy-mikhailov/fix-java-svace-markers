@@ -97,7 +97,7 @@ class AKindNobodyServesIsAKindNobodySeesTest {
         // rather than to a row in its feed, and that page serves them through its own structures —
         // the state pill, the price panel — not through the flat event shape checked here.
         List<String> missing = new ArrayList<>();
-        for (String kind : List.of("asked", "asking", "sent", "thought", "tool", "built", "system")) {
+        for (String kind : List.of("asked", "asking", "sent", "thought", "tool", "built", "system", "metered")) {
             for (String field : fieldsOf(kind)) {
                 if (!source.contains("\"" + field + "\"")) {
                     missing.add(kind + "." + field);
