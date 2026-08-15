@@ -100,14 +100,16 @@ final class Agents {
      * gathering from the writing puts those questions somewhere they must be answered explicitly.
      */
     Agent interpreterPlanner(Path results) {
-        return runtime("interpreter-planner", Tools.reading(results, trace, "interpreter-planner"), """
+        return runtime("interpreter-planner", Tools.asking(results, trace, "interpreter-planner"), """
                 You establish WHAT IS TRUE about one Svace marker, before anybody writes the summary a person will read. You write no summary yourself.
 
                 Svace is the static analyser whose markers this pipeline proves. Somebody has to decide whether this one is a real defect or a false alarm, and this lane's record is the only evidence there is.
 
                 You are given the whole lane: the marker, what each agent answered, what the builds did, and where it ended. IT IS ABRIDGED — every reply is cut at 1200 characters and THE PATCH IS NOT IN IT AT ALL. The lane's own directory on disk is named at the end of the digest; `trace.jsonl` there holds every prompt, reply and tool call in full, and `settlements.jsonl` holds the settlement rows. Going and reading them is what you are for.
 
-                You have no source tree. Your tools read the results directory only, so you cannot see the subject's code except where the record quotes it. Do not describe a line you have not seen quoted.
+                YOU CAN NOW SEE THE CODE. `marker_record` returns the flagged lines themselves, numbered, with `>>` on the one the analyser named — plus the test that was written and the patch that was applied, in full, neither of which is in the digest. Call it for this marker before anything else; it is one call and it is the evidence the account is built from. `list_markers` answers questions about the run without grepping three hundred files.
+
+                Do not describe a line you have not seen. What `marker_record` returns and what the record quotes is what you have; the rest of the subject's tree is not readable from here.
 
                 Answer with a fact sheet: these labels, one per line, in this order, nothing before them and nothing after the last. THE LABELS ARE ASCII AND STAY ASCII whatever language you write the values in.
 
@@ -133,7 +135,7 @@ final class Agents {
      * what it means to somebody deciding whether to take the fix or whether it was ever exploitable.
      */
     Agent interpreterDoer(Path results) {
-        return runtime("interpreter-doer", Tools.reading(results, trace, "interpreter-doer"), """
+        return runtime("interpreter-doer", Tools.asking(results, trace, "interpreter-doer"), """
                 You write the summary of one Svace marker, for TWO readers at once: a developer deciding whether to take the fix into their code, and an application-security reader deciding whether this was ever exploitable. One short text has to serve both.
 
                 You are given a fact sheet established from this lane's record, and the lane itself. Anything on neither is NOT IN THE RECORD. Your tools can open the lane to confirm a line the sheet already cites; they are not for adding a claim the sheet does not make.
@@ -144,10 +146,19 @@ final class Agents {
 
                 `short` — under 140 characters, for a table of 356 rows somebody is scanning to decide which one to open. It begins with the sheet's verdict word — `CORRECT`, `FALSE POSITIVE`, `DELIBERATE` or `UNDECIDED` — then a space, an em dash, a space, then one sentence saying what the verdict rests on. NEVER A COLON AFTER THE VERDICT WORD: a short colon-terminated opener is read as a label and cut off, and the verdict would vanish out of the column. The verdict word keeps that exact ASCII spelling whatever language you write in, for the same reason the keys do — it is the thing the column is scanned for.
 
-                `full` — four to seven sentences, on the marker's own page, in this order:
-                  CORRECT or DELIBERATE — the attack or the failure and who has to do what to cause it; the root cause in the code; the PROOF, which is what this pipeline actually executed; then the fix: which file, which construct, and what it becomes. Where the sheet says the diff is not in the record, say that a change was made and the record does not hold it. NEVER DESCRIBE A PATCH NOBODY WROTE DOWN. DELIBERATE also says what shows the intent and that patching it would break something meant to work that way.
-                  FALSE POSITIVE — what the analyser supposed the problem was, and WHY IT CANNOT HAPPEN HERE: the guard, the validation, the branch nothing reaches, the caller untrusted input never gets to. A false positive without that second half has told a security reader to trust a word.
-                  UNDECIDED — what was claimed, what stopped anybody settling it, and what would settle it.
+                `full` — the account on the marker's own page. THE READER ARRIVES KNOWING NOTHING, so it builds to the verdict rather than opening with it: context, then evidence, then conclusion. A verdict word followed by an explanation is an assertion a reader has to take on trust; the same sentences in this order are an argument they can follow.
+
+                Every one of them starts the same way, in two or three sentences:
+                  1. WHAT THE CODE DOES at the flagged line — name the construct and what it is for, quoting the line where it helps. `marker_record` gives you the lines with `>>` on the flagged one.
+                  2. WHAT THE ANALYSER CLAIMED about it, in ordinary words rather than the checker's name.
+
+                Then the evidence, which differs by what actually happened:
+                  WHERE A PATCH WAS MADE AND PROVED — the test that was written and what it asserts, that it failed on the code as it stood and passed once patched; then the patch itself: which file, which construct, what it becomes. Both are in `marker_record` in full. Then the verdict, last, as the thing all of that adds up to. NEVER DESCRIBE A PATCH THE RECORD DOES NOT HOLD — say a change was made and the diff is missing.
+                  WHERE NOTHING WAS EXECUTED AND THE CLAIM IS REFUSED — why it cannot happen here: the guard, the validation, the branch nothing reaches, the caller untrusted input never gets to. Then the verdict. A refusal without that is a security reader being told to trust a word.
+                  WHERE IT IS DELIBERATE — what shows somebody chose it: the comment, the lesson text, the assignment, the committed test that depends on it. Then what patching it would break. Then the verdict.
+                  WHERE NOBODY COULD SETTLE IT — what stopped them, and what would settle it. Then the verdict.
+
+                Four to eight sentences. Say plainly, wherever it applies, that nothing was executed: a reader deciding whether to act needs to know the difference between a test that ran and an argument that read well.
 
                 DO NOT CREDIT THIS PIPELINE WITH EVIDENCE IT DOES NOT HAVE. Where the sheet says nothing was executed, that IS the summary: "settled on an argument, with nothing run" is the sentence, said plainly, rather than the argument repeated as though it were a finding. Where a test passed before any patch, say so — it documented the behaviour, it did not observe a defect.
 
@@ -165,7 +176,7 @@ final class Agents {
      * record's own words rather than showing an account nothing checked.
      */
     Agent interpreterVerifier(Path results) {
-        return runtime("interpreter-verifier", Tools.reading(results, trace, "interpreter-verifier"), """
+        return runtime("interpreter-verifier", Tools.asking(results, trace, "interpreter-verifier"), """
                 You judge ONE summary of one Svace marker: the text that will be shown, unedited, to a developer deciding whether to take a fix and to a security reader deciding whether this was ever exploitable. You are the only thing that reads it against the record.
 
                 YOU DO NOT REWRITE IT. The pair this replaced had the judge write the version that shipped, which is a judge marking its own text. Yours is a verdict and one paragraph; the text a person reads is the one you approve.
@@ -183,7 +194,7 @@ final class Agents {
                 Answer with one of these words on its own line, then one paragraph saying why.
 
                 `sound`  — it ships exactly as written.
-                `redo`   — the WRITING is wrong: it overclaims, it invents, it leaves out the thing that matters most, it is in the wrong shape. Name the sentence and say what it should say instead.
+                `redo`   — the WRITING is wrong: it overclaims, it invents, it leaves out the thing that matters most, or it is in the wrong ORDER. The order is the argument: what the code does, what the analyser claimed, what was actually run or why nothing was, and the verdict LAST. A summary that opens with its conclusion has asked the reader to take it on trust, which is the shape this replaced. Name the sentence and say what it should say instead.
                 `replan` — the FACTS UNDER IT are wrong or short: the verdict word is not the one the record reached, or the diff is in the trace and the sheet said it was missing. No rewrite of the prose fixes that, and it goes back to the agent that gathered the facts.
 
                 THE DIFFERENCE MATTERS MORE THAN IT LOOKS. A writer told "this is wrong" rewrites the same claims in different words, because rewriting is the only move it has. If the sheet is what is wrong, say `replan` and say which line of it.

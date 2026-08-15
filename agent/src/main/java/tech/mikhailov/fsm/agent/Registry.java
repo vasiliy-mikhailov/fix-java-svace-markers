@@ -150,6 +150,32 @@ final class Registry {
                 .append(summary.isBlank()
                         ? "(none — nothing has interpreted this lane yet)" : summary)
                 .append('\n');
+        // THE EVIDENCE ITSELF, not a pointer to it.
+        //
+        // This ended at the verdict text and a note saying the trace holds everything — which is
+        // true and is eight megabytes on the largest lane. The interpreter is asked to show a reader
+        // the flagged code, then the analyser's claim, then what was actually run, and only then the
+        // conclusion; it cannot do that from a summary of a summary, and asking it to dig through a
+        // trace for each is how a lane costs four minutes.
+        //
+        // Everything below is already in the record: the source comes from the same reader the marker
+        // page uses, and the test and the diff are fields the settlement row already carries.
+        String settled = settlementRow(results, id);
+        String testPath = Dashboard.field(settled, "test_path");
+        String testCode = Dashboard.field(settled, "test_code");
+        String fixDiff = Dashboard.field(settled, "fix_diff");
+        String source = ApiMarker.flaggedText(Path.of(System.getenv().getOrDefault(
+                "CHECKOUTS", "/work/checkouts")), repoOf(key), fileOf(key), lineOf(key));
+        if (!source.isBlank()) {
+            b.append("\nTHE FLAGGED CODE (`>>` is the line the analyser named):\n").append(source);
+        }
+        if (!testCode.isBlank()) {
+            b.append("\nTHE TEST THAT WAS WRITTEN").append(testPath.isBlank() ? "" : " (" + testPath + ")")
+                    .append(":\n").append(testCode).append('\n');
+        }
+        if (!fixDiff.isBlank()) {
+            b.append("\nTHE PATCH THAT WAS APPLIED:\n").append(fixDiff).append('\n');
+        }
         b.append("\nThe full record is `m/").append(id)
                 .append("/trace.jsonl` — every prompt, reply, tool call and build. Read it when the ")
                 .append("summary does not answer what you were asked.\n");
@@ -276,6 +302,29 @@ final class Registry {
     private static String checkerOf(String marker) {
         String[] parts = marker.split("\\|");
         return parts.length > 3 ? parts[3].strip() : "";
+    }
+
+    private static String repoOf(String marker) {
+        String[] parts = marker.split("\\|");
+        return parts.length > 0 ? parts[0].strip() : "";
+    }
+
+    /**
+     * THE ROW THAT SETTLED IT, which is not the last row.
+     *
+     * <p>Every stage boundary writes a `proving` row, and those carry no test and no diff — taking
+     * the last of all therefore reports a marker as having neither. The same rule {@link Run} uses
+     * for the state: the last row that is not `proving`.
+     */
+    private static String settlementRow(Path results, String id) {
+        String found = "";
+        for (String line : Dashboard.lines(results.resolve("m").resolve(id)
+                .resolve("settlements.jsonl"))) {
+            if (!Dashboard.field(line, "state").equals("proving")) {
+                found = line;
+            }
+        }
+        return found;
     }
 
     private static String fileOf(String marker) {

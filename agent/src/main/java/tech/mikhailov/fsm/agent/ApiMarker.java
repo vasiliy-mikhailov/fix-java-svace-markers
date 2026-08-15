@@ -429,6 +429,43 @@ final class ApiMarker {
      * blank line is line 79 and every number after it shifts) is one that was nearly written up as a
      * finding about the wrong method once. A rule worth that is a rule worth being able to test.
      */
+    /**
+     * THE FLAGGED LINES THEMSELVES, numbered, for an agent rather than for a page.
+     *
+     * <p>The interpreter had no way to see the code it was writing about — its tools reach the
+     * results directory and the subject's tree is not in it — so its prompt forbade describing a line
+     * it had not seen quoted, and the account began at the conclusion. A reader met "FALSE POSITIVE"
+     * before knowing which line was flagged or what the analyser had claimed about it.
+     *
+     * <p>Same reader as the page's, one formatting apart: this returns text an agent can paste into
+     * its account, and blank when there is no checkout to read, which is a different answer from a
+     * file with nothing in it.
+     */
+    static String flaggedText(Path checkouts, String repo, String file, String lineNumber) {
+        int want;
+        try {
+            want = Integer.parseInt(lineNumber.strip());
+        } catch (NumberFormatException noLine) {
+            return "";
+        }
+        String name = repo.substring(repo.lastIndexOf('/') + 1).replaceAll("\\.git$", "");
+        List<String> source;
+        try {
+            source = Files.readAllLines(checkouts.resolve(name).resolve(file));
+        } catch (IOException | RuntimeException noTree) {
+            return "";
+        }
+        if (source.isEmpty() || want < 1) {
+            return "";
+        }
+        StringBuilder b = new StringBuilder();
+        for (int n = Math.max(1, want - AROUND); n <= Math.min(source.size(), want + AROUND); n++) {
+            b.append(n == want ? " >> " : "    ").append(n).append("  ").append(source.get(n - 1))
+                    .append('\n');
+        }
+        return b.toString();
+    }
+
     private static String flagged(Path checkouts, String repo, String file, String lineNumber) {
         int want;
         try {
