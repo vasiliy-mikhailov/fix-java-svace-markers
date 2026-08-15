@@ -84,16 +84,20 @@ class TheVerdictAnswersToSomebodyTest {
         // An objection must be RAISED to bite. An unreachable verdict-critic must not be able to
         // turn a stated verdict into no verdict at all — that would make a dropped connection
         // settle markers.
-        Method m = Prove.class.getDeclaredMethod("reviewed", Agents.Agent.class,
-                Agents.Agent.class, String.class, String.class, String.class);
+        // THE HELPER CHANGED AND THE RULE DID NOT. `reviewed` was verifier-plus-doer; the chain is
+        // triples now and runs `planned`, which also asks a planner first. A dropped connection to
+        // the judge must still leave the answer standing in either shape — when this was rewritten
+        // the new helper let the exception escape, and it was this assertion that said so.
+        Method m = Prove.class.getDeclaredMethod("planned", Agents.Agent.class, Agents.Agent.class,
+                Agents.Agent.class, String.class, String.class);
         m.setAccessible(true);
         Agents.Agent dead = task -> {
             throw new RuntimeException("connection reset");
         };
-        Agents.Agent producer = task -> "should never be called";
-        String kept = (String) m.invoke(null, dead, producer, "the task", "by-design, because …",
-                "a reviewer said");
-        assertTrue(kept.startsWith("by-design"),
-                "the verdict stands when its critic cannot be reached: " + kept);
+        Agents.Agent planner = task -> "a plan";
+        Agents.Agent doer = task -> "by-design, because …";
+        String[] out = (String[]) m.invoke(null, planner, doer, dead, "the task", "");
+        assertTrue(out[1].startsWith("by-design"),
+                "the verdict stands when its critic cannot be reached: " + out[1]);
     }
 }

@@ -3,13 +3,13 @@
 A static analyser has produced a list of claims about a Java repository. Each claim — a **marker** —
 is one line, `repo|file|line|checker`, asserting a defect at that file and that line. This program
 decides them one at a time. A **prove** is one JVM against one marker: it clones the subject, hands
-ten language-model agents a fixed brief in an order written in Java, and tries to make the build
+fifteen language-model agents a fixed brief in an order written in Java, and tries to make the build
 contradict itself — a test that FAILS before a patch (**RED**) and PASSES after it (**GREEN**).
 Where that succeeds the marker is settled by execution and no model is asked what it means; where
 nothing could be executed an agent argues, and the record says plainly that nothing ran, so a reader
 can tell the two apart afterwards. A shell pool runs several proves at once over a queue of a few
-hundred markers, a supervisor pair watches the run and may restart or set aside a prove, an
-interpreter pair turns each finished lane into plain English, and a single-class dashboard serves
+hundred markers, a supervisor triple watches the run and may restart or set aside a prove, an
+interpreter triple turns each finished lane into plain English, and a single-class dashboard serves
 the whole record out of one shared volume. There is no database: the files are the record.
 
 Everything here is a contract. Where a rule looks over-elaborate, the paragraph under it names the
@@ -24,21 +24,21 @@ into the bug.
 | Chapter | Title | What it answers |
 |---|---|---|
 | [`01-purpose-and-proof.md`](01-purpose-and-proof.md) | Purpose, and the standard of proof | What a marker is, how its four fields are parsed and slugged, what RED and GREEN must demonstrate, the seven dispositions spelled exactly, how a judge's word becomes a state, and why `infra` is not one of them |
-| [`02-the-chain.md`](02-the-chain.md) | The chain: ten agents in a fixed order | The five producer/critic pairs, the exact order `Prove.run()` executes with every exit state, all eight loopbacks and their one-re-ask bounds, and which absence waives and which withholds |
+| [`02-the-chain.md`](02-the-chain.md) | The chain: fifteen agents in a fixed order | The five planner/doer/verifier triples, the exact order `Prove.run()` executes with every exit state, every loopback and its one-re-ask bound — `redo` back to the doer, `replan` past it to the planner — and which absence waives and which withholds |
 | [`03-the-build.md`](03-the-build.md) | The build is the arbiter | The three-outcome `Result`, the Maven and Gradle commands and the two different tests for "a test executed", who may run a build and who may not, JDK selection, and the 30-minute bound |
 | [`04-the-brief.md`](04-the-brief.md) | What a prove hands an agent | The one block of text prefixed to every prompt: the checker note, the `src/it` warning, numbered source, sibling tests, and the inadmissibility block on the two argued paths |
 | [`05-checker-notes.md`](05-checker-notes.md) | Checker notes | How a per-checker note is laid out, the exact sentences `Checkers` emits when the line does or does not hold the construct, what a good note must contain, and why a missing note is safe while a wrong one is invisible |
-| [`06-tools-and-the-fence.md`](06-tools-and-the-fence.md) | Tools, and who is allowed what | The tool sets, exactly which of the fifteen agents holds each and at which root, why the reproduce-doer writes and the fix-doer edits, and the two-layer credential fence |
+| [`06-tools-and-the-fence.md`](06-tools-and-the-fence.md) | Tools, and who is allowed what | The tool sets, exactly which of the twenty-two agents holds each and at which root, why the reproduce-doer writes and the fix-doer edits, why a planner only reads, and the two-layer credential fence |
 | [`07-the-model.md`](07-the-model.md) | Talking to the model | How a prove reaches the endpoint: the streamed model, patience versus ceiling, the reasoning-field mismatch and its three sources in trust order, every tunable with its clamp, and where the API key lives |
-| [`08-the-supervisor.md`](08-the-supervisor.md) | The supervisor | The run-level watcher pair: its counted digest, the `## Finding:` split, its two levers and their on-disk effects, the two-restart limit, and Pace's relative outlier rule |
-| [`09-the-lane-watch.md`](09-the-lane-watch.md) | The lane-level watch | How one settled lane becomes plain English: which lanes are selected, the counted-and-quoted digest, the `SHORT:` split rule for `summary.txt`, and the two places the short line is read |
+| [`08-the-supervisor.md`](08-the-supervisor.md) | The supervisor | The run-level watcher triple: its counted digest, the `## Finding:` split, its two levers and their on-disk effects, the two-restart limit, and Pace's relative outlier rule |
+| [`09-the-lane-watch.md`](09-the-lane-watch.md) | The lane-level watch | How one settled lane becomes plain English: which lanes are selected, the counted-and-quoted digest, the two-key JSON the account arrives as and the `SHORT:` fallback under it, how `summary.txt` is split, and the two places the short line is read |
 | [`10-the-chat.md`](10-the-chat.md) | Asking the supervisor | How a person's question about a run is answered by a read-only agent in the dashboard's process: the two log formats, the write order, the one-at-a-time flag, and the restarted-mid-answer case |
 | [`11-the-pool.md`](11-the-pool.md) | The pool, the queue and claims | Every entrypoint mode, the slice loop step by step, the claim as an atomic `mkdir` with the lifetime the gate-repealed-a-gate incident bought, the three-try bound, the sweep and the postponed pass |
 | [`12-the-record.md`](12-the-record.md) | The record on disk | The complete results volume: every file, who writes it, whether it is appended, overwritten, moved or deleted, the exact JSON shapes, the one escaper and the scanning reader that undoes it |
 | [`13-settings-as-data.md`](13-settings-as-data.md) | Settings as data | Why every setting is a file read per prove rather than an environment variable, then each one exactly — model, prompts, workers, subject, JDK — and the POST dispatch that saves them |
 | [`14-the-dashboard.md`](14-the-dashboard.md) | The dashboard | Every route and what it renders, the page skeleton and formats, the three live mechanisms, fold persistence, the escape-once rule, and the fact that the server authenticates nobody |
 | [`15-deployment.md`](15-deployment.md) | The image and the deploy | How the image is built (deepagents patched at source, five JDKs, non-root), what persists on the volumes and what dies with the container, every environment variable, and the two-step host deploy |
-| [`16-invariants-and-tests.md`](16-invariants-and-tests.md) | What the tests hold | The testing philosophy, the meta-rule that a check passing on both answers is not a check, all 33 JUnit classes and 2 shell scripts with the incident behind each, the pinned constants, and a table of asserted failure directions |
+| [`16-invariants-and-tests.md`](16-invariants-and-tests.md) | What the tests hold | The testing philosophy, the meta-rule that a check passing on both answers is not a check, the JUnit classes and the 2 shell scripts with the incident behind each, the pinned constants, and a table of asserted failure directions |
 
 Chapters 01–05 are the standard of proof and what an agent is told. 06–07 are what an agent can
 reach. 08–10 are the watchers. 11–15 are the machinery around a prove. 16 is what is nailed down.
@@ -87,7 +87,7 @@ branch that asked for it.** → [01](01-purpose-and-proof.md), [02](02-the-chain
 **A RED that passes has demonstrated nothing, and the agent told about it must be the one that can
 rewrite the test.** 16 of the 33 markers that reached a build had their first RED pass and 13 of them
 settled on it, every one argued from a build that showed nothing — because the fact was routed to the
-verdict agent, which cannot write a test, and never to the reproduce-doer, which can.
+argue-doer, which cannot write a test, and never to the reproduce-doer, which can.
 → [03](03-the-build.md), [01](01-purpose-and-proof.md)
 
 **Which test class is built comes from what the reproduce-doer WROTE, not from what it said** — the last
@@ -113,12 +113,12 @@ no build file throws by name rather than guessing Maven. `markers.txt` missing r
 [16](16-invariants-and-tests.md#failure-direction-asserted); the per-subsystem ones are at the end of
 most chapters.
 
-**The lane interpreter's silence WITHHOLDS.** If the interpreter-critic returns nothing, no
+**The lane interpreter's silence WITHHOLDS.** If the interpreter-verifier returns nothing, no
 `summary.txt` is written and the table falls back to the verdict's first sentence. Writing the
-producer's draft instead would publish an unreviewed account as the marker's summary.
+doer's draft instead would publish an unreviewed account as the marker's summary.
 → [09](09-the-lane-watch.md)
 
-**A run may not cite itself.** By the time the verdict agent reads the tree it holds this run's test
+**A run may not cite itself.** By the time the argue-doer reads the tree it holds this run's test
 and this run's patch; thirteen settlements rested on citing them. `git status --porcelain` is the
 line between ours and theirs, and its own failure direction is toward permitting — an empty
 inadmissible list, never an invented one. → [01](01-purpose-and-proof.md), [04](04-the-brief.md)
@@ -156,8 +156,9 @@ fi
 ```
 
 Every agent's file tools are rooted at one directory and can open nothing outside it — the results
-directory for the agents that read the record (`overwatch`, `overwatch-critic`, `chat`,
-`interpreter`, `interpreter-critic`), the checkout for the agents inside a prove. `/opt/agent/spec`
+directory for the agents that read the record (`overwatch-planner`, `overwatch-doer`,
+`overwatch-verifier`, `interpreter-planner`, `interpreter-doer`, `interpreter-verifier`, `chat`),
+the checkout for the agents inside a prove. `/opt/agent/spec`
 is outside every one of those roots, so the prompts name `spec/` relative to the root the agent has,
 and this file is named to the supervisor and to the chat agent as the index that says which chapter
 answers what — to be read before answering any question about how something is *supposed* to work,

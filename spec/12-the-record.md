@@ -126,8 +126,9 @@ another name), `feedback.jsonl`, `restarts.jsonl`, `overwatch.jsonl`, `chat.json
 are opened `CREATE, APPEND` and written one line at a time.
 
 **A prove appends, which is why a retry may not reuse a lane.** Retrying on top of the old trace
-makes one prove that changed its mind — two reproducers, two verdicts, no line between them — rather
-than two attempts with a line between them. So before a marker is proved again the lane is *moved*:
+makes one prove that changed its mind — two reproductions, two verdicts, no line between them —
+rather than two attempts with a line between them. So before a marker is proved again the lane is
+*moved*:
 
 | Who | Where it goes | Counted by |
 | --- | --- | --- |
@@ -208,8 +209,12 @@ are looking at.
 - `infra`, `passed`, `red`, `green` are the strings `"true"`/`"false"` — **quoted**, unlike the
   booleans in a settlement row. A rebuilder must not "fix" one to match the other; readers of each
   file were written against what that file holds.
-- `agent` is the bare agent name (`reproduce-doer`, `fix-verifier`, `verdict`, …). The runtime is given
-  `"agent:" + name` for its own purposes; that string does not reach the trace.
+- `agent` is the bare agent name (`reproduce-planner`, `fix-doer`, `argue-verifier`, …), one of the
+  twenty-two in `Agents.ORDER`. The runtime is given `"agent:" + name` for its own purposes; that
+  string does not reach the trace. **A row written before an agent was renamed keeps the old name** —
+  `reproducer`, `fixer`, `verdict`, `estimator`, `pr-maker`, and the `-critic` and `-skeptic` judges —
+  and nothing rewrites it, because the trace is evidence. The marker page appends any agent it does
+  not recognise, so those rows still render.
 - `prompt` on an `asked` row is the whole thing: the agent's system prompt, then `\n\n---\n\n`, then
   the task. **In full, both of them.** Truncating here would save disk and cost the corpus: prompt
   tuning replays a recorded `(prompt, reply)` pair and scores the reply, so a trace that abbreviates
@@ -443,7 +448,7 @@ the reader was on.
   prompt and the reply are carried in full and nothing has to go back to the trace to use the row.
 - **It points at one event, not at a marker.** Prompt tuning optimises ONE agent's prompt, so a
   complaint filed against a whole prove cannot be attributed: a marker that settled badly may have
-  had a fine reproduce-doer and a careless skeptic.
+  had a sound plan, a fine reproduce-doer and a careless fix-verifier.
 - **`prompt` and `reply` are carried in full, not referenced.** A row here is a complete training
   example, so a tuning run needs this file and nothing else. Keeping only an index would make the
   corpus depend on a trace that is rotated, regenerated from a re-run, or simply larger than anyone
@@ -459,12 +464,17 @@ the reader was on.
 enforces the limit of two per marker:
 
 ```json
-{"at":"…","id":"<slug>","marker":"<key>","attempt":"2","killed":"true","why":"…"}
+{"at":"…","id":"<slug>","marker":"<key>","attempt":"2","killed":"true","by":"supervisor","why":"…"}
 ```
 
 All values quoted, including `attempt` and `killed`. Only `marker` and `why` go through the escaper;
-`id` is already a slug and the other two are a number and a boolean rendered as text. The count is
-`id` matched exactly, so a rebuilder must write the slug here and not the key.
+`id` is already a slug, and the rest are a number, a boolean and a fixed word rendered as text. The
+count is `id` matched exactly, so a rebuilder must write the slug here and not the key.
+
+**`by` is `supervisor` or `person`, and the limit counts only the first.** A person's press of the
+dashboard's button must not spend `overwatch-verifier`'s two, and **a line with no `by` counts as the
+supervisor's** — a log written before the field existed must not retroactively lift the limit on
+markers already restarted twice.
 
 **The count is read from the file rather than
 held in memory, because the supervisor is restarted too.** If the file cannot be read the reader
@@ -474,15 +484,23 @@ file lift the limit is the one direction this must not fail in. Both `IOExceptio
 file throws from inside `count()`, and catching only the checked one let an unreadable log read as
 zero restarts and lift the limit entirely.
 
-**`overwatch.jsonl`** — one line per finding the watcher raised and what its critic made of it:
+**`overwatch.jsonl`** — one line per finding `overwatch-doer` raised and what `overwatch-verifier`
+made of it:
 
 ```json
 {"at":"…","verdict":"holds|refuted|unjudged","finding":"…","judgement":"…"}
 ```
 
 `verdict` is `refuted` if the judgement contains that word, `holds` otherwise, and **`unjudged` when
-the critic answered nothing** — a finding the critic never judges still reaches the record, so an
-unreachable critic cannot suppress a warning.
+the verifier answered nothing** — a finding the verifier never judges still reaches the record, so an
+unreachable verifier cannot suppress a warning. **Three verdicts in the file and three words above it,
+and they are not the same three**: the verifier may answer `holds`, `refuted` or `duplicate`, and
+`duplicate` — this pattern is already here and its count has not moved — is deliberately not a
+refutation, so the line reads `holds` and the word survives only in the judgement.
+
+**It is the watch's only memory.** `overwatch-planner` reads it, and `restarts.jsonl` beside it,
+before every pass, to say what must not be raised again: the loop wakes every fifteen minutes over a
+run that lasts hours and nothing in the process carries across.
 
 **`chat.jsonl`** — the conversation, oldest first:
 
@@ -497,8 +515,8 @@ answer under it and say so. Every way the answer can fail — including a thrown
 as an empty conversation rather than an error page.
 
 **`m/<id>/summary.txt`** — the interpreter's account of one lane, written once, only for a lane that
-has settled, and only if a second agent checked it. Two lengths in one file, split where it is
-written rather than where it is read:
+has settled, and only after `interpreter-verifier` has read it against the record. Two lengths in one
+file, split where it is written rather than where it is read:
 
 ```
 <one short sentence for the table>
@@ -507,18 +525,22 @@ written rather than where it is read:
 ```
 
 Readers split on the first blank line — first paragraph short, the rest full, and a file with no
-blank line in it is both. Parsing here means the dashboard never sees the `SHORT:` label the critic
-was asked for, so a critic that forgets the shape cannot leak an instruction onto the page.
+blank line in it is both. Parsing here means the dashboard never sees the `{"short": …, "full": …}`
+object the agent was asked for, nor the older `SHORT:` label, so one that forgets the shape cannot
+leak an instruction onto the page.
 
-The writer finds that label by scanning the critic's answer **from the last line backwards**, not the
-first: a model asked for a shape sometimes delivers it twice — once as a rehearsal and once for real
-— and splitting on the first occurrence put the second copy inside the long form, so the account
-opened by repeating the line the reader had just read in the table. Absent any `SHORT:`, the short
-form is everything up to the first `". "`. A paragraph of the full account identical to the short
-form is dropped for the same reason.
+**The keys are JSON because a label is a word and words get translated.** A Russian prompt produced
+`КРАТКОЕ ИЗЛОЖЕНИЕ:`, no `SHORT:` was found, and the whole first sentence — label and all — became
+the line in the table and stayed duplicated below it. A JSON key does not get translated with the
+rest of the answer. The label reader stays as a fallback, and finds its label by scanning **from the
+last line backwards**, not the first: a model asked for a shape sometimes delivers it twice, once as
+a rehearsal and once for real, and splitting on the first occurrence put the second copy inside the
+long form. Absent both shapes, the short form is everything up to the first `". "`, with a leading
+short colon-terminated opener stripped as a label in whatever script it was written in. A paragraph
+of the full account identical to the short form is dropped for the same reason.
 
-**Silence withholds**: if the critic returns nothing, no file is written and the table falls back to
-the verdict's own words, which are at least demonstrably somebody's rather than an account nothing
+**Silence withholds**: if the verifier returns nothing, no file is written and the table falls back to
+the settlement's own words, which are at least demonstrably somebody's rather than an account nothing
 checked.
 
 **`m/<id>/slice.log`** — the shell's, not Java's: the `=== [n] <marker>` header, any worktree failure,
@@ -540,7 +562,7 @@ every marker whose prove threw was retired by the very gate that exists to stop 
 The converse holds for readers: **claimed is not running.** A release is an `rm -rf` after a JVM
 exits and the watcher reads on a timer, so the two overlap; reading a claim as proof of a running
 prove had the watcher reporting settled markers as stalled for a thousand minutes, twice, with its
-critic correctly refuting the finding both times.
+judge correctly refuting the finding both times.
 
 **`postponed/<id>`** — a file whose content is the reason and whose *existence* is the flag. Deleting
 it is how a marker is resumed; there is nothing else to resume, because a prove is a JVM
@@ -677,6 +699,8 @@ A rebuilder who gets one of these backwards will not see it fail.
 | the live file | reads as **nothing yet** | it is a view; it may never decide anything |
 | a trace write that throws | **prove continues**, stderr line | a lost trace must not cost a settlement |
 | a journal write that throws | **prove continues**, stderr line | and must not replace the failure it records |
-| the interpreter's critic answering nothing | **no `summary.txt`** | silence withholds; the record is the fallback |
-| the watcher's critic answering nothing | **finding recorded `unjudged`** | silence must not suppress a warning |
-| the watcher's critic ordering nothing | **no restart** | silence must not kill anything either |
+| `interpreter-verifier` answering nothing | **no `summary.txt`** | silence withholds; the record is the fallback |
+| `interpreter-planner` answering nothing | **no `summary.txt`**, and no draft written from a sheet nobody established | a lane skipped beats a summary guessed |
+| `overwatch-verifier` answering nothing | **finding recorded `unjudged`** | silence must not suppress a warning |
+| `overwatch-verifier` ordering nothing | **no restart** | silence must not kill anything either |
+| `overwatch-planner` answering nothing | **nothing read, nothing recorded** | an unscoped pass re-reports what already holds |

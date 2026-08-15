@@ -180,6 +180,7 @@ final class ApiSettings {
             // because the alternative is an agent running with no instructions and answering
             // something anyway.
             b.append(",\"saved\":").append(quote(saved));
+            b.append(",\"staked\":").append(!Agents.staked(agent).isBlank());
             // What this agent is really being told, so an edit starts from the truth.
             b.append(",\"effective\":").append(quote(effective));
             // An override file exists and is not blank. Note this is NOT the same question as
@@ -195,7 +196,12 @@ final class ApiSettings {
             b.append(",\"differs\":").append(!Prompts.same(effective, builtIn));
             b.append('}');
         }
-        return b.append(']').toString();
+        // AN OBJECT, NOT A BARE ARRAY, because the page has to show two things: the prompts, and
+        // the paragraph prepended to the ones that judge the subject's code. Sending only the rows
+        // would leave that paragraph invisible — and "a prompt half from the code and half from a
+        // box is a prompt nobody can read in one place" is this page's own rule.
+        return "{\"preamble\":" + quote(Agents.STAKES.strip())
+                + ",\"rows\":" + b.append(']') + "}";
     }
 
     /**

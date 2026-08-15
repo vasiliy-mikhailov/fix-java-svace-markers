@@ -1000,6 +1000,50 @@ final class Agents {
      * <p>The listener catches the tool calls the library makes; the wrapper catches the pair the
      * library truncates. Both go to the same instance, so one file holds a run in one order.
      */
+    /**
+     * WHAT THE ANSWER IS FOR, said to every agent that judges the subject's code.
+     *
+     * <p>These agents were being asked to classify a static-analysis marker, and a marker is a
+     * puzzle: it has a tidy answer and no consequences. The thing it is actually about does have
+     * consequences, and nothing in any prompt said so — so an agent with a thin argument had no
+     * reason not to round it up into a word, because the word was the deliverable and nothing
+     * downstream was going to be harmed by it being wrong.
+     *
+     * <p>It is prepended rather than written into each prompt for two reasons. Fifteen copies of a
+     * paragraph drift, which is the fault this file has been bitten by three times in a week. And an
+     * edit on the settings page REPLACES a prompt entirely — so a framing that lived inside one could
+     * be deleted by somebody improving the sentence below it, without noticing they had.
+     *
+     * <p>The page shows it above the boxes, because a prompt half from the code and half from a box
+     * is a prompt nobody can read in one place, and that rule is the page's own.
+     *
+     * <p>NOT GIVEN TO THE WATCHERS. {@code overwatch} judges this pipeline, not the subject, and
+     * telling it that its answer ships to production is simply false — an agent given a stake it
+     * does not have reasons about the wrong thing.
+     */
+    static final String STAKES = """
+            The code in front of you runs on a production server reachable from the internet, and \
+            what you answer decides whether it stays as it is.
+
+            Nobody re-derives this after you. Call a real defect a false positive and it ships, \
+            reachable, with a note on the record saying somebody checked. Call a deliberate design a \
+            defect and a person spends a day removing a guard that was doing its job — and reads the \
+            next thing this pipeline says with less trust than they read this one.
+
+            So support what you say from what is actually in front of you, say plainly where you \
+            could not establish something rather than filling the gap, and do not round an argument \
+            up into a certainty because a settlement wants one word. "I could not tell, and here is \
+            what would settle it" is a real answer and is worth more than a confident wrong one.
+
+            ---
+
+            """;
+
+    /** {@link #STAKES} for the agents that judge the subject's code, and nothing for the watchers. */
+    static String staked(String agent) {
+        return CHAIN.contains(agent) || agent.startsWith("interpreter-") ? STAKES : "";
+    }
+
     private Agent runtime(String name, java.util.Map<dev.langchain4j.agent.tool.ToolSpecification,
             dev.langchain4j.service.tool.ToolExecutor> tools, String builtIn) {
         // THE PROMPT IS DATA NOW, and the text block above is its default. Read here rather than
@@ -1009,7 +1053,10 @@ final class Agents {
         // dashboard has no endpoint of its own and reading what an agent is told is not a thing
         // that should require one to be reachable.
         BUILT_IN.put(name, builtIn);
-        String prompt = Prompts.effective(name, builtIn);
+        // THE EDITABLE PROMPT IS WHAT THE PAGE SHOWS AND WHAT AN EDIT REPLACES. The stakes are
+        // prepended after that, so they survive an edit and a revert and cannot be deleted by
+        // somebody rewriting the paragraph under them.
+        String prompt = staked(name) + Prompts.effective(name, builtIn);
         SubAgentRuntime runtime = new SubAgentRuntime(Prove.model(name, trace), prompt, tools,
                 "agent:" + name,
                 ToolInvocationLogMode.NONE, trace);

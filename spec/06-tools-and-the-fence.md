@@ -92,34 +92,44 @@ runtime is built with, or a reader cannot tell which agent made which call.
 
 ## Who gets what
 
-Fifteen agents are constructed in this program — `Agents.CHAIN`'s ten inside a prove, `Agents.WATCH`'s
-four watching a run from outside one, `Agents.ASKED`'s one that speaks only when a person asks it
-something. Eleven get `reading`, one gets `asking`, one gets `writing`, one gets `patching`, one gets
-`supervising`.
+Twenty-two agents are constructed in this program — `Agents.CHAIN`'s fifteen inside a prove,
+`Agents.WATCH`'s six watching a run from outside one, `Agents.ASKED`'s one that speaks only when a
+person asks it something. Eighteen get `reading`, one gets `asking`, one gets `writing`, one gets
+`patching`, one gets `supervising`.
 
 | Agent | Set | Root |
 |---|---|---|
+| `reproduce-planner` | `reading` | checkout |
 | `reproduce-doer` | `writing` | checkout |
 | `reproduce-verifier` | `reading` | checkout |
+| `fix-planner` | `reading` | checkout |
 | `fix-doer` | `patching` | checkout |
 | `fix-verifier` | `reading` | checkout |
+| `propose-planner` | `reading` | checkout |
 | `propose-doer` | `reading` | checkout |
 | `propose-verifier` | `reading` | checkout |
-| `verdict` | `reading` | checkout |
+| `argue-planner` | `reading` | checkout |
+| `argue-doer` | `reading` | checkout |
 | `argue-verifier` | `reading` | checkout |
-| `estimator` | `reading` | checkout |
+| `price-planner` | `reading` | checkout |
+| `price-doer` | `reading` | checkout |
 | `price-verifier` | `reading` | checkout |
-| `overwatch` | `reading` | `results` |
-| `overwatch-critic` | `supervising` | `results` |
-| `interpreter` | `reading` | `results` |
-| `interpreter-critic` | `reading` | `results` |
+| `overwatch-planner` | `reading` | `results` |
+| `overwatch-doer` | `reading` | `results` |
+| `overwatch-verifier` | `supervising` | `results` |
+| `interpreter-planner` | `reading` | `results` |
+| `interpreter-doer` | `reading` | `results` |
+| `interpreter-verifier` | `reading` | `results` |
 | `chat` | `asking` | `results` |
 
-**Exactly two agents can change a file, and the seven `-critic` judges are not among them.** A judge
-that cannot write cannot edit the thing it is certifying; a critic that cannot run the build cannot
-manufacture the evidence it is judging. That is the whole reason the split exists — not tidiness.
+**Exactly two agents can change a file, and neither the seven `-verifier` judges nor the five
+planners are among them.** A judge that cannot write cannot edit the thing it is certifying; a judge
+that cannot run the build cannot manufacture the evidence it is judging. **A planner reads and never
+writes** for the same reason one step earlier: a plan that can edit its subject is a plan that can
+arrange for itself to be satisfiable. That is the whole reason the split exists — not tidiness.
 
-The watchers (`overwatch`, `overwatch-critic`, `interpreter`, `interpreter-critic`, `chat`) are
+The watchers (`overwatch-planner`, `overwatch-doer`, `overwatch-verifier`, `interpreter-planner`,
+`interpreter-doer`, `interpreter-verifier`, `chat`) are
 rooted at `results` rather than a checkout because **their evidence is traces, not source.** Both
 processes that construct them hand `Agents` a `Runner` that cannot build anything — named in
 `Overwatch.main`, written inline in `Chat.answer`, identical text either way:
@@ -188,9 +198,9 @@ judge has to catch in prose.** The tool map catches it instead — the call is n
 
 ---
 
-## `run_test`, and why only producers have it
+## `run_test`, and why only the doers that make something have it
 
-**No judge gets the runner, and both producers do.**
+**No judge and no planner gets the runner, and the two doers that make something do.**
 
 ```java
 ToolSpecification.builder()
@@ -207,11 +217,11 @@ ToolSpecification.builder()
 ```
 
 The rule it protects is that **a certification must not manufacture the evidence it certifies** — not
-that a producer should work blind. A reproduce-doer that can run what it wrote finds its own compile
+that a doer should work blind. A reproduce-doer that can run what it wrote finds its own compile
 error in seconds instead of spending a round trip through the chain to be told; the same for a fix-doer
 whose patch does not build.
 
-**The invariant is unchanged by giving producers a runner: the RED and GREEN that COUNT are the ones
+**The invariant is unchanged by giving the doers a runner: the RED and GREEN that COUNT are the ones
 `Prove` runs between stages.** Three things keep that true and a rebuilder must keep all three:
 
 - `run_test` calls `runner.run("check", …)`. The phase is `check`, not `red` or `green`.
@@ -220,7 +230,7 @@ whose patch does not build.
   only as a `tool` entry.
 - The reproduce-doer cannot edit source, so it cannot make its own test pass by changing the subject.
 
-What a producer learns from its own run is feedback, not evidence.
+What a doer learns from its own run is feedback, not evidence.
 
 ### The reply format, and the word that means its opposite
 
@@ -247,7 +257,7 @@ is an infra result (`check: no test class was named, so nothing ran`) and reads 
 **"PASSED" means its opposite here, and the word reached the agent bare.** A reproduce-doer reading
 `PASSED` after running the test it just wrote reads success; what happened is that its test is green
 on the defect. Told at the moment it happens, the agent can still fix it — a round trip later, only
-the verdict agent hears, and the verdict agent cannot rewrite a test. `Prove.GREEN_RED` is shared
+the argue-doer hears, and the argue-doer cannot rewrite a test. `Prove.GREEN_RED` is shared
 between this tool and the chain's re-ask so the agent is told the same thing at the same moment
 however it found out. The bare word still leads the line, so anything matching on `PASSED` keeps
 working, with its meaning attached.
@@ -434,7 +444,9 @@ computes it before any cap; the tool description and the prompt only get the mod
 > the trace is tens of thousands of characters and this is the part that answers most questions.
 
 **It returns the LANE INTERPRETER'S summary, not the trace**, and names the trace path for what the
-summary does not answer. The summary is already written and already judged by its critic; handing
+summary does not answer. The summary is already written and already judged by the
+`interpreter-verifier` — the header `Registry.one` prints still spells that judge `critic`, and it is
+quoted below exactly as the code writes it. Handing
 over the trace instead would be handing over sixty thousand characters to answer "what happened to
 this one", against a tool budget of 25 calls and a context that has to hold the digest as well.
 
@@ -518,7 +530,7 @@ the cap announces itself — not the ones asserting the tool returns something.
 
 ## The supervising set: the only agent that may act
 
-`overwatch-critic` is the only agent in this program that can act on the run rather than describe it,
+`overwatch-verifier` is the only agent in this program that can act on the run rather than describe it,
 and the only one whose subject is the other agents. `supervising` builds the same four read-only
 tools over `results` that `reading` would — it calls `only(results, {list_dir, read_file})` itself
 rather than delegating — and `putAll`s two levers on top.
@@ -575,12 +587,12 @@ would be a limit that dies with the JVM that built it.
 
 ### Why `chat` does not get these
 
-`chat` has the same subject as `overwatch` and read-only tools only, and the difference is the
-failure direction. **`overwatch-critic`'s silence REFUSES TO ACT**, in both of the ways an agent can
-be silent: an EMPTY answer is written to `overwatch.jsonl` with `verdict` `unjudged`, so a finding
-the critic did not judge still reaches the record instead of being suppressed; a THROW is caught by
-the loop in `Overwatch.main`, which records `trace.failed` and costs that pass. **Neither absence can
-produce an action** — a restart the critic never orders does not happen.
+`chat` has the same subject as the overwatch triple and read-only tools only, and the difference is
+the failure direction. **`overwatch-verifier`'s silence REFUSES TO ACT**, in both of the ways an
+agent can be silent: an EMPTY answer is written to `overwatch.jsonl` with `verdict` `unjudged`, so a
+finding the judge did not judge still reaches the record instead of being suppressed; a THROW is
+caught by the loop in `Overwatch.main`, which records `trace.failed` and costs that pass. **Neither
+absence can produce an action** — a restart the verifier never orders does not happen.
 
 A question box holding the same tools fails the other way. *"What's happening with
 LessonMenuService?"* is a question, and it must not be able to end as a killed prove because the
@@ -630,7 +642,7 @@ agent a fresh allowance on every marker it had already restarted twice.
 
 This was wrong until it was fixed, and the shape of the mistake is worth keeping. The guard counted
 every line with the id, whoever wrote it, so **two presses of the dashboard button spent
-`overwatch-critic`'s whole allowance on a marker it had never touched** — and the agent was then
+`overwatch-verifier`'s whole allowance on a marker it had never touched** — and the agent was then
 refused with a message about a limit it never used. Nothing reported it: a limit is only felt when the
 agent next tries to act, and by then the refusal reads as an agent that has had its turns. Both the
 route's comment and this chapter's earlier draft described the intended behaviour, which is exactly
@@ -859,10 +871,10 @@ reason: refusing the whole thing takes down more than it saves.
 | a built-in whose name moved | `IllegalStateException` at construction, before any model call | a stripped capability must not be discoverable only from a run that proved nothing |
 | the credential guard | present, it over-refuses harmless arguments and never reveals; removed, or a tool added outside `only(...)`, and the API key reaches the agent, `chat.jsonl` and the page | a mask a second route walks around is not a mask |
 | `recorded` wrapped INSIDE the guard rather than outside | the agent sees `(hidden)` and the trace holds the key | the record is the thing the watchers read; it must not be the leak |
-| `run_test` | a producer works blind and pays a round trip for a compile error | it is feedback; the deciding builds are `Prove`'s |
+| `run_test` | a doer works blind and pays a round trip for a compile error | it is feedback; the deciding builds are `Prove`'s |
 | the watchers' stub `Runner` | with `infra=false, passed=true` it would certify every build it never ran | a supervisor that can run tests can manufacture the evidence it supervises |
 | `ToolInvocationLogMode.NONE` read as "no listener callback" | `testWritten` stays empty, the runner is told no test was named, **and it reports infra for a file sitting on disk** | nothing fails loudly; the prove just proves nothing |
 | `list_markers` / `marker_record` | the chat counts with `grep` instead and reports **a floor as a total** — "at least 60" for a queue of 356 | a search tool is the wrong instrument for a count, and no prompt makes it the right one |
-| `restart_prove` / `postpone_prove` | `overwatch-critic` cannot act; **nothing is killed** | an unreachable critic must not be able to authorise a kill |
+| `restart_prove` / `postpone_prove` | `overwatch-verifier` cannot act; **nothing is killed** | an unreachable judge must not be able to authorise a kill |
 | the same two on `chat` | never granted | a question must not be able to end as a killed prove |
 | `restarts.jsonl` unreadable | counted as `LIMIT`, so the restart is **refused** | a log that cannot be read is not a licence |

@@ -440,14 +440,30 @@ final class Tools {
     }
 
     /** Bounded like {@link #search}: a pattern matching everything must not return the repository. */
+    /**
+     * THE MATCHER A GLOB NAMES, and there is one of these because there were two.
+     *
+     * <p>{@code glob} built a real {@link java.nio.file.PathMatcher}; {@code grep} rolled its own by
+     * swapping {@code *} for {@code .*} and matching the result against the bare FILE NAME. So the
+     * same glob meant different things to the two tools that take one, and the second meaning was
+     * unsatisfiable: {@code String.matches} is a full match, so {@code **}{@code /*.java} became a
+     * regex requiring a {@code /} inside a filename, which no file has.
+     *
+     * <p>Anchored with {@code **}{@code /} unless it is already rooted, so {@code *.java} keeps
+     * meaning "any java file anywhere" — which is what it meant before, and what the agents write.
+     */
+    private static java.nio.file.PathMatcher globMatcher(Path root, String glob) {
+        return root.getFileSystem().getPathMatcher("glob:"
+                + (glob.startsWith("**") || glob.startsWith("/") ? glob : "**/" + glob));
+    }
+
     private static String matching(Path root, String pattern) {
         if (pattern.isBlank()) {
             return "no pattern given";
         }
         java.nio.file.PathMatcher matcher;
         try {
-            matcher = root.getFileSystem().getPathMatcher("glob:"
-                    + (pattern.startsWith("**") || pattern.startsWith("/") ? pattern : "**/" + pattern));
+            matcher = globMatcher(root, pattern);
         } catch (IllegalArgumentException badPattern) {
             return "not a glob: " + badPattern.getMessage();
         }
@@ -486,18 +502,33 @@ final class Tools {
         } catch (PatternSyntaxException e) {
             re = Pattern.compile(Pattern.quote(pattern));
         }
+        // THE GLOB IS A PATH MATCHER, THE SAME ONE `glob` USES. It used to be a regex built by
+        // swapping `*` for `.*` and matched against the bare file name, so any path-shaped glob —
+        // `**/*.java`, `src/it/**`, a full relative path, all of which an agent naturally writes —
+        // excluded every file in the tree. Across the traces of one run, 28 of 29 grep calls passed
+        // a path-shaped glob and every one of them came back empty, on files that demonstrably held
+        // the pattern. One doer repeated a byte-identical search four times.
+        java.nio.file.PathMatcher only = null;
+        if (!glob.isBlank()) {
+            try {
+                only = globMatcher(root, glob);
+            } catch (IllegalArgumentException badPattern) {
+                return "not a glob: " + badPattern.getMessage();
+            }
+        }
         StringBuilder hits = new StringBuilder();
         int found = 0;
+        int looked = 0;
         try (var files = Files.walk(root)) {
             for (Path f : files.filter(Files::isRegularFile).toList()) {
                 if (found >= 60) {
                     hits.append("… more matches suppressed; narrow the pattern\n");
                     break;
                 }
-                String name = f.getFileName().toString();
-                if (!glob.isBlank() && !name.matches(glob.replace(".", "\\.").replace("*", ".*"))) {
+                if (only != null && !(only.matches(root.relativize(f)) || only.matches(f))) {
                     continue;
                 }
+                looked++;
                 if (f.toString().contains("/.git/") || f.toString().contains("/target/")) {
                     continue;
                 }
@@ -519,6 +550,14 @@ final class Tools {
             }
         } catch (IOException e) {
             return "search failed: " + e.getMessage();
+        }
+        // TWO OUTCOMES, TWO ANSWERS. "the filter matched no files" and "the files hold nothing" were
+        // the same string, and that is what let a doer loop: it read "no matches", concluded the
+        // symbol was absent, and searched again for something else with the same broken glob. A tool
+        // that cannot say which of the two happened cannot be debugged by the agent using it.
+        if (only != null && looked == 0) {
+            return "no file matched glob " + glob + " (nothing was searched; the pattern was not "
+                    + "looked for). Try a wider glob, or none.";
         }
         return found == 0 ? "no matches" : hits.toString();
     }

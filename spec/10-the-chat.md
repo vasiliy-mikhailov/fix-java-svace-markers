@@ -1,10 +1,11 @@
 # 10. Asking the supervisor
 
 A **prove** is one JVM proving one **marker** (`repo|file|line|checker`), and it can see nothing but
-its own marker. The **watcher** — the `overwatch` agent — is the one thing that sees the whole run;
-it wakes on a timer, reads a **digest** (counts computed from every started marker's trace, never a
-model's summary of them), reports patterns, and sleeps. A **turn** is one thing said by one side of
-a conversation. A **disposition** is the settled state of a marker.
+its own marker. The **watcher** — the `overwatch-planner` / `overwatch-doer` / `overwatch-verifier`
+triple — is the one thing that sees the whole run; it wakes on a timer, reads a **digest** (counts
+computed from every started marker's trace, never a model's summary of them), reports patterns, and
+sleeps. A **turn** is one thing said by one side of a conversation. A **disposition** is the settled
+state of a marker.
 
 This chapter is the conversation: a person types a question on the dashboard, and an agent with the
 watcher's subject and the watcher's view of the run answers it, in the dashboard's process, with
@@ -48,7 +49,7 @@ reply, and — in the file's own words — *a conversation with a fifteen-minute
 
 So the answer is produced **here**, in the dashboard's own process, by an agent with a prompt of its
 own, over the same digest, with the watcher's read-only tools and two more that are also read-only.
-(The code's javadoc says "the same prompt"; `Agents.chat` and `Agents.overwatch` have separate
+(The code's javadoc says "the same prompt"; `Agents.chat` and each of the watch's three have separate
 built-ins, and the difference between them is the last section of this chapter.)
 
 **Nothing is shared with the watcher but the results directory**, which is what both of them are
@@ -92,9 +93,10 @@ assertEquals(List.of("glob", "grep", "list_dir", "list_markers", "marker_record"
 and then asserts that none of `restart_prove`, `postpone_prove`, `write_file`, `edit_file`,
 `run_test` is among them — *the introspection is additive; the fence is unchanged.*
 
-**`chat` is the only agent that gets `asking`.** `overwatch`, the interpreter pair and every judge
-get `reading`'s four; the reproduce-doer gets `writing` and the fix-doer `patching`; `overwatch-critic`
-gets `supervising`. Three separate refusals stack on this one.
+**`chat` is the only agent that gets `asking`.** `overwatch-planner`, `overwatch-doer`, the
+interpreter triple and every judge get `reading`'s four; the reproduce-doer gets `writing` and the
+fix-doer `patching`; `overwatch-verifier` gets `supervising`. Three separate refusals stack on this
+one.
 
 `only` counts what it kept and **throws `IllegalStateException` at construction if it is not
 `names.size() + 2`**:
@@ -109,8 +111,8 @@ for a tool that does not exist does not fall back, it throws and the prove ends.
 lost that way: one to grep before this had one, one to glob after a prompt sentence was written to
 talk a model out of wanting it.*
 
-**1. No actions.** `restart_prove` and `postpone_prove` belong to `overwatch-critic` and to nothing
-else, because that agent's **silence refuses to act** — an unreachable critic cannot authorise a
+**1. No actions.** `restart_prove` and `postpone_prove` belong to `overwatch-verifier` and to nothing
+else, because that agent's **silence refuses to act** — an unreachable verifier cannot authorise a
 kill. A chat box holding the same tools routes around that:
 
 > "what's happening with LessonMenuService?" is a question, and it must not be able to end as a
@@ -135,8 +137,8 @@ restart button is conditional.
 `POST /reprove` takes `marker` and `why`, calls
 `new Supervisor(here, …).reprove(marker, why)` — `why` defaults to `no reason given` — and redirects
 303 to `/marker?k=<enc(marker)>&a=prompts`. **A restart ordered from the page is not counted against
-`overwatch-critic`'s two per marker**, because somebody who has read the page and pressed a button is
-making a decision rather than looping.
+`overwatch-verifier`'s two per marker**, because somebody who has read the page and pressed a button
+is making a decision rather than looping.
 
 **2. No build.** The `Agents` instance is constructed with a `Runner` that refuses, in the same
 words the supervisor's own runner uses:
@@ -306,8 +308,8 @@ a trace — the trace is tens of thousands of characters and this is the part th
 questions."* `marker` is the only required parameter of either tool.
 
 **It returns the LANE INTERPRETER'S summary, not the trace** (chapter 9): text already written and
-already passed by `interpreter-critic`, since `Interpreter` writes `summary.txt` only from the
-critic's checked version. *Handing over the trace instead would spend sixty thousand characters
+already passed by `interpreter-verifier`, since `Interpreter` writes `summary.txt` only from the
+verifier's checked reply. *Handing over the trace instead would spend sixty thousand characters
 answering "what happened to this one".* The record ends by **naming the trace path for what the
 summary does not answer**:
 
@@ -920,20 +922,27 @@ arriving.*
 
 ## Where `chat` sits among the agents
 
-There are **fifteen prompts**: `CHAIN`'s ten, `WATCH`'s four, `ASKED`'s one.
+There are **twenty-two prompts**: `CHAIN`'s fifteen, `WATCH`'s six, `ASKED`'s one.
 
-`Agents.ASKED = List.of("chat")` — its own list, after `CHAIN` (the ten that run inside a prove:
-`reproduce-doer`, `reproduce-verifier`, `fix-doer`, `fix-verifier`, `propose-doer`, `propose-verifier`, `verdict`,
-`argue-verifier`, `estimator`, `price-verifier`) and `WATCH` (`overwatch`, `overwatch-critic`,
-`interpreter`, `interpreter-critic`). `ORDER` is `CHAIN`, then `WATCH`, then `ASKED`, flattened —
-so `chat` is last, and the comment says why: **the one that speaks only when spoken to. Last, because
-it runs on nobody's schedule.**
+`Agents.ASKED = List.of("chat")` — its own list, after `CHAIN` (the fifteen that run inside a prove,
+five planner/doer/verifier triples in the order `Prove` calls them: `reproduce-planner`,
+`reproduce-doer`, `reproduce-verifier`, `fix-planner`, `fix-doer`, `fix-verifier`, `propose-planner`,
+`propose-doer`, `propose-verifier`, `argue-planner`, `argue-doer`, `argue-verifier`, `price-planner`,
+`price-doer`, `price-verifier`) and `WATCH` (`overwatch-planner`, `overwatch-doer`,
+`overwatch-verifier`, `interpreter-planner`, `interpreter-doer`, `interpreter-verifier`). `ORDER` is
+`CHAIN`, then `WATCH`, then `ASKED`, flattened — so `chat` is last, and the comment says why: **the
+one that speaks only when spoken to. Last, because it runs on nobody's schedule.**
+
+**`chat` is the only agent in `ASKED`, and the only one in the program that is asked rather than
+scheduled.** Everything else either runs inside a prove or watches one from outside; this one waits.
 
 That ordering is what the prompts page renders in — *pipeline order, not the hash's: a page of
-prompts sorted alphabetically puts `price-verifier` first and `reproduce-doer` eleventh, which is the
+prompts sorted alphabetically puts `argue-doer` first and `reproduce-doer` twentieth, which is the
 reverse of how anybody thinks about this.* It is one list rather than three because **three copies of
 an order drift and the drift is invisible**: *the marker tabs were missing `argue-verifier` entirely,
-so an agent that can send a settlement back for rework had no page of its own and nobody noticed.*
+so an agent that can send a settlement back for rework had no page of its own and nobody noticed —
+and the same list typed a second time still held `overwatch-critic` after that agent stopped
+existing, so its per-agent view matched nothing at all.*
 
 `chat`'s built-in prompt reaches the editor the same way every other one does. `Agents.builtIn`
 constructs each runtime purely to collect its text, `runtime()` records the built-in **before**
@@ -951,8 +960,10 @@ The two extra tools follow from that difference rather than contradicting it. **
 what to report and reports it from its digest; an asked agent is handed a question that may be about
 anything, including the part of the run the digest does not cover** — the queue. Both of the counting
 incidents (the "82", the "at least 60") happened when something was asked how big the queue was;
-`chat` is where that question arrives now. *Whether `overwatch` should hold the two tools as well is
-open — today it does not.* The guard that matters is in `AskingTheWatcherSomethingTest`, which reads
+`chat` is where that question arrives now. *Whether the watch's own three should hold the two tools as
+well is open — today none of them does.*
+
+The guard that matters is in `AskingTheWatcherSomethingTest`, which reads
 `Agents.chat`'s source and allows `Tools.asking(` **or** `Tools.reading(` while forbidding
 `Tools.supervising(`:
 
@@ -971,5 +982,8 @@ Answer in a few sentences unless asked for more. This is a conversation, not a r
 no numbered findings, no restating of the question. If the honest answer is one line, give one line.
 ```
 
-The watcher's format rule (`## Finding: …`, one heading per pattern, judged one at a time) does
-**not** apply here: nothing parses a chat answer.
+The `overwatch-doer`'s format rule (`## Finding: …`, one heading per pattern, judged one at a time)
+does **not** apply here: nothing parses a chat answer. Nor does the planner's scoping — `chat` is
+handed no plan and is told nothing about what must not be raised again, though its prompt names
+`overwatch.jsonl` among the files it may read. A person who asks the same question twice is asking it
+twice on purpose.

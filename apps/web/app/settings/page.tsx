@@ -6,6 +6,7 @@ import {
   Account,
   AgentGroupHeading,
   AgentPromptEditor,
+  PromptPreamble,
   PromptStage,
   stageOf,
   EmptyNote,
@@ -85,8 +86,24 @@ function tabOf(asked: string | null): Tab {
   return found === undefined ? 'prompts' : found.key
 }
 
+type ApiPrompts = {
+  /**
+   * The paragraph prepended to every agent that judges the SUBJECT'S code — the chain and the
+   * interpreter triple. It is not part of any editable prompt: fifteen copies of a paragraph drift,
+   * and an edit here replaces a prompt entirely, so a framing that lived inside one could be deleted
+   * by somebody improving the sentence below it without noticing.
+   *
+   * <p>Shown for the reason this page states about itself: a prompt half from the code and half from
+   * a box is a prompt nobody can read in one place.
+   */
+  preamble: string
+  rows: ApiPromptRow[]
+}
+
 type ApiPromptRow = {
   agent: string
+  /** Whether the preamble is prepended to this one. The watchers judge the pipeline, not the code. */
+  staked: boolean
   /** `chain` | `watch` | `asked`, or null for an agent no list names — "absent is not a guess". */
   group: string | null
   builtIn: string
@@ -334,7 +351,7 @@ function Trouble({ said }: { said: string | null }) {
  * the row a reader is looking at is a promise about the next prove and not about the one running.
  */
 function PromptsTab({ findingsOpen }: { findingsOpen: number }) {
-  const { data, failed, reload } = useDocument<ApiPromptRow[]>('/api/settings/prompts')
+  const { data, failed, reload } = useDocument<ApiPrompts>('/api/settings/prompts')
   const [trouble, setTrouble] = useState<string | null>(null)
 
   async function write(fields: Record<string, string>) {
@@ -361,9 +378,18 @@ function PromptsTab({ findingsOpen }: { findingsOpen: number }) {
   // `edited` is `saved` being non-blank — the same question the row answers with its own word. It is
   // used HERE, for the header's count, and not passed down: shipping both copies of one fact to one
   // component is how the two started disagreeing in the Java.
-  const edited = data.filter(row => row.edited).length
+  const edited = data.rows.filter(row => row.edited).length
 
-  const rows: ReactNode[] = []
+  // THE PREAMBLE FIRST, because everything below is only half of what each of those agents is told.
+  const staked = data.rows.filter(row => row.staked).length
+  const rows: ReactNode[] = [
+    <PromptPreamble
+      key="preamble"
+      text={data.preamble}
+      applies={staked}
+      total={data.rows.length}
+    />,
+  ]
   let heading: AgentGroup | null = null
   // THE OPEN STAGE, and the editors gathered into it. A stage's three roles are laid out as three
   // (`PromptStage`), so they are held back until the stage changes rather than pushed as they come.
@@ -392,7 +418,7 @@ function PromptsTab({ findingsOpen }: { findingsOpen: number }) {
   // sections ride on the same property: a triple is contiguous BECAUSE the order is the call order,
   // so grouping never reorders anything and an agent this build has not heard of still lands where
   // the server put it.
-  for (const row of data) {
+  for (const row of data.rows) {
     const group = groupFrom(row.group)
     const at = stageOf(row.agent as AgentName)
     const key = at ?? group
@@ -439,7 +465,7 @@ function PromptsTab({ findingsOpen }: { findingsOpen: number }) {
       tab="prompts"
       subtitle={
         <>
-          {`${data.length} agent(s) · `}
+          {`${data.rows.length} agent(s) · `}
           {edited === 0 ? "none edited — every one is the code's" : `${edited} edited, the rest are the code's`}
         </>
       }

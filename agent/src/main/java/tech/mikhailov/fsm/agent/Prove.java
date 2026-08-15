@@ -331,12 +331,11 @@ public final class Prove {
 
         // The curator decides whether this reaches a stranger's repository, so it gets the whole
         // record rather than the patch alone.
-        trace.progress(marker, "certified; propose-doer deciding");
+        trace.progress(marker, "propose-planner: deciding what the case rests on");
         String proposal = brief + evidence + "\nGREEN:\n" + green.summary()
                 + "\nThe certified patch:\n" + patch + "\nThe certification:\n" + certificate;
-        String curation = agents.proposeDoer().run(proposal);
-        curation = reviewed(agents.proposeVerifier(), agents.proposeDoer(), proposal, curation,
-                "Your decision was rejected by a reviewer");
+        String curation = planned(agents.proposePlanner(), agents.proposeDoer(),
+                agents.proposeVerifier(), proposal, "")[1];
         return priced("make".equals(verdict(curation, "make", "reject"))
                 ? "verified/pr-ready" : "verified/pr-rejected", curation);
     }
@@ -422,10 +421,9 @@ public final class Prove {
      */
     private String argued(String task) {
         String record = task + "\n\n" + whatExecutionProduced();
-        String argument = agents.argueDoer().run(record);
-        argument = reviewed(agents.argueVerifier(), agents.argueDoer(), record, argument,
-                "A reviewer read your verdict and judged that your argument reaches a weaker state "
-                        + "than the word you named");
+        trace.progress(marker, "argue-planner: deciding what could settle this without a test");
+        String argument = planned(agents.arguePlanner(), agents.argueDoer(),
+                agents.argueVerifier(), record, "")[1];
         String kind = verdict(argument, "false-positive", "by-design", "unprovable");
         return priced(kind.isEmpty() ? "unprovable" : kind, argument);
     }
@@ -470,7 +468,8 @@ public final class Prove {
         String estimate;
         try {
             String record = brief + "\n\nIt settled as: " + disposition + "\n\nThe record:\n" + because;
-            estimate = agents.priceDoer().run(record);
+            estimate = planned(agents.pricePlanner(), agents.priceDoer(),
+                    agents.priceVerifier(), record, "")[1];
             // A MISSING NUMBER IS CAUGHT HERE, NOT BY THE CRITIC. Whether the reply contains
             // `minutes: N` is a question a regex answers, and asking a model to check it spends a
             // call to be told something less reliably — the critic passed an estimate with no figure
@@ -479,8 +478,6 @@ public final class Prove {
                 estimate = agents.priceDoer().run(record
                         + "\n\nYour answer had no figure in it. Begin with exactly `minutes: N`.");
             }
-            estimate = reviewed(agents.priceVerifier(), agents.priceDoer(), record, estimate,
-                    "A reviewer disputed your figure");
             // And again after the critic, because a re-ask can lose the shape the first answer had.
             if (minutes(estimate).isBlank()) {
                 estimate = "minutes: unknown\n" + estimate;
@@ -495,34 +492,6 @@ public final class Prove {
         return settled(disposition, because + "\n\n--- human-equivalent ---\n" + estimate);
     }
 
-    /**
-     * ONE LOOPBACK, SHARED. A critic that only complains changes nothing; the point of asking is to
-     * hand the objection back to whoever can act on it.
-     *
-     * <p>Silence and an unreadable answer both mean {@code sound} here, and that is the safe
-     * direction for these two: an unreachable critic must not reopen a decision nobody faulted. It is
-     * the opposite of the fix critic, whose silence blocks a pull request — because there a
-     * certificate must be GIVEN to bite, and here an objection must be RAISED.
-     *
-     * @return the producer's second answer when the critic rejected the first, otherwise the first
-     */
-    private static String reviewed(Agents.Agent critic, Agents.Agent producer, String task,
-                                   String answer, String preface) {
-        String critique;
-        try {
-            critique = critic.run(task + "\n\nWhat they answered:\n" + answer);
-        } catch (RuntimeException unreachable) {
-            return answer;
-        }
-        if (!"redo".equals(verdict(critique, "sound", "redo"))) {
-            return answer;
-        }
-        for (int again = 0; again < REASK; again++) {
-            answer = producer.run(task + "\n\n" + preface + ":\n" + critique
-                    + "\n\nAnswer their objection. Do not simply restate what you said.");
-        }
-        return answer;
-    }
 
     /** The leading {@code minutes: N}, or empty when it did not answer in the shape asked for. */
     private static String minutes(String estimate) {
@@ -570,21 +539,38 @@ public final class Prove {
         boolean replanned = false;
         boolean redone = false;
         for (int turn = 0; turn < 2; turn++) {
-            String judged = verifier.run(task + "\n\nThe plan:\n" + plan
-                    + "\n\nWhat was made from it:\n" + work);
+            // AN OBJECTION MUST BE RAISED TO BITE. A verifier that cannot be reached must leave the
+            // work standing: the alternative is that a dropped connection decides settlements, which
+            // is strictly worse than an unjudged answer. The pair-shaped helper this replaced had
+            // the same rule and a test pinned it — the rule is the invariant, not the helper.
+            String judged;
+            try {
+                judged = verifier.run(task + "\n\nThe plan:\n" + plan
+                        + "\n\nWhat was made from it:\n" + work);
+            } catch (RuntimeException unreachable) {
+                break;
+            }
             String said = verdict(judged, "sound", "redo", "replan");
             if (said.equals("replan") && !replanned) {
                 replanned = true;
-                plan = planner.run(task + hint + "\n\nYour last plan was sent back:\n" + judged
-                        + "\n\nPlan it a different way. Do not restate the plan that was refused.");
-                work = doer.run(task + "\n\nThe plan you are working from:\n" + plan);
+                try {
+                    plan = planner.run(task + hint + "\n\nYour last plan was sent back:\n" + judged
+                            + "\n\nPlan it a different way. Do not restate the plan that was refused.");
+                    work = doer.run(task + "\n\nThe plan you are working from:\n" + plan);
+                } catch (RuntimeException unreachable) {
+                    break;
+                }
                 continue;
             }
             if (said.equals("redo") && !redone) {
                 redone = true;
-                work = doer.run(task + "\n\nThe plan you are working from:\n" + plan
-                        + "\n\nYour work was sent back:\n" + judged
-                        + "\n\nAnswer the objection. Do not simply restate what you did.");
+                try {
+                    work = doer.run(task + "\n\nThe plan you are working from:\n" + plan
+                            + "\n\nYour work was sent back:\n" + judged
+                            + "\n\nAnswer the objection. Do not simply restate what you did.");
+                } catch (RuntimeException unreachable) {
+                    break;
+                }
                 continue;
             }
             break;

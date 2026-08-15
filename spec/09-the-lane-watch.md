@@ -6,14 +6,19 @@ every build that ran or failed to run, every loop back, and the **disposition** 
 — every line of it is something the program observed. A **summary** is plain English about one lane
 for a person: one line for a table, and a short account underneath it.
 
-**No agent inside a prove can see its own lane.** Each of the ten in the chain is handed one stage
-and answers it; none of them sees the build that never ran, the critic that sent the fix-doer back, or
-the judge that answered in one word. The settlement records only where the marker ended. So the lane
-is a supervisor's subject — one level below the run-level watch (the `overwatch` pair), whose subject
-is the pipeline rather than the marker.
+**No agent inside a prove can see its own lane.** Each of the fifteen in the chain is handed one stage
+and answers it; none of them sees the build that never ran, the verifier that sent the fix-doer back,
+or the judge that answered in one word. The settlement records only where the marker ended. So the
+lane is a supervisor's subject — one level below the run-level watch (the `overwatch` triple), whose
+subject is the pipeline rather than the marker.
+
+**Its subject is the marker, not this pipeline.** The summary says whether the Svace finding is real,
+for two readers at once: a developer deciding whether to take the fix into their code, and an
+application-security reader deciding whether it was ever exploitable. What this pipeline did to the
+marker appears only as the strength of the evidence — what was actually executed.
 
 **The failure this exists for.** The `what happened` column of the marker table used to show the
-verdict agent's first sentence. That sentence is an argument addressed to the next agent, not an
+argue-doer's first sentence. That sentence is an argument addressed to the next agent, not an
 account addressed to a reader: *"false-positive — the claim does not hold in this code"* names the
 word and says nothing about whether anything was executed, how it was reached, or whether to believe
 it. A reader who wanted that had to open the marker and read a trace.
@@ -27,7 +32,7 @@ The whole component is one package-private class,
 
 ```java
 Interpreter(Path results, Agents agents, Trace trace)
-void pass()                 // one cycle: select, digest, ask the pair, write
+void pass()                 // one cycle: select, digest, ask the triple, write
 String lane(Path dir)       // the digest for one lane, package-visible so a test can read it
 ```
 
@@ -54,15 +59,17 @@ while (true) {
   must not wait on a paragraph written about itself. Nothing in a prove blocks on a summary.
 - **The two passes share one try block.** A run-level pass that throws costs that cycle's summaries
   as well: a watcher that dies is worse than one that misses a pass.
+- **Six agents in one process**, since both watches are triples now and both are built from the same
+  `Agents` instance over the same results root.
 - The supervisor's agents are constructed against a `Runner` that refuses to build:
   `"the supervisor does not build; it reads what the provers built"`. A supervisor that can run tests
   can manufacture the evidence it supervises.
 
 **Only settled lanes are interpreted.** A lane is not a story until it has an ending, and
-interpreting one mid-flight spends two model calls on a paragraph the next stage invalidates.
+interpreting one mid-flight spends three model calls on a paragraph the next stage invalidates.
 
 **A lane is summarised exactly once.** The presence of `summary.txt` is the whole idempotence check:
-356 markers times two model calls is not a thing to repeat every fifteen minutes.
+356 markers times three model calls is not a thing to repeat every fifteen minutes.
 
 ### Selecting the lanes
 
@@ -132,7 +139,7 @@ lane is not interpreted. **Every read failure in this class falls toward "no sum
 ## The digest: counting and quoting
 
 `Interpreter.lane(Path dir)` reads `m/<id>/trace.jsonl` and renders it. **It never asks a model to
-summarise the trace** — a summary of the evidence is not the evidence, and the point of the pair
+summarise the trace** — a summary of the evidence is not the evidence, and the point of the triple
 below is that something read the record itself.
 
 If `trace.jsonl` is missing or empty the digest is blank and the lane is skipped with no model call
@@ -223,21 +230,61 @@ and the interpreter branches on them, so the digest names the first one out loud
 
 ---
 
-## The pair, and the direction of its silence
+## The triple, and the direction of its silence
 
 ```
-interpreter → draft → interpreter-critic → the text that ships
+digest → interpreter-planner → fact sheet → interpreter-doer → draft → interpreter-verifier
+                                                                        → the text that ships
 ```
 
-Both get `Tools.reading(results, trace, <agent>)` — `list_dir`, `read_file`, `grep`, `glob`, rooted at
-the results directory, with `results/model` and `results/git-credentials` refused by name and their
-shapes redacted from every result. Neither can write through a tool, and neither gets the two
-registry tools: **the only file either agent causes to exist is `summary.txt`, and Java writes it.**
+All three get `Tools.reading(results, trace, <agent>)` — `list_dir`, `read_file`, `grep`, `glob`,
+rooted at the results directory, with `results/model` and `results/git-credentials` refused by name
+and their shapes redacted from every result. None can write through a tool, and none gets the two
+registry tools: **the only file any of them causes to exist is `summary.txt`, and Java writes it.**
 (Their prompts and replies do land in `overwatch-trace.jsonl` — written by the trace, not by them.)
 
-The producer's task is **the digest and nothing else** — no framing, no instruction appended to it.
-If the digest is blank, `interpret()` returns before the producer is called. The critic's task is
-exactly:
+**The gathering is a stage of its own because both ways this goes wrong are failures of evidence,
+not of prose**: describing a patch nobody wrote down, and reporting an argument as though something
+had been executed. A writer working from the whole lane at once answers neither question out loud. A
+writer working from a fact sheet has to.
+
+`interpreter-planner`'s task is **the digest and nothing else** — no framing, no instruction appended
+to it. If the digest is blank, `interpret()` returns before it is called. It answers a sheet of ASCII
+labels, one per line: `VERDICT`, `EVIDENCE`, `CLAIM`, `VECTOR`, `CAUSE`, `PROOF`, `DIFF`, `WATCH`.
+Three of those carry the weight:
+
+- **`EVIDENCE`** is one of five phrases — *a test failed before the patch and passed after*, *a test
+  failed and nothing was patched*, *a test passed before any patch*, *a build never ran*, *nothing was
+  executed — argued only*. It is the strength of every line under it and it is the line a reader skips.
+- **`DIFF`** is quoted from the record or it is `not in the record`. The patch is written down in
+  exactly two places — `fix_diff` on the settlement row, and the fix-verifier's prompt in
+  `trace.jsonl` under the heading WHAT IT ACTUALLY CHANGED — and the planner is told to look in both.
+  *A green build proves a change existed, not what it was, and a diff reconstructed from the prose
+  around it is worse than an absent one.*
+- **`VECTOR`** is `not established by this record` unless the record established that the flagged line
+  is reachable from untrusted input. Reachability is a claim about the world and the lane either paid
+  for it or did not.
+
+**`not in the record` is a finding and not a gap to fill in.** Everything after the planner may say
+only what the sheet establishes, so a fact supplied to make the sheet look complete becomes a sentence
+on the page where somebody decides whether to take a patch into their repository.
+
+`interpreter-doer`'s task is the sheet, then the digest:
+
+```
+The facts established from this marker's record:
+
+<sheet>
+
+---
+
+The record itself:
+
+<digest>
+```
+
+`interpreter-verifier` gets all three — the draft, the sheet it was written from, and the record —
+and is the only thing that reads the summary against the record:
 
 ```
 The summary written for this marker:
@@ -246,34 +293,57 @@ The summary written for this marker:
 
 ---
 
-The record it was written from:
+The facts it was written from:
+
+<sheet>
+
+---
+
+The record itself:
 
 <digest>
 ```
 
-**The critic's text is what ships. The producer's draft appears nowhere.** It is in
-`overwatch-trace.jsonl` as an `asked` event and on no page. A summary is the one thing on the page a
-reader takes at face value, so the version shown is the one read against the record by something
-that was not trying to write it.
+**The verifier's reply is what `write()` parses, and the doer's draft appears nowhere.** The draft is
+in `overwatch-trace.jsonl` as an `asked` event and on no page. A summary is the one thing on the page
+a reader takes at face value, so what is shown has been through the agent that was not trying to
+write it.
+
+**A seam a rebuilder must not paper over.** The verifier's prompt tells it not to rewrite the summary
+— *the pair this replaced had the judge write the version that shipped, which is a judge marking its
+own text* — and asks for `sound`, `redo` or `replan` on its own line with one paragraph under it, of
+which `redo` faults the WRITING and `replan` faults the FACTS. That distinction is the one the chain's
+triples are built on: *a writer told "this is wrong" rewrites the same claims in different words,
+because rewriting is the only move it has.* But `Interpreter.interpret` has no loop back for either
+word — it asks each agent once and hands the verifier's whole reply to `write()`, the way it handed
+the critic's before. **Where the prompt and the code disagree the code is the fact**, and the fact is
+that whatever the verifier says is what reaches `summary.txt`: a reply in the shape the prompt asks
+for lands on the page through the no-label fallback below, verdict word first.
 
 **Its silence WITHHOLDS.** This is the fail-safe direction and getting it backwards is a silent
 catastrophe:
 
 ```java
 if (checked == null || checked.isBlank()) {
-    trace.progress(lane.getFileName().toString(), "summary written but not checked; not shown");
+    trace.progress(marker, "summary written but not checked; not shown");
     return;
 }
 ```
 
-No `summary.txt` is written, the table falls back to the verdict agent's own words, and the lane is
+No `summary.txt` is written, the table falls back to the settlement's own words, and the lane is
 picked up again on a later pass. Writing the unchecked draft instead would put the one thing a reader
-trusts on the page with nothing behind it. Compare the run-level pair, whose critic's silence
+trusts on the page with nothing behind it. Compare the run-level triple, whose verifier's silence
 *permits* a finding to reach the record marked unjudged: an objection must be raised to bite, a
-certificate must be given to bite, and this critic is certifying.
+certificate must be given to bite, and this verifier is certifying.
 
-The producer's own silence is the same shape: a blank draft returns before the critic is called, and
-nothing is written.
+**The other two silences are the same shape and are noted differently.** A blank sheet ends the lane
+with the progress note `interpreter-planner said nothing; lane left for the next pass` — a lane
+skipped, not a summary guessed. A blank draft returns with no note at all. Nothing is written in
+either case and the lane comes back on a later pass.
+
+Each stage writes a progress note before it is asked: `interpreter-planner: establishing what the
+record holds`, `interpreter-doer: writing it for a developer and for security`,
+`interpreter-verifier: checking it against the record`.
 
 ### One lane's failure is one lane's
 
@@ -281,14 +351,15 @@ Each `interpret(lane)` is wrapped in its own `try`; a `RuntimeException` is reco
 `trace.failed(<lane directory name>, cause)` and the pass moves to the next lane. A missing summary
 costs a row its plain English and nothing else, because the fallback is the record.
 
-### What the pair writes to the record
+### What the triple writes to the record
 
-Both agents' calls are traced through the **supervisor's** `JsonlTrace`, whose marker field is
+All three agents' calls are traced through the **supervisor's** `JsonlTrace`, whose marker field is
 `overwatch`. So:
 
 - model calls land in `results/overwatch-trace.jsonl` as `asked` events with
-  `agent: "interpreter"` / `"interpreter-critic"`, **not** in the lane's own `trace.jsonl`. Every row
-  in that file carries `"marker":"overwatch"`, whatever lane provoked it;
+  `agent: "interpreter-planner"` / `"interpreter-doer"` / `"interpreter-verifier"`, **not** in the
+  lane's own `trace.jsonl`. Every row in that file carries `"marker":"overwatch"`, whatever lane
+  provoked it;
 - `trace.progress(lane, note)` writes a `progress` row to `overwatch-trace.jsonl` **and** a
   `"state":"proving"` row to `overwatch-settlements.jsonl` with
   `suspicion_key` = the lane's *directory name*;
@@ -327,9 +398,9 @@ results/m/<marker-slug>/summary.txt
 **The file is the short line, a blank line, and the full account.** Nothing else is structured:
 
 ```
-Settled by-design on an argument, with nothing executed.
+DELIBERATE — the encoding is chosen for the lesson, and nothing was executed to test it.
 
-No test was written, so nothing ran. The verdict agent argued the encoding is deliberate,
+No test was written, so nothing ran. The settlement argued the encoding is deliberate,
 citing the lesson text.
 ```
 
@@ -339,53 +410,76 @@ table of sentences that all begin the same way and stop before the part that dis
 
 ### The split happens where it is written, not where it is read
 
-The critic is asked for a labelled shape:
+The shape asked for is **JSON with exactly two keys**, nothing before or after the object:
 
 ```
-SHORT: one sentence, under 140 characters, that would let a reader skimming a table
-of 356 rows decide whether to open this one. What was concluded and on what strength
-of evidence. Not the checker's name, not the state word on its own.
-
-(a blank line, then two to four sentences: what was claimed, what was actually run and
-what it showed, what was concluded and on what grounds, and anything a reader should
-know before trusting it.)
+{"short": "…", "full": "…"}
 ```
 
-`Interpreter.write` parses that label and consumes it. The dashboard splits on the first blank line
-and **never sees `SHORT:`**, so a critic that forgets the shape cannot leak an instruction onto the
-page: the whole answer becomes the long form and its first sentence becomes the short one.
+`short` is under 140 characters and **opens with the verdict word** — `CORRECT`, `FALSE POSITIVE`,
+`DELIBERATE` or `UNDECIDED` — then a space, an em dash, a space, then one sentence saying what the
+verdict rests on. `full` is four to seven sentences, rendered by the page as ONE PARAGRAPH: every line
+break inside it collapses, so the structure lives in the order of the sentences and not in bullets.
+
+**A JSON key is not prose and does not get translated.** The shape used to be a `SHORT:` line, which
+works while the prompt is in English and fails silently the moment it is not: a Russian prompt
+produced `КРАТКОЕ ИЗЛОЖЕНИЕ:`, no `SHORT:` was found, and the fallback made the whole first sentence —
+label and all — the line in the table, leaving it duplicated in the account below. Both halves wrong,
+nothing reported.
+
+**NEVER A COLON AFTER THE VERDICT WORD**, and that is not a style rule: the no-label fallback below
+strips a short colon-terminated opener as a label, so `CORRECT: …` would lose the verdict word on
+exactly the path where parsing has already failed. The em dash survives it.
+
+The dashboard splits on the first blank line and **never sees either shape**, so an agent that forgets
+it cannot leak an instruction onto the page: the whole answer becomes the long form and its first
+sentence becomes the short one.
 
 ### The rule, exactly
 
 1. Strip the whole answer.
-2. Scan the lines **from the last to the first**. For each, strip a leading run of `` [*_`#\s] ``
-   (markdown emphasis, bullets, headings). If what remains starts with `SHORT:`, case-insensitively,
-   at position 0:
+2. **JSON first.** Take everything from the first `{` to the last `}`; if there is no such span, skip
+   to 3. Read `short` and `full` out of it with `Json.field` — a scan, tolerant of a fence, a preamble
+   or a sentence afterwards, and strict about the two keys. If both are blank, skip to 3. Otherwise
+   **one of the two is enough to proceed and the other is derived rather than left empty**: a blank
+   `full` becomes the short form (*a summary with no account reads as a marker nobody looked at, which
+   is not what happened*), and a blank `short` becomes the full form up to and including its first
+   `". "` period.
+3. If the short form is still blank, scan the lines **from the last to the first**. For each, strip a
+   leading run of `` [*_`#\s] `` (markdown emphasis, bullets, headings). If what remains starts with
+   `SHORT:`, case-insensitively, at position 0:
    - the short form is the rest of that line with leading and trailing `` [*_`\s] `` removed;
    - the full form is every line **after** it, joined with `\n` and stripped;
    - stop scanning.
-3. If the short form is still blank — no label at all, or a label with nothing after it — take it
+4. If the short form is *still* blank — no JSON, no label, or a label with nothing after it — take it
    from the full form as it now stands: `int stop = full.indexOf(". ")`, and the short form is
    `full.substring(0, stop + 1)` when `stop > 0`, else the whole of `full`. Note that this keeps the
-   period and drops the space, and that when no label was found `full` is still the whole answer.
-4. If the full form is non-blank, split it on `\R\s*\R`, strip each paragraph, and drop any paragraph
+   period and drops the space, and that when nothing was parsed `full` is still the whole answer.
+   Then, **on this path only**, a leading label in any script comes off the front:
+   `replaceFirst("^\\s*[^.!?:\\n\\r]{0,40}:\\s+", "")` — short, colon-terminated, no sentence
+   punctuation before it. It costs a legitimate opener like `Note: …` its first word, which is a
+   smaller harm than a heading in a column of three hundred rows.
+5. If the full form is non-blank, split it on `\R\s*\R`, strip each paragraph, and drop any paragraph
    that `equalsIgnoreCase` the short form. Rejoin the survivors with `\n\n` and strip.
-5. If the full form is now blank, it becomes the short form.
-6. Write `shortForm + "\n\n" + full`.
+6. If the full form is now blank, it becomes the short form.
+7. Write `shortForm + "\n\n" + full`.
+
+**The label reader stays, because prompts already written should not break.** An override at
+`$PROMPTS/interpreter-verifier.txt` asking for the old shape still produces a correctly split file.
 
 **The last label, not the first.** A model asked for a shape sometimes delivers it twice — once as a
-rehearsal and once for real. This was observed on the first summary the pair ever wrote: splitting on
+rehearsal and once for real. This was observed on the first summary this ever wrote: splitting on
 the first occurrence put the second copy inside the long form, so the account opened by repeating the
 line the reader had just read in the table. The last one is the one it meant. A consequence a
 rebuilder must accept: **everything before the last `SHORT:` is discarded**, including an account
 written above the label.
 
-**And the line itself never appears twice.** Step 4 exists because a critic that obeys the shape and
+**And the line itself never appears twice.** Step 5 exists because an agent that obeys the shape and
 then opens its account with the same sentence has written a paragraph the reader has already read.
 
 **The fallback yields both, rather than neither.** A row with no summary at all falls silently back
-to the verdict's own words, and nobody can tell whether the pair ran. One sentence is worse than a
-good short line and far better than that.
+to the settlement's own words, and nobody can tell whether the triple ran. One sentence is worse than
+a good short line and far better than that.
 
 The reader is the mirror image, and hard-codes the blank line:
 
@@ -398,8 +492,9 @@ return gap < 0 ? new String[] {all, all}
 
 `[0]` is the table line; `[1]` is the account. Both are `""` when the file is absent or unreadable.
 Because the boundary is the first blank line, **the short form must not contain one** — the labelled
-path guarantees that (it is a single line); the no-label fallback does not, so an answer whose first
-sentence spans a blank line would be cut at it.
+path guarantees that (it is a single line) and the JSON path asks for one sentence under 140
+characters; the no-label fallback guarantees nothing, so an answer whose first sentence spans a blank
+line would be cut at it.
 
 ---
 
@@ -475,9 +570,10 @@ concern: the chat agent sees the separator too, unparsed.
 | `settlements.jsonl` missing or unreadable | `state()` blank, so the lane reads as unsettled and is skipped | an unreadable record must not be summarised as if it had been read |
 | the lane's only non-`proving` rows are `infra` | `state()` blank, not interpreted | `infra` is a prove that threw and is owed another attempt, not an answer |
 | `trace.jsonl` missing, empty or unreadable | digest blank, **no model call**, retried next pass | nothing to characterise, and silence is cheaper than a guess |
-| the producer answers blank | nothing written, retried next pass | there is nothing for the critic to check |
-| the **critic** answers blank | nothing written, retried next pass, `progress` note `summary written but not checked; not shown` | the shown text must have been read against the record by something that did not write it |
-| either agent throws | that lane recorded via `trace.failed`, the other seven continue | one lane's failure is one lane's |
+| the **planner** answers blank | nothing written, retried next pass, `progress` note `interpreter-planner said nothing; lane left for the next pass` | a lane skipped, not a summary guessed from a sheet nobody established |
+| the **doer** answers blank | nothing written, retried next pass, no note | there is nothing for the verifier to check |
+| the **verifier** answers blank | nothing written, retried next pass, `progress` note `summary written but not checked; not shown` | the shown text must have been read against the record by something that did not write it |
+| any of the three throws | that lane recorded via `trace.failed`, the other seven continue | one lane's failure is one lane's |
 | `summary.txt` cannot be written | `progress` note `summary not written: <message>`, no exception | a page decoration must never cost the loop |
 | `summary.txt` absent at display time | table shows `firstSentence(verdict_text)`; the account block is omitted | the record is the fallback, and it is demonstrably somebody's words |
 | the whole supervisor is down | every row falls back to the verdict's first sentence | the pipeline's decisions do not depend on this component at all |
@@ -511,42 +607,53 @@ lane is not re-interpreted, and its old summary is never shown — `Dashboard.su
 
 ## Prompts and overrides
 
-`interpreter` and `interpreter-critic` are two of the four in `Agents.WATCH`:
+`interpreter-planner`, `interpreter-doer` and `interpreter-verifier` are three of the six in
+`Agents.WATCH`:
 
 ```java
 static final java.util.List<String> WATCH = java.util.List.of(
-        "overwatch", "overwatch-critic", "interpreter", "interpreter-critic");
+        "overwatch-planner", "overwatch-doer", "overwatch-verifier",
+        "interpreter-planner", "interpreter-doer", "interpreter-verifier");
 ```
 
-Both appear on `/settings` under the heading *watching the run* — the settings page groups by
+All six appear on `/settings` under the heading *watching the run* — the settings page groups by
 `Agents.CHAIN.contains(agent)` and everything else falls under that one heading — editable like every
-other prompt. An override is `$PROMPTS/<agent>.txt` (`Prompts.WHERE`, default `/results/prompts`) and
-**replaces the built-in entirely** — there is no merge. Unlike the chain's prompts, which take effect
-on the next marker a prover starts, these take effect on the **next lane interpreted**: both runtimes
-are constructed inside `interpret()`, per lane, and read the override at construction.
+other prompt, and grouped there as the two triples they are. An override is `$PROMPTS/<agent>.txt`
+(`Prompts.WHERE`, default `/results/prompts`) and **replaces the built-in entirely** — there is no
+merge. Unlike the chain's prompts, which take effect on the next marker a prover starts, these take
+effect on the **next lane interpreted**: all three runtimes are constructed inside `interpret()`, per
+lane, and read the override at construction.
 
 **An unreadable override is not an empty prompt.** `Prompts.saved` returns blank on any read failure,
 which falls back to the built-in — the only safe direction, because the alternative is an agent
 running with no instructions at all and answering something anyway.
 
-What the two prompts must keep, whatever else is edited:
+What the three prompts must keep, whatever else is edited:
 
-- The producer writes **two or three sentences** — no headings, no bullets, no markdown, no preamble
-  — for a working developer who has never seen this pipeline and will not read a trace. In order and
-  only where it applies: what the checker claimed in ordinary words; **whether anything was actually
-  executed and what it showed**; what was concluded and on what grounds; and anything a reader would
-  want before trusting it (a stage that never ran, a loop back, a judge that answered in one word, a
-  test that passed when it was supposed to fail).
-- It writes what the record shows rather than what would make a tidy story, and does not supply a
-  reason the record does not give.
+- **The planner writes no summary at all.** It answers the fact sheet, two sentences per line at most,
+  and it is the only one of the three that goes and reads `trace.jsonl` and `settlements.jsonl` in
+  full — the lane digest it is given is abridged at 1200 characters a reply and **does not carry the
+  patch at all**. It has no source tree, so it may not describe a line it has not seen quoted.
+- **The doer writes for two readers at once** — a developer deciding whether to take the fix, and an
+  application-security reader deciding whether this was ever exploitable — from the sheet, in the
+  JSON shape above. Anything on neither the sheet nor the lane is NOT IN THE RECORD. Where the sheet
+  says the diff is not in the record it says a change was made and the record does not hold it:
+  **never describe a patch nobody wrote down.** A false positive says *why it cannot happen here* —
+  the guard, the validation, the branch nothing reaches — because a false positive without that
+  second half has told a security reader to trust a word.
+- **Do not credit this pipeline with evidence it does not have.** Where nothing was executed, that IS
+  the summary — *settled on an argument, with nothing run* — said plainly rather than the argument
+  repeated as though it were a finding. Where a test passed before any patch, say so: it documented
+  the behaviour, it did not observe a defect.
 - This pipeline's vocabulary is not the reader's: not *"the RED build"* but *"a test written to fail
-  on the unfixed code"*; not *"by-design"* but *"the code is deliberately like this because a lesson
-  depends on it"*.
-- The critic checks the draft against the record for four things — claiming execution that did not
-  happen, more confidence than the record supports, omitting the thing a reader would most want to
-  know, and jargon — and then **writes the summary itself, in two parts**, corrected where the draft
-  was wrong and kept where it was right; not a critique and not a list of corrections, with nothing
-  before or after the shape, and no mention of the draft, of itself, or of the instruction.
+  on the unfixed code"*; not *"by-design"* but *"the code is deliberately like this"*.
+- **The verifier judges and does not rewrite.** It checks the verdict word against what actually ran,
+  the described patch against `fix_diff` and the fix-verifier's prompt, a reachability claim against
+  the record, what was left out, a false positive that only says so, and the shape. Its two loop-back
+  words are `redo` for the writing and `replan` for the facts, and the difference matters more than it
+  looks: *a writer told "this is wrong" rewrites the same claims in different words, because rewriting
+  is the only move it has.* A complaint it cannot make concrete is not one anybody can act on — if the
+  only fault is that it would have written it differently, the answer is `sound`.
 
-Both prompts are recorded in `Agents.BUILT_IN` at runtime construction, which is how `/settings` can
-show what an override is replacing without an inference endpoint being up.
+All three prompts are recorded in `Agents.BUILT_IN` at runtime construction, which is how `/settings`
+can show what an override is replacing without an inference endpoint being up.

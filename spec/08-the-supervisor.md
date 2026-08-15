@@ -3,18 +3,25 @@
 Every agent inside a **prove** — one JVM, one **marker**, one settlement — is handed one marker and
 cannot know that the answer it is about to give is the fortieth identical one. That is the right
 scope for proving a defect and the wrong scope for noticing that the pipeline has developed a habit:
-a critic answering `sound` in one word thirty times, a reproduce-doer whose tests keep passing before any
+a verifier answering `sound` in one word thirty times, a reproduce-doer whose tests keep passing before any
 patch, a checker family that always settles the same way whatever the code says. Each of those was
 found by a person reading a finished run, which is the expensive way and the late way.
 
-The supervisor is the pair that watches the run instead of a marker: `overwatch` produces findings,
-`overwatch-critic` judges them and is the only agent in the program that may act on the run rather
-than describe it.
+The supervisor is the triple that watches the run instead of a marker: `overwatch-planner` decides
+what this pass looks at, `overwatch-doer` produces findings, and `overwatch-verifier` judges them and
+is the only agent in the program that may act on the run rather than describe it.
 
 ```
-digest → overwatch → finding(s) → overwatch-critic → holds | refuted | unjudged
-                                                     (and may restart_prove / postpone_prove)
+digest → overwatch-planner → plan → overwatch-doer → finding(s) → overwatch-verifier
+                                                                   → holds | refuted | unjudged
+                                                                     (and may restart_prove / postpone_prove)
 ```
+
+**Planner, doer and verifier is the same shape the chain runs**, and one thing is missing from it
+here: there is no `replan` and no `redo`. `Prove.planned()` gives a chain verifier a way back to
+either of the other two; `Overwatch.pass` asks each of the three once. **The verifier's judgement is
+the only thing that reaches the next pass**, through `overwatch.jsonl`, which is the first file the
+next pass's planner reads.
 
 **It is its own process, not a stage in a prove.** `entrypoint.sh overwatch [seconds]` runs
 `tech.mikhailov.fsm.agent.Overwatch`; `entrypoint.sh serve` runs it in the background with the
@@ -42,28 +49,78 @@ brings both back.
 `Overwatch.pass(supervisor)` does this and nothing else, writing a progress event at every step:
 
 1. build the digest. Blank → progress `nothing has run yet`, and the pass ends.
-2. progress `reading the run`, then ask the watcher, with the digest as the whole of the task:
+2. progress `overwatch-planner: deciding what this pass looks at`, then ask the planner:
    ```
-   Here is the run as it stands. Report what is going wrong with the PIPELINE.
+   Here is the run as it stands. Decide what this pass of the watch looks at.
 
    <digest>
    ```
-3. a null or blank reply → progress `the watcher had nothing to say`, and the pass ends. **A silent
-   watcher records nothing**; only the critic's silence is recorded as a verdict.
-4. split the reply into findings, progress `<n> finding(s) to judge`.
-5. for each finding, in order, ask `overwatch-critic` and write the line.
+3. a null or blank plan → progress `no plan for this pass; nothing read`, and the pass ends. **The
+   doer is never asked without a plan**, because the plan is what carries the memory of the last pass;
+   a doer working without one re-reports whatever the digest still shows.
+4. progress `overwatch-doer: reading the run`, then ask the doer:
+   ```
+   Report what is going wrong with the PIPELINE, working the plan below.
 
-**Each finding gets a freshly constructed critic runtime**, because `Agents.overwatchCritic` is called
-inside the loop and a runtime holds its own conversation. Two findings never share memory, so the
-second is not judged in the light of the first.
+   The plan for this pass:
+
+   <plan>
+
+   ---
+
+   The run as it stands:
+
+   <digest>
+   ```
+5. a null or blank reply → progress `the watcher had nothing to say`, and the pass ends. **A silent
+   doer records nothing**; only the verifier's silence is recorded as a verdict.
+6. split the reply into findings, progress `<n> finding(s) to judge`.
+7. for each finding, in order, ask `overwatch-verifier` and write the line.
+
+**Each finding gets a freshly constructed verifier runtime**, because `Agents.overwatchVerifier` is
+called inside the loop and a runtime holds its own conversation. Two findings never share memory, so
+the second is not judged in the light of the first. The planner and the doer are each constructed
+once, at their one call.
+
+### What the planner is for
+
+**The watch is a loop that remembers nothing.** It wakes every fifteen minutes over the same run,
+which is still growing, and nothing in the process carries from one pass to the next. So it
+re-reported findings that already held and buried whatever was new underneath them — a true thing
+said an hour ago spends a judgement, and teaches the person reading the banner to stop reading it.
+
+The planner reads `overwatch.jsonl` and `restarts.jsonl` **before anything is opened** and says, in
+the words they were raised in, what must not be reported again. Two things earn a second report and
+it must say which it is asking for: a finding refuted for a bad diagnosis whose observation is still
+in the record, and a finding whose **count has materially moved** — four markers then, forty now, is
+a different claim and not the same one repeated.
+
+It also bounds the pass. **At most eight lanes, named by their exact directory id**, because reading
+all of them costs more than the run being watched; and the sample must include one or two the planner
+expects to be CLEAN, since a sample drawn only from rows that already look wrong confirms whatever it
+was drawn to confirm. **The denominator comes from the plan**: how many markers are in the cohort and
+how many the run has, so the next agent's count reads nine of eleven rather than nine — *nine of four
+hundred is a coincidence reported as a habit, and it has been reported that way here.*
+
+**It is the only one of the three told to read `spec/`**, and told what the chapters establish was
+deliberate, so the doer does not have to and the verifier is not the first to find out. A mechanism
+whose intent the planner leaves unestablished is one nobody establishes.
+
+**`nothing to look at this pass` is a plan and often the right one.** Six markers started and none
+settled: no pattern of eleven exists yet, and a pass sent looking for one will manufacture it. That
+plan is not blank, so the doer is still asked and answers that there is nothing — the pass costs two
+calls and records no finding, which is what a quiet run should cost.
+
+The planner is forbidden the characters `## Finding:` — that heading belongs to the doer and this
+program splits its report on it (below).
 
 ---
 
-## What the pair may touch
+## What the triple may touch
 
-**Neither agent has a checkout and neither can build anything.** Their file tools are rooted at the
-results directory, because their evidence is traces and not source. The runner handed to `Agents` in
-the supervisor's process refuses every build in the same words, from the same place:
+**No agent here has a checkout and none of them can build anything.** Their file tools are rooted at
+the results directory, because their evidence is traces and not source. The runner handed to `Agents`
+in the supervisor's process refuses every build in the same words, from the same place:
 
 ```java
 Runner nothingToBuild = (phase, test) -> new Runner.Result(true, false,
@@ -76,28 +133,34 @@ manufacture the evidence it supervises.**
 
 | Agent | Tools | May act |
 |---|---|---|
-| `overwatch` | `list_dir`, `read_file`, `grep`, `glob`, rooted at `<results>` | no |
-| `overwatch-critic` | the same, plus `restart_prove` and `postpone_prove` | yes |
+| `overwatch-planner` | `list_dir`, `read_file`, `grep`, `glob`, rooted at `<results>` | no |
+| `overwatch-doer` | the same | no |
+| `overwatch-verifier` | the same, plus `restart_prove` and `postpone_prove` | yes |
 
-`Agents.overwatch(Path results, Supervisor supervisor)` accepts a supervisor and **does not wire it
-into any tool** — it builds `Tools.reading(...)`. Only `Agents.overwatchCritic` calls
-`Tools.supervising(...)`, which is `list_dir` + `read_file` + `grep` + `glob` + the two levers. The
-producer reports; the critic acts. `chat` (chapter on asking the watcher something) has the same
-subject, the same `digest()` and the same read-only tools, and holds no levers at all, deliberately:
-a question must not be able to end as a killed prove because a model read it as a request.
+`Agents.overwatchPlanner(Path results, Supervisor supervisor)` and `Agents.overwatchDoer(...)` both
+accept a supervisor and **do not wire it into any tool** — they build `Tools.reading(...)`. Only
+`Agents.overwatchVerifier` calls `Tools.supervising(...)`, which is `list_dir` + `read_file` + `grep`
++ `glob` + the two levers. The planner scopes, the doer reports, and only the verifier acts. `chat`
+(chapter on asking the watcher something) has the same subject, the same `digest()` and the same
+read-only tools, and holds no levers at all, deliberately: a question must not be able to end as a
+killed prove because a model read it as a request.
 
 `<results>/model` and `<results>/git-credentials` sit in the same tree and are refused by name and
 redacted out of every tool result, for every agent — see the tools chapter.
 
 **Silence is fail-safe in both directions here, and they are different directions.**
 
-- A finding the critic never judges still reaches `overwatch.jsonl` with `"verdict":"unjudged"`, so an
-  unreachable critic **cannot suppress a warning**.
-- A restart the critic never orders does not happen, so an unreachable critic **cannot kill anything**
-  either.
+- A finding the verifier never judges still reaches `overwatch.jsonl` with `"verdict":"unjudged"`, so
+  an unreachable verifier **cannot suppress a warning**.
+- A restart the verifier never orders does not happen, so an unreachable verifier **cannot kill
+  anything** either.
 
 Getting either backwards is silent: the first would let a dead endpoint hide a pattern, the second
 would let one kill proves.
+
+The planner's silence is a third direction and it stops the pass rather than waiving it: no plan, no
+reading, nothing recorded. That is right for this one agent only — a plan is what the pass is scoped
+by, and an unscoped pass reads three hundred lanes to re-report what was raised an hour ago.
 
 ---
 
@@ -212,7 +275,7 @@ that gets caught.
 **A marker that has answered is not a marker gone quiet, however long its claim lingers.** The pool
 releases a claim when its prove ends, but a release is an `rm -rf` after a JVM exits and the digest is
 read on a timer, so the two overlap. Reading a claim as proof of a running prove had the watcher
-reporting settled markers as stalled for a thousand minutes, twice, and its critic refuting the
+reporting settled markers as stalled for a thousand minutes, twice, and its judge refuting the
 finding both times — a whole pass spent on markers that were finished. Hence the three-way condition
 on the QUIET flag.
 
@@ -220,7 +283,7 @@ on the QUIET flag.
 
 ## A finding is not a paragraph
 
-The watcher is told, in its prompt, to open every finding with a line reading exactly:
+The doer is told, in its prompt, to open every finding with a line reading exactly:
 
 ```
 ## Finding: <the pattern in one sentence>
@@ -235,20 +298,21 @@ whitespace has been stripped. Then:
   once than several fragments judged separately, and a watcher saying the run is clean is itself the
   answer.
 
-The heading requirement lives in the watcher's prompt and the split lives in code, and the prompt is
+The heading requirement lives in the doer's prompt and the split lives in code, and the prompt is
 data (`Prompts.effective`) that a person can replace from the settings page. **The fallback is what
 holds that seam together**: a prompt edited to drop the heading does not lose the report, it collapses
-to one finding per pass.
+to one finding per pass. The planner is told never to write those characters, so a plan restated under
+a heading cannot arrive at the split as a finding of its own.
 
-**This split on blank lines once, and it cost the first real finding.** The watcher named four markers
+**This split on blank lines once, and it cost the first real finding.** The doer named four markers
 whose tests pass on unfixed code, with a count and a traced cause in a prompt — a heading, a count, a
 list of examples and an explanation. Splitting on paragraphs turned that into four claims none of
-which contained the claim; the critic refuted `**Examples:** …` twice, correctly, because a list of
-file names asserts nothing. **The boundary must be structure the watcher was told to produce, which is
+which contained the claim; the verifier refuted `**Examples:** …` twice, correctly, because a list of
+file names asserts nothing. **The boundary must be structure the doer was told to produce, which is
 checkable, rather than a guess about how a model formats prose.**
 
-Each finding is judged alone, so that the critic judges one claim rather than agreeing with a mood.
-The critic's task is:
+Each finding is judged alone, so that the verifier judges one claim rather than agreeing with a mood.
+The verifier's task is:
 
 ```
 The watcher raised this about the run. Judge it, and act only if a prove is stuck.
@@ -257,10 +321,21 @@ The watcher raised this about the run. Judge it, and act only if a prove is stuc
 
 ---
 
+The plan it was working from:
+
+<plan>
+
+---
+
 The run as it stands:
 
 <digest>
 ```
+
+**The plan goes to the verifier too**, and that is what makes it more than scoping: a doer that
+quietly investigated something else, or called a documented design a fault, is visible rather than
+merely unconvincing. Going somewhere else is not itself a refutation — an observation is an
+observation — but nobody chose that sample, so the count is checked harder.
 
 ### The record
 
@@ -277,15 +352,44 @@ The verdict is decided here, not by the model:
 - otherwise → `holds`.
 
 Note what falls out of that: an agent that answers with tool calls and no prose returns `""`, so **a
-critic that pulls a lever and says nothing records `unjudged`, not `holds`.** The action is in
+verifier that pulls a lever and says nothing records `unjudged`, not `holds`.** The action is in
 `restarts.jsonl` and the finding is still marked as unchecked, which is the right way round — the
 record must not claim a judgement nobody wrote.
 
+**The verifier has a third word and the file has only three verdicts.** It may answer `duplicate` —
+this pattern is already in `overwatch.jsonl` and its count has not materially moved — which is
+deliberately *not* a refutation: the watch wakes every fifteen minutes over a run that lasts hours, so
+the same true pattern is there to be found again on every pass, and refuting it would put a true
+observation in the record as false. `duplicate` contains no `refuted`, so the line reads `holds` and
+the judgement paragraph is where the word survives. A finding that says MORE than the earlier one — a
+cause the earlier one got wrong, a count that has gone from four to forty — is not a duplicate; it is
+the second report the earlier judgement asked for, and refusing it as one loses the escalation. And a
+`duplicate` is not a reason to leave a lever alone: a stuck prove reported for the third pass running
+is judged `duplicate` and postponed anyway, in the same answer.
+
 `refuted` is matched as a substring of the **whole** judgement, not of its first line, even though the
-critic is told to answer `holds` or `refuted` on a line of its own. A judgement that reasons its way to
-`holds` while mentioning the word anywhere is recorded `refuted`. This is the reason the banner still
-renders refuted findings instead of dropping them: a verdict decided by substring is not a verdict
-worth hiding a finding on.
+verifier is told to answer `holds`, `refuted` or `duplicate` on a line of its own with nothing else on
+it. A judgement that reasons its way to `holds` while mentioning the word anywhere is recorded
+`refuted`. This is the reason the banner still renders refuted findings instead of dropping them: a
+verdict decided by substring is not a verdict worth hiding a finding on.
+
+**The judgement is written for the next pass's planner**, which reads this file before it plans
+anything, and it is the only channel there is — nothing loops back to this pass's planner. So a
+correction is written as something a planner can act on: which cohort would have settled the question,
+what to sample instead, what not to raise again. *"The diagnosis is wrong" helps nobody.*
+
+**The observation and the diagnosis are judged separately**, because they fail differently: a doer
+that sees the right thing and explains it wrongly has still seen the right thing. If what it observed
+is in the record the finding holds and the cause is corrected in the judgement; `refuted` is for an
+observation that is untrue — the quotes are not there, the count is invented, three examples presented
+as a trend. **This has already cost something**: a finding that markers were sitting idle for hundreds
+of minutes was refuted because it blamed the wrong mechanism, and the markers went on sitting there
+for hours.
+
+**A spec that disagrees with the code is not a pipeline fault, and is refuted as a finding.** It is
+documentation somebody owes; it is visible from the digest on every pass, so a watch allowed to raise
+it raises it forever. Where the two disagree the running code is the fact — which is why the planner
+is told the same thing before it plans, rather than left to rediscover it.
 
 A file that cannot be written costs the finding a record and produces the progress note
 `finding not recorded: <message>`; it does not end the pass.
@@ -462,9 +566,10 @@ if it is broken in a way a fresh attempt will not fix, that is a finding to repo
 to cycle.
 ```
 
-`<already>` is the count read back, not the constant: it is `>= LIMIT` and can exceed it, because a
-person's `reprove` appends the same rows. `<total>` is `Pace.totalMinutes(results, id)` and `<n>` is
-`Pace.attempts(results, id)`.
+`<already>` is the count read back, not the constant: it is `>= LIMIT` and a log carrying more of the
+supervisor's own lines than that reads back higher. It counts only the supervisor's — a person's
+`reprove` writes `by: person` and is skipped. `<total>` is `Pace.totalMinutes(results, id)`, which
+counts every archived attempt whoever ordered it, and `<n>` is `Pace.attempts(results, id)`.
 
 **A log that cannot be read is not a licence.** `restarts(id)` returns `0` when `restarts.jsonl` does
 not exist — a run that has restarted nothing has restarted nothing — but `LIMIT` the moment the file
@@ -505,10 +610,19 @@ dashboard-owned trace (`dashboard-trace.jsonl` / `dashboard-settlements.jsonl`) 
 whose prompts have been edited since it was proved reached its answer under instructions nobody is
 using any more.
 
-Note what the ledger does and does not distinguish: `reprove` performs no limit check, but it appends
-the **same** `restarts.jsonl` row, and `restarts(id)` counts every row carrying that id whoever ordered
-it. A person's reprove therefore does raise the number the agent's next `restart_prove` is measured
-against.
+Note what the ledger does and does not distinguish: `reprove` performs no limit check, and it appends
+to the **same** `restarts.jsonl` — correctly, since the record of what happened to a marker belongs in
+one file — but `restarts(id)` counts only the lines whose `by` is not `person`. **A person's reprove
+does not raise the number the agent's next `restart_prove` is measured against.** It used to: every
+line with the marker's id was counted, so two presses of the dashboard's button exhausted the
+supervisor's allowance for a marker it had never touched, and nothing reported it — a limit is only
+felt when the agent next tries to act, and by then the refusal reads as a supervisor that has already
+spent its two.
+
+The `attempt` number a person's line carries is still `restarts(id) + 1`, so it numbers the
+supervisor's series rather than a second one; the archive it names is `dead/<id>.reprove-N`, counted
+separately by `reproves(id)`, which is the count of what people have asked for and is deliberately not
+a limit.
 
 ---
 
@@ -661,31 +775,39 @@ Everything the supervisor reads or writes, under the results root:
 | `dead/<id>.before-postponing` | the pool's end-of-queue pass | `Pace.totalMinutes`, `attempts` |
 | `postponed/<id>` | `Pace.postpone` | the pool (which also deletes it at end of queue), `Pace.postponed`, `Pace.allPostponed` |
 | `restarts.jsonl` | `Supervisor.record` | the restart limit, the dashboard |
-| `overwatch.jsonl` | `Overwatch.write` | the dashboard banner, `/overwatch`, and `chat`, whose prompt names it |
+| `overwatch.jsonl` | `Overwatch.write` | **`overwatch-planner`, before it plans anything**, and `overwatch-verifier` before it answers `duplicate`; the dashboard banner, `/overwatch`, and `chat`, whose prompt names it |
+| `restarts.jsonl` (again) | `Supervisor.record` | also `overwatch-planner`, which reads what was thrown away and why |
 | `overwatch-trace.jsonl`, `overwatch-settlements.jsonl` | the supervisor's own trace | the dashboard |
 | `overwatch.log` | `entrypoint.sh serve` redirection | nothing in the program; no prompt names it |
-| `spec/` | `entrypoint.sh` copies it in on every start (`rm -rf` then `cp -R /opt/agent/spec/.`) | `overwatch` and `chat`, by prompt |
+| `spec/` | `entrypoint.sh` copies it in on every start (`rm -rf` then `cp -R /opt/agent/spec/.`) | `overwatch-planner` and `chat`, by prompt |
 
 The spec is copied into the results tree because every agent's file tools are rooted there: a prompt
 naming `/opt/agent/spec` would name a file none of them can read and would teach the model that its
 tools are broken. Both prompts that name it name `spec/README.md` as the index, so **the copied tree
-must contain a README.md that says which chapter answers what**, or the first thing the watcher does
+must contain a README.md that says which chapter answers what**, or the first thing the planner does
 with the instruction is fail to follow it.
 
-**The watcher is told to read the chapter before reporting that a part it has not checked the intent of
-is broken** — several of the rules here look like bugs until you know the failure they were written
-for, and a finding that a deliberate design is a fault costs a working prompt a rewrite, which is worse
-than a missed finding. The prompt names three of them: a critic whose silence permits, a marker
-deliberately re-queued, a bound that measures silence rather than elapsed time. `overwatch-critic` is
-**not** told about `spec/` — it is told how RED and GREEN work instead, because its job is to judge one
-claim rather than to audit a design.
+**The planner is told to read the chapter before anything points at the mechanism it covers** —
+several of the rules here look like bugs until you know the failure they were written for, and a
+finding that a deliberate design is a fault costs a working prompt a rewrite, which is worse than a
+missed finding. The prompt names three of them: a judge whose silence permits, a marker deliberately
+re-queued, a bound that measures silence rather than elapsed time. The plan then says what the chapter
+establishes was deliberate, and the doer works from that.
+
+**Only the planner is told about `spec/`, and that is the whole reason the plan carries what it
+carries.** The doer is told instead that if it has found something the plan says nothing about it must
+report the observation and say plainly that it did not establish the intent — its judge can go and
+read the chapter; it cannot un-refute a finding that called a design a bug. The verifier is told how
+RED and GREEN work rather than where the chapters are, because its job is to judge one claim rather
+than to audit a design.
 
 ## Failure directions, in one place
 
 | If this is absent or unreadable | The result is | Never the other way, because |
 |---|---|---|
-| the critic (no answer) | finding recorded `unjudged`; no lever pulled | an unreachable critic must not suppress a warning, nor authorise a kill |
-| the watcher (no answer) | progress `the watcher had nothing to say`; nothing recorded | the guard sits before `split`, whose fallback would otherwise turn an empty report into one empty finding to be judged |
+| the verifier (no answer) | finding recorded `unjudged`; no lever pulled | an unreachable verifier must not suppress a warning, nor authorise a kill |
+| the doer (no answer) | progress `the watcher had nothing to say`; nothing recorded | the guard sits before `split`, whose fallback would otherwise turn an empty report into one empty finding to be judged |
+| the planner (no answer) | progress `no plan for this pass; nothing read`; the doer is never asked | a pass with no plan has no memory of the last one and re-reports what already holds |
 | `restarts.jsonl` **unreadable** | `restarts()` returns `LIMIT` — the restart is refused | an unreadable log must not lift the limit |
 | `restarts.jsonl` **absent** | `restarts()` returns 0 — the restart proceeds | a run that has restarted nothing has restarted nothing |
 | `dead/` **unlistable** | `tries()` returns `Integer.MAX_VALUE` — the pool leaves the marker alone | an unreadable archive must not hand a broken marker unlimited goes |
