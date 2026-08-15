@@ -43,10 +43,32 @@ final class Json {
             char c = json.charAt(i);
             if (c == '\\' && i + 1 < json.length()) {
                 char n = json.charAt(++i);
+                // A BACKSLASH-u ESCAPE, WHICH `default -> n` TURNED INTO THE LETTER u AND FOUR
+                // DIGITS. A model writing about Java writes List<String>, and a model writing
+                // JSON may legally send the angle brackets escaped. Dropping the backslash and
+                // keeping the rest put Listu003cStringu003e on the marker page — the summary
+                // quoting a type that does not exist, on every generic in every Java summary,
+                // reading as a model error rather than as a parser that knew three escapes and
+                // met a fourth.
+                //
+                // The escape is not written out in this comment on purpose: javac decodes
+                // backslash-u BEFORE lexing, comments included, so spelling it here is a
+                // compile error. It cost one build to rediscover.
+                if (n == 'u' && i + 4 < json.length()) {
+                    try {
+                        v.append((char) Integer.parseInt(json.substring(i + 1, i + 5), 16));
+                        i += 4;
+                        continue;
+                    } catch (NumberFormatException notAnEscape) {
+                        // Four characters that are not hex are four characters.
+                    }
+                }
                 v.append(switch (n) {
                     case 'n' -> '\n';
                     case 't' -> '\t';
                     case 'r' -> '\r';
+                    case 'b' -> '\b';
+                    case 'f' -> '\f';
                     default -> n;
                 });
             } else if (c == '"') {
