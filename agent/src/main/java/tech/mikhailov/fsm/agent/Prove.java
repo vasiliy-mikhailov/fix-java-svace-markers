@@ -131,7 +131,7 @@ public final class Prove {
      * <p>{@code Runner} already writes the first line of every summary as a plain verdict — "red:
      * FAILED", "green: PASSED", "red: no test class was named, so nothing ran" — so this is a list
      * of facts and not a description of them. It is what {@link #whatExecutionProduced} hands to the
-     * agents who argue about a marker nothing demonstrated, and what the estimator needs to price
+     * agents who argue about a marker nothing demonstrated, and what the price-doer needs to price
      * what the run did rather than what its last speaker said about its own step.
      */
     private final List<String> builds = new ArrayList<>();
@@ -198,7 +198,7 @@ public final class Prove {
             // No file, after being asked plainly. That is an argument to be made, not a build to be
             // spent — and the verdict agent is the one that makes it.
             return argued(whatThisRunMade() + brief
-                    + "\nNo test was written for this marker. The reproducer said:\n"
+                    + "\nNo test was written for this marker. The reproduce-doer said:\n"
                     + (reply.isBlank() ? "(nothing at all)" : reply));
         }
 
@@ -227,7 +227,7 @@ public final class Prove {
         }
         if (a.build().infra() || a.build().passed()) {
             return argued(whatThisRunMade() + brief
-                    + "\nNO TEST COULD BE MADE TO FAIL ON THIS CODE. The reproducer was asked "
+                    + "\nNO TEST COULD BE MADE TO FAIL ON THIS CODE. The reproduce-doer was asked "
                     + "twice; the last build was:\n" + a.build().summary());
         }
 
@@ -303,7 +303,7 @@ public final class Prove {
         trace.progress(marker, "GREEN passed; fix-verifier certifying");
         String changed = diff();
         String certificate = agents.fixVerifier().run(brief + evidence + "\nGREEN:\n" + green.summary()
-                + "\nWhat the fixer says it did:\n" + patch
+                + "\nWhat the fix-doer says it did:\n" + patch
                 + "\nWHAT IT ACTUALLY CHANGED (git diff, tests excluded):\n" + changed
                 + "\n" + reachesTheFlaggedLine(changed));
         if (rejects(certificate)) {
@@ -483,7 +483,7 @@ public final class Prove {
                 estimate = "minutes: unknown\n" + estimate;
             }
         } catch (RuntimeException e) {
-            // An unreachable estimator costs a number, never a settlement.
+            // An unreachable price-doer costs a number, never a settlement.
             estimate = "minutes: unknown (" + e.getClass().getSimpleName() + ")";
         }
         trace.priced(marker, minutes(estimate), estimate);

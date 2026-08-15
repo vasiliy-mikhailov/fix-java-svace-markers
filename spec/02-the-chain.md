@@ -369,7 +369,9 @@ The fix-planner names the change — which file, which construct, what it become
 what class of input it covers, so a reader can tell a fix of the defect from a fix of the test. It is
 also the stage that may say the subject WANTS the bug: this runs against teaching code, where a
 vulnerability can be the lesson, and a plan that says so is the one that stops a pull request nobody
-would merge. **The fix-planner is asked once and never again** — see the fix-verifier's words below.
+would merge. **The fix-planner is asked once and never again** — see the fix-verifier's words below —
+and `fixPlan` goes into that one `fix-doer` call and no other, so neither re-ask in this stage
+restates it.
 
 **There is no patch object.** The fix-doer edits the working tree through `edit_file`; `patch` is only
 what it *said*. The tree is what the runner builds and what `git diff` reads back, and the GREEN
@@ -674,10 +676,12 @@ is the whole reason there are three roles. Consequences a rebuilder must preserv
   builds a new `SubAgentRuntime` over a new `ChatModel`; each re-ask therefore restates the brief,
   the evidence, the plan and the objection in full. Nothing persists a conversation with a model —
   which is also why a postponed marker comes back as a fresh attempt rather than a continuation.
-- **A doer never works without a plan in the same call.** The reproduce stage puts the plan into the
-  brief, so every later ask in that stage carries it; `planned()` restates it in each re-ask it
-  makes. A doer that loses the plan on its second turn rewords its own first answer, which is the
-  loop the triples were built to break.
+- **A plan survives a re-ask only where it was put into the brief.** The reproduce stage appends the
+  plan to `brief`, so every later ask in that stage carries it, and `planned()` restates the plan in
+  each re-ask it makes. The fix stage does neither: `fixPlan` goes to the first `fix-doer` call and
+  nowhere else, so the compile retry and the rejection re-ask carry the brief, the evidence and the
+  objection but not the plan. A doer that loses the plan on its second turn rewords its own first
+  answer, which is the loop the triples were built to break.
 - **A verifier is re-consulted exactly where it can still change something.** Inside `planned()` it
   judges what its own objection produced, up to two judgements per stage. In the two hand-written
   stages it is asked once, except `fix-verifier`, which is asked again about the replacement patch on

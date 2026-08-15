@@ -86,8 +86,8 @@ final class Agents {
                 was missing for the one it named. A complaint that cannot name the weaker state \
                 cannot be acted on, and comes back word for word.
 
-                Answer `sound` or `redo` on its own line, then one sentence naming what the argument \
-                cites and which state that citation reaches.
+                Answer `sound`, `redo` or `replan` on its own line, then one sentence naming what the \
+                argument cites and which state that citation reaches. If the fault is in the PLAN this was made from rather than in the work — the wrong thing was aimed at, not the right thing done badly — answer `replan` instead and say what should have been aimed at. That goes back further, to whoever chose the approach.
                 """);
     }
 
@@ -396,7 +396,7 @@ final class Agents {
                 file before it plans anything. Write the correction as something a planner can act on: which cohort
                 would have settled the question, what to sample instead, what not to raise again. "The diagnosis is
                 wrong" helps nobody. "The count is real but it is every DM_DEFAULT_ENCODING marker rather than
-                anything about the reproducer — sample that checker family next pass" is a plan the next pass will
+                anything about the reproduce-doer — sample that checker family next pass" is a plan the next pass will
                 follow.
 
                 Answer `holds`, `refuted` or `duplicate` on its own line with nothing else on that line, then one
@@ -907,7 +907,7 @@ final class Agents {
                 Be hardest on `make`. A wrongly proposed patch costs a maintainer their afternoon and \
                 this project its welcome; a wrongly declined one costs nothing anybody notices.
 
-                Answer `sound` if the decision stands, or `redo` and say exactly what they missed.
+                Answer `sound` if the decision stands, or `redo` and say exactly what they missed. If the fault is in the PLAN this was made from rather than in the work — the wrong thing was aimed at, not the right thing done badly — answer `replan` instead and say what should have been aimed at. That goes back further, to whoever chose the approach.
                 """);
     }
 
@@ -930,7 +930,10 @@ final class Agents {
                 Say so when it has.
 
                 Answer `sound` if the number stands, or `redo` and give the figure you would defend \
-                and why.
+                and why. If the fault is in the PLAN the estimate was made from rather than in \
+                the number — the wrong work was itemised, not the right work mispriced — \
+                answer `replan` instead and say what should have been itemised. That goes \
+                back further, to whoever chose what to count.
                 """);
     }
 

@@ -616,11 +616,14 @@ static final java.util.List<String> WATCH = java.util.List.of(
         "interpreter-planner", "interpreter-doer", "interpreter-verifier");
 ```
 
-All six appear on `/settings` under the heading *watching the run* — the settings page groups by
-`Agents.CHAIN.contains(agent)` and everything else falls under that one heading — editable like every
-other prompt, and grouped there as the two triples they are. An override is `$PROMPTS/<agent>.txt`
-(`Prompts.WHERE`, default `/results/prompts`) and **replaces the built-in entirely** — there is no
-merge. Unlike the chain's prompts, which take effect on the next marker a prover starts, these take
+All six appear on `/settings` under the heading *watching the run*, laid out as the two triples they
+are, editable like every other prompt. **Three groups, not two**: `ApiSettings.group` answers `chain`,
+`watch` or `asked` from the three lists, and an agent no list names is `null` rather than a guess. It
+tested only `Agents.CHAIN.contains(agent)` once and swept everything else under this heading, which
+put `chat` here — and `chat` watches nothing, it runs when a person types a question.
+
+An override is `$PROMPTS/<agent>.txt` (`Prompts.WHERE`, default `/results/prompts`) and **replaces the
+built-in entirely** — there is no merge. Unlike the chain's prompts, which take effect on the next marker a prover starts, these take
 effect on the **next lane interpreted**: all three runtimes are constructed inside `interpret()`, per
 lane, and read the override at construction.
 
