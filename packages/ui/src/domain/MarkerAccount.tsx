@@ -1,4 +1,4 @@
-import { Account } from '../primitives'
+import { Prose } from '../primitives'
 
 export type MarkerAccountProps = {
   /**
@@ -30,5 +30,5 @@ export function MarkerAccount({ text }: MarkerAccountProps) {
   if (text.trim().length === 0) {
     return null
   }
-  return <Account>{text}</Account>
+  return <Prose>{text}</Prose>
 }

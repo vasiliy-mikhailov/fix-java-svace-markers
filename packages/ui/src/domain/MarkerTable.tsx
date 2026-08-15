@@ -35,7 +35,7 @@ const HEAD: Style = {
  * The six headings, in the order the row reads. They are prose, not field names: "a person would
  * have" says what the last column is FOR, where "minutes" would have said what it holds.
  */
-const COLUMNS = ['severity', 'marker', 'state', 'what happened', 'took', 'a person would have']
+const COLUMNS = ['severity', 'marker', 'state', 'interpretation', 'took', 'a person would have']
 
 /** Every marker the run was given — including the ones it has not reached. */
 export function MarkerTable({ markers }: MarkerTableProps) {
@@ -53,7 +53,7 @@ export function MarkerTable({ markers }: MarkerTableProps) {
       <tbody>
         {markers.map((marker) => (
           // KEYED BY THE MARKER KEY, never by index. React reuses DOM by key, and the fold in the
-          // `what happened` cell holds open state: keyed by position, a marker settling above another
+          // the `interpretation` cell holds open state: keyed by position, a marker settling above another
           // one hands its open fold to a different marker's argument. It is the same failure the
           // Java's fold memory had for the same reason (catalogue #10), and the row is where it would
           // come back.

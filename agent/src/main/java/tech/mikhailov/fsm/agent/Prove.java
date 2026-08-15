@@ -578,7 +578,7 @@ public final class Prove {
         return new String[] {plan, work};
     }
 
-    private static String verdict(String reply, String... allowed) {
+    static String verdict(String reply, String... allowed) {
         if (reply == null) {
             return "";
         }

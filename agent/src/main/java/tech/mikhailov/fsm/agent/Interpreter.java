@@ -102,7 +102,33 @@ final class Interpreter {
             trace.progress(marker, "summary written but not checked; not shown");
             return;
         }
-        write(lane, checked);
+
+        // THE DOER'S SUMMARY SHIPS, NOT THE JUDGE'S AUDIT OF IT.
+        //
+        // This wrote `checked` — the verifier's answer — and that was correct exactly once, when the
+        // interpreter was a producer/critic PAIR and the critic's prompt said "WRITE THE SUMMARY
+        // YOURSELF". The triple's verifier is told the opposite, in capitals: "YOU DO NOT REWRITE IT
+        // ... which is a judge marking its own text." The prompt changed and this line did not, so
+        // every marker page showed a Final Audit Report — "Summary Fidelity: Confirmed Accurate",
+        // "Close as: `sound`" — where the explanation for a developer was supposed to be. The judge's
+        // verdict decides WHETHER the draft ships and whether to go round again; it is not the text.
+        String said = Prove.verdict(checked, "sound", "redo", "replan");
+        if (said.equals("replan")) {
+            // The FACTS are wrong or short, so the sheet is rebuilt and the summary rewritten from it.
+            trace.progress(marker, "interpreter-verifier: replan — the facts under it were wrong");
+            String again = agents.interpreterPlanner(results).run(digest
+                    + "\n\nYour sheet was sent back:\n" + checked
+                    + "\n\nEstablish it again. Do not restate what was refused.");
+            if (again != null && !again.isBlank()) {
+                sheet = again;
+            }
+            draft = redraft(sheet, digest, checked, draft);
+        } else if (said.equals("redo")) {
+            // The WRITING is wrong; the facts stand, so only the summary is written again.
+            trace.progress(marker, "interpreter-verifier: redo — the writing was wrong");
+            draft = redraft(sheet, digest, checked, draft);
+        }
+        write(lane, draft);
     }
 
     /** Settled lanes with no summary, in the order the pool reached them. */
@@ -278,6 +304,26 @@ final class Interpreter {
             brief = stop > 0 ? account.substring(0, stop + 1) : account;
         }
         return new String[] {brief.strip(), account.strip()};
+    }
+
+    /**
+     * ONE MORE ATTEMPT AT THE SUMMARY, QUOTING THE OBJECTION VERBATIM.
+     *
+     * <p>A writer told only "this is wrong" rewrites the same claims in different words, because
+     * rewording is what it can do without new information. The verifier's own prompt says so, and it
+     * is required to name what is wrong concretely — so the whole complaint is handed back rather
+     * than a summary of it.
+     *
+     * <p>The previous draft is kept if the second attempt comes back empty: a blank here would put
+     * nothing on the page, and the first draft was at least written from the sheet.
+     */
+    private String redraft(String sheet, String digest, String objection, String previous) {
+        String again = agents.interpreterDoer(results).run(
+                "The facts established from this marker's record:\n\n" + sheet
+                        + "\n\n---\n\nThe record itself:\n\n" + digest
+                        + "\n\n---\n\nYour summary was sent back:\n\n" + objection
+                        + "\n\nAnswer the objection. Do not restate the same claims in other words.");
+        return again == null || again.isBlank() ? previous : again;
     }
 
     private void write(Path lane, String answer) {
