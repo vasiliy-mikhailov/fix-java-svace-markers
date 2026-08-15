@@ -41,6 +41,21 @@ interface Trace {
      */
     void asking(String agent, String standing, String task);
 
+    /**
+     * THE WIRE, WRITTEN BY THE THING THAT SENDS IT.
+     *
+     * <p>Every other method here is called because somebody remembered to call it, at a place
+     * somebody chose — and each of those choices has been wrong at least once. This one is called by
+     * the HTTP client wrapper on every request, so the record does not depend on a decision made
+     * elsewhere and cannot omit a turn nobody thought of.
+     *
+     * <p>{@code shared} is how many leading characters this body had in common with the previous one
+     * on the same connector, and {@code added} is the rest. A tool loop resends the whole conversation
+     * every turn, so recording each body whole is quadratic; the wire is reconstructed by taking the
+     * first {@code shared} characters of what came before and appending {@code added}.
+     */
+    void sent(String agent, int shared, String added);
+
     void asked(String agent, String prompt, String reply);
 
     /**

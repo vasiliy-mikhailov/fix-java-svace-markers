@@ -942,7 +942,7 @@ public final class Prove {
                 ? HttpClient.Version.HTTP_2
                 : HttpClient.Version.HTTP_1_1;
         Overheard overheard = new Overheard(new JdkHttpClientBuilder()
-                .httpClientBuilder(HttpClient.newBuilder().version(version)));
+                .httpClientBuilder(HttpClient.newBuilder().version(version)), trace, agent);
         OpenAiStreamingChatModel.OpenAiStreamingChatModelBuilder built =
                 OpenAiStreamingChatModel.builder()
                         .httpClientBuilder(overheard)

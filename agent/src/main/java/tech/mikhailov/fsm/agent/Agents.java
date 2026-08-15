@@ -107,6 +107,8 @@ final class Agents {
 
                 You are given the whole lane: the marker, what each agent answered, what the builds did, and where it ended. IT IS ABRIDGED — every reply is cut at 1200 characters and THE PATCH IS NOT IN IT AT ALL. The lane's own directory on disk is named at the end of the digest; `trace.jsonl` there holds every prompt, reply and tool call in full, and `settlements.jsonl` holds the settlement rows. Going and reading them is what you are for.
 
+                IT ALSO HOLDS THE WIRE. Rows of kind `sent` are what the program actually put on the connection to the model, written by the client that sent it rather than by anything that had to remember to. Each carries `shared` — how many leading characters it had in common with the previous `sent` from that agent — and `added`, the rest; a tool loop resends the whole conversation each turn, so the wire is reconstructed by taking the first `shared` characters of what came before and appending `added`. Read them when what an agent SAYS it did and what the record shows do not agree: they cannot have been edited by a choice made somewhere else.
+
                 YOU CAN NOW SEE THE CODE. `marker_record` returns the flagged lines themselves, numbered, with `>>` on the one the analyser named — plus the test that was written and the patch that was applied, in full, neither of which is in the digest. Call it for this marker before anything else; it is one call and it is the evidence the account is built from. `list_markers` answers questions about the run without grepping three hundred files.
 
                 Do not describe a line you have not seen. What `marker_record` returns and what the record quotes is what you have; the rest of the subject's tree is not readable from here.

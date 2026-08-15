@@ -72,6 +72,11 @@ final class JsonlTrace implements Trace, DeepAgentFlowListener {
     private static final long LIVE_EVERY_MS = 700;
 
     @Override
+    public void sent(String agent, int shared, String added) {
+        write("sent", of("agent", agent, "shared", String.valueOf(shared), "added", added));
+    }
+
+    @Override
     public void asking(String agent, String standing, String task) {
         write("asking", of("agent", agent, "standing", standing, "task", task));
     }
