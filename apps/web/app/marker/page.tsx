@@ -275,7 +275,16 @@ function toFeedEvent(markerId: string, event: ApiEvent): TraceEventRecord {
     ...body,
     // The absolute index is the fallback for a row the record never stamped — it is a position, and
     // it is named as one so nobody reads it as an identity.
-    id: `${markerId}:${agent ?? 'none'}:${kind}:${at === null ? `unstamped-${index}` : at}`,
+    // THE INDEX IS ALWAYS IN IT, because the rest is not unique. A stamp is a millisecond and one
+    // agent writes several rows inside one: the connector records the system prompt and the task
+    // back to back, so `agent:sent:<ms>` named BOTH of them. Sixty-one rows on one lane carried
+    // fifty-six distinct keys. React tolerates that on a first paint and stops tolerating it the
+    // moment the list grows — which it now does, on every event the stream pushes — reusing the
+    // wrong `<details>` for the wrong event.
+    //
+    // The index is the record's own position and is stable across reads, so here it is an identity
+    // and not a list offset; the stamp stays because it is what a reader recognises.
+    id: `${markerId}:${agent ?? 'none'}:${kind}:${at === null ? 'unstamped' : at}:${index}`,
     at: at ?? 0,
     kind,
     marker,

@@ -209,6 +209,9 @@ class TheWireIsRecordedByWhatSendsItTest {
         Connector c = new Connector(wire, "reproduce-doer");
         request(c, UserMessage.from("task"));
         replied(c, AiMessage.from("an answer"), 24_310, 1_205, "STOP");
+        assertEquals(0, wire.costs.size(), "held until the reasoning it paid for is written, or the "
+                + "page shows what a call cost above the thinking it bought");
+        c.flush();
         assertEquals(1, wire.costs.size());
         Wire.Cost cost = wire.costs.get(0);
         assertEquals(24_310, cost.input(), "the prompt tokens the server actually charged for — this "
@@ -224,6 +227,7 @@ class TheWireIsRecordedByWhatSendsItTest {
         Connector c = new Connector(wire, "a");
         request(c, UserMessage.from("task"));
         replied(c, AiMessage.from("half a sen"), 1_000, 16_000, "LENGTH");
+        c.flush();
         assertEquals("LENGTH", wire.costs.get(0).finish(),
                 "every truncation this pipeline has had was found by a human reading a reply and "
                         + "noticing it stopped mid-sentence; the server says so on every call");

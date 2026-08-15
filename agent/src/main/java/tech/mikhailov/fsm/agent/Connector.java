@@ -95,6 +95,9 @@ final class Connector implements ChatModelListener {
         if (trace == null || context == null || context.chatRequest() == null) {
             return;
         }
+        // A cost nobody flushed belongs to the call before this one, and goes down before the
+        // question that follows it rather than being lost.
+        flush();
         context.attributes().put(STARTED, System.currentTimeMillis());
         List<ChatMessage> messages = context.chatRequest().messages();
         if (messages == null) {
@@ -141,11 +144,38 @@ final class Connector implements ChatModelListener {
         // that hit the cap was indistinguishable from one that finished.
         var meta = context.chatResponse().metadata();
         var usage = meta == null ? null : meta.tokenUsage();
-        trace.metered(agent,
+        // HELD, NOT WRITTEN, because this fires the instant the response lands and the CONTENT of
+        // that response is written after it — `Thinking` unpacks the reasoning, then the runtime
+        // unpacks the tool calls. Writing here put "5,820 in / 3,745 out / 56.9s" on the page ABOVE
+        // the thinking it had paid for, which is the same complaint that moved `asking` off the
+        // answer: a record ordered by when a line was WRITTEN rather than by what happened.
+        pending = new Metered(
                 meta == null || meta.finishReason() == null ? "" : meta.finishReason().name(),
                 usage == null || usage.inputTokenCount() == null ? 0 : usage.inputTokenCount(),
                 usage == null || usage.outputTokenCount() == null ? 0 : usage.outputTokenCount(),
                 since(context.attributes()));
+    }
+
+    /** What one call cost, waiting for its own content to be written first. */
+    private record Metered(String finish, long input, long output, long ms) { }
+
+    private Metered pending;
+
+    /**
+     * Writes the held accounting, after the reasoning it paid for.
+     *
+     * <p>Called by {@link Thinking} once the thought is down. IDEMPOTENT AND SELF-DRAINING: a call
+     * whose content never arrived — an empty reply, a path that does not go through Thinking at all
+     * — still has its cost written, by the next request or by nothing. What must not happen is the
+     * cost being dropped because the thing that was supposed to flush it did not run, which is the
+     * failure every remembered `trace.x()` call in this program has had at least once.
+     */
+    void flush() {
+        Metered held = pending;
+        pending = null;
+        if (held != null && trace != null) {
+            trace.metered(agent, held.finish(), held.input(), held.output(), held.ms());
+        }
     }
 
     /** How long this call took, from the stamp {@link #onRequest} left in its own attributes. */

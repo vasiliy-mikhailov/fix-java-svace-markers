@@ -13,6 +13,14 @@ export type TextFoldProps = {
   defaultOpen?: boolean
   /** Lines shown before clipping. Below this no control is drawn at all. */
   lines?: number
+  /**
+   * And a ceiling in CHARACTERS, because lines alone bound nothing here.
+   *
+   * A checker note and a task are written as paragraphs, one per line, unwrapped. Twelve lines of
+   * that is sixteen thousand characters — so the clip meant to make a lane scannable drew the whole
+   * task and the reader was back where they started.
+   */
+  chars?: number
 }
 
 const LABEL: Style = {
@@ -65,14 +73,25 @@ const MORE: Style = {
  * instead of two, and an unjudged finding's "what the critic said" simply is not on the page. A fold
  * that opens onto nothing says the critic answered with silence, which is not what happened.
  */
-export function TextFold({ id, label, body, defaultOpen = false, lines = 12 }: TextFoldProps) {
+export function TextFold({
+  id,
+  label,
+  body,
+  defaultOpen = false,
+  lines = 12,
+  chars = 1200,
+}: TextFoldProps) {
   const [open, setOpen] = useState(defaultOpen)
   if (body.length === 0) {
     return null
   }
   const all = body.split('\n')
-  const long = all.length > lines
-  const shown = open || !long ? body : all.slice(0, lines).join('\n')
+  // WHICHEVER BOUND BITES FIRST. Many short lines and one enormous one are both walls of text, and
+  // a clip that only counts newlines stops the first while waving the second through.
+  const byLine = all.slice(0, lines).join('\n')
+  const clipped = byLine.length > chars ? `${byLine.slice(0, chars)}…` : byLine
+  const long = clipped.length < body.length
+  const shown = open || !long ? body : clipped
   return (
     <div id={id}>
       <div style={LABEL}>
@@ -81,7 +100,9 @@ export function TextFold({ id, label, body, defaultOpen = false, lines = 12 }: T
       <pre style={BODY}>{shown}</pre>
       {long ? (
         <button type="button" onClick={() => setOpen(!open)} style={MORE}>
-          {open ? 'show less' : `show all ${all.length} lines`}
+          {open
+            ? 'show less'
+            : `show all ${all.length > lines ? `${all.length} lines` : `${body.length} chars`}`}
         </button>
       ) : null}
     </div>

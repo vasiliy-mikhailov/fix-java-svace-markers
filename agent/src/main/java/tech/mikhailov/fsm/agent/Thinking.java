@@ -39,7 +39,8 @@ import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
  * and this is one. The stream is an implementation detail of getting the answer, and it is not the
  * dashboard's live feed — {@link Trace} is.
  */
-record Thinking(StreamingChatModel model, Overheard overheard, Trace trace, String agent,
+record Thinking(StreamingChatModel model, Overheard overheard, Connector connector, Trace trace,
+        String agent,
         Duration patience, Duration ceiling) implements ChatModel {
 
     /** How often to look, while waiting. Short enough to be prompt, long enough to cost nothing. */
@@ -96,6 +97,11 @@ record Thinking(StreamingChatModel model, Overheard overheard, Trace trace, Stri
         }
         if (!thought.isBlank()) {
             trace.thought(agent, thought);
+        }
+        // AND THEN WHAT IT COST. Held by the connector until now so the accounting follows
+        // the reasoning it paid for instead of announcing it.
+        if (connector != null) {
+            connector.flush();
         }
         return response;
     }

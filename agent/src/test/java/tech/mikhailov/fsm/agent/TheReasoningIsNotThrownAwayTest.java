@@ -75,7 +75,7 @@ class TheReasoningIsNotThrownAwayTest {
 
     private static Kept run(StreamingChatModel model) {
         Kept trace = new Kept();
-        ChatResponse got = new Thinking(model, nothing(), trace, "reproducer", Duration.ofSeconds(5),
+        ChatResponse got = new Thinking(model, nothing(), null, trace, "reproducer", Duration.ofSeconds(5),
                 Duration.ofSeconds(30))
                 .chat(ChatRequest.builder().messages(dev.langchain4j.data.message.UserMessage
                         .from("is 17 prime?")).build());
@@ -195,7 +195,7 @@ class TheReasoningIsNotThrownAwayTest {
             @Override
             public void doChat(ChatRequest request, StreamingChatResponseHandler handler) { }
         };
-        Thinking thinking = new Thinking(mute, nothing(), new Kept(), "fix-critic", Duration.ofMillis(120),
+        Thinking thinking = new Thinking(mute, nothing(), null, new Kept(), "fix-critic", Duration.ofMillis(120),
                 Duration.ofSeconds(30));
         RuntimeException died = assertThrows(RuntimeException.class, () -> thinking.chat(
                 ChatRequest.builder().messages(dev.langchain4j.data.message.UserMessage.from("?"))
@@ -239,7 +239,7 @@ class TheReasoningIsNotThrownAwayTest {
                 talking.start();
             }
         };
-        ChatResponse got = new Thinking(slow, overheard, trace, "reproducer",
+        ChatResponse got = new Thinking(slow, overheard, null, trace, "reproducer",
                 Duration.ofMillis(200), Duration.ofSeconds(30))
                 .chat(ChatRequest.builder().messages(
                         dev.langchain4j.data.message.UserMessage.from("?")).build());
@@ -270,7 +270,7 @@ class TheReasoningIsNotThrownAwayTest {
             }
         };
         RuntimeException died = assertThrows(RuntimeException.class,
-                () -> new Thinking(endless, overheard, new Kept(), "verdict",
+                () -> new Thinking(endless, overheard, null, new Kept(), "verdict",
                         Duration.ofSeconds(10), Duration.ofMillis(300))
                         .chat(ChatRequest.builder().messages(
                                 dev.langchain4j.data.message.UserMessage.from("?")).build()));
@@ -301,7 +301,7 @@ class TheReasoningIsNotThrownAwayTest {
                 talking.start();
             }
         };
-        assertThrows(RuntimeException.class, () -> new Thinking(endless, overheard, trace,
+        assertThrows(RuntimeException.class, () -> new Thinking(endless, overheard, null, trace,
                 "reproducer", Duration.ofSeconds(30), Duration.ofMillis(200))
                 .chat(ChatRequest.builder().messages(
                         dev.langchain4j.data.message.UserMessage.from("?")).build()));
@@ -323,7 +323,7 @@ class TheReasoningIsNotThrownAwayTest {
             }
         };
         RuntimeException died = assertThrows(RuntimeException.class,
-                () -> new Thinking(refuses, nothing(), new Kept(), "fixer", Duration.ofSeconds(5),
+                () -> new Thinking(refuses, nothing(), null, new Kept(), "fixer", Duration.ofSeconds(5),
                         Duration.ofSeconds(30))
                         .chat(ChatRequest.builder().messages(
                                 dev.langchain4j.data.message.UserMessage.from("?")).build()));
