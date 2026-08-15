@@ -80,6 +80,13 @@ final class ApiMarker {
         Run.Row row = Run.rows(settlements, Api.queue(settlements)).get(key);
         String settled = settled(settlements, key);
 
+        // WHERE A READER OF THIS DOCUMENT RESUMES. The page subscribes after rendering what is
+        // below, and tells the server how much it holds; counted here, from the same file the
+        // stream tails, so the two cannot disagree about what "already seen" means. Counted BEFORE
+        // the events are read, so a lane that grows in between re-sends a row rather than skipping
+        // one — a duplicate is visible and a gap is not.
+        long traceLines = lines(ApiStream.laneTrace(settlements, key));
+
         List<String> mine = new ArrayList<>();
         for (String event : Dashboard.lines(trace)) {
             if (Dashboard.field(event, "marker").equals(key)) {
@@ -166,6 +173,9 @@ final class ApiMarker {
         // starts a fresh trace, so a marker can burn seventy-nine minutes, be restarted, burn
         // seventy-nine more and read as seventy-nine every time. Pace adds the archives back.
         b.append(",\"attempts\":").append(Pace.attempts(results, id));
+        // How much of the lane's record this document carries, so a page that subscribes after
+        // rendering it can say where to resume.
+        b.append(",\"traceLines\":").append(traceLines);
         b.append(",\"tookMinutes\":").append(Pace.totalMinutes(results, id));
         b.append(",\"agents\":[");
         boolean first = true;
@@ -231,8 +241,27 @@ final class ApiMarker {
         return b.append(']').toString();
     }
 
-    /** One trace event, with every field the kinds carry and {@code null} where a kind carries none. */
-    private static String event(String e) {
+    /** How many lines a lane's record holds, or zero when it has not been written yet. */
+    private static long lines(java.nio.file.Path trace) {
+        if (trace == null || !java.nio.file.Files.isRegularFile(trace)) {
+            return 0;
+        }
+        try (var all = java.nio.file.Files.lines(trace)) {
+            return all.count();
+        } catch (java.io.IOException unreadable) {
+            return 0;
+        }
+    }
+
+    /**
+     * One trace event, with every field the kinds carry and {@code null} where a kind carries none.
+     *
+     * <p>Package-private so {@link ApiStream} sends a streamed row in the SAME shape the page
+     * already renders. A second shaper would be a second reader of the record, and two readers
+     * that disagree is the failure this whole zone was written to avoid — silently, because both
+     * documents parse.
+     */
+    static String event(String e) {
         StringBuilder b = new StringBuilder("{");
         // A MOMENT OR NULL, NEVER 0. An unreadable stamp is not midnight in 1970, and a client that
         // labels or orders by it would date a whole tab to then — this run's own trace.jsonl holds

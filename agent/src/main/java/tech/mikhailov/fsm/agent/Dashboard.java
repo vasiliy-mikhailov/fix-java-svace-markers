@@ -116,6 +116,10 @@ public final class Dashboard {
         route(server, "/api/chat", e -> send(e, "application/json", ApiChat.chat(here)));
         route(server, "/api/live", e -> send(e, "application/json",
                 ApiLive.live(here, query(e, "k"))));
+        // NOT THROUGH send(), which writes a whole body and closes. This one holds the exchange open
+        // and writes frames as the lane produces them — the page stops asking and the server tells.
+        route(server, "/api/stream",
+                e -> ApiStream.stream(e, settlements, query(e, "k"), query(e, "have")));
         route(server, "/api/settings/model", e -> send(e, "application/json", ApiSettings.model()));
         route(server, "/api/settings/subject", e -> send(e, "application/json",
                 ApiSettings.subject(here)));

@@ -33,7 +33,7 @@ import {
 } from '@fsm/ui'
 import { isDisposition, type AgentName, type MarkerState } from '@fsm/types'
 
-import { href, read } from '../../lib/api'
+import { href, live as subscribe, read } from '../../lib/api'
 
 /**
  * ONE MARKER — the summary, each agent's tab, the prompts it ran under, the live stream, and this
@@ -655,6 +655,7 @@ function RecordTab({
 
   useEffect(() => {
     let live = true
+    let polling = false
     let timer: ReturnType<typeof setTimeout> | undefined
 
     /**
@@ -675,6 +676,13 @@ function RecordTab({
     }
 
     const tick = async () => {
+      // ONE AT A TIME. A nudge can arrive while a poll is in flight, and both would read the same
+      // `latest.current`, fetch from the same index and append the same rows — two rows with one
+      // id, which is a duplicate React key and a rating box that saves against the wrong answer.
+      if (polling) {
+        return
+      }
+      polling = true
       try {
         const had = latest.current
         if (had === null) {
@@ -723,6 +731,7 @@ function RecordTab({
         // prove, and blanking the feed would report it as one.
         setFailed(unreachable instanceof Error ? unreachable.message : String(unreachable))
       }
+      polling = false
       // A SETTLED MARKER'S RECORD DOES NOT GROW, so it is not asked about again. Fifteen seconds is
       // the Java page's own cadence; the two-second one belongs to the live stream, which is
       // watching a file that is rewritten every 700ms.
@@ -732,9 +741,35 @@ function RecordTab({
     }
 
     void tick()
+
+    /**
+     * AND THE SERVER SAYS WHEN, instead of this asking every fifteen seconds.
+     *
+     * The frames are a NUDGE, not the content. This feed is a window of the whole run addressed by
+     * run-wide index, and the stream tails one lane's file addressed by line — two coordinate
+     * systems, and forcing them together would put rows on screen the next poll could not
+     * deduplicate. So the stream says the lane moved and this fetches its own delta, which it
+     * already knows how to do and already dedupes. `have=end` because the history is not wanted:
+     * replaying the file here would be a burst of notifications about events already on screen.
+     *
+     * The poll stays as the floor. A proxy that eats event streams, a browser that never connects,
+     * an fsm behind something that does not pass them through — in every one of those this page is
+     * exactly as good as it was before this existed.
+     */
+    const stop = subscribe(`/api/stream?k=${encodeURIComponent(markerKey)}&have=end`, {
+      trace: () => {
+        if (!live || !running.current) {
+          return
+        }
+        clearTimeout(timer)
+        void tick()
+      },
+    })
+
     return () => {
       live = false
       clearTimeout(timer)
+      stop()
     }
   }, [markerKey])
 

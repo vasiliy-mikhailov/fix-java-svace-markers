@@ -32,3 +32,37 @@ export async function read<T>(path: string, init?: RequestInit): Promise<T> {
 export function href(path: string): string {
   return `${BASE}${path}`
 }
+
+/**
+ * THE SERVER TELLING, RATHER THAN THE PAGE ASKING.
+ *
+ * Every view here polls. The record tab reads a window of the whole run every fifteen seconds and
+ * keeps the rows belonging to this marker — which is a fifteen-second lie on the one screen whose
+ * job is showing what an agent is doing right now.
+ *
+ * EventSource rather than a socket, because everything on these pages travels one way and the
+ * dashboard runs on `com.sun.net.httpserver`, which cannot upgrade a connection. The browser
+ * reconnects on its own when one drops and hands back the last id it saw, which is the half of a
+ * socket this would otherwise have to write.
+ *
+ * Returns its own teardown, so an effect can hand it straight back to React.
+ */
+export function live(
+  path: string,
+  handlers: Record<string, (data: unknown) => void>,
+): () => void {
+  if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
+    return () => undefined
+  }
+  const source = new EventSource(href(path))
+  for (const [name, handle] of Object.entries(handlers)) {
+    source.addEventListener(name, event => {
+      try {
+        handle(JSON.parse((event as MessageEvent).data))
+      } catch {
+        // A malformed frame is one frame, not a broken page: the next one still arrives.
+      }
+    })
+  }
+  return () => source.close()
+}
