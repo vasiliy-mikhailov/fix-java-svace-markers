@@ -93,9 +93,15 @@ test.describe('the record tab', () => {
   test('and the whole body is one click away, never truncated for good', async ({ page }) => {
     await page.goto(FOLDED)
     await rows(page)
-    const pre = page.locator('pre').filter({ hasText: 'WHAT TAINTED_PTR REPORTS' }).first()
+    // THE CONTROL THAT BELONGS TO THIS BODY, not the first one on the page: several rows clip, and
+    // clicking somebody else's expander proves only that the page has more than one.
+    const fold = page
+      .locator('div')
+      .filter({ has: page.locator('pre', { hasText: 'WHAT TAINTED_PTR REPORTS' }) })
+      .last()
+    const pre = fold.locator('pre').first()
     const clipped = (await pre.innerText()).length
-    await page.getByRole('button', { name: /show all/ }).first().click()
+    await fold.getByRole('button', { name: /show all/ }).click()
     await expect.poll(async () => (await pre.innerText()).length).toBeGreaterThan(clipped)
   })
 
@@ -132,10 +138,13 @@ test.describe('the record tab', () => {
     )
     const first = (kind: string) => kinds.indexOf(kind)
 
-    expect(first('asking'), 'the question, recorded when it was put').toBeGreaterThan(-1)
-    expect(first('sent'), 'then what actually went down the wire').toBeGreaterThan(first('asking'))
+    // WHAT WENT DOWN THE WIRE COMES FIRST, then what came back. There is no third row quoting the
+    // question: the harness used to write its OWN copy of the task before the call, so an exchange
+    // opened with fsm's version of the prompt and the real one arrived underneath it.
+    expect(first('sent'), 'the prompt, as it was actually sent').toBeGreaterThan(-1)
     expect(first('thought'), 'then the reasoning it caused').toBeGreaterThan(first('sent'))
-    expect(first('metered'), 'and last what it cost').toBeGreaterThan(first('thought'))
+    expect(first('metered'), 'then what that answer cost').toBeGreaterThan(first('thought'))
+    expect(kinds.indexOf('asking'), 'and nothing quoting the prompt ahead of it').toBe(-1)
 
     // AND THE WHOLE FEED IS OLDEST-FIRST, which is the claim the page makes in its own heading.
     const stamps = await feed.evaluateAll(nodes =>

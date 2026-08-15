@@ -40,10 +40,6 @@ export type TraceEventRecord = Omit<TraceRow, 'kind'> & {
   minutes?: number
   itemisation?: string
   text?: string
-  /** The task on an `asking` row — the question, recorded when it was put rather than answered. */
-  task?: string
-  /** The standing instructions on an `asking` row, as sent on that call. */
-  standing?: string
   /** Which message this was, on a `sent` row: `system`, `user`, `assistant`, or `failed`. */
   role?: string
   /** On a `metered` row: the server's own reason for stopping — `STOP`, `LENGTH`, `ERROR`. */
@@ -242,48 +238,6 @@ export function taskOf(prompt: string): string {
 export function standingOf(prompt: string): string {
   const at = prompt.indexOf(SPLIT)
   return at < 0 ? '' : prompt.slice(0, at)
-}
-
-export type AskingEventProps = {
-  agent: AgentName | null
-  task: string
-  /** The agent's standing instructions, as sent on THIS call. */
-  standing: string
-  defaultOpen: boolean
-}
-
-/**
- * THE QUESTION, WHERE THE QUESTION HAPPENED.
- *
- * <p>The `asked` row carries the prompt and the reply together because the corpus replays the pair,
- * so it is written when the call RETURNS — and on a page ordered by time it therefore arrived after
- * every thought and tool call it had caused. A reader opened a lane and met six minutes of "Let me
- * analyze this carefully" with nothing above it saying what had been asked.
- *
- * <p>So the question is recorded when it is put, and drawn here, above the working-out it caused —
- * both halves of it. The task first, because it is the part that changes and the part somebody is
- * looking for; the standing instructions under it, because "what was sent to the model" is both and
- * a reader shown half of it has to go and find the rest.
- */
-export function AskingEvent({ agent, task, standing, defaultOpen }: AskingEventProps) {
-  return (
-    <>
-      <span style={WHO}>{agentLabel(agent)}</span>
-      <span style={KIND}>was asked</span>
-      <TextFold
-        id={`asking:${agent}:${task.length}`}
-        label="the task it was given"
-        body={task}
-        defaultOpen={defaultOpen}
-      />
-      <TextFold
-        id={`standing:${agent}:${standing.length}`}
-        label="the system prompt it was running under"
-        body={standing}
-        defaultOpen={false}
-      />
-    </>
-  )
 }
 
 /**
@@ -604,17 +558,7 @@ function BareKind({ kind }: { kind: string }) {
 
 function bodyOf(event: TraceEventRecord, defaultOpen: boolean, back: string): ReactNode {
   const eventId = event.id
-  switch (event.kind) {
-    case 'asking':
-      return (
-        <AskingEvent
-          agent={event.agent}
-          task={event.task ?? ''}
-          standing={event.standing ?? ''}
-          defaultOpen={defaultOpen}
-        />
-      )
-    case 'sent':
+  switch (event.kind) {    case 'sent':
       return (
         <SentEvent
           agent={event.agent}

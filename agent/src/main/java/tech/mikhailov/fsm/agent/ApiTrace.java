@@ -141,9 +141,6 @@ final class ApiTrace {
         switch (kind) {
             case "asked" -> b.append(",\"prompt\":").append(quote(Dashboard.field(e, "prompt")))
                     .append(",\"reply\":").append(quote(Dashboard.field(e, "reply")));
-            case "asking" -> b.append(",\"standing\":")
-                    .append(quote(Dashboard.field(e, "standing")))
-                    .append(",\"task\":").append(quote(Dashboard.field(e, "task")));
             // WHAT WENT DOWN THE WIRE. A kind with no case here reaches the page carrying nothing
             // but its name, which is how `sent` rows drew an empty fold on every lane.
             // `system` is a real kind and easy to miss — the run-level prompt, which reached this

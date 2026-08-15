@@ -39,7 +39,6 @@ interface Trace {
      * <p>It costs roughly fifteen per cent more record. The record IS the product here, and a reader
      * who cannot see what an agent was told cannot check anything it did.
      */
-    void asking(String agent, String standing, String task);
 
     /**
      * WHAT WENT TO THE MODEL, WRITTEN BY THE THING THAT SENDS IT — see {@link Connector}. One row per

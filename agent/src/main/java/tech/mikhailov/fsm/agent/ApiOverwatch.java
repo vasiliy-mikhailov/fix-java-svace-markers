@@ -216,9 +216,6 @@ final class ApiOverwatch {
                     .append(number(Dashboard.field(line, "minutes")))
                     .append(",\"itemisation\":")
                     .append(quote(Dashboard.field(line, "itemisation")));
-            case "asking" -> b.append(",\"standing\":")
-                    .append(quote(Dashboard.field(line, "standing")))
-                    .append(",\"task\":").append(quote(Dashboard.field(line, "task")));
             // WHAT THE CALL COST. `finish` is the server's own reason, so LENGTH — a
             // generation stopped at the cap — is distinguishable from a model that ended.
             case "metered" -> b.append(",\"finish\":")

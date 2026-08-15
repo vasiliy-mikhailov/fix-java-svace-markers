@@ -84,11 +84,6 @@ final class JsonlTrace implements Trace, DeepAgentFlowListener {
     }
 
     @Override
-    public void asking(String agent, String standing, String task) {
-        write("asking", of("agent", agent, "standing", standing, "task", task));
-    }
-
-    @Override
     public void thought(String agent, String text) {
         // In full, like the pair. The reasoning is the only record of why an answer is what it is,
         // and it is exactly what a reader reaches for when a settlement looks wrong.

@@ -273,9 +273,6 @@ final class ApiMarker {
         b.append(",\"agent\":").append(quote(who(e)));
         b.append(",\"prompt\":").append(text(Dashboard.field(e, "prompt")));
         b.append(",\"reply\":").append(text(Dashboard.field(e, "reply")));
-        // The question, on the row written when it was PUT rather than when it was answered.
-        b.append(",\"task\":").append(text(Dashboard.field(e, "task")));
-        b.append(",\"standing\":").append(text(Dashboard.field(e, "standing")));
         // Which message a `sent` row was, which is what labels it. The text rode this shape
         // already; without the role it drew a fold with no name on it.
         b.append(",\"role\":").append(text(Dashboard.field(e, "role")));

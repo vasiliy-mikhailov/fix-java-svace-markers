@@ -1110,11 +1110,6 @@ final class Agents {
                 "agent:" + name,
                 ToolInvocationLogMode.NONE, trace);
         return task -> {
-            // THE QUESTION FIRST. `asked` below carries the prompt and the reply together — the pair
-            // the corpus replays — and is therefore written when the call RETURNS, so on the page it
-            // arrived after every thought and tool call it had caused. A reader met six minutes of
-            // reasoning with nothing above it saying what had been asked.
-            trace.asking(name, prompt, task);
             // An agent that answers with tool calls and no content returns null. That is an empty
             // judgement, not a failure, and everything downstream already reads it as one.
             String reply = runtime.run(task);

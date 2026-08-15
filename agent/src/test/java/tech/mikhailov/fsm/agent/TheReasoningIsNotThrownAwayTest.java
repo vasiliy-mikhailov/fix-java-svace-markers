@@ -34,8 +34,6 @@ class TheReasoningIsNotThrownAwayTest {
         final List<String> thoughts = new ArrayList<>();
         final List<String> who = new ArrayList<>();
 
-        @Override
-        public void asking(String a, String s, String t) { }
         @Override public void sent(String a, String role, String text) { }
 
         @Override

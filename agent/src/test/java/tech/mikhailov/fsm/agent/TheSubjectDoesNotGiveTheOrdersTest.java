@@ -49,7 +49,6 @@ class TheSubjectDoesNotGiveTheOrdersTest {
         // A trace that is not a JsonlTrace stands in for "nothing was written".
         Trace wroteNothing = new Trace() {
             @Override public void asked(String agent, String prompt, String reply) { }
-            @Override public void asking(String a, String s, String t) { }
             @Override public void sent(String a, String role, String text) { }
             @Override public void thought(String agent, String text) { }
             @Override public void tool(String agent, String tool, String args, String result) { }
