@@ -660,14 +660,24 @@ public final class Prove {
      * name out of the reply picks whichever came last. The file it wrote is not ambiguous.
      */
     private static String testClass(Trace trace, String reply) {
-        String written = trace instanceof JsonlTrace j ? j.testWritten() : "";
-        if (!written.isBlank()) {
-            return written;
-        }
-        // Nothing written under src/test: fall back to the reply so a decline still names something,
-        // and let the build report "no test executed" rather than guessing.
-        Matcher m = Pattern.compile("([A-Z][A-Za-z0-9_]*Test)\\b").matcher(reply == null ? "" : reply);
-        return m.find() ? m.group(1) : "";
+        // WHAT WAS WRITTEN, AND NOTHING ELSE.
+        //
+        // There was a fallback here that scraped `([A-Z][A-Za-z0-9_]*Test)` out of the REPLY when no
+        // file had been written, with a comment saying it would "let the build report 'no test
+        // executed' rather than guessing". It guessed. A reproduce-doer that declines explains why,
+        // and explaining why means naming the committed test that shows the behaviour is intended —
+        // so the citation became the test this program then ran.
+        //
+        // On Assignment5.java:44 that was `ChallengeIntegrationTest`: WebGoat's own integration test,
+        // which needs a server on localhost:8080. It failed with a Groovy connection error, the
+        // failure was recorded as a RED, the marker was recorded as reproduced, and the fix stage ran
+        // against a test nobody here wrote. The very evidence that the marker should not be tested
+        // became the test that "proved" it.
+        //
+        // A regex cannot tell a test an agent WROTE from one it MENTIONED, and no amount of
+        // narrowing it can: both appear in prose the same way. Blank is the honest answer, and the
+        // caller already knows what to do with it — argue the marker instead of spending a build.
+        return trace instanceof JsonlTrace j ? j.testWritten() : "";
     }
 
     /**
