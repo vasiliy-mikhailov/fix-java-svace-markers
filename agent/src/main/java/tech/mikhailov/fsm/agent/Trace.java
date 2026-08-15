@@ -30,11 +30,16 @@ interface Trace {
      * a reader of the record met six minutes of "Let me analyze this carefully" with nothing above it
      * saying what had been asked. The record read as answers to invisible questions.
      *
-     * <p>This is the question, at the moment it is put. Only the TASK: the standing prompt is the
-     * same on every call this agent makes and is already on the prompts tab and inside the pair
-     * below, so repeating it here would triple the record to say nothing new.
+     * <p>This is the question, at the moment it is put, and it carries BOTH halves of what was sent.
+     * Only the task was written at first, on the reasoning that the standing prompt is identical on
+     * every call an agent makes and is recoverable from the pair below — but that pair does not exist
+     * yet while a prove is running, which is exactly when somebody is watching. A reader asking "what
+     * was sent to the model" was shown half of it and had to find the rest on another tab.
+     *
+     * <p>It costs roughly fifteen per cent more record. The record IS the product here, and a reader
+     * who cannot see what an agent was told cannot check anything it did.
      */
-    void asking(String agent, String task);
+    void asking(String agent, String standing, String task);
 
     void asked(String agent, String prompt, String reply);
 

@@ -69,7 +69,7 @@ class AskingTheWatcherSomethingTest {
     private static Trace quiet() {
         return new Trace() {
             @Override public void asked(String a, String p, String r) { }
-            @Override public void asking(String a, String t) { }
+            @Override public void asking(String a, String s, String t) { }
             @Override public void thought(String agent, String text) { }
             @Override public void tool(String a, String t, String args, String result) { }
             @Override public void built(String phase, Runner.Result result) { }

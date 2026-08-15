@@ -42,6 +42,8 @@ export type TraceEventRecord = Omit<TraceRow, 'kind'> & {
   text?: string
   /** The task on an `asking` row — the question, recorded when it was put rather than answered. */
   task?: string
+  /** The standing instructions on an `asking` row, as sent on that call. */
+  standing?: string
   /**
    * Two names for one field: `arguments` is what is on disk and in the payload (`field(e,
    * "arguments")`, 2214), `args` is what `@fsm/types` calls it. Both are read below until the shared
@@ -236,6 +238,8 @@ export function standingOf(prompt: string): string {
 export type AskingEventProps = {
   agent: AgentName | null
   task: string
+  /** The agent's standing instructions, as sent on THIS call. */
+  standing: string
   defaultOpen: boolean
 }
 
@@ -247,11 +251,12 @@ export type AskingEventProps = {
  * every thought and tool call it had caused. A reader opened a lane and met six minutes of "Let me
  * analyze this carefully" with nothing above it saying what had been asked.
  *
- * <p>So the question is recorded when it is put, and drawn here, above the working-out it caused.
- * Only the task: the standing prompt is identical on every call this agent makes, it is on the
- * prompts tab, and it is still inside the pair below.
+ * <p>So the question is recorded when it is put, and drawn here, above the working-out it caused —
+ * both halves of it. The task first, because it is the part that changes and the part somebody is
+ * looking for; the standing instructions under it, because "what was sent to the model" is both and
+ * a reader shown half of it has to go and find the rest.
  */
-export function AskingEvent({ agent, task, defaultOpen }: AskingEventProps) {
+export function AskingEvent({ agent, task, standing, defaultOpen }: AskingEventProps) {
   return (
     <>
       <span style={WHO}>{agentLabel(agent)}</span>
@@ -261,6 +266,12 @@ export function AskingEvent({ agent, task, defaultOpen }: AskingEventProps) {
         label="the task it was given"
         body={task}
         defaultOpen={defaultOpen}
+      />
+      <TextFold
+        id={`standing:${agent}:${standing.length}`}
+        label="the system prompt it was running under"
+        body={standing}
+        defaultOpen={false}
       />
     </>
   )
@@ -513,6 +524,7 @@ function bodyOf(event: TraceEventRecord, defaultOpen: boolean, back: string): Re
         <AskingEvent
           agent={event.agent}
           task={event.task ?? ''}
+          standing={event.standing ?? ''}
           defaultOpen={defaultOpen}
         />
       )

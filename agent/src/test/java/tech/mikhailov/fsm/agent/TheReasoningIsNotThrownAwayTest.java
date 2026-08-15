@@ -35,7 +35,7 @@ class TheReasoningIsNotThrownAwayTest {
         final List<String> who = new ArrayList<>();
 
         @Override
-        public void asking(String a, String t) { }
+        public void asking(String a, String s, String t) { }
 
         @Override
         public void thought(String agent, String text) {

@@ -128,6 +128,8 @@ type ApiEvent = {
   prompt?: string
   /** On an `asking` row: the question, recorded when it was put. */
   task?: string
+  /** On an `asking` row: the system prompt it ran under, as sent. */
+  standing?: string
   reply?: string
   text?: string
   tool?: string
