@@ -21,6 +21,30 @@ credential files live on it — so the tarball outside it is the one that surviv
 `MANIFEST.json` sits at the top of the archive and states the subject, the model and its settings,
 the counts, and — the part a reader needs most — **which commits produced which part of the run**.
 
+## READ THIS BEFORE COMPARING ANYTHING AGAINST IT
+
+**The baseline was produced while the checker notes told the agents what to conclude.**
+
+`Checkers.java` pastes `checkers/<CHECKER>.txt` into the task of all fifteen agents that judge a
+marker, and at the time of this run those files had accumulated the corpus's own class names, its
+`File.java:LINE` sites and — for several families — the settlement itself:
+
+> "None of the 17 markers in this family can be made to fail. Do not build a test for any of them;
+> write the settlement and cite the evidence." — `FB.HARD_CODE_PASSWORD`
+
+> "THIS MARKER IS REFUTED ... do not spend an attempt trying to make it RED." — `DEREF_AFTER_NULL`
+
+For every marker of an affected checker the recorded settlement is a transcription of the note, not a
+judgement of the code, and no number computed over those rows measures the pipeline. `argued/settled`
+is the worst affected: a note instructing an agent not to build a test produces an `argued`
+settlement by construction, so the ratio partly counts the notes rather than the chain.
+
+The notes were rewritten to checker semantics only in `3f9218f` (457,650 characters to 215,626), and
+`TheHarnessDoesNotKnowItsSubjectTest` holds the line. **This archive is kept as a record of what the
+pipeline did, not as a standard to beat.** The first run on decontaminated notes becomes the baseline
+worth comparing against; until then, comparing a rerun against these numbers measures a change in the
+notes and reports it as a change in the pipeline. See [05. Checker notes](05-checker-notes.md).
+
 ## The number to compare
 
 **`argued / settled`. It was 219 of 343.**
