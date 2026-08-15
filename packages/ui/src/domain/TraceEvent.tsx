@@ -144,6 +144,30 @@ const KIND: Style = {
 /** The bare `<pre>` a reply, a reason, an itemisation and a cause are shown in — Java `pre` (207-209).
  *  Wraps, unlike `CodeBlock`: this is prose, and prose cut off at the right edge is prose nobody
  *  reads. */
+/**
+ * WHAT IT WAS ASKED, styled so it does not read as what it said.
+ *
+ * <p>Same shape as {@link PROSE} and quieter, with a rule down the left: the question and the answer
+ * sit next to each other and a reader must be able to tell which is which at a glance, without
+ * reading either. A task is often long — a brief carries the whole flagged file — so it is capped
+ * and scrolls rather than pushing the reply off the screen.
+ */
+const ASKED: Style = {
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+  background: 'var(--bg-panel)',
+  border: '1px solid var(--border-soft)',
+  borderLeft: '3px solid var(--border-strong)',
+  borderRadius: '6px',
+  padding: '10px',
+  margin: '8px 0 4px',
+  maxHeight: '18rem',
+  overflowY: 'auto',
+  fontSize: '11.5px',
+  lineHeight: 1.5,
+  color: 'var(--text-tertiary)',
+}
+
 const PROSE: Style = {
   whiteSpace: 'pre-wrap',
   wordBreak: 'break-word',
@@ -184,7 +208,30 @@ export type AnsweredEventProps = {
   defaultOpen: boolean
 }
 
-/** What an agent said, with what it was told folded underneath, and a box to disagree in. */
+/**
+ * THE TWO HALVES OF A RECORDED PROMPT.
+ *
+ * <p>`Agents.runtime` records `prompt + "\n\n---\n\n" + task`, so every `asked` row carries the
+ * agent's standing instructions and the one specific thing it was asked, joined. The first is
+ * identical across every call that agent makes in the whole run and is already readable on the
+ * prompts tab; the second is what distinguishes this event from the others.
+ *
+ * <p>Split on the FIRST separator only: a task quoting a diff or a build log contains `---` of its
+ * own, and splitting on the last would swallow the question into the answer.
+ */
+const SPLIT = '\n\n---\n\n'
+
+export function taskOf(prompt: string): string {
+  const at = prompt.indexOf(SPLIT)
+  return at < 0 ? prompt : prompt.slice(at + SPLIT.length)
+}
+
+export function standingOf(prompt: string): string {
+  const at = prompt.indexOf(SPLIT)
+  return at < 0 ? '' : prompt.slice(0, at)
+}
+
+/** What an agent was asked, what it said, and its standing prompt folded underneath. */
 export function AnsweredEvent({
   agent,
   reply,
@@ -197,11 +244,19 @@ export function AnsweredEvent({
     <>
       <span style={WHO}>{agentLabel(agent)}</span>
       <span style={KIND}>answered</span>
+      {/* WHAT IT WAS ASKED, ABOVE WHAT IT SAID, because a reply on its own cannot be read.
+          `trace.asked` records `systemPrompt + "\n\n---\n\n" + task`. The system prompt is the
+          same on every call this agent ever makes and has its own tab; the TASK is the part that
+          changes, and it is the half somebody reconstructing a prove actually needs. Folding both
+          together behind "the prompt it was given (17431 chars)" hid the small specific half behind
+          the large repeated one, and the record read as a column of answers to questions nobody
+          could see. */}
+      {taskOf(prompt).length > 0 ? <pre style={ASKED}>{taskOf(prompt)}</pre> : null}
       <pre style={PROSE}>{reply}</pre>
       <TextFold
         id={`prompt:${eventId}`}
-        label="the prompt it was given"
-        body={prompt}
+        label="the standing prompt underneath it"
+        body={standingOf(prompt)}
         defaultOpen={defaultOpen}
       />
       <RateAnswer target={{ kind: 'answer', eventId }} back={back} />
