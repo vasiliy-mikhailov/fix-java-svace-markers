@@ -298,7 +298,7 @@ export function SentEvent({
   text,
   defaultOpen,
 }: {
-  agent: string
+  agent: AgentName | null
   role: string
   text: string
   defaultOpen: boolean
