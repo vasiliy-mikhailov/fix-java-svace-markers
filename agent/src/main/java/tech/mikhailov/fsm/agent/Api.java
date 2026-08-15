@@ -123,6 +123,24 @@ final class Api {
         StringBuilder b = new StringBuilder("{\"run\":{");
         b.append("\"total\":").append(rows.size());
         b.append(",\"settled\":").append(Run.settled(rows));
+        // DEMONSTRATED IS NOT THE SAME THING AS DECIDED, and one number was reporting both.
+        //
+        // `verified/pr-ready` means a test failed on the code as it stood and passed once patched:
+        // that is knowledge, and it survives somebody editing the file next week because it was
+        // produced by running something. `by-design` and `false-positive` mean a model wrote a
+        // convincing paragraph about a tree at one commit. Both incremented `settled`, so a page
+        // reading "343 settled" reported 132 markers closed on prose as though they had been shown.
+        //
+        // The split is on whether ANYTHING EXECUTED — the RED build — rather than on the disposition
+        // word, because that is the question a reader is actually asking and it does not move when
+        // the vocabulary does. An argument is not worthless; it is simply not the same evidence, and
+        // a counter that adds them together is the one place nobody can tell them apart.
+        long shown = rows.values().stream()
+                .filter(r -> Run.isSettled(r.state()))
+                .filter(r -> Boolean.TRUE.equals(red.get(r.key())))
+                .count();
+        b.append(",\"demonstrated\":").append(shown);
+        b.append(",\"argued\":").append(Run.settled(rows) - shown);
         b.append(",\"beganAt\":").append(began);
         b.append(",\"serverNow\":").append(System.currentTimeMillis());
         b.append(",\"traceEvents\":").append(allEvents);

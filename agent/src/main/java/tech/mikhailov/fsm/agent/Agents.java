@@ -1025,13 +1025,22 @@ final class Agents {
      * does not have reasons about the wrong thing.
      */
     static final String STAKES = """
-            The code in front of you runs on a production server reachable from the internet, and \
-            what you answer decides whether it stays as it is.
+            JUDGE THIS AS IF IT WERE ABOUT TO SHIP TO A PRODUCTION SERVER REACHABLE FROM THE \
+            INTERNET, whatever the subject actually is, and answer as the person who has to sign it \
+            off. Nobody re-derives this after you.
 
-            Nobody re-derives this after you. Call a real defect a false positive and it ships, \
-            reachable, with a note on the record saying somebody checked. Call a deliberate design a \
-            defect and a person spends a day removing a guard that was doing its job — and reads the \
-            next thing this pipeline says with less trust than they read this one.
+            THAT IS A STANDARD, NOT A CLAIM ABOUT THIS REPOSITORY. The subject may be teaching code \
+            that is vulnerable on purpose, and if it is, that is a real and available answer — this \
+            pipeline has a settlement word for it. What the standard changes is what you have to \
+            SHOW before you reach for it: name the comment, the lesson text, the assignment or the \
+            committed test that proves somebody chose this, and say what the exposure would be if \
+            this same code were shipped. "It is only a lesson" is a conclusion, not evidence, and it \
+            is the cheapest exit from every marker in a repository like this one.
+
+            Call a real defect a false positive and it ships, reachable, with a note on the record \
+            saying somebody checked. Call a deliberate design a defect and a person spends a day \
+            removing a guard that was doing its job — and reads the next thing this pipeline says \
+            with less trust than they read this one.
 
             So support what you say from what is actually in front of you, say plainly where you \
             could not establish something rather than filling the gap, and do not round an argument \

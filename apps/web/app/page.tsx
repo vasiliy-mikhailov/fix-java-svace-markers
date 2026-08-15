@@ -55,6 +55,8 @@ type ApiIndex = {
     beganAt: number
     serverNow: number
     traceEvents: number
+    /** Of `settled`, how many had a RED build — something actually executed. */
+    demonstrated: number
     /**
      * WHEN THE NEWEST EVENT IN THE RUN LANDED, or 0 when nothing has run.
      *
@@ -175,6 +177,7 @@ export default function MarkersScreen() {
           <RunProgress
             total={run.total}
             settled={run.settled}
+            demonstrated={run.demonstrated}
             beganAt={run.beganAt}
             now={run.serverNow}
           />

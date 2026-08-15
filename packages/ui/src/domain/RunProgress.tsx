@@ -16,6 +16,15 @@ export type RunProgressProps = {
    * problem, not this bar's.
    */
   settled: number
+  /**
+   * Of the settled, how many had something EXECUTED — a test that failed on the code as it stood.
+   *
+   * The rest were closed by argument: a model wrote a convincing paragraph about one commit. Both
+   * used to increment `settled` alone, so a page reading "343 settled" reported 132 markers closed
+   * on prose as though they had been shown. An argument is not worthless; it is different evidence,
+   * and it stops being true the moment three lines change somewhere else.
+   */
+  demonstrated: number
   /** Epoch ms of the earliest trace event. 0 = nothing has run; not "the epoch". */
   beganAt: number
   /**
@@ -48,7 +57,7 @@ const STRIP: Style = { display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '
  * twenty. It is shown because a wrong estimate that converges beats no estimate, and it says
  * "extrapolated" so nobody plans around it.
  */
-export function RunProgress({ total, settled, beganAt, now }: RunProgressProps) {
+export function RunProgress({ total, settled, demonstrated, beganAt, now }: RunProgressProps) {
   // Both seeded from the same instant, so the first client render matches the server's markup
   // exactly and hydration has nothing to correct. The pair is a stopwatch: only their difference is
   // ever used, never either one as a wall clock.
@@ -94,6 +103,11 @@ export function RunProgress({ total, settled, beganAt, now }: RunProgressProps) 
       <ProgressBar pct={pct} />
       <div style={STRIP}>
         <Tally value={`${settled} / ${total}`} label={`${pct}% settled`} />
+        {/* THE SPLIT IS THE POINT. Two markers in the same `settled` count can mean "a test failed
+            before the patch and passed after" or "nobody ran anything and the argument read well",
+            and only one of those survives somebody editing the file next week. */}
+        <Tally value={`${demonstrated}`} label="shown by a test" />
+        <Tally value={`${settled - demonstrated}`} label="argued only" />
         <Tally value={clock(elapsed)} label="elapsed" />
         <Tally value={eta} label="eta, extrapolated" />
       </div>

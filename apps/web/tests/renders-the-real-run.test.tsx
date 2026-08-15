@@ -100,12 +100,19 @@ describe('the markers screen renders the real run', () => {
       <RunProgress
         total={fixture.run.total}
         settled={fixture.run.settled}
+        demonstrated={fixture.run.demonstrated}
         beganAt={fixture.run.beganAt}
         now={fixture.run.serverNow}
       />,
     )
     expect(progress).toContain(String(fixture.run.total))
     expect(progress).toContain(String(fixture.run.settled))
+    // AND THE SPLIT REACHES THE PAGE. `settled` alone counted a marker closed by a paragraph the
+    // same as one where a test failed before the patch and passed after it — 132 of 347 in the run
+    // this fixture came from. A reader cannot ask for the difference if the page never offers it.
+    expect(progress).toContain('shown by a test')
+    expect(progress).toContain('argued only')
+    expect(fixture.run.demonstrated).toBeLessThanOrEqual(fixture.run.settled)
 
     const counts = renderToStaticMarkup(
       <StateCounts
