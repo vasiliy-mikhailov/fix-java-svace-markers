@@ -141,6 +141,7 @@ final class ApiTrace {
         switch (kind) {
             case "asked" -> b.append(",\"prompt\":").append(quote(Dashboard.field(e, "prompt")))
                     .append(",\"reply\":").append(quote(Dashboard.field(e, "reply")));
+            case "asking" -> b.append(",\"task\":").append(quote(Dashboard.field(e, "task")));
             case "thought" -> b.append(",\"text\":").append(quote(Dashboard.field(e, "text")));
             // `arguments` is JSON that was itself a JSON string, so field() has already peeled one
             // level and it arrives as ordinary text with real newlines. It is text to display, not

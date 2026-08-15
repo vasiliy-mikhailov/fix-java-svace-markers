@@ -21,6 +21,21 @@ package tech.mikhailov.fsm.agent;
 interface Trace {
 
     /** A model call and its answer, both in full. The unit prompt training replays. */
+    /**
+     * WHAT AN AGENT WAS ASKED, RECORDED WHEN IT IS ASKED.
+     *
+     * <p>{@link #asked} carries the prompt AND the reply on one row, deliberately — prompt tuning
+     * replays a recorded pair — and it is therefore written when the call RETURNS. So the question
+     * landed at the same instant as the answer, after every thought and tool call it had caused, and
+     * a reader of the record met six minutes of "Let me analyze this carefully" with nothing above it
+     * saying what had been asked. The record read as answers to invisible questions.
+     *
+     * <p>This is the question, at the moment it is put. Only the TASK: the standing prompt is the
+     * same on every call this agent makes and is already on the prompts tab and inside the pair
+     * below, so repeating it here would triple the record to say nothing new.
+     */
+    void asking(String agent, String task);
+
     void asked(String agent, String prompt, String reply);
 
     /**

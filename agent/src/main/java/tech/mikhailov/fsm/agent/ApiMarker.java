@@ -244,6 +244,8 @@ final class ApiMarker {
         b.append(",\"agent\":").append(quote(who(e)));
         b.append(",\"prompt\":").append(text(Dashboard.field(e, "prompt")));
         b.append(",\"reply\":").append(text(Dashboard.field(e, "reply")));
+        // The question, on the row written when it was PUT rather than when it was answered.
+        b.append(",\"task\":").append(text(Dashboard.field(e, "task")));
         // The reasoning, which is the only account of what an agent seven tool calls in is doing.
         b.append(",\"text\":").append(text(Dashboard.field(e, "text")));
         b.append(",\"tool\":").append(text(Dashboard.field(e, "tool")));

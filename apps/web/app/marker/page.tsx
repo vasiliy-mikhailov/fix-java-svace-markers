@@ -126,6 +126,8 @@ type ApiEvent = {
   marker: string | null
   agent: string | null
   prompt?: string
+  /** On an `asking` row: the question, recorded when it was put. */
+  task?: string
   reply?: string
   text?: string
   tool?: string

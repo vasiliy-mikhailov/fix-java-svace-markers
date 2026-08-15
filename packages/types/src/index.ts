@@ -51,6 +51,10 @@ export type Verdict = (typeof VERDICTS)[number]
  * thousands of characters and why anything rendering one has to think about length.
  */
 export const TRACE_KINDS = [
+  // THE QUESTION, WRITTEN WHEN IT IS PUT. `asked` carries the prompt and the reply together — the
+  // pair prompt tuning replays — so it is written when the call returns, and on the page it landed
+  // after every thought it had caused. This one goes first, and carries only the task.
+  'asking',
   'asked',
   'thought',
   'tool',
