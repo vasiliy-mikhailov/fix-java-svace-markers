@@ -144,6 +144,13 @@ final class ApiTrace {
             case "asking" -> b.append(",\"standing\":")
                     .append(quote(Dashboard.field(e, "standing")))
                     .append(",\"task\":").append(quote(Dashboard.field(e, "task")));
+            // WHAT WENT DOWN THE WIRE. A kind with no case here reaches the page carrying nothing
+            // but its name, which is how `sent` rows drew an empty fold on every lane.
+            // `system` is a real kind and easy to miss — the run-level prompt, which reached this
+            // page with its name and nothing else.
+            case "system" -> b.append(",\"prompt\":").append(quote(Dashboard.field(e, "prompt")));
+            case "sent" -> b.append(",\"role\":").append(quote(Dashboard.field(e, "role")))
+                    .append(",\"text\":").append(quote(Dashboard.field(e, "text")));
             case "thought" -> b.append(",\"text\":").append(quote(Dashboard.field(e, "text")));
             // `arguments` is JSON that was itself a JSON string, so field() has already peeled one
             // level and it arrives as ordinary text with real newlines. It is text to display, not

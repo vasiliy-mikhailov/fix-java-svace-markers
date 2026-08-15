@@ -1,41 +1,58 @@
 (?:\bnew\s+\w*(?:InputStream|OutputStream|Reader|Writer)\s*\()|(?:\.\s*(?:prepareStatement|prepareCall|createStatement|executeQuery|getConnection|getInputStream|getOutputStream|newInputStream|newOutputStream|newBufferedReader|newBufferedWriter)\s*\()|(?:\b(?:Connection|(?:Prepared|Callable)?Statement|ResultSet|\w*(?:InputStream|OutputStream|Reader|Writer))\s+\w+\s*=\s*$)
-SpotBugs OBL_UNSATISFIED_OBLIGATION ("method may fail to clean up stream or database resource") runs a dataflow over one method and reports the line that ACQUIRES a tracked resource — Connection, Statement/PreparedStatement, ResultSet, InputStream/OutputStream/Reader/Writer — when some path leaving that line (normal return, or the thrown-exception edge, which is the ..._EXCEPTION_EDGE sibling) reaches the method exit with the resource still open. The flagged line is the acquisition, not the leak, and when several resources sit on or near it you must work out which one is unguarded: at Assignment5.java:44 the connection on line 42 is already in try-with-resources, so the obligation reported is the PreparedStatement's, and at line 50 it is the ResultSet's. It is not the stream-only OS_OPEN_STREAM nor the connection-only ODR_OPEN_DATABASE_RESOURCE, and it is not a style rule demanding try-with-resources: a resource returned to the caller, or passed to a callee that closes it, discharges the obligation with no try block anywhere.
+SpotBugs OBL_UNSATISFIED_OBLIGATION ("method may fail to clean up stream or database resource") runs
+a dataflow over one method and reports the line that ACQUIRES a tracked resource — Connection,
+Statement/PreparedStatement, ResultSet, InputStream/OutputStream/Reader/Writer — when some path
+leaving that line reaches the method exit with the resource still open. The flagged line is the
+acquisition, not the leak. Where several resources sit on or near it, work out which one is unguarded
+before answering: a connection already inside try-with-resources discharges its own obligation while
+the statement born from it does not, and on an `executeQuery` line the obligation reported may be the
+ResultSet's. It is not the stream-only OS_OPEN_STREAM nor the JDBC-only ODR_OPEN_DATABASE_RESOURCE,
+and the ..._EXCEPTION_EDGE sibling is the same claim restricted to the thrown-exception edge. It is
+also not a style rule demanding try-with-resources: a resource returned to the caller, or passed to a
+callee that closes it, discharges the obligation with no try block anywhere.
 
-HOW YOU MAKE IT VISIBLE.
-It is directly demonstrable in JUnit for the endpoint sites, and I ran the demonstration rather than assuming it. The lever is that these endpoints take their DataSource by constructor, so you can hand them a connection whose close() does NOT cascade — which is also the realistic case, since a pooled connection returns to the pool rather than dying.
+HOW YOU MAKE IT VISIBLE. close() is an ordinary method call, so the observable is whether it was
+invoked on the object the flagged line produced — but only if you hold that object. Driving the code
+end-to-end against a real backend is GREEN before and after, because the handle is never exposed and
+the objects simply become unreachable. The discriminating power comes entirely from interposing
+something that captures the resource: a fake or recording wrapper injected where the code takes its
+factory — a data source, a resource loader, any collaborator passed in — or a dynamic proxy that
+delegates to the real thing and records every close(). Then assert that this resource was closed
+after the method under test returned. The stronger form, and the one matching what the detector
+claims: program the fake so the operation throws, and assert the resource was closed anyway; that
+fails even where the happy path happens to close.
 
-VERIFIED RECIPE (Assignment5, the flagged file). No Spring context, no database, no MockMvc: `new Assignment5(new LessonDataSource(fakeDataSource), new Flags())` then `login("Larry", "whatever")`. Flags is a plain no-arg @Configuration bean; AttackResultBuilder.build() constructs a POJO and touches nothing else; the username must be exactly "Larry" or line 39 returns before any JDBC happens. The fake is a Mockito mock (mockito-core and mockito-junit-jupiter are on the test classpath and used throughout src/test) or four lines of java.lang.reflect.Proxy: DataSource.getConnection -> Connection; Connection.prepareStatement -> PreparedStatement; PreparedStatement.executeQuery -> ResultSet; ResultSet.next -> false; every close() recorded. LessonDataSource wraps your connection in its own Proxy (LessonConnectionInvocationHandler), which only issues SET SCHEMA when a WebGoatUser is in the SecurityContext — in a plain unit test there is none, so the wrapper is transparent. Assert `verify(statement).close()` and `verify(resultSet).close()`.
+A chained acquisition, consumed by the next call without ever being assigned, offers no local to
+assert on — but "never given a name" does not mean "cannot be shown": the fake holds the reference
+the source never names, and only the FIX has to introduce a local first. What is genuinely awkward is
+a resource produced by a static factory with nothing to interpose on; settle that on the read.
 
-I ran exactly this. Before: closes recorded = [connection] — RED, "Wanted but not invoked: preparedStatement.close()". After folding both resources into the same try-with-resources head (`try (var connection = ...; PreparedStatement statement = connection.prepareStatement(<same string>); ResultSet resultSet = statement.executeQuery())`): closes recorded = [resultset, statement, connection] — GREEN. The query string is byte-identical across the change, so the injection the lesson teaches still works.
-
-THE STRONGER FORM, for the exception-edge variant: program the fake so executeQuery() throws SQLException, and assert the statement was still closed. That fails even where the happy path happens to close, and it is the assertion that matches what the detector actually claims.
-
-WHY THE OBVIOUS TEST PROVES NOTHING. Driving the endpoint through LessonTest/MockMvc against the real HSQLDB (the SqlInjectionLesson5Test style) is GREEN before and after, because you never obtain a handle on the statement — the method's own try-with-resources closes the connection on the way out and the objects become unreachable. The discriminating power comes entirely from interposing something that captures the statement. If you do interpose over a real HSQLDB connection it also works: I checked, and HSQLDB does not flip Statement.isClosed()/ResultSet.isClosed() to true when the owning connection closes (probe: after conn.close(), stmt.isClosed()=false), so a captured-statement isClosed() assertion discriminates there too.
-
-WHERE IT CANNOT BE SHOWN, AND WHAT TO DO INSTEAD.
-(a) Callee closes it. ProfileUploadRetrieval.java:64 and Salaries.java:48-49 pass a fresh FileOutputStream straight into Spring's FileCopyUtils.copy(InputStream, OutputStream). I ran that with recording streams: both ends come back closed. There is no failing test to write; the settlement is the read of the callee, and a test asserting the stream is closed is a refutation of the marker, not a proof of it.
-(b) The resource is returned. SqlInjectionLesson9.getEmployeesDataOrderBySalaryDesc returns `statement.executeQuery(query)`, and AsciiDoctorTemplateResolver.getInputStream(templateName) returns the stream it opened. The obligation transfers to the caller; the demonstration, if there is one, belongs at the caller, and closing locally breaks behaviour (see traps).
-(c) The leak sits inside test code, e.g. SqlInjectionLesson5Test.java:26-27, where `dataSource.getConnection().prepareStatement(...).execute()` in @AfterEach strands both a connection and a statement with no reference held. Nothing constructs that hook, so there is no fake to inject and no RED available. Settle it on the read, and let the evidence for the fix be that the class still passes unchanged (`-Dtest=SqlInjectionLesson5Test`). If you want a connection-level observation, `select count(*) from information_schema.system_sessions` does exist in HSQLDB (I ran it), but the pooled DataSource keeps sessions open regardless, so it does not discriminate a leaked logical connection.
-(d) The resource is never named. JWTHeaderKIDEndpoint.java:74 chains `connection.createStatement().executeQuery(...)`; you cannot assert on, or close, a Statement that has no local variable, so any fix must introduce one first.
-
-CHECKED AGAINST THE CHECKOUT BY A SECOND READER WHO RE-RAN THE CLAIMS ABOVE. Where the two disagree, THIS IS THE ONE THAT HOLDS.
-Keep the verified Assignment5 recipe exactly as written — I re-ran it and it goes RED (closes=[connection]) then GREEN (closes=[resultset, statement, connection]), and the exception-edge form works too. Three corrections on top of it:
-
-A. IT GENERALISES TO EVERY ENDPOINT SITE, NOT JUST Assignment5. SqlInjectionChallenge, SqlInjectionLesson8 and SqlInjectionLesson9 all take LessonDataSource by constructor, so the same fake gives you a RED with no Spring and no HSQLDB. Verified on SqlInjectionLesson9: `new SqlInjectionLesson9(new LessonDataSource(fake)).injectableQueryIntegrity("Smith","3SL99A")` (protected — put the test in package org.owasp.webgoat.lessons.sqlinjection.introduction) leaks ten resources with only the connection closed. Stub createStatement(int,int) to hand out a FRESH recording Statement each call and executeQuery a fresh ResultSet, and stub ResultSet.getMetaData() (generateTable dereferences it) — otherwise you get an NPE instead of your assertion.
-
-B. "NEVER NAMED" DOES NOT MEAN "CANNOT BE SHOWN". The fake holds the reference the source never gives a name to. LessonTemplateResolver.java:62 — which the current note reads but never discusses — is demonstrable in about forty lines: implement ResourceLoader.getResource to return `new InputStreamResource(recordingStream)`, call the protected computeTemplateResource from a test in package org.owasp.webgoat.container, and assert the stream was closed. I ran it: BEFORE closed=false, AFTER (readAllBytes moved inside try-with-resources) closed=true. The same interposition is available for JWTHeaderKIDEndpoint.java:74 via its LessonDataSource constructor; only the JWT-parsing harness is heavier, so budget for it rather than declaring it unprovable. The genuinely awkward site is VulnerableTaskHolder.java:68, where the BufferedReader comes from `Runtime.getRuntime().exec(...)` — a static factory with nothing to interpose on; settle that one on the read and say why.
-
-C. THE RETURNED-RESOURCE BUCKET APPLIES TO getEmployeesDataOrderBySalaryDesc ONLY, NOT getSqlInt. SqlInjectionLesson9.java:114-118 returns `statement.executeQuery(query)` and lines 75 and 83 hand that ResultSet to SqlInjectionLesson8.generateTable, so wrapping THAT method breaks lesson 9 — the obligation belongs to the caller, and the fix (if any) is a try-with-resources at lines 75/83 around the returned ResultSet, not inside the helper. getSqlInt (lines 92-97) is the opposite case: it returns `results.getInt(1)`, an int, and its three callers return ints, so nothing escapes and folding the Statement and ResultSet into a try-with-resources head there is the correct, behaviour-preserving fix for the markers at lines 93 and 94 — with a RED available from the probe in (A). Do not settle 93/94 as lesson-critical; the query strings are untouched by the fix.
+WHERE IT CANNOT BE SHOWN, AND WHAT TO DO INSTEAD. When the acquisition goes straight into a callee
+that closes it — a copy helper closing both ends is the common case — read the callee; a test
+asserting the resource ends up closed is then a refutation of the marker, not a proof of it. When the
+resource is returned, the obligation transfers to the caller, the demonstration belongs at the
+caller, and closing it locally hands the caller a dead object. When the acquisition sits in code
+nothing constructs — a fixture hook, a lifecycle callback with no injection point — there is no fake
+to inject and no RED available; settle on the read.
 
 WHAT GOES WRONG HERE.
-1. Asserting the marker back at itself. `assertThat(connection.isClosed()).isTrue()` after the call, or "no SQLException thrown", or a MockMvc run that checks lessonCompleted — all GREEN before any change. The only assertion that carries information is about the STATEMENT or RESULTSET object, and you only get one by interposing a fake or wrapper.
-
-2. Fixing the neighbour instead of the finding. Assignment5.java:45-49, SqlInjectionChallenge.java:61, SqlInjectionLesson8/9/10 all concatenate user input into SQL on the very line the marker points at, and "while I'm here" turns into parameter binding. That destroys challenge 5 and the SQL-injection assignments — those queries ARE the lesson. The obligation fix is the try-with-resources head and nothing else; the query text must come out identical. The converse error is just as bad: the unclosed statement is not part of any lesson, and neither are the resolver, @PostConstruct copy and test-tree sites, so "WebGoat is deliberately vulnerable" settles nothing here.
-
-3. Wrapping a resource that escapes. Putting try-with-resources around SqlInjectionLesson9.getEmployeesDataOrderBySalaryDesc or getSqlInt, or around AsciiDoctorTemplateResolver.getInputStream, hands the caller a closed ResultSet/stream: SqlInjectionLesson8.generateTable then reads from it, results.first() throws, lessons 8 and 9 stop working. Right instinct, wrong site.
-
-4. "Resource leaks need a profiler, not a unit test." This is the DM_DEFAULT_ENCODING mistake in new clothes — a true premise (a leak is a heap fact) with a conclusion that does not follow (close() is a method call, and a fake connection makes the call observable). It cost 33 markers once already.
-
-5. Settling it as a false positive because the connection's try-with-resources will close the statements anyway. That is an argument about IMPACT — and it is weaker than it sounds, since HSQLDB leaves isClosed() false and a pooled connection may not cascade at all. If you settle, settle on the callee-closes and returned-resource facts, not on this.
-
-6. A verdict that does not follow from its reason: "OBL is an experimental, try-with-resources-noisy detector, therefore false positive." Noisiness is a prior, not evidence. Twenty lines of reading tells you whether the acquisition escapes unclosed. Note also that the regex will occasionally land on a harmless `new StringWriter()` (AsciiDoctorTemplateResolver.java:75) — that one really is nothing, but say so because you read it, not because the detector has a reputation.
+- Asserting the marker back at itself: checking that the CONNECTION is closed, that no exception was
+thrown, or that the feature still works. All GREEN before any change. The only assertion carrying
+information is about the resource the marker names.
+- Fixing the neighbour instead of the finding. The acquisition line very often also builds the query,
+path or command, and "while I'm here" turns into changing that. The obligation fix is the
+try-with-resources head and nothing else; the string on that line must come out identical. The
+converse error is as bad: an unclosed resource is nobody's intended behaviour, so "this code is
+deliberately odd" settles nothing here.
+- Wrapping a resource that escapes, so the caller receives a closed handle and fails where it reads.
+Right instinct, wrong site.
+- "Resource leaks need a profiler, not a unit test." A true premise (a leak is a heap fact) with a
+conclusion that does not follow: close() is a method call, and interposition makes it observable.
+- Settling it as a false positive because the enclosing connection's try-with-resources closes the
+children anyway. That is an argument about IMPACT, and weaker than it sounds — a driver may leave the
+child reporting isClosed() false, and a pooled connection may not cascade at all. If you settle,
+settle on the callee-closes or returned-resource facts.
+- "OBL is an experimental, try-with-resources-noisy detector, therefore false positive." Noisiness is
+a prior, not evidence; twenty lines of reading tell you whether the acquisition escapes unclosed. The
+regex will likewise sometimes land on an in-memory writer owning no OS or database handle — say that
+because you read it, not because the detector has a reputation.

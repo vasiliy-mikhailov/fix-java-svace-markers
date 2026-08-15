@@ -1,45 +1,62 @@
 \.(getConnection|createStatement|prepareStatement|prepareCall|executeQuery)\s*\(
-ODR_OPEN_DATABASE_RESOURCE says the method obtained a JDBC resource — a Statement from Connection.createStatement/prepareStatement/prepareCall, or the ResultSet from executeQuery — kept it local (not returned, not stored in a field, not handed to another object), and has no path out of the method on which close() is reached. The marker's line is the *acquisition* call, because an omission has no line of its own: do not read it as a complaint about the SQL string that is usually concatenated on that same line (that is a SQL-injection checker), and do not read it as a complaint about the Connection, which at nearly every site in this repository is already inside a try-with-resources while the Statement born from it is not. The sibling ODR_OPEN_DATABASE_RESOURCE_EXCEPTION_PATH means "closed on the normal path but not when an exception unwinds"; the plain form flagged here means closed on no path at all.
+ODR_OPEN_DATABASE_RESOURCE says the method obtained a JDBC resource, kept it local — not returned,
+not stored in a field, not handed to another object — and has no path out of the method on which
+close() is reached. The marker's line is the ACQUISITION, because an omission has no line of its own.
 
-HOW YOU MAKE IT VISIBLE.
-The observable is the state of the JDBC object the flagged line produced, sampled after the method under test returns. That works here only because of a driver fact worth stating precisely, since the obvious objection ("the Connection is closed, so its Statements are closed too") is what stops agents from building anything: I measured HSQLDB 2.7.3 (the version this pom resolves) and it does NOT flip Statement.isClosed() when the owning Connection closes — the server-side handle dies (reusing the statement throws "connection exception: closed") but the client object still reports isClosed()==false. So the flag distinguishes "this method closed it" from "the connection took it down with it", which is exactly the distinction the checker is making.
+FIRST SETTLE WHICH OBJECT IS BEING CLAIMED. The detector's resource-creation set is exactly
+Connection.createStatement / prepareStatement / prepareCall (every signature) and getConnection on
+DriverManager or a DataSource, so the flagged object is a Statement, PreparedStatement,
+CallableStatement or a Connection — NEVER a ResultSet. `executeQuery` is not a creation site for this
+checker; unclosed ResultSets belong to OBL_UNSATISFIED_OBLIGATION, and the two families are routinely
+reported side by side in one method. If your marker's line IS an executeQuery call, the resource is
+the Statement that line was called on, created above it, and closing only the ResultSet does not
+settle it. The sibling ODR_OPEN_DATABASE_RESOURCE_EXCEPTION_PATH means "closed on the normal path but
+not when an exception unwinds"; the plain form means closed on no path at all. Do not read the marker
+as a complaint about the SQL string usually concatenated on the same line — that is a different
+checker — and do not read it as a complaint about a Connection that is already in try-with-resources
+while the Statement born from it is not.
 
-Measured RED->GREEN on a verbatim copy of Assignment5.login's body (lines 42-57) against a real jdbc:hsqldb:mem database: as written, the PreparedStatement reported isClosed()==false after the method returned, so the assertion fails. With the only edit being try-with-resources around the statement and result set, isClosed()==true and it passes. In both runs the injection payload still solved the lesson, which is the guard that the fix stayed on the leak.
+HOW YOU MAKE IT VISIBLE. The observable is the state of the JDBC object the flagged line produced,
+sampled after the method under test returns. The objection that stops agents building anything — "the
+Connection gets closed, so its Statements go with it" — is worth settling on the driver in play
+rather than from the spec: a driver may kill the server-side handle on Connection.close() while the
+client object still reports isClosed() false. Where that holds, the sample distinguishes "this method
+closed it" from "the connection took it down with it", which is the distinction the checker makes.
+Closing a Statement likewise need not make its ResultSet report closed, so ResultSet state is never
+evidence about the Statement.
 
-Getting a handle on the resource: LessonDataSource (src/main/java/org/owasp/webgoat/container/LessonDataSource.java) is a plain class with a public constructor taking a javax.sql.DataSource, and it already returns each Connection as a java.lang.reflect.Proxy — so a test does the same one level down. Build a DataSource whose getConnection() returns a Proxy over a real HSQLDB Connection with an InvocationHandler that delegates and appends every returned value that is `instanceof Statement` or `instanceof ResultSet` to a list; wrap it as `new LessonDataSource(recording)` and pass that to the endpoint's constructor. Unwrap InvocationTargetException in the handler the way LessonConnectionInvocationHandler.invoke does at lines 36-37, or SQLExceptions the lesson code catches arrive as UndeclaredThrowableException and the behaviour under test changes. Then assert the recorded list is non-empty *first*, then that every element isClosed(). Most endpoints take LessonDataSource on a public constructor (SqlInjectionLesson2:36, SqlInjectionChallenge:43, SqlInjectionLesson9:38, ...). JWTHeaderKIDEndpoint's constructor is private (line 44) — use setAccessible(true), or drive it through the Spring context the way src/test/java/org/owasp/webgoat/container/plugins/LessonTest.java does.
+GETTING A HANDLE ON IT. Where the code takes its DataSource by constructor, wrap a real one: a
+getConnection() returning a dynamic Proxy over a real Connection that delegates everything and
+records each Statement handed back. Two traps in building that. The Statement must come back as a
+proxy implementing the interface the caller assigns to, chosen by instanceof, or a
+`PreparedStatement st = ...` assignment throws ClassCastException; and the handler must unwrap
+InvocationTargetException, or checked exceptions the code under test catches instead arrive as
+UndeclaredThrowableException and the behaviour changes underneath you.
 
-Assert Statement and ResultSet separately. Measured: closing a Statement does not make its ResultSet report closed on HSQLDB either, and the ResultSet stays fully navigable afterwards. A ResultSet-level marker therefore only goes green if the ResultSet is closed explicitly; ResultSet state is never evidence about the Statement.
+SCOPE THE ASSERTION TO THE MARKER'S OWN RESOURCE: such a recorder captures every Statement opened
+anywhere under the call, including ones from helpers carrying their own markers, so record the
+creating call site alongside the object — otherwise a correct fix leaves the test RED for a different
+marker's leak. Assert the recorded list is non-empty BEFORE asserting anything about closure, or an
+early-return branch gives a vacuous green. For a Connection-level marker, sample one level up: hold
+the Connection handed out and assert isClosed() after the method returns.
 
-What you cannot do, and should not spend a build discovering: there is no application-level malfunction to exhibit. DatabaseConfiguration.dataSource() (line 31) returns a DriverManagerDataSource — no pool — so every getConnection() opens a fresh physical connection and closing it reclaims whatever the method leaked. I ran 5000 consecutive calls through the leaky shape: all 5000 succeeded, no exception, no exhaustion. Do not build a "hammer it until it breaks" RED, do not look for a pool to shrink, and do not reach for a leak-detection agent; the settlement for this family is the isClosed() observation above, and it is a real one.
+DO NOT GO LOOKING FOR AN APPLICATION-LEVEL MALFUNCTION. With no pool underneath, every getConnection()
+opens a fresh physical connection and closing it reclaims whatever the method leaked, so thousands of
+consecutive runs through the leaky shape all succeed. A "hammer it until it breaks" RED is a wasted
+build; the isClosed() observation is the settlement.
 
-The one shape that needs more than a try-with-resources: SqlInjectionLesson9.getEmployeesDataOrderBySalaryDesc (lines 116-117) creates a Statement and returns its ResultSet, so the resource is meant to outlive the method; likewise SqlInjectionLesson8.log and SqlInjectionLesson9.getSqlInt operate on a Connection the caller owns. There the fix is to give the Statement the caller's lifetime (create it in the caller's try-with-resources and pass it down), not to close it before the ResultSet is read.
+THE ONE SHAPE THAT NEEDS MORE THAN A TRY-WITH-RESOURCES is a method that creates a Statement and
+returns its ResultSet, or that works on a Connection the caller owns: the resource is meant to
+outlive the method, so the fix is to give the Statement the caller's lifetime, not to close it before
+the result is read. The green there can be a driver accident — some drivers leave the escaped
+ResultSet open and navigable after its Statement closes, and the same code throws on a driver that
+streams — so a passing test is not evidence the JDBC contract was honoured.
 
-CHECKED AGAINST THE CHECKOUT BY A SECOND READER WHO RE-RAN THE CLAIMS ABOVE. Where the two disagree, THIS IS THE ONE THAT HOLDS.
-The observable is the state of the JDBC object the flagged line produced, sampled after the method under test returns. First settle what that object is: ODR_OPEN_DATABASE_RESOURCE is emitted by FindOpenStream, whose resource-creation set is exactly Connection.createStatement / prepareStatement / prepareCall (every signature), DriverManager.getConnection, and javax.sql.DataSource.getConnection. So the flagged object is a Statement, PreparedStatement, CallableStatement, or a Connection — NEVER a ResultSet. executeQuery is not a creation site for this checker; unclosed ResultSets are OBL_UNSATISFIED_OBLIGATION, a different marker (this repo's target/spotbugsXml.xml shows both families side by side, e.g. SqlInjectionLesson2 has ODR "may fail to close Statement" at line 48 and OBL "may fail to clean up java.sql.ResultSet" at line 53). If your marker's line is an executeQuery call, the resource is still the Statement that line was called on — created on the createStatement/prepareStatement line above it — and closing only the ResultSet does not settle it.
-
-The sampling works because of a driver fact worth stating precisely, since the obvious objection ("the Connection is closed, so its Statements are closed too") is what stops agents from building anything: I measured HSQLDB 2.7.3 (the version this pom resolves) and it does NOT flip Statement.isClosed() when the owning Connection closes — the server-side handle dies (reusing the statement throws "connection exception: closed") but the client object still reports isClosed()==false. So the flag distinguishes "this method closed it" from "the connection took it down with it", which is exactly the distinction the checker is making.
-
-Measured RED->GREEN on a verbatim copy of Assignment5.login's body (lines 42-57) against a real jdbc:hsqldb:mem database: as written, the PreparedStatement reported isClosed()==false after the method returned, so the assertion fails. With the only edit being try-with-resources around the statement, isClosed()==true and it passes. In both runs the injection payload still solved the lesson, which is the guard that the fix stayed on the leak.
-
-Getting a handle on the resource, and it needs TWO levels of proxy, not one: LessonDataSource (src/main/java/org/owasp/webgoat/container/LessonDataSource.java) is a plain class with a public constructor taking a javax.sql.DataSource, and it already returns each Connection as a java.lang.reflect.Proxy — so a test does the same one level down. Build a DataSource whose getConnection() returns a Proxy over a real HSQLDB Connection whose InvocationHandler delegates and, when the return value is a Statement, records it AND returns a second Proxy over it (interfaces: CallableStatement / PreparedStatement / Statement, chosen by instanceof, or the lesson's `PreparedStatement st = ...` assignment throws ClassCastException). Only that inner proxy sees ResultSets, if you want them. Measured: the single-level recorder the obvious reading suggests records STMT and nothing else in both the leaky and the fixed run — it can never observe a ResultSet, because executeQuery is invoked on the real Statement, so an "all recorded are closed" assertion built on it silently says nothing about ResultSets. Wrap the whole thing as `new LessonDataSource(recording)` and pass that to the endpoint's constructor. Unwrap InvocationTargetException in both handlers the way LessonConnectionInvocationHandler.invoke does at lines 36-37, or SQLExceptions the lesson code catches arrive as UndeclaredThrowableException and the behaviour under test changes. Most endpoints take LessonDataSource on a public constructor (SqlInjectionLesson2:36, SqlInjectionChallenge:43, SqlInjectionLesson9:38, ...). JWTHeaderKIDEndpoint's constructor is private (line 44) — use setAccessible(true), or drive it through the Spring context the way src/test/java/org/owasp/webgoat/container/plugins/LessonTest.java does. Verified working against both shapes this repo uses (PreparedStatement, and scrollable createStatement(int,int) where the lesson calls rs.getStatement()).
-
-Scope the assertion to the marker's own resource. The recorder is connection-scoped, so it captures every Statement opened anywhere under the call: exercising SqlInjectionLesson9.injectableQueryIntegrity records the ones from getSqlInt (line 93, three calls) and SqlInjectionLesson8.log (line 141) as well as the one at line 63. Assert on the statement created at the flagged line (record the creating call site alongside the object, or assert on the first/nth recorded), not on "every element" — otherwise a correct fix to the marker leaves the test RED because of a different marker's leak. Assert the recorded set is non-empty before asserting anything about closure, or an early-return branch gives you a vacuous green.
-
-For a Connection-level marker (the flagged line is a getConnection call, e.g. SqlInjectionLesson5Test.java:26) the same sampling applies one level up: hold the Connection the DataSource handed out and assert connection.isClosed() after the method returns.
-
-What you cannot do, and should not spend a build discovering: there is no application-level malfunction to exhibit. DatabaseConfiguration.dataSource() (line 31) returns a DriverManagerDataSource — no pool — so every getConnection() opens a fresh physical connection and closing it reclaims whatever the method leaked. I ran 5000 consecutive calls through the leaky shape: all 5000 succeeded, no exception, no exhaustion. Do not build a "hammer it until it breaks" RED, do not look for a pool to shrink, and do not reach for a leak-detection agent; the settlement for this family is the isClosed() observation above, and it is a real one.
-
-The one shape that needs more than a try-with-resources: SqlInjectionLesson9.getEmployeesDataOrderBySalaryDesc (lines 116-117) creates a Statement and returns its ResultSet, so the resource is meant to outlive the method; likewise SqlInjectionLesson8.log and SqlInjectionLesson9.getSqlInt operate on a Connection the caller owns. There the fix is to give the Statement the caller's lifetime (create it in the caller's try-with-resources and pass it down), not to close it before the ResultSet is read. Measured caution for that site: closing the Statement leaves the escaped ResultSet reporting isClosed()==false and still fully navigable on HSQLDB, so a green lesson test there is a driver accident, not proof the JDBC contract was honoured — SqlInjectionLesson8.generateTable calls results.beforeFirst() on it, which throws on a driver that streams.
-
-WHAT GOES WRONG HERE.
-Fixing the SQL instead of the leak. Assignment5:44 and JWTHeaderKIDEndpoint:74-76 both concatenate user input into the query on the flagged line, and that concatenation is the assignment. src/it/.../ChallengeIntegrationTest.testChallenge5 posts password_login=`1' or '1'='1` and asserts a flag comes back; JWTLessonIntegrationTest.deleteTomThroughKidClaim posts kid=`hacked' UNION select 'deletingTom' from INFORMATION_SCHEMA.SYSTEM_USERS --` and asserts lessonCompleted. Binding parameters turns both to failures. The ODR fix closes a resource and does not touch the query string — and note that SqlInjectionLesson13:46 and Servers:50 are the *mitigation* lesson written with bound parameters, so making an injectable lesson resemble them erases the contrast the course is built on.
-
-The inverse verdict is equally wrong: "WebGoat is deliberately vulnerable, so this is intentional." No assignment in this repository is solved by exhausting database resources, and the same leak sits in ordinary code and in the test tree — SqlInjectionLesson5Test.java:25-28 opens a Connection and a PreparedStatement in an @AfterEach and closes neither.
-
-Asserting the marker back at itself: a test that greps the source for "try (", or that re-runs the analyser and asserts the line is no longer reported. Neither observes the program.
-
-The vacuous green: calling allMatch(Statement::isClosed) on a recorder list that stayed empty because the code path never ran (a lesson method that returned early on a validation branch, or a mocked DataSource that never handed out a real statement). Assert the list is non-empty before asserting anything about its contents.
-
-The green that is a driver accident: concluding a try-with-resources around SqlInjectionLesson9:116's Statement is safe because the lesson test still passes. It passes because HSQLDB leaves the escaped ResultSet open and navigable after its Statement closes — measured. That code returns the ResultSet and SqlInjectionLesson8.generateTable then calls results.beforeFirst() on it; on a driver that streams, that throws. A passing HSQLDB test is not evidence the JDBC contract was honoured.
-
-The reasoning that sounds like a settlement and is not: "the Connection is in try-with-resources, therefore nothing leaks." True about the eventual outcome and irrelevant to the claim; the checker asserts what *this method* closes, and the measured client-side state says it closed nothing.
+WHAT GOES WRONG HERE. Fixing the SQL instead of the leak: the flagged line often concatenates input
+into the query, and binding parameters there changes what the program does; the ODR fix closes a
+resource and leaves the query string byte-identical. The inverse is equally wrong — "this code is
+insecure on purpose, so the leak is on purpose too" — because no intended behaviour is delivered by
+never closing a handle. Then there is asserting the marker back at itself: a test that greps the
+source for "try (", or re-runs the analyser and asserts the line is gone, observes no program at all.
+And "the Connection is in try-with-resources, therefore nothing leaks" is true about the eventual
+outcome and irrelevant to the claim, which is about what THIS method closes.

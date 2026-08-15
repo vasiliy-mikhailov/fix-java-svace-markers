@@ -4,21 +4,194 @@ A **marker** is one unit of work: the string `repo|file|line|checker` and nothin
 **checker** is the fourth field, a bare family name — `FB.DM_DEFAULT_ENCODING`, `HANDLE_LEAK`,
 `DEREF_OF_NULL.RET.STAT` — with no message, no trace and no explanation of what the analyser
 objected to. Every agent that touches the marker has to reconstruct the claim from that name, and
-several reconstructed it wrong in ways that decided the marker outright: `JWT:180` bound
+several reconstructed it wrong in ways that decided the marker outright: one bound
 `DM_DEFAULT_ENCODING` to `Charset.defaultCharset()` because that was the only charset-looking token
-in the statement; `VulnerableTaskHolder:69` spent its single RED on a semicolon payload because
-nobody knew `Runtime.exec(String)` starts the first whitespace-separated token, so a shell
-metacharacter chains nothing.
+in the statement; one spent its single RED on a semicolon payload, not knowing that
+`Runtime.exec(String)` starts the first whitespace-separated token, so a shell metacharacter chains
+nothing.
 
-A **note** is that reconstruction, done once, in a file, by a reader with the source open. It is
-data in `resources`, not prose in a prompt, because it is per-family and the prompts are not.
+A **note** is that reconstruction, done once, in a file. Its subject is the **checker**: what that
+name means, what it is constantly confused with, and what a demonstration of it would have to
+assert. Its subject is never the repository the harness is currently pointed at. It is data in
+`resources`, not prose in a prompt, because it is per-family and the prompts are not.
 
 **Every checker named by the queue has a note.** The queue in this repository is
 `data/svace/webgoat-markers-356.csv` (`Severity,Checker,File,Line`, 356 rows). It names 48 distinct
 checkers and `agent/src/main/resources/checkers/` holds exactly 48 `.txt` files, one per name — no
-checker without a note, no note without a checker. Before the notes existed, 44 families had none,
-covering 308 of the 356 markers; the four families that did have one accounted for the other 48
-markers.
+checker without a note, no note without a checker. The queue is the corpus this harness happens to
+be aimed at; the notes are part of the harness. That distinction is the whole of the next section
+and it is the one a rebuilder gets wrong.
+
+---
+
+## The line: a note is about the checker, never about the subject
+
+`Checkers` pastes the note verbatim into the task of all fifteen agents that judge a marker of that
+family. Whatever the note knows, they were told rather than found.
+
+The notes did not start out knowing anything about the subject and grew into it, run after run, as
+each pass wrote down what it had learned. At the point this was caught they carried the subject's
+class names, its architecture vocabulary, its build quirks, and — for forty of the forty-eight — the
+specific `File.java:LINE` sites in its tree. Across the directory that came to **457,650
+characters** of subject knowledge. On one `TAINTED_PTR` marker the note alone was **10,727 of the
+planner's 13,549-character task**: 79% of what the planner was given before it had read a line of
+code.
+
+Two things were wrong with that, and the second is worse than the first.
+
+**They carried the answer.** *"All three TAINTED_PTR markers land on lesson code and all three are
+by-design."* *"The honest pipeline outcome is `can_prove:false`."* Those markers were never judged.
+The verdict was handed over in the prompt — in the `by-design` direction the owner had already
+rejected twice — before any agent had opened the file. A pipeline whose purpose is to settle a
+marker by execution cannot ship the settlement in the brief.
+
+**They claimed authority the reader could not check.** The notes spoke in an unattributed first
+person (*"I ran"*, *"Both verified"*, *"I measured"*), and one line asserted precedence over the
+agent's own eyes: *"Where the two disagree, THIS IS THE ONE THAT HOLDS."* An agent cannot identify
+that author, cannot re-run that measurement, and cannot weigh it against the source in front of it.
+It can only defer.
+
+And every sentence of it was false the moment the harness was pointed at a second repository, which
+is the ordinary case and not the exceptional one.
+
+### What may not appear in a note
+
+`TheHarnessDoesNotKnowItsSubjectTest.theNotesAreAboutCheckers` compiles each of these against the
+prose of every note — everything after the first newline; line 1 is the construct regex and may
+legitimately contain anything. Each is a regex and a reason, and the reason is why it is not a style
+preference:
+
+- `(?i)webgoat` — names the repository under test, so the note is false the moment the harness is
+  pointed somewhere else.
+- `org\.owasp` — names the subject's packages.
+- `[A-Za-z_$][\w$]*\.java:\d+` — cites a specific site in the subject's tree. The marker under
+  judgement is the agent's to read, and a note that has already read it has done the work the
+  pipeline exists to do.
+- `\bI (?:ran|wrote|measured|sent|re-ran|verified|read|got)\b` — speaks in a first person the
+  reading agent cannot identify or check, and arrives with more authority than the evidence
+  deserves.
+- `(?i)second reader|THIS IS THE ONE THAT HOLDS` — claims precedence over what the agent sees in
+  the code itself.
+- `(?i)\blessons?\b|@AssignmentHints|AssignmentEndpoint|lessonCompleted|WebWolf` — is the subject's
+  vocabulary for its own architecture, which the harness has no business knowing.
+- `(?i)(deliberately|intentionally) (vulnerable|insecure|broken)|vulnerable on purpose|purpose-built to be`
+  — assumes the repository under test is a deliberately vulnerable teaching application: the
+  subject's defining property with its name filed off. Pointed at ordinary code, the sentence rebuts
+  an argument nobody would make.
+- `(?i)this checkout|this repo\b|in this tree` — points at the tree the harness happens to be aimed
+  at right now.
+- `(?i)a marker has already been|markers? (of this family|in this family)|has been run by hand|never produced a single build`
+  — reports the history of one run over one queue: a measurement the reading agent cannot check,
+  false the moment the harness is pointed elsewhere.
+
+**Two things are deliberately NOT banned**, and a rebuilder tightening this list will break notes
+that are right:
+
+- `assignment` — a dead-store note has to talk about assignment statements.
+- `by-design` and `unprovable` — the pipeline's own state words. Explaining how to REACH a state is
+  exactly a note's job; handing one over for a named site is what is forbidden, and naming sites is
+  what the third rule is for.
+
+Both exclusions are the same shape as the bare `return;` left out of the contentless-line list in
+`notUniversal` (below): a pattern that looks like contamination and is not, because for some family
+it is precisely the subject matter. Every tightening of either list should be checked against the
+notes that would start failing.
+
+### Why it is a list of regexes and not a principle
+
+The first sweep searched for the subject's **name** — `webgoat`, `org.owasp`, `File.java:NN` — and
+four notes came back clean. Two of those four were then used as the model for rewriting the other
+forty-four. They were not clean; they had merely stopped saying the name. That is how *"a marker has
+already been spent getting this wrong"* spread through the directory as an approved idiom: it names
+no file and no package, and it is still the history of one run over one queue, asserted to an agent
+that has no way to check it.
+
+The last four rules in the list above exist because of that sweep. Each of them catches text that
+passes a search for the subject's name. A rebuilder who replaces the list with "don't mention the
+subject" will rebuild exactly the four notes that were declared clean.
+
+---
+
+## The size expectation
+
+`TheHarnessDoesNotKnowItsSubjectTest.theNotesAreNotThePrompt` fails any note over **8,000
+characters**. A checker explains itself in a page; a note past that length has started accumulating
+findings again, which is how the last one reached 79% of the planner's task.
+
+The bound is a smoke alarm, not a target. What the ceiling is really measuring is whether the note
+has gone back to being a record of what previous runs concluded, because that is the only thing that
+makes a note grow without bound — the checker's semantics do not.
+
+| | Before | Now |
+|---|---|---|
+| Notes | 48 | 48 |
+| Total across the directory | 457,650 | 215,462 |
+| Mean | 9,534 | 4,489 |
+| Largest | 20,353 | 7,033 |
+
+A note that shrinks below **200 characters of prose** fails a different check: it no longer says
+what its checker means, which is worse than having no note at all, because the agent believes it.
+The working range is roughly 900 to 7,000 characters, and the long ones are long because the family
+genuinely splits — `FB.EI_EXPOSE_REP2` has to separate the value case from the collaborator case and
+give a discriminator, `HANDLE_LEAK` has three tiers with different instruments — not because they
+have more history to report.
+
+---
+
+## The first paragraph is the claim line
+
+**This is the constraint most likely to be missed, because nothing in the note's own file says it.**
+
+Two readers read these files, with their own copies of the sanitiser and the resource lookup — the
+readers are duplicated, not shared. `Checkers` reads the whole body for an agent.
+`ApiMarker.claimNote` reads the same file for a person, and takes **only the first paragraph** — the
+prose up to the first `\n\n`:
+
+```java
+String all = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+int nl = all.indexOf('\n');
+String note = nl < 0 ? "" : all.substring(nl + 1).strip();
+int para = note.indexOf("\n\n");
+return para < 0 ? note : note.substring(0, para).strip();
+```
+
+That paragraph is the claim line on the marker page. It is the only part of the note a human reader
+of a marker ever sees, and it sits directly above the flagged source as the answer to *what does
+this checker say is wrong here*. Consequences for whoever writes a note:
+
+- **The first paragraph must stand alone as the definition of the construct.** It cannot open with a
+  tautology. "`FB.URF_UNREAD_FIELD` reports an unread field" restates the name, and the name is
+  already on the page an inch above it — a reader who could decode the name did not need the note,
+  and a reader who could not is no better off. It has to say what makes a field unread, what the
+  checker counts as a read, and what it is being confused with.
+- **It must not open with the instrument or the verdict.** `HOW YOU MAKE IT VISIBLE` is the second
+  paragraph, always. A claim line that opens on the test recipe describes the demonstration to
+  somebody who has not yet been told what is being demonstrated.
+- The regex on line 1 is dropped before the paragraph is taken — it is machinery for `Checkers` and
+  reads as noise on a screen.
+- **With no note, `claimNote` returns `null`**, and the sentence a reader sees is written in
+  `ClaimCard.tsx`, not on the server: *"nothing is bundled for `<CHECKER>`, so what it claims is
+  only what its name says — the flagged line below is the whole of the evidence on this page."* The
+  server sends the fact; the screen writes the prose. The earlier version returned that sentence
+  from the server, and a reader could not tell "this checker has no note" from "the note says that
+  sentence".
+- An unreadable resource also returns `null`, and is therefore indistinguishable on the page from an
+  absent one.
+
+Good first paragraphs from the current set, both of which define and then immediately name the
+neighbour:
+
+> A command built from data that reaches a process launcher.
+> — `FB.COMMAND_INJECTION`
+
+> A value assigned to a local variable that is never read afterwards.
+> — `FB.DLS_DEAD_LOCAL_STORE`
+
+> A byte/char conversion with no charset argument, so it uses the JVM's default. `getBytes()`,
+> `new String(byte[])`, `new FileReader(...)`, `new PrintWriter(File)` and friends. It is NOT
+> `Charset.defaultCharset()` — that call is how you READ the setting, not how you depend on it
+> accidentally.
+> — `FB.DM_DEFAULT_ENCODING`
 
 ---
 
@@ -32,13 +205,15 @@ The file name is the checker family verbatim, dots included: `FB.DM_DEFAULT_ENCO
 `HANDLE_LEAK.EXCEPTION.txt`, `DEREF_OF_NULL.RET.LIB.txt`.
 
 **Line 1 is a regex. Everything after the first newline is the note.** Nothing else is structured;
-the body is prose read by a model. The head of `FB.DM_DEFAULT_ENCODING.txt`, with line 1 verbatim:
+the body is prose read by a model. The head of `FB.COMMAND_INJECTION.txt`, with line 1 verbatim:
 
 ```
-getBytes\(\s*\)|new String\s*\(\s*[^,)]+\s*\)|new (FileReader|FileWriter|InputStreamReader|OutputStreamWriter|PrintWriter|Formatter|Scanner)\s*\([^,)]*\)$
-A byte/char conversion with no charset argument, so it uses the JVM's default. `getBytes()`,
-`new String(byte[])`, `new FileReader(...)`, `new PrintWriter(File)` and friends.
-It is NOT `Charset.defaultCharset()` — ...
+Runtime\.getRuntime\(\)\.exec|ProcessBuilder|\.exec\s*\(
+A command built from data that reaches a process launcher.
+
+HOW IT ACTUALLY BEHAVES. `Runtime.exec(String)` does NOT run a shell. It splits the string on
+whitespace with a StringTokenizer and starts the first token as a program, passing the rest as
+argv. ...
 ```
 
 The reader is `Checkers.read`:
@@ -93,9 +268,10 @@ about the checker" from an invisible cause into a line in the transcript.
 
 **A wrong note is unsafe and is invisible.** At the moment it is read, a confident wrong note is
 indistinguishable from a right one, and every agent on that family acts on it — the note is not one
-opinion among several, it is the premise all of them share. That asymmetry is why absence is stated
-rather than papered over, and why the note body is checked by a second reader rather than trusted
-(below).
+opinion among several, it is the premise all of them share. That asymmetry is the reason absence is
+stated rather than papered over, and it is also why a note carrying the subject is so much more
+damaging than a note that is merely thin: fifteen agents inherit it, and none of them has standing
+to doubt it.
 
 ---
 
@@ -114,9 +290,10 @@ With a note present, the output is exactly:
 \n\nWHAT <CHECKER> REPORTS: <the whole body, stripped>\n<the where() sentence>\n
 ```
 
-The **whole** body goes in, not a summary and not the first paragraph — the tiers, the measured
-numbers, the `WHAT GOES WRONG HERE` list, the second reader's corrections. The body is written to
-be read by the agent that is about to write a test.
+The **whole** body goes in, not a summary and not the first paragraph — the tiers, the
+discriminators, the `WHAT GOES WRONG HERE` list. The body is written to be read by the agent that is
+about to write a test; the first paragraph is written to be read by a person. Both audiences are
+served by the same file and neither is served by a summary of the other's part.
 
 `Prove` splices it into the **brief**, the single string every agent on the marker is handed:
 
@@ -134,29 +311,23 @@ The fields come off the marker by position, splitting on `\|`, zero-based: `chec
 `src/main/`, `src/` that occurs in it, and `lineOf` is `parts[2]` parsed as an `int`, or `0` when
 the field is missing or does not parse.
 
-The dashboard reads the same files for a different audience, with its own copy of the sanitiser and
-the resource lookup — the two readers are duplicated, not shared. `Dashboard.claimIs` strips the
-body and shows **only the first paragraph** — up to the first `\n\n` — because the rest is an
-instruction to an agent and not an explanation to a person. Three consequences for whoever writes a
-note:
-
-- **The first paragraph must stand alone as the definition of the claim.** It is the only part a
-  human reader of the marker page ever sees.
-- With no note, the page says `This pipeline has no note for <CHECKER>, so what it means here is
-  whatever the agents below took it to mean.`
-- If the resource exists but cannot be read, `claimIs` returns the empty string and the page carries
-  no claim line at all. Absence-of-file is announced; unreadability is not.
+Note the order: the note arrives **before** the flagged source. That is the arithmetic behind the
+size ceiling — every character of note is a character the agent reads before it has seen the code it
+is judging.
 
 ---
 
 ## `where()` — whether the flagged line holds the construct
 
-This is the one sentence in the note that is arithmetic rather than opinion, and it exists because
-**the markers came off an older revision than the checkout**. The queue records no revision — its
-columns are `Severity,Checker,File,Line` and nothing else — so the reported line is a hint and not
-an address. Told only "line 63", an agent reasons about whatever
-is at line 63 today. Told that line 63 does not match and line 62 does, it reasons about the right
-statement — or says plainly that it cannot find one.
+This is the one sentence in the note that is arithmetic rather than opinion, and it is the only
+place the harness is allowed to say anything about the subject at all — because it computes it,
+per marker, against the checkout in front of it, rather than remembering it.
+
+It exists because **the markers came off an older revision than the checkout**. The queue records no
+revision — its columns are `Severity,Checker,File,Line` and nothing else — so the reported line is a
+hint and not an address. Told only "line 63", an agent reasons about whatever is at line 63 today.
+Told that line 63 does not match and line 62 does, it reasons about the right statement — or says
+plainly that it cannot find one.
 
 The algorithm, in full:
 
@@ -193,92 +364,187 @@ Both silent returns in steps 1 and 2 are the safe direction and both are load-be
 A marker with no parseable line number arrives here as `line == 0`, fails step 3 unconditionally, and
 gets the negative sentence with the window `1..40`.
 
+The regex on line 1 therefore has a second job beyond addressing this sentence: it is the note's
+executable half, the one statement of "what the construct looks like" that a machine can act on. It
+must describe the construct tightly enough to be wrong about a line that does not hold it — which is
+what the `notUniversal` check below enforces.
+
 ---
 
 ## What a good note contains
 
-The observability fact first, everything else after it.
+Everything here is a property of the checker, the language, or the shape of a demonstration. None of
+it is a property of a repository.
 
-**1. What the checker reports, and what it is not.** One paragraph. Name the construct, and name the
-neighbouring construct it is constantly mistaken for, because that is where the reconstructions went
-wrong:
+**1. What the checker reports, and the sibling it is confused with.** One paragraph — the claim
+line. Name the construct, then name the neighbouring construct or checker that gets mistaken for it,
+because that is where the reconstructions went wrong.
 
 - `FB.DM_DEFAULT_ENCODING` — "It is NOT `Charset.defaultCharset()` — that call is how you READ the
-  setting, not how you depend on it accidentally, and a marker has already been settled on that
-  confusion."
-- `FB.UC_USELESS_OBJECT` — "It is a claim about one *allocation site*, not about the variable", with
-  `DLS_DEAD_LOCAL_STORE` and `UC_USELESS_OBJECT_STACK` named as the neighbours.
-- `DEREF_OF_NULL.RET.STAT` — on `T x = (T) v.m();` the flagged value "is NOT `m()`'s result being
-  cast — it is `v`, the receiver".
-- `FB.HARD_CODE_PASSWORD` — "a name-proximity heuristic, not a data-flow proof", which is why it
-  fires on `.passwordParameter("password")` and on a message key.
+  setting, not how you depend on it accidentally."
+- `FB.EI_EXPOSE_REP2` — "It is the INCOMING side; its neighbour `EI_EXPOSE_REP` is the OUTGOING
+  side, where a getter returns the field itself. The same field usually carries both, and they are
+  separate markers with separate fixes."
+- `DEREF_OF_NULL.RET.STAT` — on a line shaped `T x = (T) v.m();` the flagged value "is NOT `m()`'s
+  result being cast — it is `v`, the receiver".
+- `HANDLE_LEAK` — "The construct this is constantly mistaken for is a handle the CALLEE closes: a
+  copy helper taking `new FileOutputStream(f)` as an argument matches the regex and is no leak if
+  the helper closes in a finally."
 
-**2. HOW YOU MAKE IT VISIBLE — the sentence the whole family turns on.** A **RED** is a test that,
-in `prompts/reproduce-doer.txt`'s words, "FAILS on the current, UNPATCHED code precisely because of this
-defect, and would PASS once it is fixed"; a **GREEN** is that same test passing after the fix. The
-note's job is to say whether a RED is possible for this family, and by what instrument. Everything
-measured is labelled as measured, with the numbers:
+**2. Language, JVM and library facts the agent may not have.** This is the highest-value thing a
+note can carry and the reason the mechanism exists: a fact that is true of Java, checkable by
+anybody, and absent from every agent that met the family.
 
-- `HANDLE_LEAK` tier 1: "one-entry zip, N=300, default heap: delta 300, 300, 300, 300, 300 (five
-  runs)" versus "five-entry zip, N=300: delta 2, 31, 5, 17, 18". Hence: pin the fixture, assert
-  `delta >= N/2`, never call `System.gc()` — "I measured one `System.gc()` take a 300-fd delta to 0".
-- `HANDLE_LEAK` tier 2: 200 leaked calls → session delta 200; 200 in try-with-resources → delta 0.
-- `DEREF_OF_NULL.RET.STAT`: the actual stack frame the RED must produce, quoted, plus "That frame —
-  naming the flagged line AND the null variable — is what 'failed for the right reason' means for
-  this family. Read it. Do not settle for 'an NPE was thrown'."
+`FB.COMMAND_INJECTION` is the cleanest instance. `Runtime.exec(String)`
 
-**3. When it cannot be shown, say so and say what to write instead.** A note that leaves this
-unstated buys a family of manufactured REDs.
+> does NOT run a shell. It splits the string on whitespace with a StringTokenizer and starts the
+> first token as a program, passing the rest as argv. So `;`, `&&`, `|`, backticks and `$( )` chain
+> NOTHING — they arrive as literal arguments to the first program.
 
-- `FB.DLS_DEAD_LOCAL_STORE`: "THIS IS ALMOST NEVER OBSERVABLE. Removing a dead store changes no
-  return value, no field, no output and no timing — that is what makes it dead."
-- `HANDLE_LEAK` tier 3: "the correct settlement is 'real omission, release guaranteed by the
-  enclosing try-with-resources (a) / by the JVM process reaper (b), not demonstrable by exhaustion' —
-  write that down instead of manufacturing a RED."
-- `FB.UC_USELESS_OBJECT` variant (1): "write down that the finding is TRUE and NOT TEST-OBSERVABLE".
+and therefore
 
-**4. Polarity.** The prescribed assertion must fail before the fix. Two families —
-`DEREF_OF_NULL.RET` (6 markers) and `TAINTED_PTR` (3) — shipped notes whose recipe passed on
-unpatched code and had to be corrected by the second reader; copied literally, such a test certifies
-the defect and reports the fix as a regression. `TAINTED_PTR`'s correction opens its first item with
-"POLARITY — THE PRESCRIBED TEST IS GREEN ON UNPATCHED CODE" and fixes it by asserting the SAFE
-property instead, so the test fails now and passes after the fix. `DEREF_OF_NULL.RET.STAT` states
-the trap directly:
-`assertThrows(NullPointerException.class, ...)` "PASSES on today's buggy code and FAILS after the fix
-— a regression lock on the defect, inverted."
+> `Runtime.exec(String[])` and `ProcessBuilder` do not tokenise at all, so each element is one
+> argument and even argument injection needs the caller to have concatenated.
 
-**5. Which verdict words follow from which observation.** `HANDLE_LEAK`: "'the fd count did not move'
-is not 'false positive' and not 'not a defect' for tier 3". `FB.UC_USELESS_OBJECT`: "'Harmless,
-therefore false positive.' Not the same claim." `FB.DLS_DEAD_LOCAL_STORE`: "`by-design` needs
-evidence that somebody CHOSE this ... 'Removing the assignment would be functionally identical' is an
-argument that the fix is safe, which is an argument FOR the fix and not evidence of intent."
+Nothing in that paragraph is about any repository, and it decides every marker in the family.
 
-**6. Where the markers actually are, and where they are not.** `FB.HARD_CODE_PASSWORD` names its
-trap: "There is no src/main line in this family outside IDORLogin — if you find yourself
-demonstrating on DefaultUserInitializer, WebSecurityConfig, JWTRefreshEndpoint, MissingFunctionAC or
-DefaultCredentialsTask, you are working on a line that carries no marker."
+**3. HOW YOU MAKE IT VISIBLE — the sentence the whole family turns on.** A **RED** is a test that,
+in `prompts/reproduce-doer.txt`'s words, "FAILS on the current, UNPATCHED code precisely because of
+this defect, and would PASS once it is fixed"; a **GREEN** is that same test passing after the fix.
+The note's job is to say whether a RED is possible for this family, and by what instrument. 33 of
+the 48 notes carry a `HOW YOU MAKE IT VISIBLE` heading; `FB.COMMAND_INJECTION` calls its equivalent
+`HOW IT ACTUALLY BEHAVES`, because for that family the instrument follows from the behaviour and the
+behaviour is the thing nobody knew.
 
-**7. Lesson safety, specifically and never as a blanket.** The subject is a deliberately vulnerable
-teaching application, so "it is a lesson" is available as an excuse for declining every marker and as
-an excuse for breaking every assignment. Notes name the assignment line and the defect line
-separately: "ProfileZipSlip's assignment is the unnormalized `new File(tmpZipDirectory.toFile(),
-e.getName())` at line 79 — closing the ZipFile at 75 leaves the traversal fully intact, so neither
-decline the fix as 'it's a lesson' nor add normalize()/startsWith around 79."
+The instrument is described generically — a seam, a shape, a bean to sample — never a call site.
+`HANDLE_LEAK` tier 1 says to loop the leaky shape N times "through the smallest seam that reaches
+it", sampling `getOpenFileDescriptorCount()`, and then gives the trap that makes the measurement
+worthless: these types self-close through a `java.lang.ref.Cleaner` once unreachable, so "keep the
+body small, assert `delta >= N/2` rather than equality, never call `System.gc()` or a helper that
+might — one collection takes a full delta to zero".
 
-**8. NOT LEAKS / verified, do not file.** An explicit list of shapes that match the regex and are not
-defects, each with how it was checked: "`FileCopyUtils.copy(in, new FileOutputStream(f))` at
-Salaries.java:47-49 ... I ran a close()-recording FileOutputStream subclass against spring-core 7.0.8;
-both `copy(InputStream,OutputStream)` and `copy(byte[],OutputStream)` closed it."
+**4. When it cannot be shown, say so and say what to write instead.** A note that leaves this
+unstated buys a family of manufactured REDs. `FB.DLS_DEAD_LOCAL_STORE` is the model:
+
+> THIS IS ALMOST NEVER OBSERVABLE. Removing a dead store changes no return value, no field, no
+> output and no timing — that is what makes it dead. So a test that "demonstrates" it is nearly
+> always asserting something else, and `unprovable` is usually the honest state.
+
+`HANDLE_LEAK` tier 3 does the same in the other direction, and supplies the words: "the correct
+settlement is 'real omission, release guaranteed by the enclosing try-with-resources (a) or by the
+process reaper (b), not demonstrable by exhaustion' — write that instead of manufacturing a RED."
+
+**5. Polarity.** The prescribed assertion must fail before the fix. Getting this backwards produces
+a test that certifies the defect and reports the fix as a regression, and it is easy to get
+backwards, because the natural sentence to write is the one describing what the bug does.
+
+- `DEREF_OF_NULL.RET.STAT`, on `assertThrows(NullPointerException.class, …)` as the RED: "It PASSES
+  on today's defective code and FAILS after the fix — a regression lock on the defect, inverted. It
+  also fails to pin the line: any other null argument satisfies it just as well." What to write
+  instead: "ASSERT THE GRACEFUL OUTCOME, NOT THE EXCEPTION."
+- `TAINTED_PTR`: "A test that sends a payload and asserts the injection SUCCEEDS is green before any
+  fix and stays green forever. Assert the safe property — only the requested row comes back, a wrong
+  password does not authenticate, the resolved path stays inside the intended directory — so it
+  fails on the current code and passes once the value is bound or validated."
+- `FB.EI_EXPOSE_REP2`: "Asserting the marker back at itself: `assertThat(t.getItems()).isSameAs(items)`
+  asserts the aliasing exists, which nobody disputes, and goes GREEN only by breaking `==`."
+
+**6. Which verdict words follow from which observation.** The pipeline's state words are harness
+vocabulary and a note may reason about them freely; what it may not do is reach one for a named
+site.
+
+- `HANDLE_LEAK`: "'the descriptor count did not move' is not 'false positive' and not 'not a defect'
+  for tier 3 — it is 'not demonstrable by exhaustion, release guaranteed elsewhere'."
+- `FB.DLS_DEAD_LOCAL_STORE`: "`by-design` needs evidence that somebody CHOSE this: a comment, a
+  suppression entry, an annotation. 'Removing the assignment would be functionally identical' is an
+  argument that the fix is safe, which is an argument FOR the fix and not evidence of intent."
+
+**7. What intent actually requires — stated as a rule, never as a fact about the subject.** This
+replaces what used to be a paragraph about the subject being a teaching application. The
+transferable version is stronger and works on any repository: the surroundings are not evidence in
+either direction, and intent needs an artefact.
+
+`DEREF_OF_NULL.RET.STAT`:
+
+> The name, package or directory of the surrounding code decides nothing in either direction: code
+> that reads as demonstration or sample material does not thereby intend its crashes … while code
+> that reads as critical is not thereby free of ordinary defects. Intent needs something checked in
+> that DEPENDS on the dereference behaving as it does — a test asserting the throw, documentation
+> instructing callers to expect it, a comment or suppression naming the choice.
+
+`TAINTED_PTR` states the symmetry outright: "'the code around it is understood to be careless, so a
+defect is a defect' and 'the code around it is understood to want this, so it is intended' are the
+same failure."
+
+**8. Shapes that match the regex and are not defects.** The regex is deliberately loose enough to
+find a drifted line, so it over-matches, and the note owes the agent the list of over-matches.
+`HANDLE_LEAK`'s `NOT LEAKS` paragraph: purely in-memory streams hold no OS handle; a handle acquired
+and immediately returned to the caller is ownership transfer, and closing it at the acquisition site
+would break every caller; an acquisition already inside try-with-resources is a flat false positive
+— check that first. Each is a shape, not a site.
+
+**9. WHAT GOES WRONG HERE — the reasoning traps specific to this checker.** 41 of the 48 notes carry
+a section under this heading, and it is the part that most reliably changes an outcome. These are
+the wrong turns a competent agent takes on *this* family: the assertion that looks like a
+demonstration and is not, the fix that turns the test green for the wrong reason, the confusion
+between two markers on one field. `FB.EI_EXPOSE_REP2` lists seven, including one that only shows up
+after the fix: "Where both defects sit on one field a sloppy test passes for the wrong reason and
+stays RED after the constructor is correctly fixed — which then gets misread as 'the fix didn't
+work'."
+
+**10. Where the family splits, and a discriminator for telling which half you are in.** Where a
+checker covers two situations with different answers, saying so is not enough — the note has to give
+a test the agent can run. `FB.EI_EXPOSE_REP2` splits value objects from framework collaborators and
+then supplies:
+
+> DISCRIMINATOR, when you are unsure which half you are in: try to write the defensive copy. If
+> `new ArrayList<>(x)` / `x.clone()` / `new Date(x.getTime())` compiles and the program still
+> behaves, it is (A). If the copy needs a copy constructor you would have to invent for a framework
+> type, or would freeze something the code needs live, it is (B).
+
+A split with no discriminator is worse than no split: it tells the agent there are two answers and
+leaves it to pick one.
 
 ---
 
-## The DM_DEFAULT_ENCODING story
+## Keeping the fact and dropping the site
+
+The single manoeuvre a rebuilder needs. Most of what the contaminated notes knew was worth knowing;
+what made it unusable was that it was expressed as a fact about one tree. The same knowledge
+restated as a fact about the world survives the harness being pointed elsewhere, and is *more*
+useful, because it now tells the agent what to check rather than what to believe.
+
+The `HANDLE_LEAK` note is the worked example. The old text asserted that the subject declared a
+`DriverManagerDataSource` at a named file and line, that there was no pool anywhere in `src/`, and
+that a measured run of 2000 iterations moved the session count by 0. An agent could do nothing with
+that except believe it. What the note says now:
+
+> FIRST ESTABLISH WHAT THE HANDLE COSTS. For JDBC that means finding the DataSource implementation
+> actually constructed. A connection pool on the dependency tree is not a pool in the path — an
+> application that declares its own DataSource commonly suppresses the framework's pooled default,
+> and then every `getConnection()` opens a fresh physical session. Do not build a harness around a
+> pool the application does not use: it compiles, it goes RED, and it proves nothing about this
+> application.
+
+Same discovery. It has become an instruction to look, a reason why looking matters, and a named
+failure mode for not looking — and it is true of every Java application rather than one. The
+measurement that produced it belongs in the record of the run that produced it. It does not belong
+in a file that fifteen agents read as a premise.
+
+Apply the same conversion to a verdict and it disappears, correctly: "all three markers of this
+family are by-design" converts to nothing, because there was never a general fact underneath it.
+That is the test. If a sentence cannot be restated without the subject, it was the answer, not
+context for finding it.
+
+---
+
+## The fact that unlocked a family
 
 The note that mattered most, and the reason the mechanism exists at all.
 
-Thirty-three `FB.DM_DEFAULT_ENCODING` markers had never produced a single build. Every agent that
-met one reached the same answer in nearly the same words: *the default charset is fixed at JVM
-start-up, therefore no test can vary it, therefore this cannot be demonstrated.*
+A whole `FB.DM_DEFAULT_ENCODING` family had never produced a single build. Every agent that met one
+reached the same answer in nearly the same words: *the default charset is fixed at JVM start-up,
+therefore no test can vary it, therefore this cannot be demonstrated.*
 
 The first clause is true. The conclusion does not follow. **A test may START a JVM.**
 
@@ -290,12 +556,11 @@ ProcessBuilder b = new ProcessBuilder(
         SomeMainThatExercisesTheSubject.class.getName());
 ```
 
-Run by hand against this checkout, `EncDec` goes RED under `-Dfile.encoding=ISO-8859-1` with
-`expected: "café" but was: "caf©Ã"`, and GREEN once the charsets are explicit. Under UTF-16 a base64
-decode throws `IllegalArgumentException: Illegal base64 character`.
-
-Since Java 18 the default *is* UTF-8 on every platform (JEP 400), so the defect cannot be shown by
-running the same JVM the build runs in — "That is a reason to fork, not a reason to give up".
+Assert on what the child prints: under ISO-8859-1 a round trip of `"café"` comes back `"caf©Ã"`;
+under UTF-16 a base64 decode throws `IllegalArgumentException: Illegal base64 character`. Both go
+GREEN once the charset is explicit. Since Java 18 the default *is* UTF-8 on every platform (JEP
+400), so the defect cannot be shown by running the same JVM the build runs in — "That is a reason to
+fork, not a reason to give up."
 
 Two things a rebuilder must carry:
 
@@ -306,71 +571,70 @@ Two things a rebuilder must carry:
   independently by many agents in nearly identical words. Convergence is not corroboration here —
   every agent shares the same gap. A note is the only place a fact that nobody has can be added.
 
-`FB.COMMAND_INJECTION.txt`, written in the same commit, carries the companion failure —
-`VulnerableTaskHolder:69` spent its single RED on a semicolon payload, and the note opens "HOW IT
-ACTUALLY BEHAVES, because a marker has already been spent getting this wrong": `Runtime.exec(String)`
-"does NOT run a shell. It splits the string on whitespace with a StringTokenizer and starts the first
-token", so `;`, `&&`, `|`, backticks and `$( )` "chain NOTHING". A test asserting that
-`"ls; touch /tmp/pwned"` creates a file "will not fail, and it will not fail for a reason that has
-nothing to do with whether the marker is real."
+**This chapter may tell that story; the note may not.** The note carries the fact, the fork recipe
+and the JEP 400 consequence — all of them true of Java. What it does not carry is the count of
+markers, the name of the class that was run by hand, or the sentence saying a family had never
+produced a build. That is the ninth forbidden rule, and this section is where a careless rewrite
+would put it back.
 
 ---
 
-## The second reader
+## What replaced the second reader
 
-**A note is checked against a real checkout before it is trusted, and the check is recorded in the
-note rather than replacing it.**
+Earlier, notes were checked against a real checkout by a second reader whose corrections were
+appended to the note under a sentinel line reading *"CHECKED AGAINST THE CHECKOUT BY A SECOND READER
+WHO RE-RAN THE CLAIMS ABOVE. Where the two disagree, THIS IS THE ONE THAT HOLDS."* Twenty-nine of
+the forty-eight carried it.
 
-29 of the 48 notes carry, verbatim and as a line of its own, this sentinel:
+**The reading was worth doing. Recording it inside the note was the mistake**, and it is now
+forbidden by the fifth rule above — not because the corrections were wrong, but because of what the
+sentinel claimed. It told an agent to prefer an unidentifiable author's earlier reading of a
+different checkout over the source in front of it. That is the exact instruction a pipeline built to
+settle markers by execution must never give.
 
-```
-CHECKED AGAINST THE CHECKOUT BY A SECOND READER WHO RE-RAN THE CLAIMS ABOVE. Where the two disagree, THIS IS THE ONE THAT HOLDS.
-```
+Three corrections were worth the exercise on their own, and all three survive — as checker facts
+with the sites removed:
 
-Everything below that line supersedes everything above it. The draft stays because a correction is
-usually a patch and not a replacement — several corrections say in effect *keep regimes (A) and (C)
-exactly as written* — and because the disagreement itself is information for the next reader.
+| What the reader found | What the note says now |
+|---|---|
+| A whole family's recipe was written against a file carrying no marker, added to HEAD after the scan | the general form: the flagged line is the marker, a GREEN attached to a reachable sibling class is not a settlement — and `where()` computes the drift per marker instead of remembering it |
+| Two drafts assumed a connection pool that the application did not use, so the prescribed RED could never fire | the `FIRST ESTABLISH WHAT THE HANDLE COSTS` paragraph quoted above |
+| Two families prescribed a test that was green on unpatched code | the polarity paragraphs in `TAINTED_PTR` and `DEREF_OF_NULL.RET.STAT` |
 
-All 29 are among the 44 notes written in one commit; the four earliest notes, written before the
-second reading existed, carry none. That commit's own account is "Seventeen stood; twenty-nine carry
-a correction" — the prose counts in this repository disagree with each other and with the files (the
-enforcing test's javadoc says thirty-one), so treat **29 sentinel lines on disk** as the fact and the
-ratio as a story. Three corrections were worth the exercise on their own:
-
-- **`FB.HARD_CODE_PASSWORD` (17 markers)** — the entire recipe had been written against a file that
-  carries no marker and was added to HEAD after the scan. All 17 markers would have burned a build on
-  unrelated code. The note now names that file as the trap.
-- **`HANDLE_LEAK` (15) and `HANDLE_LEAK.EXCEPTION` (5)** — both drafts assumed a HikariCP pool and
-  prescribed a pool-exhaustion RED. `DatabaseConfiguration.java:28-37` declares a
-  `DriverManagerDataSource`; there is no pool anywhere in `src/`, so the prescribed RED could never
-  fire. The correction leads with the fact that decides every JDBC marker in the family and is
-  measured: 2000 iterations, session delta 0. It also says what to do instead — "just count sessions,
-  not pool timeouts" — and warns that a Hikari harness "compiles, it goes RED, and it proves nothing
-  about this application".
-- **`DEREF_OF_NULL.RET` (6) and `TAINTED_PTR` (3)** — inverted polarity, as above.
-
-The second reader's first target is always the observability claim, because that is the sentence
-every agent on the family acts on.
+Truth is still not machine-checkable, and no test in this repository asserts that a note is right.
+What the tests hold is the shape, the size, and the boundary. A note is still worth reading against
+a real checkout before it is trusted — the reading is now expected to change the note's *claims*,
+not to be appended to it as an authority. If a re-reading finds the note wrong, fix the note.
 
 ---
 
 ## What is enforced automatically
 
-`ANoteIsCheckedBeforeItIsTrustedTest` holds the shape, not the truth. Truth is a job for a reader
-with the source. Two of the five checks — `compiles` and `notUniversal` — exist because those
-failures happen **silently inside `where()`**: a first line that will not compile is swallowed by
-`catch (PatternSyntaxException)` and returns `""`, and a first line that matches everything reports
-"Line 63 does contain it" for every line of every file. Either way the note still looks present and
-the sentence the agent most needs is quietly missing or a lie. The test iterates every `.txt` under
+Two test classes, with overlapping shape checks. `ANoteIsCheckedBeforeItIsTrustedTest` holds the
+mechanics; `TheHarnessDoesNotKnowItsSubjectTest` holds the boundary. Both iterate every `.txt` under
 `src/main/resources/checkers`, sorted.
 
-| Check | What it asserts | Why |
-| --- | --- | --- |
-| `twoParts` | every `.txt` has a `\n` at index > 0 and a non-blank first line | `read` returns `null` otherwise — the note would be silently absent rather than wrong, "which is at least the safe failure, but it is still not a note" |
-| `compiles` | line 1 of every note compiles as a `Pattern` | `where` swallows `PatternSyntaxException` and returns `""`, costing the note "its one arithmetical sentence" while the note still looks present |
-| `notUniversal` | no note's regex matches any of `""`, `"    // just a comment"`, `"    }"`, `"import java.util.List;"`, `"package org.owasp.webgoat.container;"`, `"        }  // done"` | a regex that fires on a closing brace reports "Line 63 does contain it" for every marker, "including the agents whose marker has drifted off the file — which is the exact case this sentence exists to catch" |
-| `saysHowToSeeIt` | the body (everything after the first `\n`), stripped, is at least 200 characters | "a note that only renames the checker leaves the agent exactly where it was" |
-| `theFactThatDidIt` | `FB.DM_DEFAULT_ENCODING.txt` contains `A TEST MAY START A JVM` | without it the family goes back to never producing a build |
+Two of the mechanical checks — `compiles` and `notUniversal` — exist because those failures happen
+**silently inside `where()`**: a first line that will not compile is swallowed by
+`catch (PatternSyntaxException)` and returns `""`, and a first line that matches everything reports
+"Line 63 does contain it" for every line of every file. Either way the note still looks present and
+the sentence the agent most needs is quietly missing or a lie.
+
+| Class | Check | What it asserts | Why |
+| --- | --- | --- | --- |
+| `ANoteIsChecked…` | `twoParts` | every `.txt` has a `\n` at index > 0 and a non-blank first line | `read` returns `null` otherwise — the note would be silently absent rather than wrong, "which is at least the safe failure, but it is still not a note" |
+| `ANoteIsChecked…` | `compiles` | line 1 of every note compiles as a `Pattern` | `where` swallows `PatternSyntaxException` and returns `""`, costing the note "its one arithmetical sentence" while the note still looks present |
+| `ANoteIsChecked…` | `notUniversal` | no note's regex matches any of `""`, `"    // just a comment"`, `"    }"`, `"import java.util.List;"`, `"package org.owasp.webgoat.container;"`, `"        }  // done"` | a regex that fires on a closing brace reports "Line 63 does contain it" for every marker, "including the agents whose marker has drifted off the file — which is the exact case this sentence exists to catch" |
+| `ANoteIsChecked…` | `saysHowToSeeIt` | the body, stripped, is at least 200 characters | "a note that only renames the checker leaves the agent exactly where it was" |
+| `ANoteIsChecked…` | `theFactThatDidIt` | `FB.DM_DEFAULT_ENCODING.txt` contains `A TEST MAY START A JVM` | without it the family goes back to never producing a build |
+| `TheHarnessDoesNot…` | `theNotesAreAboutCheckers` | none of the nine forbidden patterns appears in any note's prose | the note is pasted verbatim into the prompt of every agent that judges a marker of that checker, "so anything it knows about the subject is something the agents were told instead of finding" |
+| `TheHarnessDoesNot…` | `theNotesAreNotThePrompt` | no note exceeds 8,000 characters | "a checker explains itself in a page; a note past this length has started accumulating findings again, which is how the last one reached 79% of the planner's task" |
+| `TheHarnessDoesNot…` | `theShapeSurvived` | regex on line 1, compiling, with ≥ 200 characters of prose after it | restates the three mechanical checks inside the contamination test, so a rewrite pass that strips a note to nothing fails in the same class that told it to strip |
+
+`theShapeSurvived` is a deliberate duplicate of `twoParts` + `compiles` + `saysHowToSeeIt`. The
+duplication is the point: the two classes pull in opposite directions — one says *cut*, the other
+says *a note that says nothing is worse than none, because the agent believes it* — and a rebuilder
+who removes the duplicate loses the counterweight at the moment it is needed.
 
 Two notes on `notUniversal`: it caught `UNREACHABLE_CODE` matching a blank line and a bare closing
 brace when the notes were first written. And a bare `return;` is deliberately **not** in the
@@ -392,16 +656,32 @@ arrives and `DOES NOT CONTAIN` does not.
 
 ## Numbers of record
 
-Against the real checkout and the real queue, at the time the notes were completed:
+**Checkable from this repository alone**, and therefore true of the harness:
 
 - 48 checker families in the queue, 48 notes, no marker without one.
+- 215,462 characters across the directory; mean 4,489; largest 7,033 against a ceiling of 8,000.
+  Before the rewrite: 457,650, mean 9,534, largest 20,353.
+- 33 of 48 carry a `HOW YOU MAKE IT VISIBLE` heading and one more its `HOW IT ACTUALLY BEHAVES`
+  equivalent; 41 of 48 carry a `WHAT GOES WRONG HERE` section.
+- The smallest note is `FB.DLS_DEAD_LOCAL_STORE.txt` at 991 characters, and it is one of the two
+  quoted here as a model. Short is not thin: it defines the construct, names the two cheap wrong
+  answers, and stops.
+- 0 notes name the subject, its packages, its architecture vocabulary, or any `File.java:LINE`.
+
+**A property of one checkout, not of the harness.** One run of `where()` over a WebGoat checkout
+this repository does not contain, at the time the notes were completed:
+
 - 281 of 356 flagged lines hold the construct.
 - 65 have drifted and are told which nearby lines do.
 - 8 are told honestly that nothing near them matches.
-- 2 name a file this checkout does not have — and receive the note with no line claim at all.
+- 2 name a file that checkout does not have — and receive the note with no line claim at all.
 
-The first line is checkable from this repository alone. The last four are one run of `where()` over
-a WebGoat checkout that this repository does not contain; they partition the queue exactly
-(281 + 65 + 8 + 2 = 356) and are a measurement, not an invariant — a rebuilder against a different
-checkout will get different splits and should expect the drifted and missing-file buckets to be
-non-empty, which is the whole reason the sentence exists.
+They partition the queue exactly (281 + 65 + 8 + 2 = 356) and are a measurement, not an invariant. A
+rebuilder against a different checkout will get different splits and should expect the drifted and
+missing-file buckets to be non-empty, which is the whole reason the sentence exists.
+
+**This section is where a number like that is allowed to live** — labelled as one run, over one
+checkout, in a document a person reads once. The same number inside a note is the ninth forbidden
+pattern, because a note is not read once by a person; it is read as a premise by fifteen agents who
+cannot check it and have no standing to doubt it. That is the whole distinction this chapter turns
+on, and it is not about which facts are true. It is about which reader can check them.

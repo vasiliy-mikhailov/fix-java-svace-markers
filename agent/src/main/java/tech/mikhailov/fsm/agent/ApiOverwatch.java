@@ -216,6 +216,11 @@ final class ApiOverwatch {
                     .append(number(Dashboard.field(line, "minutes")))
                     .append(",\"itemisation\":")
                     .append(quote(Dashboard.field(line, "itemisation")));
+            case "asking" -> b.append(",\"standing\":")
+                    .append(quote(Dashboard.field(line, "standing")))
+                    .append(",\"task\":").append(quote(Dashboard.field(line, "task")));
+            case "sent" -> b.append(",\"role\":").append(quote(Dashboard.field(line, "role")))
+                    .append(",\"text\":").append(quote(Dashboard.field(line, "text")));
             case "progress" -> b.append(",\"note\":").append(quote(Dashboard.field(line, "note")));
             case "failed" -> b.append(",\"cause\":").append(quote(Dashboard.field(line, "cause")))
                     .append(",\"stack\":").append(quote(Dashboard.field(line, "stack")));

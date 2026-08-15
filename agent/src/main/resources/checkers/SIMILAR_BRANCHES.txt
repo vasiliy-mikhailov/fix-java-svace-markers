@@ -1,22 +1,44 @@
 (?:\belse\b|\bif\s*\(|\bcatch\s*\()|^\s*(?:&&|\|\|)|\?[^?:"']{1,60}:[^:]
-The checker asserts that two branches of one `if / else if / else` chain (or the two arms of a ternary) have bodies that are textually the same, or differ by a single token — the shape a copy-paste slip leaves behind. It is a claim about the BODIES, never about the condition printed on the flagged line; the reported line is only where a branch of the chain begins, which is why these two markers land on a null-check (`if (user == null || refreshToken == null)`) and on a bare `&& req.getUri().getQuery() != null` continuation of an `else if`. Do not confuse it with the neighbouring finding for duplicated CONDITIONS (`if (a) … else if (a) …`), which makes a branch unreachable and is a real defect; here the conditions are distinct and only the outcomes coincide. Expand from the flagged line outward to the whole chain before judging anything.
+Two branches of one `if / else if / else` chain, or the two arms of a ternary, have bodies that are
+textually the same or differ by a single token — the shape a copy-paste slip leaves behind. It is a
+claim about the BODIES, never about the condition printed on the flagged line; the reported line is
+only where a branch of the chain begins, which is why the anchor can land on a null check or on a
+bare `&&` or `||` continuation of an `else if`. Expand from the flagged line outward to the whole
+chain before judging anything. Do not confuse it with the neighbouring finding for duplicated
+CONDITIONS (`if (a) … else if (a) …`), which makes a branch unreachable and is a real defect; here
+the conditions are distinct and only the outcomes coincide.
 
-HOW YOU MAKE IT VISIBLE.
-Usually you CANNOT make this visible, and the reason is definitional: if two branch bodies are identical, they produce identical observable behaviour, so no assertion can tell which one ran. Both markers here are that case, and you should confirm it by diffing the bodies rather than assuming it.
+USUALLY YOU CANNOT MAKE THIS VISIBLE, and the reason is definitional: identical bodies produce
+identical observable behaviour, so no assertion can tell which one ran. Confirm it by diffing the
+bodies rather than assuming, then refute the marker with that as the stated reason — two
+independent, legitimate conditions leading to one documented outcome. Not "style only".
 
-JWTRefreshEndpoint.java 129-137: branch 1 (line 130) and branch 3 (line 135) are both `return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()` — same status, empty body, no headers. Both branches are separately reachable through the existing MockMvc harness (`JWTRefreshEndpointTest extends LessonTest`, `@WithWebGoatUser`). Branch 3 is already covered by `unknownRefreshTokenShouldGiveUnauthorized`: log in as Jerry, POST /JWT/refresh/newToken with a valid `Authorization: Bearer` header and body `{"refresh_token":"wrong_refresh_token"}`. Branch 1 is reached by the identical request with body `{}` — `json` deserialises to a non-null empty map, so `json.get("refresh_token")` is null. Write both and you have two tests whose only assertion is `status().isUnauthorized()` on an empty body. There is no third thing to assert.
+That both branches are separately reachable is not a counter-argument. Arranging each condition
+gives you two tests carrying the same assertion and there is no third thing to assert. Coverage can
+separate such branches; assertions cannot, and only an assertion settles a marker.
 
-Requests.java 60-67 is the same shape: both branches are `allowed = false;`. Mock it the way WebWolfTraceRepositoryTest already does (`HttpExchange httpExchange = mock(); when(request.getUri()).thenReturn(URI.create(...))`), feed one exchange for `/files/other-user/x.jpg` and one for `/landing?uniqueCode=abc`, call `new Requests(repo, objectMapper).get(auth)` and assert the "traces" model object is empty. Same assertion twice.
+WHEN THIS FAMILY IS PROVABLE: the checker says SIMILAR, not IDENTICAL. If the bodies differ by
+exactly one token — `left` where `right` was meant, `[i]` where `[j]` was meant, one message key
+reused for two conditions — then the mistyped branch has an intended output and the RED is real:
+arrange the second condition, assert the value that branch should have produced, watch it fail on
+the copied value and pass after the fix. The evidence that they were meant to differ must come from
+outside the branch — a sibling method, a message key, javadoc, a symmetric case in the same chain —
+never from you deciding they ought to differ.
 
-So the failing observation does not exist, and the settlement is to refute the marker with that as the stated reason: the two conditions are independent, legitimate reasons for one documented outcome (missing input and unknown refresh token both mean 401; two classroom-privacy rules both mean hide the trace). Not "style only", not "it is WebGoat".
-
-When this family IS provable: the checker says SIMILAR, not IDENTICAL. If the bodies differ by exactly one token — `left` where `right` was meant, `[i]` where `[j]` was meant, one feedback key reused for two different conditions — then the mistyped branch has an intended output and the RED is real: arrange the second condition, assert the value that branch should have produced, watch it fail on the copied value and pass after the fix. The evidence that they were meant to differ must come from outside the branch (a sibling method, a message key, javadoc, a symmetric case in the same chain), never from you deciding they ought to differ.
-
-If you do collapse the branches, the tests above are a GREEN-before / GREEN-after regression check on the merge, not a proof of defect. Note that the merge itself is where a defect can be introduced: fusing an `else if` into a single `||` reorders short-circuit evaluation, and a null-guard that used to run first can end up behind the dereference it was guarding. In Requests, `!query.contains(StringUtils.reverse(username))` sits behind `query != null` in the same `&&` chain and must stay there.
+If you do collapse the branches, a test over them is a GREEN-before / GREEN-after regression check,
+not a proof of defect. The merge itself is where a defect can be introduced: fusing an `else if` into
+a single `||` reorders short-circuit evaluation, so a null guard that used to run first can end up
+behind the dereference it was guarding.
 
 WHAT GOES WRONG HERE.
-- Reading only the flagged line and reconstructing a different checker from it: `user == null || refreshToken == null` reads like input validation, `req.getUri().getQuery() != null` reads like a null-dereference guard. Both are conditions. SIMILAR_BRANCHES never complains about a condition.
-- Reaching for "WebGoat is deliberately vulnerable" as the refutation. JWTRefreshEndpoint IS a lesson file — accepting `alg: none` at line 95 and refreshing off an expired token at 124-127 are the assignment — but none of that is in the flagged 129-137 chain, which is ordinary plumbing. Requests.java is WebWolf infrastructure with no lesson attached, and gets the identical verdict. A reason that works in one file and not the other is the wrong reason.
-- Manufacturing the difference to justify a RED: changing branch 1 to 400 Bad Request and asserting 400. Every other rejection in that file is a bare `ResponseEntity.status(UNAUTHORIZED).build()` (lines 56, 64, 88, 114, 135); nothing asks for a distinct code, and the test would only assert the edit you just made.
-- Offering branch coverage, a log line, or "the two tests exercise different paths" as the failing observation. Coverage can separate these branches; assertions cannot, and only an assertion settles a marker.
-- Collapsing the chain and presenting the still-passing test as proof — or collapsing it carelessly and converting a cosmetic finding into a genuine NPE by reordering a null-guard.
+- Reading only the flagged line and reconstructing a different checker from it. A null test reads
+  like input validation and a `!= null` continuation reads like a dereference guard, but both are
+  conditions, and this checker never complains about a condition.
+- Manufacturing the difference to justify a RED: changing one branch's status code or message and
+  then asserting the new value. That test only asserts the edit you just made. Check whether
+  anything outside the chain asks the two outcomes to differ before deciding they do.
+- Offering branch coverage, a log line, or "the two tests exercise different paths" as the failing
+  observation; or presenting a still-passing test after the collapse as proof.
+- Reaching for what the file is for as the refutation. A reason that works in a file with a purpose
+  to protect but not in ordinary infrastructure carrying the identical construct is the wrong
+  reason; the same chain gets the same verdict in both places.
