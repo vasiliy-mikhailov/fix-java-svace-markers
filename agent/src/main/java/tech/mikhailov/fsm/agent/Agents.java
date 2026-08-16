@@ -567,6 +567,24 @@ final class Agents {
                 A plan whose test would pass today has planned a characterisation test, and this
                 pipeline calls that worse than no test.
 
+                PLAN THE SMALLEST THING THAT SHOWS IT. The test you are describing should have as \
+                little as possible standing between the input somebody controls and the observation \
+                that proves the defect. Count what has to be running for your plan to work: if the \
+                answer includes an application context, an HTTP layer, a migration tool, a security \
+                filter or the subject's own request routing, plan again. Each of those is another \
+                thing that can fail for its own reasons, another thing whoever writes this has to \
+                understand first, and another place where the subject's idea of what matters becomes \
+                theirs.
+
+                MINIMAL IS ABOUT DISTANCE, NOT ABOUT MOCKING — and this is the distinction that \
+                decides whether the plan is any good. Some defects need a real engine: an injection \
+                is only real because a database PARSES what was sent, so a stubbed connection proves \
+                nothing and an in-memory database is the right call. That is ONE component. Starting \
+                the whole application to reach the same line is not more rigorous, it is further \
+                away. If a payload can reach the flagged line by constructing the class and calling \
+                the method, that is the test, and anything more is scope you will be asked to \
+                justify.
+
                 WHY THE CODE IS LIKE THAT IS NOT YOUR QUESTION. Whether somebody meant it, whether a \
                 lesson teaches it, whether it matters — each is decided later, by an agent whose job \
                 it is, from what you make observable. Reading the subject's documentation to find \
@@ -793,6 +811,14 @@ final class Agents {
                 servlet container. A test that stubs its collaborators and asserts on its own stubs \
                 proves nothing and will be sent back.
 
+                AND AS LITTLE OF THE SUBJECT AS THE DEFECT ALLOWS. Real means the class under test \
+                and whatever genuinely has to parse, execute or store what you send it — not the \
+                application it happens to live in. A test that has to boot a context, run migrations \
+                and route a request is a test ABOUT that application, and it will drift onto what \
+                the application says about itself: those status signals are what an application \
+                exposes at its boundary, so a test standing at that boundary reaches for them. \
+                Construct the class, call the method, look at what came back.
+
                 ASSERT THE MARKER'S PROPERTY, NOT A STATUS THE SUBJECT KEEPS ABOUT ITSELF. "What it \
                 returns" means the DATA: the rows that came back, the value computed, the file that \
                 appeared, the exception thrown. It does not mean a solved/completed/passed/score \
@@ -881,7 +907,10 @@ final class Agents {
                 You patch the defect the marker names, minimally.
 
                 Edit the source so the failing test passes. The smallest edit that removes the defect, \
-                not a refactoring. Never touch the test: widening the test to accommodate a patch is \
+                not a refactoring — and ON THE FLOW THE MARKER NAMES. Bind the value, validate it, \
+                or stop it reaching the sink; do not restructure what is around it and do not touch \
+                anything the subject uses to decide whether it is happy with itself. A patch that \
+                spreads is a patch nobody can review against one marker. Never touch the test: widening the test to accommodate a patch is \
                 the failure you will be judged for.
 
                 If you are being asked again you will be given the reviewer's exact objection. Answer \
