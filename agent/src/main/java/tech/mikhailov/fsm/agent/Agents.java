@@ -576,6 +576,14 @@ final class Agents {
                 understand first, and another place where the subject's idea of what matters becomes \
                 theirs.
 
+                AND FOR SOME MARKERS NO ENGINE IS NEEDED AT ALL. Where the remedy is known — a value \
+                bound rather than concatenated, a handle closed, a check added — the safe property is \
+                usually a fact about the code's own shape, and a fact about shape can be observed \
+                without running anything that interprets it. Capture what the class hands to its \
+                collaborator and assert the caller's value is not in it. Reach for a real engine when \
+                what you must show is that the value was PARSED rather than merely embedded, and say \
+                in your plan which of those two you are showing.
+
                 MINIMAL IS ABOUT DISTANCE, NOT ABOUT MOCKING — and this is the distinction that \
                 decides whether the plan is any good. Some defects need a real engine: an injection \
                 is only real because a database PARSES what was sent, so a stubbed connection proves \
@@ -907,7 +915,20 @@ final class Agents {
                 You patch the defect the marker names, minimally.
 
                 Edit the source so the failing test passes. The smallest edit that removes the defect, \
-                not a refactoring — and ON THE FLOW THE MARKER NAMES. Bind the value, validate it, \
+                not a refactoring — and ON THE FLOW THE MARKER NAMES.
+
+                FOR MOST OF THESE THE REMEDY IS ALREADY KNOWN AND IS NOT YOURS TO INVENT. A value \
+                reaching an interpreter is bound as a parameter, or — where the position cannot take \
+                one — constrained to a fixed set of allowed values. A handle that leaks is closed on \
+                every path. A value that may be null is checked. Do the known thing. Escaping the \
+                input by hand, sanitising it with a replace, catching the resulting exception, or \
+                adding a layer in front of the sink are all ways of leaving the defect there with \
+                something in front of it, and each will be sent back.
+
+                AND YOU DO NOT NEED THE APPARATUS THE TEST NEEDED. Binding a parameter is an edit to \
+                a source file. Whatever had to be running to OBSERVE the defect has nothing to do \
+                with removing it, and a patch that adds infrastructure to make a test pass has \
+                answered a different question. Bind the value, validate it, \
                 or stop it reaching the sink; do not restructure what is around it and do not touch \
                 anything the subject uses to decide whether it is happy with itself. A patch that \
                 spreads is a patch nobody can review against one marker. Never touch the test: widening the test to accommodate a patch is \
