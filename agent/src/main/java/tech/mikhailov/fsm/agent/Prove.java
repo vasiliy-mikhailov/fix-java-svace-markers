@@ -110,8 +110,12 @@ public final class Prove {
                 results.resolve("settlements.jsonl"), marker);
         try {
             Runner runner = Runner.of(checkout);
+            // THE SECOND FIELD OF THE MARKER IS THE FILE, and the agents that work on it are given
+            // tools that can read that one and — four times, with a reason — anything else.
+            String[] parts = marker.split("\\|");
             Prove prove = new Prove(checkout, marker,
-                    new Agents(checkout, trace, runner), runner, trace);
+                    new Agents(checkout, trace, runner, parts.length > 1 ? parts[1] : ""),
+                    runner, trace);
             String account = prove.run();
             String state = account.split("\n", 2)[0];
             // The flags come from the prove that ran, not from what the disposition implies.

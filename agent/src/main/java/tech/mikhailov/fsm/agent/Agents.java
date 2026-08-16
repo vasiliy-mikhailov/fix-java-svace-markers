@@ -554,7 +554,7 @@ final class Agents {
      * nobody in the chain whose job was the plan.
      */
     Agent reproducePlanner() {
-        return runtime("reproduce-planner", Tools.reading(root, trace, "reproduce-planner"), """
+        return runtime("reproduce-planner", Tools.narrow(root, flagged, runner, trace, "reproduce-planner", false), """
                 You decide HOW a defect could be made observable, before anybody writes a test.
 
                 You are given the marker, what the checker reports, the flagged source and the tests
@@ -573,6 +573,11 @@ final class Agents {
                 the flagged class, with its collaborators stubbed, and only reach past it when the \
                 property genuinely cannot be observed there — then say what stopped you, so the next \
                 stage can check that rather than take it.
+
+                YOU HAVE `read_flagged_file`, WHICH TAKES NO ARGUMENTS, and four reads of anything \
+                else at the price of a written reason. There is no search. Whoever writes this test \
+                has the same four, so a plan that needs a tour of the project is a plan they cannot \
+                carry out.
 
                 PLAN THE SMALLEST THING THAT SHOWS IT. The test you are describing should have as \
                 little as possible standing between the input somebody controls and the observation \
@@ -623,7 +628,7 @@ final class Agents {
     }
 
     Agent fixPlanner() {
-        return runtime("fix-planner", Tools.reading(root, trace, "fix-planner"), """
+        return runtime("fix-planner", Tools.narrow(root, flagged, runner, trace, "fix-planner", false), """
                 You decide WHERE and HOW a defect should be fixed, before anybody edits a file.
 
                 You are given the marker, the failing test and what the build said. Name the change:
@@ -806,15 +811,28 @@ final class Agents {
     private final JsonlTrace trace;
     private final Runner runner;
 
+    /**
+     * The file this marker is about, relative to the checkout — or blank where there is no marker.
+     *
+     * <p>Blank for the prompts page, the chat and the supervisor, which build agents to read their
+     * prompts rather than to prove anything; those keep the ordinary file tools.
+     */
+    private final String flagged;
+
     Agents(Path root, JsonlTrace trace, Runner runner) {
+        this(root, trace, runner, "");
+    }
+
+    Agents(Path root, JsonlTrace trace, Runner runner, String flagged) {
         this.root = root;
         this.trace = trace;
         this.runner = runner;
+        this.flagged = flagged == null ? "" : flagged;
     }
 
     /** Writes ONE JUnit test that must fail because of the defect. May create files, never edit them. */
     Agent reproduceDoer() {
-        return runtime("reproduce-doer", Tools.writing(root, runner, trace, "reproduce-doer"), """
+        return runtime("reproduce-doer", Tools.narrow(root, flagged, runner, trace, "reproduce-doer", false), """
                 You write ONE JUnit test that fails because of the defect the marker names.
 
                 START AND FINISH IN THE FLAGGED FILE. The marker names a file and a line, and almost \
@@ -822,14 +840,17 @@ final class Agents {
                 class, call that method, stub whatever it reaches for, and assert the property. For \
                 most markers that is the whole test.
 
-                WIDEN ONLY WHEN THE PROPERTY CANNOT BE OBSERVED THERE, and say in one line what \
-                stopped you. Another file, a real engine, a running container — each is something to \
-                justify, not something to reach for while getting your bearings. Searching the \
-                repository before you have read the flagged method is the wrong first move: it \
-                returns everything that resembles the construct, none of which is the marker, and it \
-                is how a prove turns into a tour of the project. SIMPLICITY IS THE RESULT YOU ARE \
-                BEING JUDGED ON: the smallest test that fails for the right reason beats a larger one \
-                that also works.
+                YOUR TOOLS SAY THE SAME THING. `read_flagged_file` takes no arguments — there is one \
+                file it can return and it is the one the marker names. There is no search: a search \
+                returns everything that RESEMBLES the construct, none of which is the marker.
+
+                WIDEN ONLY WHEN THE PROPERTY CANNOT BE OBSERVED THERE, and say what stopped you. The \
+                tools bound how OFTEN; this is about when. \
+                `read_another_file` is there for what the flagged file genuinely does not tell you — a \
+                collaborator's type, a constructor signature — and it costs a written reason and runs \
+                out after four. Spend them on what you need to WRITE the test, not on understanding \
+                the project around it. SIMPLICITY IS THE RESULT YOU ARE BEING JUDGED ON: the smallest \
+                test that fails for the right reason beats a larger one that also works.
 
                 It must construct the REAL class under test and assert on what it returns or changes. \
                 Its collaborators are STUBS unless the property genuinely depends on what one of them \
@@ -932,7 +953,7 @@ final class Agents {
 
     /** Patches the defect. May edit existing files, never create them — a new file is not a patch. */
     Agent fixDoer() {
-        return runtime("fix-doer", Tools.patching(root, runner, trace, "fix-doer"), """
+        return runtime("fix-doer", Tools.narrow(root, flagged, runner, trace, "fix-doer", true), """
                 You patch the defect the marker names, minimally.
 
                 Edit the source so the failing test passes. The smallest edit that removes the defect, \

@@ -68,9 +68,9 @@ class TheSmallestThingThatShowsItTest {
         assertTrue(doer.contains("START AND FINISH IN THE FLAGGED FILE"));
         assertTrue(doer.contains("WIDEN ONLY WHEN THE PROPERTY CANNOT BE OBSERVED THERE"),
                 "leaving is allowed; leaving without saying why is what turned a prove into a tour");
-        assertTrue(doer.contains("wrong first move"),
-                "searching before reading the flagged method returns everything that resembles the "
-                        + "construct, none of which is the marker");
+        assertTrue(doer.contains("There is no search"),
+                "the prompt has to describe the tools the agent actually has, and it no longer has "
+                        + "one: telling it not to grep when it cannot grep is noise");
         assertTrue(promptOf("reproduce-planner").contains("ONE METHOD IS USUALLY THE WHOLE SCOPE"),
                 "the scope is chosen at plan time or it is not chosen");
     }

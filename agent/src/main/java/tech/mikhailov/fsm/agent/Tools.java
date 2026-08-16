@@ -660,6 +660,112 @@ final class Tools {
     }
 
     /** The four built-ins, filtered to the named subset, plus grep. */
+    /**
+     * THE FLAGGED FILE, AND ALMOST NOTHING ELSE.
+     *
+     * <p>Nearly every marker these checkers raise is true of ONE METHOD: a value concatenated where
+     * it should be bound, a handle opened and not closed, a result dropped. The work is to read that
+     * method, construct that class, and show the property. Nothing about it needs a repository.
+     *
+     * <p>The pipeline was better at this when it was worse at searching. A glob bug had been
+     * answering "no matches" to twenty-eight of twenty-nine greps, and while it did, agents stayed on
+     * the flagged file because they could not do anything else. Fixing the tool removed an accident
+     * that had been enforcing the right scope, and the first prove afterwards opened with two
+     * repository-wide greps before reading the method it had been sent to. Prose did not stop that:
+     * "start and finish in the flagged file" was already in the prompt when it happened.
+     *
+     * <p>So the scope is a fact about the tools now. There is no {@code grep}, no {@code glob} and no
+     * {@code list_dir} here. {@code read_flagged_file} takes no path — it can only return the one the
+     * marker names — and {@code read_another_file} exists, because the prompt promises an escape
+     * hatch and a promise the tools contradict is worse than no promise. It costs a written reason
+     * and there are {@value #ELSEWHERE} of them.
+     *
+     * <p>THE BUDGET IS THE POINT, not the refusal. Four reads are enough for a constructor signature
+     * and a collaborator's type, and not enough for a tour. When it runs out the message says so and
+     * names the file the marker meant, because an agent that has lost its way is exactly the one that
+     * needs telling where it started.
+     */
+    static Map<ToolSpecification, ToolExecutor> narrow(Path root, String flagged, Runner runner,
+            Trace trace, String agent, boolean editing) {
+        // No marker file — the prompts page and the chat build agents just to read their prompts.
+        // Falling back to the ordinary set keeps those working and costs a prove nothing.
+        if (flagged == null || flagged.isBlank()) {
+            return editing ? patching(root, runner, trace, agent)
+                    : writing(root, runner, trace, agent);
+        }
+        Map<ToolSpecification, ToolExecutor> tools = new LinkedHashMap<>();
+        FileToolFactory.build(new WorkspaceFileOperations(root))
+                .forEach((spec, executor) -> {
+                    if (spec.name().equals(editing ? "edit_file" : "write_file")) {
+                        tools.put(spec, executor);
+                    }
+                });
+        if (tools.isEmpty()) {
+            throw new IllegalStateException(
+                    "no " + (editing ? "edit_file" : "write_file") + " among the file tools");
+        }
+        tools.putAll(theFlaggedFile(root, flagged));
+        tools.putAll(somewhereElse(root, flagged));
+        tools.putAll(runTest(runner));
+        return recorded(withoutSecrets(tools), trace, agent);
+    }
+
+    /** How many other files an agent may open before it has to work with what it has. */
+    private static final int ELSEWHERE = 4;
+
+    /** The one file the marker names, with line numbers, and no way to ask for a different one. */
+    private static Map<ToolSpecification, ToolExecutor> theFlaggedFile(Path root, String flagged) {
+        ToolSpecification spec = ToolSpecification.builder()
+                .name("read_flagged_file")
+                .description("Read the file this marker is about, with line numbers. Takes no "
+                        + "arguments: there is only one file it can return, and it is the one the "
+                        + "marker names. Start here.")
+                .parameters(JsonObjectSchema.builder().build())
+                .build();
+        return Map.of(spec, (request, memoryId) -> numbered(root.resolve(flagged)));
+    }
+
+    /** Anything else, at the price of saying why — which is what the prompt already asks for. */
+    private static Map<ToolSpecification, ToolExecutor> somewhereElse(Path root, String flagged) {
+        java.util.concurrent.atomic.AtomicInteger spent =
+                new java.util.concurrent.atomic.AtomicInteger();
+        ToolSpecification spec = ToolSpecification.builder()
+                .name("read_another_file")
+                .description("Read a file other than the one the marker names. Only when the flagged "
+                        + "file genuinely does not contain what you need — a collaborator's type, a "
+                        + "constructor signature. You may do this " + ELSEWHERE + " times in total "
+                        + "and you must say why each time.")
+                .parameters(JsonObjectSchema.builder()
+                        .addStringProperty("path", "path from the repository root")
+                        .addStringProperty("why", "what the flagged file did not tell you")
+                        .required("path", "why")
+                        .build())
+                .build();
+        return Map.of(spec, (request, memoryId) -> {
+            String path = field(request.arguments(), "path");
+            if (spent.incrementAndGet() > ELSEWHERE) {
+                return "No more reads outside the flagged file. The marker is about `" + flagged
+                        + "` and everything it needs is either there or is something you can stub. "
+                        + "Write the test against what you have.";
+            }
+            return numbered(root.resolve(path));
+        });
+    }
+
+    /** A file with its line numbers, because a marker names a line and a reader has to find it. */
+    private static String numbered(Path file) {
+        try {
+            java.util.List<String> lines = java.nio.file.Files.readAllLines(file);
+            StringBuilder b = new StringBuilder();
+            for (int i = 0; i < lines.size(); i++) {
+                b.append(i + 1).append(": ").append(lines.get(i)).append('\n');
+            }
+            return b.toString();
+        } catch (java.io.IOException unreadable) {
+            return "cannot read " + file + ": " + unreadable.getMessage();
+        }
+    }
+
     private static Map<ToolSpecification, ToolExecutor> only(Path root, Set<String> names) {
         Map<ToolSpecification, ToolExecutor> kept = new LinkedHashMap<>();
         FileToolFactory.build(new WorkspaceFileOperations(root))
