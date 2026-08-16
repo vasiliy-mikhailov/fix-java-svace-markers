@@ -603,36 +603,32 @@ function PromptsTab({
     </>
   )
 }
-
 /* ------------------------------------------------------------------ this marker's record */
 
-/** The server's own window (ApiTrace.WINDOW). Asking for more than it serves gets this anyway. */
-const WINDOW = 500
-
-/** A contiguous stretch of the run's record, and the part of it that belongs to this marker. */
-type Held = {
-  /** Absolute index of the first event read, and one past the last. */
-  from: number
-  to: number
-  /** The run's total, as of the last answer. */
-  cursor: number
-  mine: ApiEvent[]
+/** `GET /api/marker/record?k=` — every line of this marker's own lane, and how many there are. */
+type ApiMarkerRecord = {
+  marker: string
+  /** Lines of the lane file this document carries — where a subscriber resumes. */
+  lines: number
+  events: ApiEvent[]
 }
 
 /**
- * THIS MARKER'S SLICE OF THE RECORD — `events()` 2117-2167, with the marker key set.
+ * THIS MARKER'S RECORD, WHICH IS ONE FILE.
  *
- * OLDEST AT THE TOP, NEWEST AT THE BOTTOM. The brief for this screen says "newest first" and the
- * code does the opposite: it sorts ascending and appends arriving events at the end. Appending is
- * the point — replacing the list, or reversing it, shuts every fold the reader opened and throws
- * away where they were.
+ * <p>This used to be built out of `/api/events`: a window over the RUN — five hundred events of
+ * whatever the pool happened to be doing — filtered afterwards for the rows belonging to this
+ * marker. It read the newest window first, kept the handful that matched, and offered a button to
+ * read further back, and the line under the feed said "53 of them are this marker's" because that
+ * was the honest description of what it had. A marker proved an hour ago had its record scattered
+ * behind windows nobody would page through.
  *
- * READ FROM THE END, BACKWARDS, AND SAY SO. `/api/events` has no marker filter, so one marker's
- * hundred events are found by reading the run's record and keeping the ones that match. That record
- * is 61 MB with the prompts in it, which is why the server windows at 500 — so this reads the
- * newest window first, because a reader opening a running prove is asking what it is doing now, and
- * offers to read further back. The line under the feed says exactly how much of the record has been
- * read, because a page silently showing part of a record reads as the record.
+ * None of it was necessary. A prove is one process per marker writing one file, and that file IS the
+ * marker's record. There is no window, nothing to page, nothing to filter, and no sentence about the
+ * run to put under the feed.
+ *
+ * OLDEST AT THE TOP, AND APPENDED TO — never replaced and never reversed. Replacing the list shuts
+ * every fold the reader opened and throws away where they were.
  */
 function RecordTab({
   markerKey,
@@ -650,214 +646,94 @@ function RecordTab({
   back: string
   foldTarget: string
 }) {
-  const [held, setHeld] = useState<Held | null>(null)
+  const [events, setEvents] = useState<ApiEvent[] | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
-  const [reading, setReading] = useState(false)
-
-  // The poll and the read-further-back both extend one range, from opposite ends, so neither may
-  // work from a snapshot the other has already moved on from.
-  const latest = useRef<Held | null>(null)
-  const running = useRef(!settled)
-  useEffect(() => {
-    running.current = !settled
-  })
+  const running = useRef(true)
 
   useEffect(() => {
-    let live = true
-    let polling = false
-    let timer: ReturnType<typeof setTimeout> | undefined
-
-    /**
-     * This marker's rows out of a window of everybody's, and only ones this page does not hold.
-     *
-     * The index bound is not belt and braces: `from` is clamped against the run's total, so a
-     * results directory replaced under a page that is still polling answers a `from` past the end
-     * with rows it has already shown — and two rows with one id is a duplicate key and a rating box
-     * that saves against the wrong answer.
-     */
-    const keep = (events: ApiEvent[], after: number) =>
-      events.filter(e => e.marker === markerKey && e.index >= after)
-
-    const apply = (next: Held) => {
-      latest.current = next
-      setHeld(next)
-      setFailed(null)
-    }
-
-    const tick = async () => {
-      // ONE AT A TIME. A nudge can arrive while a poll is in flight, and both would read the same
-      // `latest.current`, fetch from the same index and append the same rows — two rows with one
-      // id, which is a duplicate React key and a rating box that saves against the wrong answer.
-      if (polling) {
-        return
-      }
-      polling = true
+    running.current = true
+    let stop = () => undefined as void
+    void (async () => {
       try {
-        const had = latest.current
-        if (had === null) {
-          // ONE EVENT, FOR THE CURSOR. The document has no head request and the count is what
-          // decides which window is the newest one; the event that comes with it is the price.
-          const probe = await read<ApiEvents>('/api/events?from=0&limit=1')
-          if (!live) {
-            return
-          }
-          if (probe.cursor === 0) {
-            // AN EMPTY RECORD STILL PUBLISHES WHERE IT IS. The Java's empty branch returned before
-            // emitting its cursor, so a page opened before the first event declared itself unable
-            // to take fragments and sat empty for the whole prove.
-            apply({ from: 0, to: 0, cursor: 0, mine: [] })
-          } else {
-            const from = Math.max(0, probe.cursor - WINDOW)
-            const page = await read<ApiEvents>(`/api/events?from=${from}`)
-            if (!live) {
-              return
-            }
-            apply({
-              from: page.from,
-              to: page.from + page.returned,
-              cursor: page.cursor,
-              mine: keep(page.events, page.from),
-            })
-          }
-        } else {
-          const page = await read<ApiEvents>(`/api/events?from=${had.to}`)
-          if (!live) {
-            return
-          }
-          // APPENDED, NEVER REPLACED — the reader's open folds and scroll position are below.
-          apply({
-            from: had.from,
-            to: page.from + page.returned,
-            cursor: page.cursor,
-            mine: page.returned === 0 ? had.mine : [...had.mine, ...keep(page.events, had.to)],
-          })
+        const doc = await read<ApiMarkerRecord>(
+          `/api/marker/record?k=${encodeURIComponent(markerKey)}`,
+        )
+        if (!running.current) {
+          return
         }
+        setEvents(doc.events)
+        setFailed(null)
+        // A SETTLED MARKER'S RECORD DOES NOT GROW, so nothing is opened for it.
+        if (settled) {
+          return
+        }
+        // AND THE FRAMES ARE THE CONTENT NOW, not a nudge. Both ends count lines of the same file —
+        // this document says how many it carries and the stream numbers its frames the same way —
+        // so a frame can be appended as it arrives. While the feed was a run-wide window and the
+        // stream was a lane tail, they were two coordinate systems and the only safe thing a frame
+        // could say was "something moved, go and fetch your own delta".
+        stop = subscribe(
+          `/api/stream?k=${encodeURIComponent(markerKey)}&have=${doc.lines}`,
+          {
+            trace: data => {
+              if (!running.current) {
+                return
+              }
+              setEvents(had => (had === null ? [data as ApiEvent] : [...had, data as ApiEvent]))
+            },
+          },
+        )
       } catch (unreachable) {
-        if (!live) {
-          return
+        if (running.current) {
+          setFailed(unreachable instanceof Error ? unreachable.message : String(unreachable))
         }
-        // Whatever was read stays on screen: a blip at a fifteen-second poll is not news about the
-        // prove, and blanking the feed would report it as one.
-        setFailed(unreachable instanceof Error ? unreachable.message : String(unreachable))
       }
-      polling = false
-      // A SETTLED MARKER'S RECORD DOES NOT GROW, so it is not asked about again. Fifteen seconds is
-      // the Java page's own cadence; the two-second one belongs to the live stream, which is
-      // watching a file that is rewritten every 700ms.
-      if (live && running.current) {
-        timer = setTimeout(() => void tick(), 15_000)
-      }
-    }
-
-    void tick()
-
-    /**
-     * AND THE SERVER SAYS WHEN, instead of this asking every fifteen seconds.
-     *
-     * The frames are a NUDGE, not the content. This feed is a window of the whole run addressed by
-     * run-wide index, and the stream tails one lane's file addressed by line — two coordinate
-     * systems, and forcing them together would put rows on screen the next poll could not
-     * deduplicate. So the stream says the lane moved and this fetches its own delta, which it
-     * already knows how to do and already dedupes. `have=end` because the history is not wanted:
-     * replaying the file here would be a burst of notifications about events already on screen.
-     *
-     * The poll stays as the floor. A proxy that eats event streams, a browser that never connects,
-     * an fsm behind something that does not pass them through — in every one of those this page is
-     * exactly as good as it was before this existed.
-     */
-    const stop = subscribe(`/api/stream?k=${encodeURIComponent(markerKey)}&have=end`, {
-      trace: () => {
-        if (!live || !running.current) {
-          return
-        }
-        clearTimeout(timer)
-        void tick()
-      },
-    })
-
+    })()
     return () => {
-      live = false
-      clearTimeout(timer)
+      running.current = false
       stop()
     }
-  }, [markerKey])
+  }, [markerKey, settled])
 
-  const readBack = () => {
-    const had = latest.current
-    if (had === null || had.from === 0 || reading) {
-      return
-    }
-    setReading(true)
-    const from = Math.max(0, had.from - WINDOW)
-    void read<ApiEvents>(`/api/events?from=${from}&limit=${had.from - from}`)
-      .then(page => {
-        const next = latest.current ?? had
-        latest.current = {
-          from: page.from,
-          to: next.to,
-          cursor: page.cursor,
-          mine: [
-            // Only what sits before what is already held: the same clamping hazard as the poll's.
-            ...page.events.filter(e => e.marker === markerKey && e.index < had.from),
-            ...next.mine,
-          ],
-        }
-        setHeld(latest.current)
-        setFailed(null)
-      })
-      .catch((e: unknown) => setFailed(e instanceof Error ? e.message : String(e)))
-      .finally(() => setReading(false))
-  }
-
-  if (held === null) {
-    return failed === null ? (
-      <EmptyNote>Reading the record&hellip;</EmptyNote>
-    ) : (
-      <EmptyNote>{failed}</EmptyNote>
+  if (events === null) {
+    return (
+      <>
+        <FoldToggle expanded={expanded} target={foldTarget} />
+        {failed === null ? (
+          <EmptyNote>reading this marker&rsquo;s record&hellip;</EmptyNote>
+        ) : (
+          <EmptyNote>the record did not come back &mdash; {failed}</EmptyNote>
+        )}
+      </>
     )
   }
 
   return (
     <>
       <FoldToggle expanded={expanded} target={foldTarget} />
-      {held.mine.length === 0 ? (
-        // NOT "NOTHING TRACED FOR THIS MARKER", which is what the Java said and would be a claim
-        // about the whole record made from one window of it. What has been read is the newest
-        // {held.to - held.from} events of the run; a marker that settled this morning has its own
-        // further back, and the button below is how to get there.
-        <EmptyNote>
-          Nothing of this marker&rsquo;s in the {held.to - held.from} newest event(s) of the run
-          {held.from > 0
-            ? ' — its record is further back than what has been read so far.'
-            : ', and that is the whole record. Nothing has been traced for it.'}
-        </EmptyNote>
+      {events.length === 0 ? (
+        // A CLAIM THIS PAGE CAN NOW ACTUALLY MAKE. It holds the whole file, so an empty one means
+        // nothing has been traced — where the windowed version could only say what it had not seen.
+        <EmptyNote>Nothing has been traced for this marker yet.</EmptyNote>
       ) : (
         <EventFeed
-          events={held.mine.map(e => toFeedEvent(markerId, e))}
+          events={events.map(e => toFeedEvent(markerId, e))}
           order="oldest-first"
           // One marker's page: every row belongs to it, and a crumb saying so on every row would be
           // the same word forty times.
           showMarker={false}
-          markerHrefFor={e => (e.marker === undefined || e.marker === null ? null : href(`/marker?k=${encodeURIComponent(e.marker)}`))}
+          markerHrefFor={e =>
+            e.marker === undefined || e.marker === null
+              ? null
+              : href(`/marker?k=${encodeURIComponent(e.marker)}`)
+          }
           defaultOpen={expanded}
           feedbackBack={back}
-          cursor={held.to}
+          cursor={events.length}
         />
       )}
       <p style={QUIET}>
-        read events {held.from + 1}&ndash;{held.to} of {held.cursor} in the run
-        {'; '}
-        {held.mine.length} of them are this marker&rsquo;s.
-        {held.from > 0 ? (
-          <>
-            {' '}
-            <button type="button" style={BUTTON} onClick={readBack} disabled={reading}>
-              {reading ? 'reading' : 'read further back'}
-            </button>
-          </>
-        ) : (
-          ' That is the whole record.'
-        )}
+        {events.length} event(s). That is the whole record.
       </p>
       {failed === null ? null : <p style={QUIET}>the last read did not come back &mdash; {failed}</p>}
     </>

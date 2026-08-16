@@ -52,19 +52,22 @@ test.describe('the record tab', () => {
   test('draws every row the record holds for this marker', async ({ page }) => {
     const seen: string[] = []
     page.on('response', r => {
-      if (r.url().includes('/api/events')) seen.push(r.url())
+      if (r.url().includes('/api/')) seen.push(r.url())
     })
     await page.goto(RECORD)
     const feed = await rows(page)
     await expect.poll(() => feed.count()).toBeGreaterThan(40)
 
-    // THE PAGE'S OWN ACCOUNT OF WHAT IT READ, which is the sentence a reader trusts when the feed
-    // looks short. It says how many of the run's events belong to this marker; that many rows,
-    // plus the stage headings between them, is what must be on the screen.
-    const footer = await page.getByText(/of them are this marker/).innerText()
-    const mine = Number(/(\d+) of them are this marker/.exec(footer)?.[1] ?? '0')
-    expect(mine, 'the page must say how much of the record it holds').toBeGreaterThan(40)
-    expect(await feed.count(), 'every row it holds is drawn').toBeGreaterThanOrEqual(mine)
+    // THE PAGE'S OWN ACCOUNT OF WHAT IT READ. It used to say "N of them are this marker's",
+    // because it was built from a window over the RUN and filtered — so it could only report the
+    // part of the record it happened to have. It reads this marker's own file now, so the only
+    // honest sentence is the whole count.
+    const footer = await page.getByText(/That is the whole record/).innerText()
+    const held = Number(/(\d+) event\(s\)/.exec(footer)?.[1] ?? '0')
+    expect(held, 'the page must say how much of the record it holds').toBeGreaterThan(40)
+    expect(await feed.count(), 'every row it holds is drawn').toBeGreaterThanOrEqual(held)
+    expect(seen.some(u => u.includes('/api/marker/record')),
+      'the record comes from the marker\'s own lane, not from a window over the run').toBe(true)
   })
 
   test('shows what was sent to the model, without opening anything', async ({ page }) => {

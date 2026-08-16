@@ -241,6 +241,54 @@ final class ApiMarker {
         return b.append(']').toString();
     }
 
+    /**
+     * ONE MARKER'S WHOLE RECORD, FROM THE ONE FILE THAT HOLDS IT.
+     *
+     * <p>The record tab used to be built out of {@code /api/events}, which is a window over the RUN —
+     * five hundred events of whatever the pool happened to be doing — filtered afterwards for the
+     * ones belonging to this marker. So the page read the newest window, kept the handful that
+     * matched, and offered to read further back; a marker proved an hour ago had its record scattered
+     * behind windows nobody would page through, and the feed said "53 of them are this marker's"
+     * because that sentence was the honest description of what it had.
+     *
+     * <p>None of that was necessary. A prove is one process per marker writing one file, and that
+     * file is the marker's record entire. This reads it. There is no window, nothing to page, and
+     * nothing to filter — every line in the file belongs to this marker by construction.
+     *
+     * <p>AND IT PUTS THE FEED IN THE SAME COORDINATES AS {@link ApiStream}. The stream tails this
+     * same file and numbers its frames by line, so a page holding {@code lines} of it can resume
+     * exactly, and the frames can carry CONTENT rather than being a nudge that makes the page go and
+     * fetch its own delta in a different numbering.
+     */
+    static String record(Path settlements, String key) {
+        Path lane = ApiStream.laneTrace(settlements, key);
+        List<String> all = read(lane);
+        StringBuilder b = new StringBuilder("{\"marker\":").append(quote(key));
+        // WHERE A SUBSCRIBER RESUMES: lines of THIS file, counted from the read that produced the
+        // events below, so the two cannot disagree about what "already seen" means.
+        b.append(",\"lines\":").append(all.size());
+        b.append(",\"events\":[");
+        for (int i = 0; i < all.size(); i++) {
+            if (i > 0) {
+                b.append(',');
+            }
+            b.append(event(all.get(i), i));
+        }
+        return b.append("]}").toString();
+    }
+
+    /** Every line of a lane's record, or nothing at all when the prove has not started. */
+    private static List<String> read(Path trace) {
+        if (trace == null || !java.nio.file.Files.isRegularFile(trace)) {
+            return List.of();
+        }
+        try {
+            return java.nio.file.Files.readAllLines(trace).stream().filter(l -> !l.isBlank()).toList();
+        } catch (java.io.IOException unreadable) {
+            return List.of();
+        }
+    }
+
     /** How many lines a lane's record holds, or zero when it has not been written yet. */
     private static long lines(java.nio.file.Path trace) {
         if (trace == null || !java.nio.file.Files.isRegularFile(trace)) {
@@ -262,7 +310,23 @@ final class ApiMarker {
      * documents parse.
      */
     static String event(String e) {
+        return event(e, -1);
+    }
+
+    /**
+     * The same, carrying WHERE IN THE FILE it came from.
+     *
+     * <p>The page keys its rows on this. A stamp is a millisecond and one agent writes several rows
+     * inside one — the connector records the system prompt and the task back to back — so without a
+     * position two rows of one request are the same row to React. The line number is that position:
+     * stable, because the record is append-only, and the same number {@link ApiStream} numbers its
+     * frames by, so a row that arrives live is identified exactly as the one that was read.
+     */
+    static String event(String e, int index) {
         StringBuilder b = new StringBuilder("{");
+        if (index >= 0) {
+            b.append("\"index\":").append(index).append(',');
+        }
         // A MOMENT OR NULL, NEVER 0. An unreadable stamp is not midnight in 1970, and a client that
         // labels or orders by it would date a whole tab to then — this run's own trace.jsonl holds
         // lines with no `at` on them at all. No clock this program reads produces 0, so 0 is absent.

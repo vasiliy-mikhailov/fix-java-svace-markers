@@ -223,7 +223,11 @@ final class ApiStream {
         String whole = new String(fresh, 0, lastNewline + 1, StandardCharsets.UTF_8);
         for (String row : whole.split("\n")) {
             if (!row.isBlank()) {
-                write(out, line.incrementAndGet(), "trace", ApiMarker.event(row));
+                // THE LINE NUMBER IS THE ROW'S IDENTITY, and the same one `/api/marker/record`
+                // stamps on the rows it serves — so a row that arrives live is identified exactly
+                // as the one that was read, and the two cannot collide or duplicate.
+                long at = line.incrementAndGet();
+                write(out, at, "trace", ApiMarker.event(row, (int) (at - 1)));
             }
         }
         return from + lastNewline + 1;

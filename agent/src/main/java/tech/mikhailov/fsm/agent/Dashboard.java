@@ -102,6 +102,10 @@ public final class Dashboard {
                 ApiMarker.marker(settlements, trace, query(e, "k"))));
         route(server, "/api/marker/agent", e -> send(e, "application/json",
                 ApiMarker.markerAgent(trace, query(e, "k"), query(e, "a"))));
+        // ONE MARKER'S WHOLE RECORD, from its own lane file. Longest-prefix wins in HttpServer, so
+        // this is reached rather than `/api/marker`.
+        route(server, "/api/marker/record", e -> send(e, "application/json",
+                ApiMarker.record(settlements, query(e, "k"))));
         // NOT /api/trace — THAT NAME IS TAKEN, and by something with a different job. The existing
         // one dumps the raw JSONL as an array; it is the corpus, documented in the README, and a
         // reader may be training on it. HttpServer.createContext throws on a duplicate path, so
