@@ -117,6 +117,32 @@ class TheHarnessDoesNotKnowItsSubjectTest {
     }
 
     @Test
+    @DisplayName("and neither does any prompt, which is where it survived longest")
+    void thePromptsAreAboutCheckersToo() {
+        // THE NOTES WERE SWEPT AND THE PROMPTS WERE NOT, which is how "read the lesson
+        // documentation if this is teaching code" was still sitting in the reproduce-doer two
+        // commits after the same detour was forbidden in STAKES. A prompt is the harness at its
+        // most load-bearing: every agent reads it, on every marker, in every repository this is
+        // ever pointed at.
+        String prompts = Agents.STAKES + "\n"
+                + String.join("\n", Agents.CHAIN.stream().map(Agents::staked).toList());
+        List<String> found = new ArrayList<>();
+        for (String[] rule : FORBIDDEN) {
+            // `assignment` stays legal — a dead-store note and a prompt both have to talk about
+            // assignment statements — so only the subject's own architecture words are hunted here.
+            if (rule[0].contains("java\\.")) {
+                continue;
+            }
+            Matcher m = Pattern.compile(rule[0]).matcher(prompts);
+            if (m.find()) {
+                found.add("\"" + m.group() + "\" — " + rule[1]);
+            }
+        }
+        assertTrue(found.isEmpty(), "a prompt that names the subject is a harness that only works "
+                + "on one repository:\n  " + String.join("\n  ", found));
+    }
+
+    @Test
     @DisplayName("and none of them is long enough to be the prompt")
     void theNotesAreNotThePrompt() throws Exception {
         // The one that started this was 10,727 characters against a 13,549-character task. A note

@@ -57,6 +57,38 @@ class TheSmallestThingThatShowsItTest {
     }
 
     @Test
+    @DisplayName("the flagged file is the scope, and widening has to be justified")
+    void oneMethodIsTheScope() throws Exception {
+        // "most of markers svace sees are for single method. it worked until we fixed grep and grep
+        // saw too much information." The grep bug had been answering "no matches" to 28 of 29 calls,
+        // so agents could not wander even when invited to — and they were invited to, by "read
+        // whatever else you need to understand it" and by a clause naming the subject's own
+        // documentation. Fixing the tool removed the accident that had been holding the scope down.
+        String doer = promptOf("reproduce-doer");
+        assertTrue(doer.contains("START AND FINISH IN THE FLAGGED FILE"));
+        assertTrue(doer.contains("WIDEN ONLY WHEN THE PROPERTY CANNOT BE OBSERVED THERE"),
+                "leaving is allowed; leaving without saying why is what turned a prove into a tour");
+        assertTrue(doer.contains("wrong first move"),
+                "searching before reading the flagged method returns everything that resembles the "
+                        + "construct, none of which is the marker");
+        assertTrue(promptOf("reproduce-planner").contains("ONE METHOD IS USUALLY THE WHOLE SCOPE"),
+                "the scope is chosen at plan time or it is not chosen");
+    }
+
+    @Test
+    @DisplayName("stubbing to capture is right; stubbing to assert on your own stub is not")
+    void theTwoKindsOfStubbing() throws Exception {
+        String doer = promptOf("reproduce-doer");
+        assertTrue(doer.contains("TWO KINDS OF STUBBING"),
+                "the old prompt banned stubbing collaborators outright, which forbade the cheapest "
+                        + "honest demonstration this checker family has");
+        assertTrue(doer.contains("asserts on its own stub"), "the worthless one is still named");
+        assertTrue(doer.contains("CAPTURE what the class handed to it"),
+                "and the useful one is the whole shape assertion: the defect exists at exactly the "
+                        + "point the value is handed over");
+    }
+
+    @Test
     @DisplayName("and minimal is distance, not mocking — the misreading that would break it")
     void distanceNotMocking() throws Exception {
         String planner = promptOf("reproduce-planner");
