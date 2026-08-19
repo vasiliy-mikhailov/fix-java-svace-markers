@@ -176,6 +176,35 @@ final class ApiMarker {
         // How much of the lane's record this document carries, so a page that subscribes after
         // rendering it can say where to resume.
         b.append(",\"traceLines\":").append(traceLines);
+
+        // THE STAGES, WALKED OFF THE PROGRAM. The strip used to be drawn from a list in TypeScript
+        // and a second list of stage labels beside it, neither of which anything could check against
+        // the run. `Prove.stages()` walks the tree the runtime executes, so the picture on the page
+        // is the program — and a stage deleted from the code leaves the strip on the next request.
+        b.append(",\"chain\":[");
+        var stages = Prove.stages();
+        for (int i = 0; i < stages.size(); i++) {
+            var stage = stages.get(i);
+            if (i > 0) {
+                b.append(',');
+            }
+            b.append("{\"title\":").append(quote(stage.title()))
+                    .append(",\"within\":").append(quote(stage.within()))
+                    .append(",\"repeats\":").append(quote(stage.repeats()))
+                    .append(",\"reads\":").append(quote(stage.reads()))
+                    .append(",\"steps\":[");
+            var steps = stage.steps();
+            for (int j = 0; j < steps.size(); j++) {
+                if (j > 0) {
+                    b.append(',');
+                }
+                b.append("{\"name\":").append(quote(steps.get(j).name()))
+                        .append(",\"role\":").append(quote(steps.get(j).role()))
+                        .append(",\"agent\":").append(steps.get(j).agent()).append('}');
+            }
+            b.append("]}");
+        }
+        b.append(']');
         b.append(",\"tookMinutes\":").append(Pace.totalMinutes(results, id));
         b.append(",\"agents\":[");
         boolean first = true;

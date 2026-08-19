@@ -71,6 +71,13 @@ export function roleWord(agent: string): string {
  * So the stride is named, and the test below the fold asserts it against `CHAIN.length`: a chain of
  * fifteen grouped in threes is five stages, and any other arithmetic leaves a remainder.
  */
+/**
+ * A FIXTURE, NOT WHAT THE PAGE DRAWS — see {@link ChainStripProps.stages}.
+ *
+ * The strip renders from the stages the server walked off the program, so this is no longer the
+ * chain: it is a convenient stand-in for tests about grouping and labelling, derived from `CHAIN`,
+ * which `@fsm/types`' own guard binds to the tree in `Prove.everything()`.
+ */
 export const STAGES: readonly Stage[] = STAGE_LABELS.flatMap((label, index) => {
   const planner = CHAIN[index * ROLES]
   const doer = CHAIN[index * ROLES + 1]
@@ -84,6 +91,15 @@ export const STAGES: readonly Stage[] = STAGE_LABELS.flatMap((label, index) => {
 })
 
 export type ChainStripProps = {
+  /**
+   * THE STAGES, AS THE SERVER WALKED THEM OFF THE PROGRAM.
+   *
+   * REQUIRED, AND DELIBERATELY NOT OPTIONAL. A default here would be a constant this package keeps
+   * about a program it does not contain — and the failure mode of that is the one this whole change
+   * is against: the server stops sending the field, the page quietly draws yesterday's chain, and
+   * nothing is red. If it is missing, the strip should be missing.
+   */
+  stages: readonly Stage[]
   markerKey: MarkerKey
   /** `''` is the summary tab. */
   current: '' | AgentName | 'live' | 'prompts' | 'trace'
@@ -335,13 +351,13 @@ export function ChainStage({ label, planner, doer, verifier, markerKey, current 
  * they are chrome, and `TabRow`'s `trailing` is the thing that already knows a departure is never
  * lit.
  */
-export function ChainStrip({ markerKey, current, runs }: ChainStripProps) {
+export function ChainStrip({ stages, markerKey, current, runs }: ChainStripProps) {
   return (
     <nav style={NAV} aria-label="the chain">
       <ChainPill href={markerHref(markerKey)} on={current === ''}>
         summary
       </ChainPill>
-      {STAGES.map(stage => (
+      {stages.map(stage => (
         <ChainStage
           key={stage.label}
           label={stage.label}

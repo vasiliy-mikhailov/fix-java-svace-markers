@@ -6,6 +6,7 @@ import {
   AgentAnswer,
   AgentPending,
   ChainStrip,
+  type Stage,
   ClaimCard,
   EmptyNote,
   EventFeed,
@@ -66,7 +67,18 @@ import { href, live as subscribe, read } from '../../lib/api'
 /* ------------------------------------------------------------------ what the wire sends */
 
 /** `GET /api/marker?k=` — ApiMarker.marker. Every string is null when the record has nothing. */
+/** One stage of the program, as `Shape` walked it off the tree `Prove` runs. */
+type ApiStage = {
+  title: string
+  within: string
+  repeats: string
+  reads: string
+  steps: { name: string; role: string; agent: boolean }[]
+}
+
 type ApiMarker = {
+  /** The chain, from the server. Optional only because a record written before this field exists. */
+  chain?: ApiStage[]
   key: string
   id: string
   repo: string
@@ -269,6 +281,33 @@ function idOf(markerId: string, agent: string, event: ApiAgentEvent, position: n
  * `at` of null becomes 0, which is what `num()` does with an unreadable stamp and what makes such a
  * row sort to the very top — visible, and therefore fixable, where dropping it would not be.
  */
+/**
+ * THE STAGES THE SERVER WALKED OFF THE PROGRAM, in the shape the strip draws.
+ *
+ * `/api/marker` sends `chain` from `Prove.stages()`, which walks the tree the runtime executes — so
+ * the picture on this page is the program rather than a list somebody kept in step with it. The two
+ * lists that used to say this, one of agent names and one of stage labels, are gone from the page.
+ *
+ * A stage that prompts nobody is dropped rather than drawn empty: the strip is a row of agents, and
+ * a heading with no agents under it is a stage a reader cannot click into.
+ */
+function stagesOf(marker: ApiMarker): Stage[] {
+  return (marker.chain ?? []).flatMap(stage => {
+    const named = (role: string) => stage.steps.find(s => s.role === role)?.name
+    const planner = named('planner')
+    const doer = named('doer')
+    const verifier = named('verifier')
+    return planner === undefined || doer === undefined || verifier === undefined
+      ? []
+      : [{
+          label: stage.title as Stage['label'],
+          planner: planner as Stage['planner'],
+          doer: doer as Stage['doer'],
+          verifier: verifier as Stage['verifier'],
+        }]
+  })
+}
+
 function toFeedEvent(markerId: string, event: ApiEvent): TraceEventRecord {
   const { index, at, kind, marker, agent, state, phase, minutes, ...body } = event
   return {
@@ -996,7 +1035,12 @@ function MarkerScreen() {
         findingsOpen={findings}
       />
       <div style={BODY}>
-        <ChainStrip markerKey={marker.key} current={current} runs={runs} />
+        <ChainStrip
+          stages={stagesOf(marker)}
+          markerKey={marker.key}
+          current={current}
+          runs={runs}
+        />
         {failed === null ? null : <p style={QUIET}>the last poll did not come back &mdash; {failed}</p>}
         {tab === '' ? <SummaryTab marker={marker} expanded={expanded} /> : null}
         {tab === 'live' ? (
