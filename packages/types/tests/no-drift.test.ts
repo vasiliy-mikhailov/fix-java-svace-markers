@@ -47,11 +47,24 @@ describe('the types do not drift from the Java that writes the record', () => {
   })
 
   it('has the agents in the order Prove calls them', () => {
-    const agents = read('Agents.java')
-    const chainBlock = agents.slice(agents.indexOf('List<String> CHAIN'))
-    const inJava = [...chainBlock.slice(0, 400).matchAll(/"([a-z-]+)"/g)].map(m => m[1])
-    expect(inJava.slice(0, CHAIN.length)).toEqual([...CHAIN])
+    // AGAINST THE TREE, BECAUSE THE LIST IS GONE. `Agents.CHAIN` used to be fifteen string
+    // literals and this read them; it is `Prove.chain()` now, walked off the object the runtime
+    // executes. Reading the old place would have matched whatever strings happened to come next —
+    // it found WATCH's — which is a guard that passes by looking at the wrong thing.
+    const tree = read('Prove.java')
+    const from = tree.indexOf('private Agent everything()')
+    // To the end of the method, not a guessed window: a fixed slice cut `price` off and the guard
+    // reported twelve agents where the tree has fifteen.
+    const everything = tree.slice(from, tree.indexOf('/** Writes a test', from))
+    const stages = [...everything.matchAll(/Flow\.(?:code|when)\("([a-z]+)"/g)]
+      .map(m => m[1])
+      .filter(name => name !== 'prove')
+    const inJava = stages.flatMap(s => [`${s}-planner`, `${s}-doer`, `${s}-verifier`])
+    expect(inJava).toEqual([...CHAIN])
 
+    // WATCH is still a hand-written list: those six watch a RUN rather than a marker, so they are
+    // not nodes in any prove's tree and there is nothing to walk them off.
+    const agents = read('Agents.java')
     const watchBlock = agents.slice(agents.indexOf('List<String> WATCH'))
     const watchJava = [...watchBlock.slice(0, 220).matchAll(/"([a-z-]+)"/g)].map(m => m[1])
     expect(watchJava.slice(0, WATCH.length)).toEqual([...WATCH])

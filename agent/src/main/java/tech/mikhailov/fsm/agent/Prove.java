@@ -3,6 +3,8 @@ package tech.mikhailov.fsm.agent;
 import com.deepagents.langchain4j.subagents.SubAgentRuntime;
 import dev.langchain4j.http.client.jdk.JdkHttpClientBuilder;
 import dev.langchain4j.model.chat.ChatModel;
+import tech.mikhailov.ratchet.flow.Agent;
+import tech.mikhailov.ratchet.flow.Flow;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import java.io.IOException;
@@ -149,6 +151,20 @@ public final class Prove {
     // WHAT THE BUILDS ACTUALLY DID, carried to the settlement. A disposition implies them and an
     // implication is not a record: `reproduced` and `verified` both mean red failed, and only one of
     // them means green passed.
+    /** What the stages hand each other. Locals in one method until the method became six. */
+    private String test = "";
+    private Runner.Result red;
+    private String evidence = "";
+    private String patch = "";
+    private Runner.Result green;
+    private String certificate = "";
+
+    /** Why no test could be made to fail, which is what the verdict stage argues from. */
+    private String unproven = "";
+
+    /** The settlement: state on the first line, then why. Empty until a stage decides. */
+    private String account = "";
+
     private boolean redOk;
     private boolean greenOk;
 
@@ -158,6 +174,24 @@ public final class Prove {
         this.agents = agents;
         this.runner = runner;
         this.trace = trace;
+    }
+
+    /**
+     * THE STAGES, FOR A READER RATHER THAN FOR A RUN.
+     *
+     * <p>Walked off {@link #everything()} — the same object a prove executes — so a stage cannot be
+     * advertised after it is deleted and an order cannot be claimed that the run does not take. The
+     * tree is assembled by a constructor that runs no agent and touches no checkout, because a shape
+     * is what this program CAN do rather than what one attempt at one marker did.
+     */
+    static java.util.List<tech.mikhailov.ratchet.flow.Shape.Stage> stages() {
+        return tech.mikhailov.ratchet.flow.Shape.of(
+                new Prove(Path.of("."), "|||", null, null, null).everything());
+    }
+
+    /** Every agent a prove runs, in the order the tree reaches them. */
+    static java.util.List<String> chain() {
+        return tech.mikhailov.ratchet.flow.Shape.agentNames(stages());
     }
 
     /** The whole prove. Read it top to bottom; that is the order, and nothing can reorder it. */
@@ -193,6 +227,64 @@ public final class Prove {
         // EACH NOTE FIRES BEFORE THE AGENT IT NAMES, because the note IS what the table shows while
         // that agent is thinking. Announcing the doer before the planner had been asked put a
         // stage's own order backwards on the one column most people read.
+
+        try {
+            everything().run(brief);
+        } catch (Flow.Settled loose) {
+            // The guard below catches these. One arriving here threw from outside the tree.
+            account = loose.account();
+        } catch (java.io.IOException nothingHereReadsAFile) {
+            throw new IllegalStateException(nothingHereReadsAFile);
+        }
+        return account;
+    }
+
+    /**
+     * THE PROGRAM, DECLARED — and this declaration is the only copy of it.
+     *
+     * <p>What a prove does used to be a thousand lines of statements, with a separate list in
+     * {@link Agents} naming the stages for the page and a third copy in TypeScript for the strip.
+     * Three copies of one fact drift, and these had: the list said ten agents where the run had
+     * fifteen, and two prompts spent months telling the watchers about a gap that had closed.
+     *
+     * <p>{@code Shape.of} walks THIS, the object that runs. A stage cannot be advertised after it is
+     * deleted, because deleting it deletes the node the page was reading.
+     *
+     * <p>THE CONDITIONS ARE THE STAGES' OWN, and they are what {@code repeats} says out loud: fix
+     * only runs on a test that failed, propose only on a patch that was certified, verdict only when
+     * nothing could be made to fail. Price runs on every ending, which is why it sits outside the
+     * guard rather than inside it — an attempt that settled early still cost the time it spent.
+     */
+    private Agent everything() {
+        Agent deciding = Flow.seq("",
+                Flow.code("reproduce", this::reproducePhase).triplet(),
+                Flow.when("fix", () -> redOk, Flow.code("", this::fixPhase))
+                        .triplet().repeats("only when a test was made to fail"),
+                Flow.when("propose", () -> greenOk, Flow.code("", this::proposePhase))
+                        .triplet().repeats("only when a patch was certified"),
+                // NAMED FOR ITS AGENTS, NOT FOR ITS JOB. `Shape.agentNames` derives
+                // `<stage>-planner` and the rest from this title, so a node called `verdict` would
+                // name three agents this program does not have. The job it does IS the verdict —
+                // it is the stage that settles a marker nothing could be made to fail on — and the
+                // `repeats` line below is where a reader is told that.
+                Flow.when("argue", () -> !redOk, Flow.code("", this::verdictPhase))
+                        .triplet().repeats("only when no test could be made to fail"));
+        // A SETTLEMENT IS NOT A FAILURE. `Flow.Settled` is how a stage ends the whole prove from
+        // inside itself, which the eight `return priced(...)` statements used to do; catching it
+        // here rather than at the top is what lets price still run on the way out.
+        Agent held = Flow.code("", deciding, task -> {
+            try {
+                return deciding.run(task);
+            } catch (Flow.Settled settled) {
+                account = settled.account();
+                return account;
+            }
+        });
+        return Flow.seq("prove", held, Flow.code("price", this::pricePhase).triplet());
+    }
+
+    /** Writes a test and makes it fail, or leaves {@link #unproven} saying why it could not. */
+    private String reproducePhase(String task) {
         trace.progress(marker, "reproduce-planner: deciding how to observe it");
         String plan = agents.reproducePlanner().run(brief);
         brief = brief + "\n\nThe plan you are working from:\n" + plan;
@@ -207,9 +299,10 @@ public final class Prove {
         if (testClass(trace, reply).isBlank()) {
             // No file, after being asked plainly. That is an argument to be made, not a build to be
             // spent — and the verdict agent is the one that makes it.
-            return argued(whatThisRunMade() + brief
+            unproven = whatThisRunMade() + brief
                     + "\nNo test was written for this marker. The reproduce-doer said:\n"
-                    + (reply.isBlank() ? "(nothing at all)" : reply));
+                    + (reply.isBlank() ? "(nothing at all)" : reply);
+            return "";
         }
 
         Attempt a = reproduce(runner, agents, brief, "", reply, trace);
@@ -217,7 +310,7 @@ public final class Prove {
         // drops javac's output tells whoever reads it nothing they can act on, and throws away the
         // one piece of feedback in this program guaranteed to be correct.
         if (a.build().infra()) {
-            return priced("unprovable", "the test never built, after "
+            throw new Flow.Settled("unprovable" + "\n" + "the test never built, after "
                     + REASK + " re-ask(s) with the compiler's own words:\n" + a.build().summary());
         }
         // A GREEN RED IS NOT A REPRODUCTION, AND THE ONLY AGENT THAT CAN ACT ON THAT WAS NEVER
@@ -236,13 +329,14 @@ public final class Prove {
             a = reproduce(runner, agents, brief, "", rewrite, trace);
         }
         if (a.build().infra() || a.build().passed()) {
-            return argued(whatThisRunMade() + brief
+            unproven = whatThisRunMade() + brief
                     + "\nNO TEST COULD BE MADE TO FAIL ON THIS CODE. The reproduce-doer was asked "
-                    + "twice; the last build was:\n" + said(a.build()));
+                    + "twice; the last build was:\n" + said(a.build());
+            return "";
         }
 
-        String test = a.test();
-        Runner.Result red = a.build();
+        test = a.test();
+        red = a.build();
 
         trace.progress(marker, "RED reproduced; reproduce-verifier reading the test");
         String critique = agents.reproduceVerifier().run(brief + "\nThe test, which compiles and goes RED:\n"
@@ -280,11 +374,11 @@ public final class Prove {
                 Attempt rewrite = reproduce(runner, agents, brief, asked,
                         agents.reproduceDoer().run(brief + asked), trace);
                 if (rewrite.build().infra()) {
-                    return priced("needs-review", "the original test reproduced; the rewrite the "
+                    throw new Flow.Settled("needs-review" + "\n" + "the original test reproduced; the rewrite the "
                             + "critic asked for would not build:\n" + rewrite.build().summary());
                 }
                 if (rewrite.build().passed()) {
-                    return priced("needs-review", "the original test reproduced; the rewrite the "
+                    throw new Flow.Settled("needs-review" + "\n" + "the original test reproduced; the rewrite the "
                             + "critic asked for no longer does:\n" + rewrite.build().summary());
                 }
                 test = rewrite.test();
@@ -293,26 +387,31 @@ public final class Prove {
         }
 
         // EVIDENCE, ASSEMBLED ONCE, so a retry can never be poorer than the call it replaces.
-        String evidence = "\nThe failing test:\n" + test + "\nRED:\n" + said(red);
+        return test;
+    }
+
+    /** Patches the defect the test names, and gets it certified. */
+    private String fixPhase(String task) {
+        evidence = "\nThe failing test:\n" + test + "\nRED:\n" + said(red);
 
         trace.progress(marker, "fix-planner: deciding where to fix it");
         String fixPlan = agents.fixPlanner().run(brief + evidence);
         trace.progress(marker, "fix-doer: patching");
-        String patch = agents.fixDoer().run(brief + evidence
+        patch = agents.fixDoer().run(brief + evidence
                 + "\n\nThe plan you are working from:\n" + fixPlan);
-        Runner.Result green = patchUntilItBuilds(runner, agents, brief, evidence, test, trace);
+        green = patchUntilItBuilds(runner, agents, brief, evidence, test, trace);
         if (green.infra()) {
-            return priced("reproduced", "the defect is real; no patch of it would build:\n"
+            throw new Flow.Settled("reproduced" + "\n" + "the defect is real; no patch of it would build:\n"
                     + said(green));
         }
         if (!green.passed()) {
-            return priced("reproduced", "the defect is real and no patch held:\n" + said(green));
+            throw new Flow.Settled("reproduced" + "\n" + "the defect is real and no patch held:\n" + said(green));
         }
 
         // The skeptic CERTIFIES, and a certificate must be given to bite: silence enforces nothing.
         trace.progress(marker, "GREEN passed; fix-verifier certifying");
         String changed = diff();
-        String certificate = agents.fixVerifier().run(brief + evidence + "\nGREEN:\n" + said(green)
+        certificate = agents.fixVerifier().run(brief + evidence + "\nGREEN:\n" + said(green)
                 + "\nWhat the fix-doer says it did:\n" + patch
                 // The added lines are the fix-doer's; every context and removed line is the
                 // subject's own source — under a heading telling the verifier this is the
@@ -330,7 +429,7 @@ public final class Prove {
                 green = patchUntilItBuilds(runner, agents, brief, evidence, test, trace);
                 if (green.infra()) {
                     // A build that never ran is not a failed certification.
-                    return priced("reproduced", "the defect is real; the replacement patch would "
+                    throw new Flow.Settled("reproduced" + "\n" + "the defect is real; the replacement patch would "
                             + "not build:\n" + said(green));
                 }
                 certificate = agents.fixVerifier().run(brief + evidence + "\nGREEN:\n" + said(green)
@@ -338,19 +437,59 @@ public final class Prove {
             }
         }
         if (!green.passed() || rejects(certificate)) {
-            return priced("needs-review", "red then green, but the patch was not certified:\n"
+            throw new Flow.Settled("needs-review" + "\n" + "red then green, but the patch was not certified:\n"
                     + certificate);
         }
 
         // The curator decides whether this reaches a stranger's repository, so it gets the whole
         // record rather than the patch alone.
+        return patch;
+    }
+
+    /** Decides whether the case is worth putting to a person. */
+    private String proposePhase(String task) {
         trace.progress(marker, "propose-planner: deciding what the case rests on");
         String proposal = brief + evidence + "\nGREEN:\n" + said(green)
                 + "\nThe certified patch:\n" + patch + "\nThe certification:\n" + certificate;
         String curation = planned(agents.proposePlanner(), agents.proposeDoer(),
                 agents.proposeVerifier(), proposal);
-        return priced("make".equals(verdict(curation, "make", "reject"))
-                ? "verified/pr-ready" : "verified/pr-rejected", curation);
+        account = ("make".equals(verdict(curation, "make", "reject"))
+                ? "verified/pr-ready" : "verified/pr-rejected") + "\n" + curation;
+        return account;
+    }
+
+    /**
+     * WHAT SETTLES A MARKER NOTHING COULD BE MADE TO FAIL ON.
+     *
+     * <p>This was {@code argued()}, called from inside the reproduce stage at the two points where a
+     * test could not be made to fail — so the stage that observes was also the stage that settled,
+     * and the settlement happened in the middle of the tree rather than at the end of it. It is a
+     * node now, and it runs for the same reason it always did: because nothing went RED.
+     */
+    private String verdictPhase(String task) {
+        String record = unproven + "\n\n" + whatExecutionProduced();
+        trace.progress(marker, "argue-planner: deciding what could settle this without a test");
+        String argument = planned(agents.arguePlanner(), agents.argueDoer(),
+                agents.argueVerifier(), record);
+        String kind = verdict(argument, "false-positive", "by-design", "unprovable");
+        account = (kind.isEmpty() ? "unprovable" : kind) + "\n" + argument;
+        return account;
+    }
+
+    /**
+     * WHAT THE ATTEMPT COST, on every ending there is.
+     *
+     * <p>Ten places used to call {@code priced(...)} and return what it gave back. It runs once now,
+     * last, on whatever the stages before it decided — and on nothing at all, which is a state this
+     * program has to be able to name rather than file under the empty string.
+     */
+    private String pricePhase(String task) {
+        if (account == null || account.isBlank()) {
+            account = "unprovable\nthe prove ran to the end and no stage settled it";
+        }
+        String[] said = account.split("\n", 2);
+        account = priced(said[0], said.length > 1 ? said[1] : "");
+        return account;
     }
 
     /** What the reproducer last said, and what the build made of it. @see #reproduce */
@@ -424,22 +563,6 @@ public final class Prove {
      * marker argued by-design as false-positive, and those mean opposite things to whoever reads the
      * row: one says the code is deliberately that way, the other says the claim is untrue.
      */
-    /**
-     * THE ARGUED DISPOSITIONS, NOW WITH A READER BETWEEN THEM AND THE RECORD.
-     *
-     * <p>This took a finished argument, which is why the verdict agent was the one producer here
-     * answerable to nobody: by the time the argument arrived there was no task left to re-ask with.
-     * Taking the task instead costs one parameter and buys the missing half of the only
-     * producer/critic pair the chain was short of.
-     */
-    private String argued(String task) {
-        String record = task + "\n\n" + whatExecutionProduced();
-        trace.progress(marker, "argue-planner: deciding what could settle this without a test");
-        String argument = planned(agents.arguePlanner(), agents.argueDoer(),
-                agents.argueVerifier(), record);
-        String kind = verdict(argument, "false-positive", "by-design", "unprovable");
-        return priced(kind.isEmpty() ? "unprovable" : kind, argument);
-    }
 
     /**
      * WHAT THIS RUN ACTUALLY OBSERVED, computed rather than described.

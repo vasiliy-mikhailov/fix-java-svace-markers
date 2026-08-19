@@ -9,8 +9,10 @@ import com.deepagents.langchain4j.subagents.SubAgentRuntime;
 /**
  * EVERY PROMPT IN THIS PROGRAM, EACH WITH ITS OWN TOOLS AND ITS OWN CLOSED SET OF ANSWERS.
  *
- * <p>Fifteen: {@link #CHAIN}'s ten run inside a prove, {@link #WATCH}'s four watch a run from
- * outside it, and {@link #ASKED}'s one speaks only when a person asks it something. There is no
+ * <p>Twenty-two: {@link #CHAIN}'s fifteen run inside a prove, {@link #WATCH}'s six watch a run from
+ * outside it, and {@link #ASKED}'s one speaks only when a person asks it something. Those counts are
+ * the lists' own — {@code CHAIN} is walked off the tree {@link Prove} executes, so it cannot say a
+ * number the run does not have. This sentence said ten for as long as the list said fifteen. There is no
  * orchestrator — an agent asked to follow an order it can rewrite will rewrite it. {@link Prove}
  * runs the order; these are the things it calls.
  *
@@ -263,11 +265,10 @@ final class Agents {
                 working prompt a rewrite, and that is worse than a missed finding. You are the only one of the three
                 who reads the spec: a mechanism whose intent you leave unestablished is one nobody establishes.
 
-                THE SPEC IS BEHIND THE CODE, AND THAT GAP IS NOT A FINDING. It describes ten agents in the chain
-                where the run has fifteen, and pairs where the run has planner/doer/verifier triples — this watch
-                included. The digest will name agents no chapter mentions. Where the two disagree the running code
-                is the fact; the spec is authoritative about WHY a rule exists and not about what exists. Say so in
-                the plan, because otherwise it is rediscovered and re-reported on every pass forever.
+                THE SPEC CAN BE BEHIND THE CODE, AND THAT GAP IS NOT A FINDING. The digest may name agents no
+                chapter mentions. Where the two disagree the running code is the fact; the spec is authoritative
+                about WHY a rule exists and not about what exists. Say so in the plan, because otherwise it is
+                rediscovered and re-reported on every pass forever.
 
                 REPORTING NOTHING IS A PLAN AND OFTEN THE RIGHT ONE. Six markers started and none settled: no
                 pattern of eleven exists yet and a pass sent looking for one will manufacture it. Say `nothing to
@@ -399,11 +400,9 @@ final class Agents {
                 earlier one got wrong, a count that has gone from four to forty — is not a duplicate; it is the
                 second report the earlier judgement asked for, and refusing it as one loses the escalation.
 
-                A SPEC THAT DISAGREES WITH THE CODE IS NOT A PIPELINE FAULT. `spec/` is behind the running program:
-                it describes ten agents in the chain where there are fifteen, and pairs where there are triples,
-                this watch included. Where they disagree the running code is the fact. A finding whose whole content
-                is that gap is `refuted` — it is documentation somebody owes, and it is visible from the digest on
-                every pass, so left unsaid it comes back forever.
+                A SPEC THAT DISAGREES WITH THE CODE IS NOT A PIPELINE FAULT. Where they disagree the running code
+                is the fact. A finding whose whole content is that gap is `refuted` — it is documentation somebody
+                owes, and it is visible from the digest on every pass, so left unsaid it comes back forever.
 
                 THERE IS NO LOOP BACK TO THE PLANNER, SO YOUR JUDGEMENT IS THE ONLY THING THAT REACHES THE NEXT
                 PASS. It is written to `overwatch.jsonl` beside the finding, and the next pass's planner reads that
@@ -728,12 +727,21 @@ final class Agents {
      * {@code verdict-critic} entirely, so an agent that can send a settlement back for rework had no
      * page of its own and nobody noticed.
      */
-    static final java.util.List<String> CHAIN = java.util.List.of(
-            "reproduce-planner", "reproduce-doer", "reproduce-verifier",
-            "fix-planner", "fix-doer", "fix-verifier",
-            "propose-planner", "propose-doer", "propose-verifier",
-            "argue-planner", "argue-doer", "argue-verifier",
-            "price-planner", "price-doer", "price-verifier");
+    /**
+     * THE AGENTS A PROVE RUNS, WALKED OFF THE PROGRAM ITSELF.
+     *
+     * <p>This was a hand-written list beside the class that runs the stages, and both drifted. The
+     * javadoc over it said "THE TEN THAT RUN INSIDE A PROVE, IN THE ORDER Prove CALLS THEM" above a
+     * list of fifteen, in an order the run did not take — the argue triple fired from two points
+     * inside reproduce. The header of this file said ten where the lists held twenty-two. Two live
+     * prompts spent weeks telling the watchers about a gap in a spec that had since been closed.
+     * Nothing failed and no test went red; a reader was simply told something untrue by the thing
+     * whose whole job is to say what a run does.
+     *
+     * <p>There is no list any more. {@link Prove#chain()} walks the tree the runtime executes, so a
+     * stage cannot be advertised after it is deleted — deleting it deletes the node being read.
+     */
+    static final java.util.List<String> CHAIN = Prove.chain();
 
     /** The four that watch a run rather than run in one: the run-level pair, then the lane-level. */
     static final java.util.List<String> WATCH = java.util.List.of(
