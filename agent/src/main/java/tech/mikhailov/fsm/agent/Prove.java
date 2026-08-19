@@ -610,10 +610,21 @@ public final class Prove {
         String earliest = "";
         int at = Integer.MAX_VALUE;
         for (String word : allowed) {
-            int i = lower.indexOf(word);
-            if (i >= 0 && i < at) {
-                at = i;
-                earliest = word;
+            // \b, BECAUSE `sound` IS INSIDE `unsound`. A fix-verifier writing "the patch is
+            // unsound" with no declared line was read as `sound`, and `rejects()` is
+            // !"sound".equals(verdict(...)) — so the rejection certified the patch.
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("\\b" + java.util.regex.Pattern.quote(word) + "\\b").matcher(lower);
+            while (m.find()) {
+                // And a word can be reached while being denied: "not sound", "cannot be sound".
+                if (negated(lower, m.start())) {
+                    continue;
+                }
+                if (m.start() < at) {
+                    at = m.start();
+                    earliest = word;
+                }
+                break;
             }
         }
         return earliest;
@@ -627,6 +638,18 @@ public final class Prove {
      * such line wins: an agent that reasons and then concludes has its conclusion last, and one that
      * opens with its answer has only the one.
      */
+    /**
+     * Whether the word at {@code where} is being denied rather than said.
+     *
+     * <p>A short window, because a denial sits next to its verb: "not sound", "is not sound",
+     * "cannot be sound", "never sound". A longer one starts catching the sentence before.
+     */
+    private static boolean negated(String lower, int where) {
+        String before = lower.substring(Math.max(0, where - 24), where);
+        return before.contains("not ") || before.contains("n't ") || before.contains("never ")
+                || before.contains("cannot ") || before.contains("no longer ");
+    }
+
     private static String declaration(String reply, String... allowed) {
         String found = "";
         for (String raw : reply.split("\\R")) {
@@ -638,7 +661,13 @@ public final class Prove {
                 line = line.substring(colon + 1).strip();
             }
             for (String word : allowed) {
-                if (line.equals(word)) {
+                // THE WORD, THEN ITS REASON. Every verifier prompt here asks for the word and then
+                // one sentence, so `equals` alone declared almost nothing and control fell through
+                // to the substring scan below — which is where `unsound` certified a patch.
+                if (line.equals(word) || line.startsWith(word + " ") || line.startsWith(word + ":")
+                        || line.startsWith(word + ".") || line.startsWith(word + ",")
+                        || line.startsWith(word + ";") || line.startsWith(word + "—")
+                        || line.startsWith(word + " —")) {
                     found = word;
                 }
             }
