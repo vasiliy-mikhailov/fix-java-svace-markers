@@ -13,6 +13,18 @@ FROM maven:3.9-eclipse-temurin-25 AS builder
 
 # langchain4j-deepagents IS NOT ON MAVEN CENTRAL. Building it here rather than vendoring a jar keeps
 # the provenance visible: the commit that produced the artifact is in the log of this build.
+# THE CHAIN ENGINE IS A LIBRARY AND IT IS NOT ON MAVEN CENTRAL EITHER. Built here for the same
+# reason deepagents is: the commit that produced the artifact is then in the log of this build.
+#
+# PINNED TO A COMMIT, NOT TO A BRANCH. The pom asks for a fixed release, 0.3.0, on the reasoning that
+# two lanes on the same version number must not run different bytes — and a version number a branch
+# can move under says nothing at all. Bumping this is a visible line in a diff, which is the point.
+ARG RATCHET_REPO=https://github.com/vasiliy-mikhailov/ratchet.git
+ARG RATCHET_REF=9988aa05ed405378641feb00a81961f305f66e0e
+RUN git clone ${RATCHET_REPO} /src/ratchet \
+    && git -C /src/ratchet checkout -q ${RATCHET_REF} \
+    && mvn -q -f /src/ratchet -DskipTests install
+
 ARG DEEPAGENTS_REPO=https://github.com/udayogra/langchain4j-deepagents.git
 ARG DEEPAGENTS_REF=main
 RUN git clone --depth 1 --branch ${DEEPAGENTS_REF} ${DEEPAGENTS_REPO} /src/deepagents \
