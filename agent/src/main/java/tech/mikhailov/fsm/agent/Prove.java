@@ -348,7 +348,7 @@ public final class Prove {
         String proposal = brief + evidence + "\nGREEN:\n" + said(green)
                 + "\nThe certified patch:\n" + patch + "\nThe certification:\n" + certificate;
         String curation = planned(agents.proposePlanner(), agents.proposeDoer(),
-                agents.proposeVerifier(), proposal, "")[1];
+                agents.proposeVerifier(), proposal);
         return priced("make".equals(verdict(curation, "make", "reject"))
                 ? "verified/pr-ready" : "verified/pr-rejected", curation);
     }
@@ -436,7 +436,7 @@ public final class Prove {
         String record = task + "\n\n" + whatExecutionProduced();
         trace.progress(marker, "argue-planner: deciding what could settle this without a test");
         String argument = planned(agents.arguePlanner(), agents.argueDoer(),
-                agents.argueVerifier(), record, "")[1];
+                agents.argueVerifier(), record);
         String kind = verdict(argument, "false-positive", "by-design", "unprovable");
         return priced(kind.isEmpty() ? "unprovable" : kind, argument);
     }
@@ -482,7 +482,7 @@ public final class Prove {
         try {
             String record = brief + "\n\nIt settled as: " + disposition + "\n\nThe record:\n" + because;
             estimate = planned(agents.pricePlanner(), agents.priceDoer(),
-                    agents.priceVerifier(), record, "")[1];
+                    agents.priceVerifier(), record);
             // A MISSING NUMBER IS CAUGHT HERE, NOT BY THE CRITIC. Whether the reply contains
             // `minutes: N` is a question a regex answers, and asking a model to check it spends a
             // call to be told something less reliably — the critic passed an estimate with no figure
@@ -545,50 +545,59 @@ public final class Prove {
      * @param work what the doer produced, given the plan
      * @return the plan and the work as they finally stood
      */
-    private static String[] planned(Agents.Agent planner, Agents.Agent doer, Agents.Agent verifier,
-                                    String task, String hint) {
-        String plan = planner.run(task + hint);
-        String work = doer.run(task + "\n\nThe plan you are working from:\n" + plan);
-        boolean replanned = false;
-        boolean redone = false;
-        for (int turn = 0; turn < 2; turn++) {
-            // AN OBJECTION MUST BE RAISED TO BITE. A verifier that cannot be reached must leave the
-            // work standing: the alternative is that a dropped connection decides settlements, which
-            // is strictly worse than an unjudged answer. The pair-shaped helper this replaced had
-            // the same rule and a test pinned it — the rule is the invariant, not the helper.
+    /**
+     * A STAGE, RUN BY THE ENGINE RATHER THAN BY THIS FILE.
+     *
+     * <p>This was a hand-written planner/doer/verifier loop, and the sibling harness has the same
+     * loop as a library combinator with the same vocabulary of settle, re-ask and re-plan. Keeping
+     * two of them is how the two drift, and the one here was the copy with no facts in it.
+     *
+     * <p>THE WORDS ARE TRANSLATED AT THIS SEAM, NOT IN THE PROMPTS. {@code Flow} reads
+     * {@code done}, {@code again} and {@code replan}; the verifiers here say {@code sound},
+     * {@code redo} and {@code replan}, and those words carry the criterion they are judging against,
+     * which a generic three do not. The mapping is total — every branch this program had is one of
+     * the engine's three — so nothing is lost by translating and nothing is gained by rewriting six
+     * prompts and breaking continuity with the corpus they were tuned against.
+     *
+     * <p>SILENCE STILL WAIVES, which is this program's rule and not the engine's: a verifier that
+     * says nothing, or throws, leaves the work standing. The engine reads a blank as `again`. That
+     * difference is deliberate and it is a decision to revisit on its own, not a thing to change
+     * while moving a loop.
+     */
+    private String planned(Agents.Agent planner, Agents.Agent doer, Agents.Agent verifier,
+                           String task) {
+        tech.mikhailov.ratchet.flow.Flow.Doer work = (plan, feedback) ->
+                doer.run(task + "\n\nThe plan you are working from:\n" + plan + feedback);
+        tech.mikhailov.ratchet.flow.Agent judge = brief -> {
             String judged;
             try {
-                judged = verifier.run(task + "\n\nThe plan:\n" + plan
-                        + "\n\nWhat was made from it:\n" + work);
+                judged = verifier.run(brief);
             } catch (RuntimeException unreachable) {
-                break;
+                return "done";
             }
-            String said = verdict(judged, "sound", "redo", "replan");
-            if (said.equals("replan") && !replanned) {
-                replanned = true;
-                try {
-                    plan = planner.run(task + hint + "\n\nYour last plan was sent back:\n" + judged
-                            + "\n\nPlan it a different way. Do not restate the plan that was refused.");
-                    work = doer.run(task + "\n\nThe plan you are working from:\n" + plan);
-                } catch (RuntimeException unreachable) {
-                    break;
-                }
-                continue;
-            }
-            if (said.equals("redo") && !redone) {
-                redone = true;
-                try {
-                    work = doer.run(task + "\n\nThe plan you are working from:\n" + plan
-                            + "\n\nYour work was sent back:\n" + judged
-                            + "\n\nAnswer the objection. Do not simply restate what you did.");
-                } catch (RuntimeException unreachable) {
-                    break;
-                }
-                continue;
-            }
-            break;
+            return spoken(judged) + "\n" + judged;
+        };
+        try {
+            return tech.mikhailov.ratchet.flow.Flow.triad("", planner::run, work, judge,
+                    () -> "", new Relay(trace, marker), marker, 2).run(task);
+        } catch (java.io.IOException cannotHappen) {
+            // Nothing in this triad touches a file: the bodies are model calls.
+            throw new IllegalStateException(cannotHappen);
         }
-        return new String[] {plan, work};
+    }
+
+    /**
+     * This program's verdict, in the engine's three words.
+     *
+     * <p>`sound` settles, `redo` asks the doer again, `replan` goes back to the planner — and an
+     * answer with no verdict in it settles, because an empty critique waives here.
+     */
+    private static String spoken(String judged) {
+        String said = verdict(judged, "sound", "redo", "replan");
+        if (said.equals("replan")) {
+            return "replan";
+        }
+        return said.equals("redo") ? "again" : "done";
     }
 
     static String verdict(String reply, String... allowed) {

@@ -84,20 +84,43 @@ class TheVerdictAnswersToSomebodyTest {
         // An objection must be RAISED to bite. An unreachable verdict-critic must not be able to
         // turn a stated verdict into no verdict at all — that would make a dropped connection
         // settle markers.
-        // THE HELPER CHANGED AND THE RULE DID NOT. `reviewed` was verifier-plus-doer; the chain is
-        // triples now and runs `planned`, which also asks a planner first. A dropped connection to
-        // the judge must still leave the answer standing in either shape — when this was rewritten
-        // the new helper let the exception escape, and it was this assertion that said so.
+        // THE HELPER KEEPS CHANGING AND THE RULE DOES NOT. `reviewed` was verifier-plus-doer; then
+        // `planned` asked a planner first; now the loop belongs to the engine and `planned` is a
+        // seam onto `Flow.triad`. A dropped connection to the judge must still leave the answer
+        // standing in every one of those shapes — twice now the rewrite let the exception escape,
+        // and both times it was this assertion that said so.
+        //
+        // IT IS ALSO THE ONE PLACE THE ENGINE AND THIS PROGRAM DISAGREE. `Flow` reads a blank
+        // judgement as `again`; here silence waives. The seam translates, so the rule survives the
+        // move, and changing it is a decision to make on its own rather than while relocating code.
         Method m = Prove.class.getDeclaredMethod("planned", Agents.Agent.class, Agents.Agent.class,
-                Agents.Agent.class, String.class, String.class);
+                Agents.Agent.class, String.class);
         m.setAccessible(true);
         Agents.Agent dead = task -> {
             throw new RuntimeException("connection reset");
         };
         Agents.Agent planner = task -> "a plan";
         Agents.Agent doer = task -> "by-design, because …";
-        String[] out = (String[]) m.invoke(null, planner, doer, dead, "the task", "");
-        assertTrue(out[1].startsWith("by-design"),
-                "the verdict stands when its critic cannot be reached: " + out[1]);
+        var ctor = Prove.class.getDeclaredConstructors()[0];
+        ctor.setAccessible(true);
+        // A RECORD THAT KEEPS NOTHING, rather than none at all. The engine writes a progress note
+        // when a stage settles, and a Relay onto a missing trace would have to swallow it — which
+        // would mean a prove could lose the record and still decide the same thing.
+        Trace quiet = new Trace() {
+            @Override public void sent(String a, String role, String text) { }
+            @Override public void asked(String a, String pr, String r) { }
+            @Override public void thought(String a, String t) { }
+            @Override public void tool(String a, String t, String args, String result) { }
+            @Override public void built(String phase, Runner.Result result) { }
+            @Override public void settled(String m, String st, String b, boolean r, boolean g) { }
+            @Override public void failed(String m, Throwable c) { }
+            @Override public void progress(String m, String n) { }
+            @Override public void priced(String m, String min, String items) { }
+        };
+        Object prove = ctor.newInstance(java.nio.file.Path.of("."), "r|f|1|C",
+                new Agents(java.nio.file.Path.of("."), null, (phase, test) -> null), null, quiet);
+        String out = (String) m.invoke(prove, planner, doer, dead, "the task");
+        assertTrue(out.startsWith("by-design"),
+                "the verdict stands when its critic cannot be reached: " + out);
     }
 }
