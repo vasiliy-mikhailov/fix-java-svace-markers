@@ -140,7 +140,9 @@ test.describe('the record tab', () => {
     // that had finished, and every truncation was found by a human noticing a reply stopped
     // mid-sentence.
     const texts = await contents(page)
-    expect(texts.some(t => t.includes('was cut off at the cap')),
+    // THE WORDING MOVED TO THE SERVER. `Body` composes the metered line now, so this phrase lives
+    // in the Java beside the finish reason rather than in a React component that read four fields.
+    expect(texts.some(t => t.includes('CUT OFF AT THE CAP')),
       'LENGTH means the record above it is incomplete, and it used to be indistinguishable from a '
         + 'model that had finished').toBe(true)
   })

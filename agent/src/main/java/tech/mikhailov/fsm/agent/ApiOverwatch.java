@@ -189,14 +189,15 @@ final class ApiOverwatch {
         // /marker?k=<this> from it links to a marker that cannot exist, which is what the page does
         // today. It is sent as recorded because that is what the record says; it is not a key.
         b.append(",\"marker\":").append(quote(Dashboard.field(line, "marker")));
+        if (Body.carries(kind)) {
+            b.append(",\"text\":").append(quote(Body.of(line)));
+        }
         switch (kind) {
             case "asked" -> b.append(",\"agent\":").append(quote(Dashboard.field(line, "agent")))
                     // IN FULL, both of them, exactly as the trace holds them. A prompt truncated
                     // here is a training example nobody can use.
                     .append(",\"prompt\":").append(quote(Dashboard.field(line, "prompt")))
                     .append(",\"reply\":").append(quote(Dashboard.field(line, "reply")));
-            case "thought" -> b.append(",\"agent\":").append(quote(Dashboard.field(line, "agent")))
-                    .append(",\"text\":").append(quote(Dashboard.field(line, "text")));
             case "tool" -> b.append(",\"agent\":").append(quote(Dashboard.field(line, "agent")))
                     .append(",\"tool\":").append(quote(Dashboard.field(line, "tool")))
                     .append(",\"arguments\":").append(quote(Dashboard.field(line, "arguments")))
@@ -216,20 +217,6 @@ final class ApiOverwatch {
                     .append(number(Dashboard.field(line, "minutes")))
                     .append(",\"itemisation\":")
                     .append(quote(Dashboard.field(line, "itemisation")));
-            // WHAT THE CALL COST. `finish` is the server's own reason, so LENGTH — a
-            // generation stopped at the cap — is distinguishable from a model that ended.
-            case "metered" -> b.append(",\"finish\":")
-                    .append(quote(Dashboard.field(line, "finish")))
-                    .append(",\"input\":").append(number(Dashboard.field(line, "input")))
-                    .append(",\"output\":").append(number(Dashboard.field(line, "output")))
-                    .append(",\"ms\":").append(number(Dashboard.field(line, "ms")));
-            case "sent" -> b.append(",\"role\":").append(quote(Dashboard.field(line, "role")))
-                    .append(",\"text\":").append(quote(Dashboard.field(line, "text")));
-            case "progress" -> b.append(",\"note\":").append(quote(Dashboard.field(line, "note")));
-            case "failed" -> b.append(",\"cause\":").append(quote(Dashboard.field(line, "cause")))
-                    .append(",\"stack\":").append(quote(Dashboard.field(line, "stack")));
-            case "system" -> b.append(",\"prompt\":")
-                    .append(quote(Dashboard.field(line, "prompt")));
             default -> { }
         }
         b.append('}');

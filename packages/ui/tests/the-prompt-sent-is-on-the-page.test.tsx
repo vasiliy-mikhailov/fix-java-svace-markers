@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
 import { TextFold } from '../src/primitives/TextFold'
-import { SentEvent } from '../src/domain/TraceEvent'
+import { SaidEvent } from '../src/domain/TraceEvent'
 
 /**
  * WHAT WENT TO THE MODEL IS ON THE PAGE, WITHOUT CLICKING ANYTHING.
@@ -27,8 +27,16 @@ describe('the prompt that was sent', () => {
   ].join('\n')
 
   it('is drawn, not named — the first lines are on the page unopened', () => {
+    // THE ROLE IS INSIDE THE BODY NOW. The server composes `[system, N chars]` above the text —
+    // it travelled as a field of its own until one endpoint forgot it and every lane drew a fold
+    // with no label on it.
     const html = renderToStaticMarkup(
-      <SentEvent agent="reproduce-planner" role="system" text={STANDING} defaultOpen={false} />,
+      <SaidEvent
+        agent="reproduce-planner"
+        kind="sent"
+        said={`[system, ${STANDING.length} chars]\n${STANDING}`}
+        defaultOpen={false}
+      />,
     )
     expect(html, 'the opening of the prompt must be readable without interaction').toContain(
       'JUDGE THIS AS IF IT WERE ABOUT TO SHIP',
@@ -38,9 +46,14 @@ describe('the prompt that was sent', () => {
 
   it('clips a long body and says how much more there is', () => {
     const html = renderToStaticMarkup(
-      <SentEvent agent="reproduce-planner" role="system" text={STANDING} defaultOpen={false} />,
+      <SaidEvent
+        agent="reproduce-planner"
+        kind="sent"
+        said={`[system, ${STANDING.length} chars]\n${STANDING}`}
+        defaultOpen={false}
+      />,
     )
-    expect(html).toContain('show all 42 lines')
+    expect(html).toContain('show all 43 lines')
     expect(html, 'a body drawn whole is a page that cannot be scanned').not.toContain(
       'standing line 40',
     )

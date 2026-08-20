@@ -40,6 +40,13 @@ export type TraceEventRecord = Omit<TraceRow, 'kind'> & {
   minutes?: number
   itemisation?: string
   text?: string
+  /**
+   * THE BODY, COMPOSED BY THE SERVER for every kind that is only words — see `Body` in the Java.
+   *
+   * Present and non-empty means the row needs nothing else read out of it, which is why it is
+   * tested before the switch. The per-kind fields below survive for the kinds that draw structure.
+   */
+  said?: string
   /** Which message this was, on a `sent` row: `system`, `user`, `assistant`, or `failed`. */
   role?: string
   /** On a `metered` row: the server's own reason for stopping — `STOP`, `LENGTH`, `ERROR`. */
@@ -241,78 +248,41 @@ export function standingOf(prompt: string): string {
 }
 
 /**
- * ONE MESSAGE, AS THE CONNECTOR SENT IT.
+ * A ROW THAT IS ONLY WORDS, DRAWN WITHOUT KNOWING WHICH KIND PUT THEM THERE.
  *
- * <p>Every other row here exists because somewhere in the Java somebody called a `trace` method, and
- * every one of those places has been wrong at least once. These rows are written by LangChain4j's
- * own listener, from the request it is about to send — so what is here is what went, and a reader
- * comparing an agent's account of itself against the record is comparing it against the wire.
+ * <p>Six components used to sit here — progress, thought, sent, metered, system and failed — each
+ * knowing which field of the record its own kind carried its body in. So did the three endpoints
+ * serving those rows, and the shared type listing every field any of them might use. Four copies of
+ * one fact, which drifted the way four copies do: `sent` reached the page with its text and without
+ * its role, so every lane drew a fold with no label on it.
  *
- * <p>THE ROLE IS THE LABEL, because that is the only thing that distinguishes these from each other
- * and it is what a reader is scanning for: the system prompt as it was finally assembled, the task,
- * a turn taken between tool calls. Folded, because a system prompt is 17k characters and the lane
- * would be nothing else.
+ * <p>The server composes the body now, in `Body`, and this draws it. A kind of this sort costs one
+ * line of Java and nothing at all here.
+ *
+ * <p>THE KIND IS STILL THE LABEL, because it is what a reader scans a lane for, and the agent
+ * beside it is what tells two lanes apart. That is a fact about the row, not a copy of its shape.
  */
-export function SentEvent({
+export function SaidEvent({
   agent,
-  role,
-  text,
+  kind,
+  said,
   defaultOpen,
 }: {
   agent: AgentName | null
-  role: string
-  text: string
+  kind: string
+  said: string
   defaultOpen: boolean
 }) {
   return (
     <>
       <span style={WHO}>{agentLabel(agent)}</span>
-      <span style={KIND}>sent</span>
+      <span style={KIND}>{kind}</span>
       <TextFold
-        id={`sent:${agent}:${role}:${text.length}`}
-        label={role}
-        body={text}
+        id={`said:${agent}:${kind}:${said.length}`}
+        label=""
+        body={said}
         defaultOpen={defaultOpen}
       />
-    </>
-  )
-}
-
-/**
- * WHAT THE CALL COST AND WHY IT STOPPED.
- *
- * <p>One line, no fold: it is four numbers and they are only worth anything at a glance, scanned
- * down a lane. The reason it exists is `finish` — this program sets a thinking budget and a token
- * cap and then had no way to see either take effect, so a generation stopped AT the cap read
- * exactly like one that had finished, and every truncation was found by a human noticing a reply
- * ended mid-sentence.
- *
- * <p>LENGTH is called out rather than shown as one word among four, because it is the one that
- * means the record above it is incomplete.
- */
-export function MeteredEvent({
-  agent,
-  finish,
-  input,
-  output,
-  ms,
-}: {
-  agent: AgentName | null
-  finish: string
-  input: number
-  output: number
-  ms: number
-}) {
-  const cut = finish === 'LENGTH'
-  return (
-    <>
-      <span style={WHO}>{agentLabel(agent)}</span>
-      <span style={KIND}>{cut ? 'was cut off at the cap' : 'cost'}</span>
-      <span style={{ ...KIND, opacity: cut ? 1 : 0.75 }}>
-        {input.toLocaleString()} in / {output.toLocaleString()} out
-        {ms > 0 ? ` / ${(ms / 1000).toFixed(1)}s` : ''}
-        {finish !== '' && !cut ? ` / ${finish}` : ''}
-      </span>
     </>
   )
 }
@@ -346,31 +316,6 @@ export function AnsweredEvent({
         defaultOpen={defaultOpen}
       />
       <RateAnswer target={{ kind: 'answer', eventId }} back={back} />
-    </>
-  )
-}
-
-export type ThoughtEventProps = {
-  agent: AgentName | null
-  text: string
-  defaultOpen: boolean
-  /** Folds are keyed by the thing, never by position — bug #10. Nothing else on this row is stable:
-   *  a live append renumbers every fold below it and the reader's open fold jumps. */
-  eventId: string
-}
-
-/** Reasoning, styled apart from everything else on the page. */
-export function ThoughtEvent({ agent, text, defaultOpen, eventId }: ThoughtEventProps) {
-  return (
-    <>
-      <span style={WHO_THOUGHT}>{agentLabel(agent)}</span>
-      <span style={KIND}>thought</span>
-      <TextFold
-        id={`thought:${eventId}`}
-        label="what it worked through"
-        body={text}
-        defaultOpen={defaultOpen}
-      />
     </>
   )
 }
@@ -479,14 +424,6 @@ export function BuildEvent({ phase, passed, infra, summary, defaultOpen, eventId
   )
 }
 
-export type ProgressNoteProps = { note: string }
-
-/** Punctuation between the events that matter. Not to be confused with `RunProgress`, which is the
- *  bar across the top of the index. */
-export function ProgressNote({ note }: ProgressNoteProps) {
-  return <span style={KIND}>{`· ${note}`}</span>
-}
-
 export type SettledEventProps = { state: MarkerState; because: string }
 
 /**
@@ -524,24 +461,6 @@ export function PricedEvent({ minutes, itemisation }: PricedEventProps) {
   )
 }
 
-export type FailedEventProps = { cause: string }
-
-/** A PROVE THAT BROKE — not a marker that settled `infra`. The two are one row apart in the feed and
- *  are constantly conflated; the second is a decision about a marker, this is the machinery dying
- *  mid-sentence. The Java left this row's word in the same blue as an agent's name, which is why it
- *  read as somebody speaking. */
-export function FailedEvent({ cause }: FailedEventProps) {
-  return (
-    <>
-      <span style={WHO_FAILED}>failed</span>
-      <span style={KIND}>the prove broke</span>
-      <pre style={PROSE}>{cause}</pre>
-    </>
-  )
-}
-
-/* ------------------------------------------------------------------ the row */
-
 /**
  * The body for a row this component cannot read, rendered as its bare name — `one()`'s default
  * branch (2219), kept.
@@ -558,25 +477,19 @@ function BareKind({ kind }: { kind: string }) {
 
 function bodyOf(event: TraceEventRecord, defaultOpen: boolean, back: string): ReactNode {
   const eventId = event.id
-  switch (event.kind) {    case 'sent':
-      return (
-        <SentEvent
-          agent={event.agent}
-          role={event.role ?? ''}
-          text={event.text ?? ''}
-          defaultOpen={defaultOpen}
-        />
-      )
-    case 'metered':
-      return (
-        <MeteredEvent
-          agent={event.agent}
-          finish={event.finish ?? ''}
-          input={Number(event.input ?? 0)}
-          output={Number(event.output ?? 0)}
-          ms={Number(event.ms ?? 0)}
-        />
-      )
+  // EVERY KIND THAT IS ONLY WORDS, IN ONE BRANCH. `said` is composed by the server; the cases
+  // below are the ones that draw structure — a lamp, two folds, a state pill, a figure, a rating.
+  if (typeof event.said === 'string' && event.said.length > 0) {
+    return (
+      <SaidEvent
+        agent={event.agent}
+        kind={event.kind}
+        said={event.said}
+        defaultOpen={defaultOpen}
+      />
+    )
+  }
+  switch (event.kind) {
     case 'asked':
       return (
         <AnsweredEvent
@@ -587,15 +500,6 @@ function bodyOf(event: TraceEventRecord, defaultOpen: boolean, back: string): Re
           marker={event.marker ?? ''}
           back={back}
           defaultOpen={defaultOpen}
-        />
-      )
-    case 'thought':
-      return (
-        <ThoughtEvent
-          agent={event.agent}
-          text={event.text ?? ''}
-          defaultOpen={defaultOpen}
-          eventId={eventId}
         />
       )
     case 'tool':
@@ -622,8 +526,6 @@ function bodyOf(event: TraceEventRecord, defaultOpen: boolean, back: string): Re
           eventId={eventId}
         />
       )
-    case 'progress':
-      return <ProgressNote note={event.note ?? ''} />
     case 'settled':
       return event.state === undefined ? (
         <BareKind kind={event.kind} />
@@ -636,8 +538,6 @@ function bodyOf(event: TraceEventRecord, defaultOpen: boolean, back: string): Re
       ) : (
         <PricedEvent minutes={event.minutes} itemisation={event.itemisation ?? ''} />
       )
-    case 'failed':
-      return <FailedEvent cause={event.cause ?? ''} />
     default:
       return <BareKind kind={event.kind} />
   }

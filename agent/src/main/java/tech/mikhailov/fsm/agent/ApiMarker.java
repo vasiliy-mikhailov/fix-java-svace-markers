@@ -363,6 +363,10 @@ final class ApiMarker {
         long at = num(Dashboard.field(e, "at"));
         b.append("\"at\":").append(at == 0 ? "null" : String.valueOf(at));
         b.append(",\"kind\":").append(quote(Dashboard.field(e, "kind")));
+        // THE BODY, COMPOSED ONCE — see Body. For the kinds that are only words this is the whole
+        // event, and the page draws it without knowing which kind put it there.
+        b.append(",\"said\":").append(text(Body.carries(Dashboard.field(e, "kind"))
+                ? Body.of(e) : ""));
         b.append(",\"agent\":").append(quote(who(e)));
         b.append(",\"prompt\":").append(text(Dashboard.field(e, "prompt")));
         b.append(",\"reply\":").append(text(Dashboard.field(e, "reply")));

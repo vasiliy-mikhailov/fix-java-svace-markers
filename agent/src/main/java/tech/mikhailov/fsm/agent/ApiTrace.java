@@ -138,24 +138,14 @@ final class ApiTrace {
         // that also owns the marker page's title, so the link and its destination keep matching.
         b.append(",\"marker\":").append(orNull(marker));
         b.append(",\"agent\":").append(orNull(Dashboard.field(e, "agent")));
+        // THE BODY, FOR EVERY KIND THAT IS ONLY WORDS — see Body. The cases below are the ones
+        // that draw structure rather than prose, and they are the only ones left.
+        if (Body.carries(kind)) {
+            b.append(",\"text\":").append(quote(Body.of(e)));
+        }
         switch (kind) {
             case "asked" -> b.append(",\"prompt\":").append(quote(Dashboard.field(e, "prompt")))
                     .append(",\"reply\":").append(quote(Dashboard.field(e, "reply")));
-            // WHAT WENT DOWN THE WIRE. A kind with no case here reaches the page carrying nothing
-            // but its name, which is how `sent` rows drew an empty fold on every lane.
-            // `system` is a real kind and easy to miss — the run-level prompt, which reached this
-            // page with its name and nothing else.
-            case "system" -> b.append(",\"prompt\":").append(quote(Dashboard.field(e, "prompt")));
-            // WHAT THE CALL COST. `finish` is the server's own reason, so LENGTH — a
-            // generation stopped at the cap — is distinguishable from a model that ended.
-            case "metered" -> b.append(",\"finish\":")
-                    .append(quote(Dashboard.field(e, "finish")))
-                    .append(",\"input\":").append(number(Dashboard.field(e, "input")))
-                    .append(",\"output\":").append(number(Dashboard.field(e, "output")))
-                    .append(",\"ms\":").append(number(Dashboard.field(e, "ms")));
-            case "sent" -> b.append(",\"role\":").append(quote(Dashboard.field(e, "role")))
-                    .append(",\"text\":").append(quote(Dashboard.field(e, "text")));
-            case "thought" -> b.append(",\"text\":").append(quote(Dashboard.field(e, "text")));
             // `arguments` is JSON that was itself a JSON string, so field() has already peeled one
             // level and it arrives as ordinary text with real newlines. It is text to display, not
             // JSON to re-parse.
@@ -171,7 +161,6 @@ final class ApiTrace {
                     .append(",\"passed\":").append(flag(Dashboard.field(e, "passed")))
                     .append(",\"infra\":").append(flag(Dashboard.field(e, "infra")))
                     .append(",\"summary\":").append(quote(Dashboard.field(e, "summary")));
-            case "progress" -> b.append(",\"note\":").append(quote(Dashboard.field(e, "note")));
             // THE STATE ON SCREEN IS NOT THE STATE IN THE FILE. Resolved through Run rather than
             // sent raw: `proving` with no claim directory behind it is `interrupted`, and a client
             // shown the raw word draws a pulsing blue pill for a container that died an hour ago.
@@ -189,11 +178,6 @@ final class ApiTrace {
             case "priced" -> b.append(",\"minutes\":").append(number(Dashboard.field(e, "minutes")))
                     .append(",\"itemisation\":")
                     .append(quote(Dashboard.field(e, "itemisation")));
-            // WITH THE STACK, which the page does not show and nothing else serves.
-            // "NullPointerException: null" names no line and no cause, and a record that cannot
-            // locate its own failure sends a reader to a container log that does not have it.
-            case "failed" -> b.append(",\"cause\":").append(quote(Dashboard.field(e, "cause")))
-                    .append(",\"stack\":").append(quote(Dashboard.field(e, "stack")));
             default -> { }
         }
         return b.append('}').toString();

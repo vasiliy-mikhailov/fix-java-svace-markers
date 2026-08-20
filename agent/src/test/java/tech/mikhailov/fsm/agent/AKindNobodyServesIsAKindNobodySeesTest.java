@@ -75,12 +75,23 @@ class AKindNobodyServesIsAKindNobodySeesTest {
     void everyKindIsServed() throws Exception {
         // These two switch on kind and drop what they have no case for. The marker page's own
         // endpoint builds events flat, so it is checked by field instead, below.
+        // TWO ROUTES NOW, AND EVERY KIND TAKES EXACTLY ONE. A kind that is only words is composed
+        // by `Body` and reaches the page as `text`, so it needs no case; a kind that draws structure
+        // — a lamp, two folds, a pill, a rating — keeps one. What must not happen is a kind taking
+        // NEITHER route, which is the original failure, or BOTH, which is the second copy coming
+        // back by another door.
         List<String> missing = new ArrayList<>();
         for (String endpoint : List.of("ApiTrace.java", "ApiOverwatch.java")) {
             String source = source(endpoint);
             for (String kind : kinds()) {
-                if (!source.contains("case \"" + kind + "\"")) {
+                boolean cased = source.contains("case \"" + kind + "\"");
+                boolean composed = Body.carries(kind);
+                if (!cased && !composed) {
                     missing.add(endpoint + " serves no `" + kind + "`");
+                }
+                if (cased && composed) {
+                    missing.add(endpoint + " serves `" + kind + "` twice — Body composes it AND a "
+                            + "case shapes it, which is how the two disagree later");
                 }
             }
         }
