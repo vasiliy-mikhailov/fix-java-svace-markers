@@ -370,10 +370,13 @@ const BUTTON: Style = {
 /**
  * THE LABEL NAMES THE ACTION, NOT THE STATE, so it inverts against `expanded` (2153).
  *
- * A rebuilder reading `expanded ? "fold" : "open"` as a state label flips it, and the control then
- * says the opposite of what it does. Default is expanded — `open()` (2374-2376) returns true when
- * the `fold` parameter is ABSENT, on the reasoning that reading a prove is reading the prompts and
- * a fold costs a click on every single thing the reader came for.
+ * A rebuilder reading `expanded ? "clip" : "open"` as a state label flips it, and the control then
+ * says the opposite of what it does.
+ *
+ * DEFAULT IS CLIPPED NOW, and the old reasoning for the opposite is worth keeping because it was
+ * right about a different component: "reading a prove is reading the prompts and a fold costs a
+ * click on every single thing the reader came for". A FOLD did — it showed a label and a byte
+ * count. A CLIP does not: the opening of every body is on the page, and a click buys the rest.
  *
  * The choice stays in the URL because it is a fact about the page, not about this session: it is
  * what makes a folded page shareable, and it is what the Java's live fetch reused off
@@ -382,15 +385,21 @@ const BUTTON: Style = {
 function FoldToggle({ expanded, target }: { expanded: boolean; target: string }) {
   return (
     <a href={target} style={LINK}>
-      {expanded ? 'fold the long parts' : 'open everything'}
+      {expanded ? 'clip the long parts' : 'open everything'}
     </a>
   )
 }
 
-/** `/marker?k=…&a=…`, with the fold choice when it is on. The Java's URLs, unchanged. */
-function tabUrl(key: string, tab: string, folded: boolean): string {
+/**
+ * `/marker?k=…&a=…`, carrying the reader's choice when it is on.
+ *
+ * The parameter names the state being ASKED FOR, not the state being left — which is why the
+ * toggle passes `!expanded` and every other caller passes `expanded` to keep the choice while
+ * changing tab.
+ */
+function tabUrl(key: string, tab: string, full: boolean): string {
   const base = `/marker?k=${encodeURIComponent(key)}${tab === '' ? '' : `&a=${encodeURIComponent(tab)}`}`
-  return href(folded ? `${base}&fold=1` : base)
+  return href(full ? `${base}&open=1` : base)
 }
 
 /* ------------------------------------------------------------------ the summary tab */
@@ -788,9 +797,16 @@ function MarkerScreen() {
   const params = useSearchParams()
   const key = params.get('k') ?? ''
   const tab = params.get('a') ?? ''
-  // PRESENT MEANS FOLDED (`open()` 2374-2376). The parameter's presence is the fact, not its value:
-  // `?fold=1` and `?fold=` both mean the reader asked for everything shut.
-  const expanded = params.get('fold') === null
+  // PRESENT MEANS EVERYTHING IN FULL, and the default is CLIPPED. It was the other way round, on
+  // the reasoning that "reading a prove is reading the prompts and a fold costs a click on every
+  // single thing the reader came for". That was true of a fold, which showed a label and a byte
+  // count; it is not true of a clip, which shows the opening of every body and costs a click only
+  // for the rest. Left as it was, a lane opened with a 9,626-character system prompt drawn whole
+  // and everything after it a scroll away.
+  //
+  // The parameter's presence is the fact, not its value: `?open=1` and `?open=` both mean the
+  // reader asked for everything in full.
+  const expanded = params.get('open') !== null
 
   const [marker, setMarker] = useState<ApiMarker | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
@@ -1076,7 +1092,7 @@ function MarkerScreen() {
             <EmptyNote>Reading what each agent was told&hellip;</EmptyNote>
           ) : (
             <>
-              <FoldToggle expanded={expanded} target={tabUrl(marker.key, 'prompts', expanded)} />
+              <FoldToggle expanded={expanded} target={tabUrl(marker.key, 'prompts', !expanded)} />
               <PromptsTab used={used} expanded={expanded} />
             </>
           )
@@ -1087,8 +1103,8 @@ function MarkerScreen() {
             markerId={marker.id}
             settled={settled}
             expanded={expanded}
-            back={tabUrl(marker.key, 'trace', !expanded)}
-            foldTarget={tabUrl(marker.key, 'trace', expanded)}
+            back={tabUrl(marker.key, 'trace', expanded)}
+            foldTarget={tabUrl(marker.key, 'trace', !expanded)}
           />
         ) : null}
         {isAgentTab ? (
@@ -1099,7 +1115,7 @@ function MarkerScreen() {
               marker={marker}
               agent={tab as AgentName}
               events={agentEvents}
-              back={tabUrl(marker.key, tab, !expanded)}
+              back={tabUrl(marker.key, tab, expanded)}
             />
           )
         ) : null}

@@ -24,8 +24,15 @@ const KEY =
   'https://github.com/WebGoat/WebGoat.git|src/main/java/org/owasp/webgoat/lessons/sqlinjection/introduction/SqlInjectionLesson5b.java|41|TAINTED_PTR'
 
 const RECORD = `/marker?k=${encodeURIComponent(KEY)}&a=trace`
-/** The same page with the reader's fold asked for, which is where clipping applies. */
-const FOLDED = `${RECORD}&fold=1`
+/**
+ * The same page with everything asked for in full.
+ *
+ * CLIPPED IS THE DEFAULT NOW, so the two tests below that check clipping use the plain URL. They
+ * used to append `&fold=1`, and when the parameter was replaced they kept passing — against a page
+ * whose default had become the thing they were asking for. A test that passes because the URL it
+ * builds no longer means anything is a test that has stopped looking.
+ */
+const OPENED = `${RECORD}&open=1`
 
 /** The feed's rows, in the order the page drew them. */
 async function rows(page: import('@playwright/test').Page) {
@@ -84,7 +91,7 @@ test.describe('the record tab', () => {
   })
 
   test('clips a long body rather than drawing it whole', async ({ page }) => {
-    await page.goto(FOLDED)
+    await page.goto(RECORD)
     await rows(page)
     // The task is one enormous line, which is the case the line-count bound waved through.
     const shown = await page.locator('pre').filter({ hasText: 'WHAT TAINTED_PTR REPORTS' }).first().innerText()
@@ -94,7 +101,7 @@ test.describe('the record tab', () => {
   })
 
   test('and the whole body is one click away, never truncated for good', async ({ page }) => {
-    await page.goto(FOLDED)
+    await page.goto(RECORD)
     await rows(page)
     // THE CONTROL THAT BELONGS TO THIS BODY, not the first one on the page: several rows clip, and
     // clicking somebody else's expander proves only that the page has more than one.
@@ -106,6 +113,14 @@ test.describe('the record tab', () => {
     const clipped = (await pre.innerText()).length
     await fold.getByRole('button', { name: /show all/ }).click()
     await expect.poll(async () => (await pre.innerText()).length).toBeGreaterThan(clipped)
+  })
+
+  test('and `open=1` gives the whole body with no control left to press', async ({ page }) => {
+    await page.goto(OPENED)
+    await rows(page)
+    const pre = page.locator('pre').filter({ hasText: 'WHAT TAINTED_PTR REPORTS' }).first()
+    const shown = (await pre.innerText()).length
+    expect(shown, 'the reader asked for everything and got a clip').toBeGreaterThan(2000)
   })
 
   test('puts what a call cost AFTER the reasoning it paid for', async ({ page }) => {
