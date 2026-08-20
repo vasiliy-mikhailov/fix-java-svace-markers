@@ -1,11 +1,9 @@
-import type { CSSProperties } from 'react'
-
 /**
- * A style object that may also carry CSS custom properties.
+ * THE STYLE TYPE, FROM `ratchet-ui`.
  *
- * `React.CSSProperties` has no index signature, so `{'--tone': …}` is a type error without this.
- * It exists so that a component can set a token ONCE and then refer to it from three declarations
- * (text, background, border) instead of repeating `var(--state-infra)` three times and letting one
- * of the three drift.
+ * Two lines both sides, identical apart from which token the prose quoted — the one file in the
+ * move where there was nothing to weigh. Re-exported rather than deleted so the twenty-odd
+ * `import type { Style } from './style'` lines do not have to move, and so this file stays the
+ * place somebody looks for the answer.
  */
-export type Style = CSSProperties & Record<`--${string}`, string | number>
+export type { Style } from 'ratchet-ui/components'

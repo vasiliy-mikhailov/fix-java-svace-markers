@@ -18,6 +18,32 @@
  */
 
 :root {
+  /* THE TEN NAMES `ratchet-ui` READS, and eight of them reproduce a map this repository already
+     held in TypeScript. The shared components carry no palette: their own tokens.css is a drab
+     achromatic ramp belonging to nobody, so the colours stay here, in this file, where what a
+     disposition looks like is already decided.
+
+     `:root` ONLY, never `.dark`. These alias names the dark block already redefines, and custom
+     property substitution resolves against the computed value on the element — so one declaration
+     follows the theme on its own. */
+
+  /* Pill's TONE record, moved out of TypeScript. Same six pairs, same colours. */
+  --state-good: var(--state-verified-pr-ready);
+  --state-warn: var(--state-needs-review);
+  --state-quiet: var(--state-false-positive);
+  --state-alarm: var(--state-infra);
+  --state-running: var(--state-proving);
+  --state-aside: var(--state-by-design);
+
+  /* ProgressBar's gradient, unchanged. */
+  --state-progress-from: var(--state-proving);
+  --state-progress-to: var(--state-verified-pr-ready);
+
+  /* NEW, and nothing renders them until a Tally is given a tone. A count that MOVED is not a
+     disposition, so these point at the supervisor's vocabulary rather than at a marker's. */
+  --state-count-good: var(--verdict-holds);
+  --state-count-alarm: var(--verdict-refuted);
+
   /* === What a marker settled as ===
      Proved and shippable reads as success; argued away reads as informational; needs-review is the
      one asking for a person and is the only warm colour, deliberately — there are usually few. */

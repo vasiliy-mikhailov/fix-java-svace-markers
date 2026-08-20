@@ -4,6 +4,20 @@
 
 @source "../app";
 @source "../../../packages/ui/src";
+/* AND THE INSTALLED PACKAGE, WHICH FAILS SILENTLY WITHOUT THIS LINE. `Pill` puts the one Tailwind
+   animation utility this repository uses on the dot that marks a moving row. The globs above do not
+   cover `node_modules`, so without this the utility stops being emitted, the dot stops moving, and
+   nothing fails: it is not in the exported HTML either, because a running pill exists only at run
+   time from fetched data.
+
+   THE UTILITY IS NOT NAMED IN THIS COMMENT ON PURPOSE. Tailwind scans this stylesheet too, so
+   spelling the class here emits it from the prose — which is how the test guarding this first
+   passed with the line below deleted.
+
+   `@source` RESOLVES RELATIVE TO THIS STYLESHEET, not the project root — which is why the line
+   above starts with three `../`. And `dist`, not `src`: pnpm honours the package's `files`, which
+   ships `dist` plus one stylesheet, so a glob at `src` scans no component and finds no class. */
+@source "../../../packages/ui/node_modules/ratchet-ui/dist";
 
 body {
   background: var(--bg-canvas);

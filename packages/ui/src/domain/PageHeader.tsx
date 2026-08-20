@@ -1,18 +1,27 @@
 import type { ReactNode } from 'react'
-import type { Style } from '../primitives'
+import { CORNER, PageHeader as Shared, type Crumb } from 'ratchet-ui/components'
+
+export type { Crumb }
 import { FindingsButton } from './FindingsButton'
 
 /**
- * Somewhere to go back to.
+ * THE PAGE HEADER, FROM `ratchet-ui`, WITH THE CORNER STILL GUARANTEED.
  *
- * A LABEL IS NOT A DESTINATION, which is what the Java assumed: `head(title, sub, back)` took the
- * words and hard-coded the href as `/` (2468-2469) whatever the words said. Every caller happened
- * to mean "all markers", so the coincidence never bit — and a screen whose back went anywhere else
- * would have shipped a link that lied. Carrying both fields is the port's chance to stop it being
- * a coincidence.
+ * `HEADER`, `TITLE`, `SUB`, `CRUMB` and `ACTIONS` were identical between the two repositories,
+ * declaration for declaration; the private `GEAR` here was the shared `CORNER`, the same six
+ * declarations in the same order. Both had reached `subtitle: ReactNode` independently. There was
+ * nothing in the layout to reconcile.
+ *
+ * <p>THE DIFFERENCE WAS THE CORNER, AND THE SHARED ONE IS MORE GENERAL: it takes `actions`, where
+ * this took a required `findingsOpen` and hard-coded the three controls. Passing `actions` at every
+ * call site would have been the literal translation — and it would have given up the one thing this
+ * version guarantees, that no screen CAN forget the corner, because the component supplies it.
+ * A screen written next year is exactly the one that would forget.
+ *
+ * <p>So the layout is shared and the corner is not. This is the arrangement `ADOPTING.md` itself
+ * recommends: `open` stays required here, `Corner` is passed from here, and the eight call sites
+ * change by zero characters.
  */
-export type Crumb = { label: string; href: string }
-
 export type PageHeaderProps = {
   title: string
   /**
@@ -31,85 +40,35 @@ export type PageHeaderProps = {
   findingsOpen: number
 }
 
-const HEADER: Style = {
-  display: 'flex',
-  alignItems: 'flex-start',
-  gap: '12px',
-  padding: '16px 24px',
-  borderBottom: '1px solid var(--border-soft)',
-}
-
-const TITLE: Style = { margin: 0, fontSize: '14px', fontWeight: 600 }
-
-const SUB: Style = { color: 'var(--text-tertiary)', fontSize: '12px', marginTop: '3px' }
-
-const CRUMB: Style = {
-  display: 'inline-block',
-  marginBottom: '6px',
-  fontSize: '12px',
-  color: 'var(--text-tertiary)',
-  textDecoration: 'none',
-}
-
 /**
- * The three corner controls, in a row rather than at three hand-measured offsets.
+ * The three corner controls every screen wears. Was this component's body; is now its caller's.
  *
- * The Java positioned them absolutely at `right:.9rem`, `2.6rem` and `4.7rem` (CSS 107-118), so
- * adding a fourth meant re-measuring the other three, and the rule at 118 is the same selector
- * repeated after somebody lost that argument once. A flex row cannot drift.
+ * <p>`FindingsButton` does not move and could not: it counts `holds` plus `unjudged`, which is this
+ * pipeline's supervisor vocabulary and nothing shared has any business knowing.
  */
-const ACTIONS: Style = { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '2px' }
-
-const GEAR: Style = {
-  fontSize: '1.25rem',
-  lineHeight: 1,
-  color: 'var(--text-tertiary)',
-  textDecoration: 'none',
-  padding: '0.2rem 0.35rem',
-  borderRadius: '5px',
-}
-
-/**
- * The header all ten screens wear — Java `head()` 2446-2472.
- *
- * WHAT DID NOT COME WITH IT. `head()` also emitted `<style>`, the `LIVE` script and `KEEP_OPEN`
- * (2458-2459), because in a server that concatenates strings the header is simply whatever runs
- * first. None of the three is a header's job here: the stylesheet is the app shell's, SSE is a
- * hook, and fold memory belongs to whoever renders folds — which is also what let `KEEP_OPEN` key
- * folds by DOM position and reopen the wrong one (bug #10).
- *
- * ESCAPING. The Java escaped `title` and not `subtitle`, and only comments kept the two apart.
- * React escapes both; nothing here concatenates markup, so the hole cannot be reopened by a caller
- * who did not read this far.
- *
- * SETTINGS, ASK AND FINDINGS ARE HERE and take no props, because none of them varies by screen.
- * They were once a text link at the BOTTOM of the list, under 356 rows — a link nobody has, since
- * a reader who does not already know the page exists will not scroll past the whole run to find
- * it. Next to each other because all three mean "leave this page and do something", and a reader
- * looking for any of them looks in the same corner.
- */
-export function PageHeader({ title, subtitle, back, findingsOpen }: PageHeaderProps) {
+export function Corner({ open }: { open: number }) {
   return (
-    <header style={HEADER}>
-      <div>
-        {back === undefined ? null : (
-          <a href={back.href} style={CRUMB}>
-            {'← '}
-            {back.label}
-          </a>
-        )}
-        <h1 style={TITLE}>{title}</h1>
-        <div style={SUB}>{subtitle}</div>
-      </div>
-      <div style={ACTIONS}>
-        <FindingsButton open={findingsOpen} />
-        <a href="/chat" style={GEAR} title="ask the supervisor" aria-label="ask the supervisor">
-          <span aria-hidden="true">{'✉'}</span>
-        </a>
-        <a href="/settings" style={GEAR} title="settings" aria-label="settings">
-          <span aria-hidden="true">{'⚙'}</span>
-        </a>
-      </div>
-    </header>
+    <>
+      <FindingsButton open={open} />
+      <a href="/chat" style={CORNER} title="ask the supervisor" aria-label="ask the supervisor">
+        <span aria-hidden="true">{'✉'}</span>
+      </a>
+      <a href="/settings" style={CORNER} title="settings" aria-label="settings">
+        <span aria-hidden="true">{'⚙'}</span>
+      </a>
+    </>
+  )
+}
+
+export function PageHeader({ title, subtitle, back, findingsOpen }: PageHeaderProps) {
+  // SPREAD, NOT `back={back}`. `exactOptionalPropertyTypes` distinguishes an absent property from
+  // one present and undefined, and `/` genuinely has no crumb — the list is where back GOES.
+  return (
+    <Shared
+      title={title}
+      subtitle={subtitle}
+      {...(back === undefined ? {} : { back })}
+      actions={<Corner open={findingsOpen} />}
+    />
   )
 }

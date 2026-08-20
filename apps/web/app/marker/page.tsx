@@ -493,6 +493,8 @@ function SummaryTab({ marker, expanded }: { marker: ApiMarker; expanded: boolean
         </div>
       ) : null}
       {nothing ? (
+        // A WHOLE-PAGE EMPTY STATE, so the room is re-added here rather than in the primitive.
+        <div style={{ padding: '48px 24px' }}>
         <EmptyNote>
           {state === 'proving'
             ? 'This prove is running and has settled nothing yet — the live tab shows what it is saying right now.'
@@ -500,6 +502,7 @@ function SummaryTab({ marker, expanded }: { marker: ApiMarker; expanded: boolean
               ? 'Neither the queue nor the record has heard of this key. Nothing has been proved for it, and nothing is going to be until it is queued.'
               : 'Nothing has been written for this marker yet: no account, no test, no patch and no argument. The record tab shows whether anything has happened at all.'}
         </EmptyNote>
+        </div>
       ) : null}
     </>
   )

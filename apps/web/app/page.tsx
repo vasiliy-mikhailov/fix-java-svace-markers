@@ -171,7 +171,12 @@ export default function MarkersScreen() {
         findingsOpen={run.findingsOpen}
       />
       {markers.length === 0 ? (
-        <EmptyNote>No markers queued and no prove has run.</EmptyNote>
+        // A WHOLE-PAGE EMPTY STATE, so the room is re-added here. `EmptyNote` is a compact italic
+        // line now, which is right beside content and too tight as the only thing on a screen —
+        // and that is a fact about this page rather than about the primitive.
+        <div style={{ padding: '48px 24px' }}>
+          <EmptyNote>No markers queued and no prove has run.</EmptyNote>
+        </div>
       ) : (
         <>
           <RunProgress
