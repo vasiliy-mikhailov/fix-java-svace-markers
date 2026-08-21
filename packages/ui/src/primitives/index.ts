@@ -29,6 +29,9 @@ export { SecretField, type SecretFieldProps } from './SecretField'
 // `tabs`/`current`, `label` is new and required, and it is the `aria-label` a page with more
 // than one nav in it needs.
 export { SectionTabs, type SectionTab, type SectionTabsProps } from 'ratchet-ui/components'
+// A POST, A LANDING, AND FOUR STATES INSTEAD OF TWO. Not a component — it is here because the
+// line these entry points draw is React, not JSX.
+export { NO_REASON, REQUEST_FAILED, useAsk, type Ask, type AskHow, type Landing } from 'ratchet-ui/components'
 export { Tally, type TallyProps } from './Tally'
 export { TextFold, type TextFoldProps } from './TextFold'
 export type { Style } from './style'

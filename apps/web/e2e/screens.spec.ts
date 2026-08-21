@@ -299,3 +299,26 @@ test('the bundle is built for the path it is served from', async ({ page }) => {
     expect(response.status(), `${url} is referenced by / and is not served`).toBeLessThan(400)
   }
 })
+
+test('a departure is never lit, and every bar says what it is a bar for', async ({ page }) => {
+  // TWO PROPERTIES THAT BECAME ARGUMENTS RATHER THAN CODE when `TabRow` became `ratchet-ui`'s
+  // `SectionTabs`. Ours could not light a departure — it took no flag for one — and the shared bar
+  // lights whatever `current` says, which is right for a section of this page wearing a divider and
+  // wrong for a link that leaves it. `current: false` at the call site is now the only thing keeping
+  // that true, and dropping it would light "settings" on every supervisor view with nothing failing.
+  //
+  // `label` is the other half: it is required by the shared component and it is the `aria-label`
+  // this page needs, having more than one nav in it.
+  await page.goto('/overwatch/')
+  const bar = page.getByRole('navigation', { name: "the supervisor's views" })
+  await expect(bar).toBeVisible({ timeout: 15_000 })
+
+  const departure = bar.getByRole('link', { name: 'settings', exact: true })
+  await expect(departure).toBeVisible()
+  expect(await departure.getAttribute('aria-current'),
+    'lighting a departure claims the reader is already there').toBeNull()
+
+  // And exactly one tab in the set IS lit, so this is not passing because nothing is ever lit.
+  const lit = bar.locator('a[aria-current="page"]')
+  expect(await lit.count(), 'the view you are on, and only that one').toBe(1)
+})

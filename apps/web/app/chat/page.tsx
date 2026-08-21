@@ -13,6 +13,7 @@ import {
   type ChatTurnData,
   type Crumb,
   type Style,
+  useAsk,
 } from '@fsm/ui'
 import { AGENTS, type AgentName, type MarkerId, type MarkerKey } from '@fsm/types'
 
@@ -205,15 +206,6 @@ async function put(question: string): Promise<string> {
 export default function ChatScreen() {
   const [chat, setChat] = useState<ApiChat | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
-  /**
-   * WHAT `Chat.ask()` SAID, AND IT IS TRANSIENT NOW.
-   *
-   * It travelled in `?said=` so that the 303 could carry it, which meant it survived every one of
-   * the three-second refreshes: a notice about a question asked ten minutes ago sat under the
-   * conversation until somebody edited the URL. Here it is state from the POST and goes when the
-   * next one is made.
-   */
-  const [said, setSaid] = useState('')
 
   const answering = chat?.answering ?? false
   const turns = chat?.turns ?? []
@@ -271,33 +263,52 @@ export default function ChatScreen() {
    * question is not in the record at all, so the transcript above is complete and the draft is the
    * only copy left. So: post, re-read, and let what came back decide. The box is remounted (and the
    * draft dropped) only once the turn is in the conversation.
+   *
+   * THE ROUND TRIP IS INSIDE `send`, WHICH IS THE WHOLE REASON THIS ONE CLOSURE COULD TAKE `useAsk`
+   * AND THE FOUR ON THE SETTINGS PAGE COULD NOT. `useAsk` reads the landing from whatever `send`
+   * resolves to and does not await `onAnswer`, so a page that posts and then re-reads in `onAnswer`
+   * would clear `busy` while the document under it was still the old one. Whether THIS question
+   * landed is not knowable from the POST, so the re-read is part of the ask rather than something
+   * that happens after it — and `busy` then spans the whole trip, which closes a window this page
+   * had open: between the post and the re-read `AskBox` was live with a stale `answering`, and a
+   * second click posted a second question.
    */
-  async function ask(question: string) {
-    const before = turns.length
-    let reply: string
-    try {
-      reply = await put(question)
-    } catch (e: unknown) {
-      // Worded apart from `Chat.ask`'s own two sentences on purpose: this one is not the record
-      // refusing the question, it is the question never having reached the record.
-      setSaid(`the question did not reach the dashboard: ${e instanceof Error ? e.message : String(e)}`)
-      return
-    }
-    try {
-      const doc = await fetchChat()
-      setChat(doc)
-      setFailed(null)
+  const asking = useAsk<string, { reply: string; doc: ApiChat | null; before: number }>({
+    send: async question => {
+      const before = turns.length
+      const reply = await put(question)
+      try {
+        return { reply, doc: await fetchChat(), before }
+      } catch (e: unknown) {
+        // A RE-READ THAT FAILS IS NOT A QUESTION THAT WAS REFUSED. The question is in the record;
+        // this page simply cannot see the record, which is the other failure entirely and the one
+        // `Loaded` draws. Caught here so it never reaches `useAsk` as a refusal.
+        setFailed(e instanceof Error ? e.message : String(e))
+        return { reply, doc: null, before }
+      }
+    },
+    read: ({ reply, doc, before }) => {
+      if (reply !== '') {
+        return { landed: false, why: reply }
+      }
       // `Chat.ask` sets the flag and appends the turn before it returns, so a question that was
       // taken is visible in this very read. Nothing new and nothing running means it was not taken
       // and nobody said why — which must not be drawn as the silence of a question being answered.
-      if (reply === '' && !doc.answering && doc.turns.length === before) {
-        reply = 'the question was not written down — nothing was added to the conversation. Ask again.'
+      if (doc !== null && !doc.answering && doc.turns.length === before) {
+        return {
+          landed: false,
+          why: 'the question was not written down — nothing was added to the conversation. Ask again.',
+        }
       }
-    } catch (e: unknown) {
-      setFailed(e instanceof Error ? e.message : String(e))
-    }
-    setSaid(reply)
-  }
+      return { landed: true }
+    },
+    onAnswer: ({ doc }) => {
+      if (doc !== null) {
+        setChat(doc)
+        setFailed(null)
+      }
+    },
+  })
 
   // THE THREE STATES, IN ONE PLACE — see `Loaded`. Two early returns before, whose headers said
   // different things and whose waiting branch drew nothing under the title.
@@ -371,7 +382,7 @@ export default function ChatScreen() {
         ) : null}
         {/* Renders nothing when the question was taken. It is not a turn and is not styled as one:
             "could not write the question down" says the question is NOT in the record above it. */}
-        <AskNotice said={said} />
+        <AskNotice said={asking.refused} />
         {/*
           REMOUNTED BY THE RECORD. `AskBox` deliberately keeps the draft through a refusal — the
           only confirmation this design has is the box going disabled — so the draft is dropped
@@ -379,7 +390,7 @@ export default function ChatScreen() {
           rather than on the last turn's text: two questions can be the same words in the same
           second, and a key that collided would leave the second one's draft on screen.
         */}
-        <AskBox key={turns.length} answering={chat.answering} onAsk={q => void ask(q)} />
+        <AskBox key={turns.length} answering={chat.answering || asking.busy} onAsk={asking.ask} />
       </div>
     </>
   )
