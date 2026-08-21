@@ -23,13 +23,14 @@ import java.util.Map;
  * calls it". The page writes those sentences at the last moment and so should the client, because a
  * sentence in JSON is a decision the client cannot revisit.
  *
- * <p>TWO SECRETS PASS THROUGH THIS FILE AND NEITHER LEAVES IT. The model page renders the API key
- * into its own source, and {@link Tuning} says plainly what that costs — the value is then in
- * whatever caches or screenshots that page — but it buys a reveal button and a copy button behind
- * basic auth. An endpoint has no such excuse: nothing here reveals anything, so it sends whether a
- * key is set and where it came from, and never the key. The git token is the same and worse: it is
- * kept out of the clone URL precisely so it never reaches a process list or a log
- * ({@link Subject#saveToken}), and an endpoint that handed it back would undo that on its own.
+ * <p>TWO SECRETS PASS THROUGH THIS FILE AND EXACTLY ONE OF THEM LEAVES IT. The API key does, at
+ * the owner's instruction: a field you can overwrite but never read is a field that cannot tell you
+ * WHICH key is in force, which is the question somebody changing it actually has. That is the same
+ * bargain the Java page struck, and the same cost — the value reaches whatever caches, network logs
+ * and screenshots that page reaches, and the dashboard password now reads the credential rather than
+ * only replacing it. The git token does NOT, and the difference is not squeamishness: it is kept out
+ * of the clone URL precisely so it never reaches a process list or a log ({@link Subject#saveToken}),
+ * and an endpoint that handed it back would undo that on its own.
  *
  * <p>No {@code findingsOpen} in these four documents, though {@code head()} draws that badge on
  * every page: the count is already served, for every screen at once, by {@code /api/badges}
@@ -69,12 +70,23 @@ final class ApiSettings {
             b.append(quote(e.getKey())).append(':').append(quote(e.getValue()));
         }
         b.append('}');
-        // WHETHER, AND FROM WHERE — never the key itself. See the note on this class.
+        // WHETHER, FROM WHERE, AND — SINCE THE OWNER ASKED FOR IT BACK — THE KEY ITSELF.
+        //
+        // The Java page rendered it and bought a reveal button and a copy button for the cost; this
+        // endpoint refused to, and the field above it was therefore a box you could overwrite blind
+        // and never read. Restoring it restores the old bargain, and the cost is the old cost: the
+        // value is now in whatever caches, network logs or screenshots that page reaches, and anyone
+        // holding the dashboard password can READ the credential rather than only replace it.
+        //
+        // The git token is NOT restored with it and the asymmetry is deliberate: it is kept out of
+        // the clone URL precisely so it never reaches a process list or a log
+        // ({@link Subject#saveToken}), and an endpoint that handed it back would undo that on its own.
         b.append(",\"keySet\":").append(Tuning.keyed());
         // NULL RATHER THAN A GUESS. keyFrom() answers "the environment" when nothing is stored
         // here, which with no key set anywhere would read as "the environment has one" — and the
         // screen that believed it would stop shouting NO KEY SET while nothing answers.
         b.append(",\"keyFrom\":").append(Tuning.keyed() ? quote(Tuning.keyFrom()) : "null");
+        b.append(",\"key\":").append(quote(Tuning.apiKey()));
         return b.append('}').toString();
     }
 

@@ -1146,9 +1146,14 @@ public final class Prove {
                         // missing a turn because somebody forgot to write one down.
                         .listeners(java.util.List.of(connector))
                         .baseUrl(base)
-                        // THE KEY IS NOT A SETTING. Everything else here is a parameter; a
-                        // credential is not, and it stays where a deploy put it.
-                        .apiKey(env("QWEN_API_KEY"))
+                        // THE KEY IS A SETTING NOW, AND SAYING SO COST A BUG. It used to read the
+                        // environment directly on the stated grounds that a credential is not a
+                        // parameter — while the settings page told every reader "the agents are
+                        // using the key from this page". Both were defensible and together they
+                        // were a lie: a key saved on that page changed the page and nothing else.
+                        // `Tuning.apiKey()` is the store with the environment underneath, so a
+                        // deploy that sets no key still works exactly as it did.
+                        .apiKey(key())
                         .modelName(Tuning.model())
                         .temperature(Tuning.temperature())
                         .returnThinking(true)
@@ -1175,6 +1180,21 @@ public final class Prove {
         }
         return new Thinking(built.build(), overheard, connector, trace, agent, patience,
                 Tuning.ceiling());
+    }
+
+    /**
+     * The key in force: what the settings page holds, or the environment underneath it.
+     *
+     * <p>Blank is still fatal and still says {@code QWEN_API_KEY}, because a deploy with no key
+     * anywhere is a deploy whose first call would 401, and the environment is where a deploy puts
+     * one. {@link Tuning#apiKey()} already falls back to it; this only keeps the failure loud.
+     */
+    private static String key() {
+        String value = Tuning.apiKey();
+        if (value.isBlank()) {
+            throw new IllegalStateException("QWEN_API_KEY is not set");
+        }
+        return value;
     }
 
     private static String env(String name) {

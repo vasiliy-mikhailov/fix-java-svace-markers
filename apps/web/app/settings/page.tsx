@@ -204,6 +204,14 @@ type ApiModel = {
   keySet: boolean
   /** Null when no key is set anywhere — `keyFrom()` would otherwise answer "the environment". */
   keyFrom: string | null
+  /**
+   * THE KEY ITSELF, and the endpoint's own note says what serving it costs.
+   *
+   * "" when none is set anywhere. It is here because a field you can overwrite but never read
+   * cannot answer the question somebody changing a key actually has, which is WHICH key is in
+   * force — and the reveal and copy buttons beside it were bought and then had nothing to reveal.
+   */
+  key: string
 }
 
 type ApiSubject = {
@@ -572,6 +580,10 @@ function ModelTab({ findingsOpen }: { findingsOpen: number }) {
   useEffect(() => {
     if (data !== null) {
       setValues({ ...NO_VALUES, ...data.values })
+      // AND THE KEY WITH THEM, for the same reason: the box shows what is IN FORCE, not what was
+      // last typed into it. That is the question somebody changing a key has, and a write-only
+      // field could not answer it.
+      setApiKey(data.key)
     }
   }, [data])
 
@@ -579,9 +591,9 @@ function ModelTab({ findingsOpen }: { findingsOpen: number }) {
     try {
       await post(new URLSearchParams({ setting: 'model', ...fields }))
       setTrouble(null)
-      // The key never appears in the reply — the record refuses to serve it — so the box is cleared
-      // by hand once it has been sent, and the checkbox with it.
-      setApiKey('')
+      // The reply carries the key now and the effect above re-seeds the box from it, so only the
+      // checkbox is cleared here. Blanking the box by hand would empty a field that is about to be
+      // refilled with the value just saved, which reads as the save having lost it.
       setForget(false)
       await reload()
     } catch (e: unknown) {
@@ -645,7 +657,7 @@ function ModelTab({ findingsOpen }: { findingsOpen: number }) {
           label="API key"
           value={apiKey}
           onChange={setApiKey}
-          help="Blank leaves the stored key alone, so a browser that clears this box cannot silently unset it and leave every agent talking to an endpoint that refuses them. It starts blank because the record sends whether a key is set and never the key itself — use the checkbox to drop one saved here."
+          help="This is the key in force — the one every prover is given. Blank leaves it alone rather than clearing it, so a browser that empties this box cannot silently unset the credential and leave every agent talking to an endpoint that refuses them; use the checkbox to drop a key saved here and fall back to the environment's."
         />
         <ForgetKeyChoice keySource={keySource} checked={forget} onChange={setForget} />
         {FIELDS.map(field => (
