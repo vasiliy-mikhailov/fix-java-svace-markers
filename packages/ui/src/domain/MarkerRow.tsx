@@ -1,6 +1,5 @@
 import type { MarkerKey, MarkerState, Severity } from '@fsm/types'
-import type { Style } from '../primitives'
-import { CELL, HumanCost, ROW, TimeSpent } from 'ratchet-ui/components'
+import { type Column, HumanCost, TimeSpent } from 'ratchet-ui/components'
 import { MarkerIdentity } from './MarkerIdentity'
 import { Semaphore } from './Semaphore'
 import { SeverityBadge } from './SeverityBadge'
@@ -56,11 +55,6 @@ export type MarkerRowData = {
   flagged: FlaggedSource | null
 }
 
-export type MarkerRowProps = { marker: MarkerRowData }
-
-/** Java's `td.why` (CSS 61). An argument set across the full width of a screen is unreadable. */
-const WHY: Style = { ...CELL, maxWidth: '44em' }
-
 /**
  * ONE ROW READS AS ONE SENTENCE, LEFT TO RIGHT: how bad, what and where, what we decided, why, what
  * it cost (Java comment 1711-1715).
@@ -71,35 +65,40 @@ const WHY: Style = { ...CELL, maxWidth: '44em' }
  * running marker said; it is gone because a running marker's progress note IS its `why` until it has
  * a better one, and repeating it at the far right made a reader cross the table to find out whether
  * anything was happening.
+ *
+ * THIS WAS A `<tr>` AND IS NOW SIX RENDER FUNCTIONS. The two dashboards factored the same table on
+ * OPPOSITE axes: the sibling pulled out the SHELL and left its cells written inline, and this pulled
+ * out the CELLS over a shell copied privately into two files. Converged, the shell is theirs and the
+ * cells are ours — `ratchet-ui` ships no cells at all, and the per-column render prop is the joint
+ * that lets this factoring survive as a shape rather than as code. The headings are here rather than
+ * in the table because a heading and the cell that fills it are one decision.
  */
-export function MarkerRow({ marker }: MarkerRowProps) {
-  return (
-    // The hover band is the one thing on this table a token cannot express — a pseudo-class needs a
-    // rule, not an inline style — so it is a Tailwind utility over a portal token. Six columns is
-    // wide enough that losing your line while reading across is a real cost; a consumer whose
-    // Tailwind does not scan this package loses the band and nothing else.
-    <tr className="hover:bg-[var(--state-hover-bg)]" style={ROW}>
-      <td style={CELL}>
-        <SeverityBadge severity={marker.severity} />
-      </td>
-      <td style={CELL}>
-        <MarkerIdentity
-          markerKey={marker.key}
-          file={marker.file}
-          line={marker.line}
-          checker={marker.checker}
-        />
-      </td>
-      <td style={CELL}>
-        {/*
-         * PROVING IS THE ONE STATE THAT IS STILL HAPPENING (1758-1760), so it alone is a link, to the
-         * live tab. Every other word in this column is a conclusion and reads fine as text; this one
-         * is a question — what is it doing — and the answer is one page away.
-         *
-         * The caller decides that, not the badge: `href` is spread in rather than passed as
-         * `undefined` because `exactOptionalPropertyTypes` makes those two different things, and an
-         * absent prop is what "this pill is not a link" means.
-         */}
+export const MARKER_COLUMNS: Column<MarkerRowData>[] = [
+  { head: 'severity', cell: marker => <SeverityBadge severity={marker.severity} /> },
+  {
+    head: 'marker',
+    cell: marker => (
+      <MarkerIdentity
+        markerKey={marker.key}
+        file={marker.file}
+        line={marker.line}
+        checker={marker.checker}
+      />
+    ),
+  },
+  {
+    head: 'state',
+    /*
+     * PROVING IS THE ONE STATE THAT IS STILL HAPPENING (1758-1760), so it alone is a link, to the
+     * live tab. Every other word in this column is a conclusion and reads fine as text; this one
+     * is a question — what is it doing — and the answer is one page away.
+     *
+     * The caller decides that, not the badge: `href` is spread in rather than passed as
+     * `undefined` because `exactOptionalPropertyTypes` makes those two different things, and an
+     * absent prop is what "this pill is not a link" means.
+     */
+    cell: marker => (
+      <>
         <StateBadge
           state={marker.state}
           {...(marker.state === 'proving'
@@ -107,22 +106,35 @@ export function MarkerRow({ marker }: MarkerRowProps) {
             : {})}
         />
         <Semaphore flags={marker.flags} state={marker.state} />
-      </td>
-      <td style={WHY}>
-        <WhatHappened
-          markerKey={marker.key}
-          headline={marker.headline}
-          verdictText={marker.verdictText}
-          lastNote={marker.lastNote}
-          flagged={marker.flagged}
-        />
-      </td>
-      <td style={CELL}>
-        <TimeSpent ms={marker.spanMs > 0 ? marker.spanMs : null} events={marker.events} />
-      </td>
-      <td style={CELL}>
-        <HumanCost minutes={marker.humanMinutes > 0 ? marker.humanMinutes : null} />
-      </td>
-    </tr>
-  )
-}
+      </>
+    ),
+  },
+  {
+    head: 'interpretation',
+    /** Java's `td.why` (CSS 61). An argument set across the full width of a screen is unreadable. */
+    cellStyle: { maxWidth: '44em' },
+    cell: marker => (
+      <WhatHappened
+        markerKey={marker.key}
+        headline={marker.headline}
+        verdictText={marker.verdictText}
+        lastNote={marker.lastNote}
+        flagged={marker.flagged}
+      />
+    ),
+  },
+  // THE TWO MEASURED COLUMNS GO RIGHT. They were left-aligned here and right-aligned in the sibling,
+  // and a column of numbers a reader scans down compares on its last digit.
+  {
+    head: 'took',
+    align: 'right',
+    cell: marker => (
+      <TimeSpent ms={marker.spanMs > 0 ? marker.spanMs : null} events={marker.events} />
+    ),
+  },
+  {
+    head: 'a person would have',
+    align: 'right',
+    cell: marker => <HumanCost minutes={marker.humanMinutes > 0 ? marker.humanMinutes : null} />,
+  },
+]

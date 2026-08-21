@@ -1,5 +1,5 @@
-import { HEAD, TABLE } from 'ratchet-ui/components'
-import { MarkerRow, type MarkerRowData } from './MarkerRow'
+import { DataTable } from 'ratchet-ui/components'
+import { MARKER_COLUMNS, type MarkerRowData } from './MarkerRow'
 
 export type MarkerTableProps = {
   /**
@@ -17,35 +17,22 @@ export type MarkerTableProps = {
   markers: MarkerRowData[]
 }
 
-/**
- * The six headings, in the order the row reads. They are prose, not field names: "a person would
- * have" says what the last column is FOR, where "minutes" would have said what it holds.
- */
-const COLUMNS = ['severity', 'marker', 'state', 'interpretation', 'took', 'a person would have']
-
 /** Every marker the run was given — including the ones it has not reached. */
 export function MarkerTable({ markers }: MarkerTableProps) {
   return (
-    <table style={TABLE}>
-      <thead>
-        <tr>
-          {COLUMNS.map((column) => (
-            <th key={column} style={HEAD} scope="col">
-              {column}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {markers.map((marker) => (
-          // KEYED BY THE MARKER KEY, never by index. React reuses DOM by key, and the fold in the
-          // the `interpretation` cell holds open state: keyed by position, a marker settling above another
-          // one hands its open fold to a different marker's argument. It is the same failure the
-          // Java's fold memory had for the same reason (catalogue #10), and the row is where it would
-          // come back.
-          <MarkerRow key={marker.key} marker={marker} />
-        ))}
-      </tbody>
-    </table>
+    <DataTable
+      rows={markers}
+      columns={MARKER_COLUMNS}
+      // KEYED BY THE MARKER KEY, never by index. React reuses DOM by key, and the fold in the
+      // `interpretation` cell holds open state: keyed by position, a marker settling above another
+      // one hands its open fold to a different marker's argument. It is the same failure the Java's
+      // fold memory had for the same reason (catalogue #10).
+      rowKey={marker => marker.key}
+      // THE HOVER BAND STAYS IN THIS SOURCE, DELIBERATELY. A Tailwind utility only exists if the
+      // consumer's own generator saw the literal somewhere it scans; a class shipped from inside
+      // `node_modules` is a rule that may simply never be emitted, with no error and no failing
+      // test. Passed from here, our own `@source "../src"` glob covers it.
+      rowClassName="hover:bg-[var(--state-hover-bg)]"
+    />
   )
 }
