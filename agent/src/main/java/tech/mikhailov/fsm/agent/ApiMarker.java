@@ -157,8 +157,14 @@ final class ApiMarker {
         // A KEY NEITHER THE QUEUE NOR THE RECORD HAS HEARD OF HAS NO STATE. `queued` would be a
         // claim about a queue this marker is not in.
         b.append(",\"state\":").append(row == null ? "null" : quote(row.state()));
-        b.append(",\"redVerified\":").append(flag(settled, "red_verified"));
-        b.append(",\"greenVerified\":").append(flag(settled, "green_verified"));
+        // FROM THE LAST ROW THAT REPORTED A BUILD, WHICH IS NOT ALWAYS `settled`. An `infra` row is
+        // not `proving`, so it becomes the settling row — and it carries red_verified=false because
+        // a note has no build to report. Reading the flags off it says "we ran the test and it did
+        // not fail" about a prove that died fetching its checkout. `settled` still has to be the
+        // infra row, because `infra_reason` is on it and nowhere else.
+        String built = built(settlements, key);
+        b.append(",\"redVerified\":").append(flag(built, "red_verified"));
+        b.append(",\"greenVerified\":").append(flag(built, "green_verified"));
         b.append(",\"testPath\":").append(text(testPath));
         b.append(",\"testCode\":").append(text(testCode));
         b.append(",\"fixDiff\":").append(text(fixDiff));
@@ -422,6 +428,29 @@ final class ApiMarker {
      * — so the same rule {@link Run} uses for the state decides these too, and a marker still in
      * flight reports null rather than a denial.
      */
+    /**
+     * The last row for this marker that actually reported a build, or "" if none has.
+     *
+     * <p>ASKED OF THE ROW RATHER THAN OF A LIST OF STATE NAMES: {@link Settlement#note}'s
+     * four-argument form omits both fields now, so their absence is the answer. The {@code infra}
+     * clause covers rows written before that was true and can go when none is left.
+     *
+     * <p>A marker that reproduced and then failed on infra keeps its RED, which is also correct: the
+     * test really did fail once, and the later failure is not evidence against it.
+     */
+    private static String built(Path settlements, String key) {
+        String row = "";
+        for (String line : Dashboard.lines(settlements)) {
+            if (!Dashboard.field(line, "suspicion_key").equals(key)
+                    || Dashboard.field(line, "red_verified").isBlank()
+                    || Dashboard.field(line, "state").equals("infra")) {
+                continue;
+            }
+            row = line;
+        }
+        return row;
+    }
+
     private static String settled(Path settlements, String key) {
         String row = "";
         for (String line : Dashboard.lines(settlements)) {

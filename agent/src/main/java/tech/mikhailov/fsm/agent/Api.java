@@ -86,6 +86,8 @@ final class Api {
         // So: the last row that is not `proving`, the same rule Run uses for the state itself, and
         // null when there is no such row. Absent and false are different answers and the client has
         // to be able to tell them apart — an unlit lamp is not a failed one.
+        //
+        // THE FLAGS THEMSELVES ARE TAKEN ONLY FROM A ROW THAT REPORTED A BUILD — see reportsBuild.
         Map<String, String> verdictText = new LinkedHashMap<>();
         Map<String, Boolean> red = new LinkedHashMap<>();
         Map<String, Boolean> green = new LinkedHashMap<>();
@@ -98,8 +100,15 @@ final class Api {
             if (!text.isBlank()) {
                 verdictText.put(key, text);
             }
-            red.put(key, "true".equals(Dashboard.field(line, "red_verified")));
-            green.put(key, "true".equals(Dashboard.field(line, "green_verified")));
+            // AND ONLY FROM A ROW THAT ACTUALLY REPORTED A BUILD. Skipping `proving` above was half
+            // the rule: an `infra` row is not `proving`, so a prove that died fetching its checkout
+            // walked through this line and wrote a real `false` — the exact claim the note above says
+            // must never be made by accident. It also means a later infra failure no longer erases a
+            // RED that genuinely went red on an earlier attempt.
+            if (reportsBuild(line)) {
+                red.put(key, "true".equals(Dashboard.field(line, "red_verified")));
+                green.put(key, "true".equals(Dashboard.field(line, "green_verified")));
+            }
         }
 
         Map<String, String> severity = severities(settlements);
@@ -254,4 +263,24 @@ final class Api {
         }
         return out;
     }
+
+    /**
+     * Did this row report a build at all?
+     *
+     * <p>ASKED OF THE ROW, NOT OF A LIST OF STATE NAMES. {@link Settlement#note}'s four-argument
+     * form — the {@code proving} note between stages and the {@code infra} note when a prove throws
+     * — now omits the two fields entirely, so their absence IS the answer and a state added later
+     * needs nobody to remember to update anything here.
+     *
+     * <p>The second clause is for rows written before that was true, and only those: the record on
+     * disk is months of {@code infra} lines carrying {@code red_verified=false} because a
+     * {@code boolean} could not say "nothing ran". Delete it when no such line is left.
+     */
+    private static boolean reportsBuild(String line) {
+        if (Dashboard.field(line, "red_verified").isBlank()) {
+            return false;
+        }
+        return !Dashboard.field(line, "state").equals("infra");
+    }
+
 }

@@ -26,7 +26,22 @@ import java.util.Map;
  */
 record Settlement(String markerKey, String repo, String file, String checker,
                   String state, String verdictText,
-                  boolean redVerified, boolean greenVerified,
+                  /**
+                   * WHAT THE RUNNER REPORTED, OR NULL BECAUSE NOTHING RAN — and null is a third
+                   * answer the record could not express until now.
+                   *
+                   * <p>These were {@code boolean}, so every row carried them whether or not a build
+                   * had happened, and a stage boundary or an infra failure wrote {@code false}.
+                   * {@code false} does not mean "not yet"; it means "we ran the test and it did not
+                   * fail", which is the one claim this pipeline must never make by accident. A
+                   * marker whose prove died fetching its checkout was drawing a dim red lamp
+                   * labelled "it was reached and did not happen".
+                   *
+                   * <p>Null is omitted from the row entirely, so "did this row report a build" is
+                   * answered by the row itself rather than by a list of state names somebody has to
+                   * keep in step.
+                   */
+                  Boolean redVerified, Boolean greenVerified,
                   String testPath, String testCode, String fixDiff, String infraReason) {
 
     /** The dashboard's own column names, so a reader needs no mapping layer. */
@@ -40,8 +55,15 @@ record Settlement(String markerKey, String repo, String file, String checker,
         r.put("state", state);
         r.put("verdict_kind", state);
         r.put("verdict_text", verdictText);
-        r.put("red_verified", redVerified);
-        r.put("green_verified", greenVerified);
+        // OMITTED RATHER THAN FALSE when no build ran. A reader that does not check presence sees
+        // exactly what it saw before — `field()` answers "" and `"true".equals("")` is false — so
+        // this is safe for every existing consumer, and it lets a careful one tell absent from no.
+        if (redVerified != null) {
+            r.put("red_verified", redVerified);
+        }
+        if (greenVerified != null) {
+            r.put("green_verified", greenVerified);
+        }
         r.put("test_path", testPath);
         r.put("test_code", testCode);
         r.put("fix_diff", fixDiff);
@@ -49,14 +71,21 @@ record Settlement(String markerKey, String repo, String file, String checker,
         return r;
     }
 
-    /** A stage boundary: what is true about this marker right now. */
+    /**
+     * A stage boundary, or a failure: what is true about this marker right now.
+     *
+     * <p>NO BUILD RAN, SO NO BUILD IS REPORTED. This form is the whole of "the row did not report a
+     * build" — its two callers are the {@code proving} note between stages and the {@code infra}
+     * note when a prove throws — and passing null here is what lets a reader say so without
+     * knowing either state's name.
+     */
     static void note(Path results, String markerKey, String state, String text) {
-        note(results, markerKey, state, text, false, false);
+        note(results, markerKey, state, text, null, null);
     }
 
-    /** @param red,green what the runner reported, not what the disposition implies. */
+    /** @param red,green what the runner reported, not what the disposition implies. Null: nothing ran. */
     static void note(Path results, String markerKey, String state, String text,
-                     boolean red, boolean green) {
+                     Boolean red, Boolean green) {
         try {
             new Settlement(markerKey, markerKey.split("\\|")[0], fileOf(markerKey),
                     markerKey.substring(markerKey.lastIndexOf('|') + 1),

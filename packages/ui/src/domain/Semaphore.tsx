@@ -116,7 +116,7 @@ export function Semaphore({ flags, state }: SemaphoreProps) {
           was comparing a string to something that was never quoted — which is the whole reason
           `field()` grew an unquoted branch (2707-2722), and the reason the semaphore never lit on a
           marker that had genuinely gone red. Nothing here may accept the STRING "true". */}
-      <Lamp which="red" lit={flags.red === true} reached={state !== 'queued'} />
+        <Lamp which="red" lit={flags.red === true} reached={flags.red !== null && state !== 'queued'} />
       <Lamp which="green" lit={flags.green === true} reached={flags.red === true} />
     </div>
   )
