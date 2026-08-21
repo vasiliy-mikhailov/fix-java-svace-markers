@@ -1,11 +1,10 @@
 import type { MarkerKey, MarkerState, Severity } from '@fsm/types'
 import type { Style } from '../primitives'
-import { HumanCost } from './HumanCost'
+import { CELL, HumanCost, ROW, TimeSpent } from 'ratchet-ui/components'
 import { MarkerIdentity } from './MarkerIdentity'
 import { Semaphore } from './Semaphore'
 import { SeverityBadge } from './SeverityBadge'
 import { StateBadge } from './StateBadge'
-import { TimeSpent } from './TimeSpent'
 import { WhatHappened } from './WhatHappened'
 import type { FlaggedSource, SettlementFlags } from './records'
 
@@ -59,12 +58,6 @@ export type MarkerRowData = {
 
 export type MarkerRowProps = { marker: MarkerRowData }
 
-const CELL: Style = {
-  padding: '9px 24px',
-  borderBottom: '1px solid var(--border-soft)',
-  verticalAlign: 'top',
-}
-
 /** Java's `td.why` (CSS 61). An argument set across the full width of a screen is unreadable. */
 const WHY: Style = { ...CELL, maxWidth: '44em' }
 
@@ -85,7 +78,7 @@ export function MarkerRow({ marker }: MarkerRowProps) {
     // rule, not an inline style — so it is a Tailwind utility over a portal token. Six columns is
     // wide enough that losing your line while reading across is a real cost; a consumer whose
     // Tailwind does not scan this package loses the band and nothing else.
-    <tr className="hover:bg-[var(--state-hover-bg)]">
+    <tr className="hover:bg-[var(--state-hover-bg)]" style={ROW}>
       <td style={CELL}>
         <SeverityBadge severity={marker.severity} />
       </td>
@@ -125,10 +118,10 @@ export function MarkerRow({ marker }: MarkerRowProps) {
         />
       </td>
       <td style={CELL}>
-        <TimeSpent spanMs={marker.spanMs} events={marker.events} />
+        <TimeSpent ms={marker.spanMs > 0 ? marker.spanMs : null} events={marker.events} />
       </td>
       <td style={CELL}>
-        <HumanCost minutes={marker.humanMinutes} />
+        <HumanCost minutes={marker.humanMinutes > 0 ? marker.humanMinutes : null} />
       </td>
     </tr>
   )

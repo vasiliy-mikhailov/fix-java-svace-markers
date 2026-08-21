@@ -24,7 +24,7 @@ import {
   TextFold,
   Thinking,
   ToolLog,
-  clock,
+  duration,
   type FlaggedSourceRecord,
   type LiveView,
   type SettlementFlags,
@@ -494,10 +494,10 @@ function SummaryTab({ marker, expanded }: { marker: ApiMarker; expanded: boolean
           {marker.tookMinutes > 0 ? (
             // EVERY ATTEMPT, NOT THIS ONE: `restart_prove` moves a lane to `dead/` and the next
             // attempt starts a fresh trace, so Pace adds the archives back before this is sent.
-            <Tally value={clock(marker.tookMinutes * 60_000)} label="the machine took" />
+            <Tally value={duration(marker.tookMinutes * 60_000)} label="the machine took" />
           ) : null}
           {marker.humanMinutes > 0 ? (
-            <Tally value={<HumanCost minutes={marker.humanMinutes} />} label="human-equivalent" />
+            <Tally value={<HumanCost minutes={marker.humanMinutes > 0 ? marker.humanMinutes : null} />} label="human-equivalent" />
           ) : null}
         </div>
       ) : null}

@@ -40,7 +40,11 @@ export {
 export { ChatTranscript, type ChatTranscriptProps } from './ChatTranscript'
 export { ChatTurn, type ChatTurnData, type ChatTurnProps } from './ChatTurn'
 export { ClaimCard, type ClaimCardProps } from './ClaimCard'
-export { clock } from './clock'
+// HOW LONG THE MACHINE TOOK, NOW THE LIBRARY'S — and on a subpath that reaches no React at all,
+// so a server or a test can import it without resolving a React version. `duration` ROUNDS where
+// our `clock` truncated: 59.6 seconds reads `1m` rather than `59s`, which is what every clock
+// beside it already said, and an exact ten minutes drops the `0s`.
+export { duration, spellMinutes } from 'ratchet-ui/time'
 export { EventFeed, type EventFeedProps } from './EventFeed'
 export { FindingCard, type FindingCardProps, type FindingRecord } from './FindingCard'
 export { FindingsButton, type FindingsButtonProps } from './FindingsButton'
@@ -49,7 +53,7 @@ export { FixDiff, type FixDiffProps } from './FixDiff'
 export { FlaggedSource, type FlaggedSourceProps } from './FlaggedSource'
 export { ForgetKeyChoice, type ForgetKeyChoiceProps } from './ForgetKeyChoice'
 export { GitCredential, type GitCredentialProps } from './GitCredential'
-export { HumanCost, type HumanCostProps } from './HumanCost'
+export { HumanCost, type HumanCostProps } from 'ratchet-ui/components'
 export { JdkChoice, type JdkChoiceProps } from './JdkChoice'
 export { KeyStatus, type KeySource, type KeyStatusProps } from './KeyStatus'
 export { LiveStream, type LiveStreamProps, type LiveView } from './LiveStream'
@@ -96,7 +100,7 @@ export { StreamTail, type StreamTailProps } from './StreamTail'
 export { SupersededAttempt, type SupersededAttemptProps } from './SupersededAttempt'
 export { TestArtifact, type TestArtifactProps } from './TestArtifact'
 export { Thinking, type ThinkingProps } from './Thinking'
-export { TimeSpent, type TimeSpentProps } from './TimeSpent'
+export { TimeSpent, type TimeSpentProps } from 'ratchet-ui/components'
 export { ToolLog, type ToolCall, type ToolLogProps } from './ToolLog'
 /**
  * `TraceEvent` is the row and the eight bodies it dispatches to. They are exported individually

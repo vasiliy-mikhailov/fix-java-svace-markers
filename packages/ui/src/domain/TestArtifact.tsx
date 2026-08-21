@@ -1,3 +1,8 @@
+// THE HEADING IS THE LIBRARY'S, AND THE MARGIN STAYS OURS. Our four copies of these five
+// declarations all omitted `fontWeight`, which is not a declaration that drifted but one nobody
+// made: an `h3` with no weight takes the browser's bold, so ours drew at 700 beside the
+// sibling's 500. The shared constant names the weight; only the margin is per-site.
+import { HEADING } from 'ratchet-ui/components'
 import { CodeBlock, type Style } from '../primitives'
 
 export type TestArtifactProps = {
@@ -5,14 +10,6 @@ export type TestArtifactProps = {
   path: string
   /** `test_code` from the same row. */
   code: string
-}
-
-const HEAD: Style = {
-  margin: '12px 0 0',
-  fontSize: '11px',
-  textTransform: 'uppercase',
-  letterSpacing: '.06em',
-  color: 'var(--text-tertiary)',
 }
 
 const PATH: Style = {
@@ -45,7 +42,7 @@ export function TestArtifact({ path, code }: TestArtifactProps) {
   }
   return (
     <section>
-      <h3 style={HEAD}>the test</h3>
+      <h3 style={{ ...HEADING, margin: '12px 0 0' }}>the test</h3>
       {path.length === 0 ? null : <p style={PATH}>{path}</p>}
       {written ? (
         // exactOptionalPropertyTypes: `language` is ABSENT or a value. Passing `undefined` for a

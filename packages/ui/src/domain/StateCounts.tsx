@@ -1,6 +1,6 @@
 import type { MarkerState } from '@fsm/types'
 import { Tally, type Style } from '../primitives'
-import { HumanCost } from './HumanCost'
+import { HumanCost } from 'ratchet-ui/components'
 
 export type StateCountsProps = {
   /**
@@ -55,7 +55,7 @@ export function StateCounts({ counts, humanMinutes }: StateCountsProps) {
        * to write three quarters of an hour — see the note on `hm()` in HumanCost.tsx.
        */}
       {humanMinutes > 0 ? (
-        <Tally value={<HumanCost minutes={humanMinutes} />} label="human-equivalent" />
+        <Tally value={<HumanCost minutes={humanMinutes > 0 ? humanMinutes : null} />} label="human-equivalent" />
       ) : null}
     </div>
   )

@@ -1,16 +1,13 @@
-import { DiffBlock, type Style } from '../primitives'
+// THE HEADING IS THE LIBRARY'S, AND THE MARGIN STAYS OURS. Our four copies of these five
+// declarations all omitted `fontWeight`, which is not a declaration that drifted but one nobody
+// made: an `h3` with no weight takes the browser's bold, so ours drew at 700 beside the
+// sibling's 500. The shared constant names the weight; only the margin is per-site.
+import { HEADING } from 'ratchet-ui/components'
+import { DiffBlock } from '../primitives'
 
 export type FixDiffProps = {
   /** `fix_diff` from `settlements.jsonl`. A unified diff, exactly as the fixer produced it. */
   patch: string
-}
-
-const HEAD: Style = {
-  margin: '12px 0 0',
-  fontSize: '11px',
-  textTransform: 'uppercase',
-  letterSpacing: '.06em',
-  color: 'var(--text-tertiary)',
 }
 
 /**
@@ -35,7 +32,7 @@ export function FixDiff({ patch }: FixDiffProps) {
   }
   return (
     <section>
-      <h3 style={HEAD}>what the fix changed</h3>
+      <h3 style={{ ...HEADING, margin: '12px 0 0' }}>what the fix changed</h3>
       <DiffBlock patch={patch} />
     </section>
   )

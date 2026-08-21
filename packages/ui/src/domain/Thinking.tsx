@@ -1,3 +1,8 @@
+// THE HEADING IS THE LIBRARY'S, AND THE MARGIN STAYS OURS. Our four copies of these five
+// declarations all omitted `fontWeight`, which is not a declaration that drifted but one nobody
+// made: an `h3` with no weight takes the browser's bold, so ours drew at 700 beside the
+// sibling's 500. The shared constant names the weight; only the margin is per-site.
+import { HEADING } from 'ratchet-ui/components'
 import type { Style } from '../primitives'
 
 export type ThinkingProps = {
@@ -24,14 +29,6 @@ const ONE: Style = {
   color: 'var(--text-secondary)',
 }
 
-const HEAD: Style = {
-  margin: 0,
-  fontSize: '11px',
-  textTransform: 'uppercase',
-  letterSpacing: '.06em',
-  color: 'var(--text-tertiary)',
-}
-
 /**
  * What the agent said to itself.
  *
@@ -52,7 +49,7 @@ export function Thinking({ turns }: ThinkingProps) {
   const newestFirst = turns.slice().reverse()
   return (
     <section style={LIST}>
-      <h3 style={HEAD}>thinking</h3>
+      <h3 style={{ ...HEADING, margin: 0 }}>thinking</h3>
       {newestFirst.map(turn => (
         <p key={turn.id} id={turn.id} style={ONE}>
           {turn.text}

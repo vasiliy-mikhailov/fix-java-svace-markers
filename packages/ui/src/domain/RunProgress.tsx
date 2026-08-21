@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { ProgressBar, Tally, type Style } from '../primitives'
-import { clock } from './clock'
+import { duration } from 'ratchet-ui/time'
 
 export type RunProgressProps = {
   /** Markers the run was given. 0 means there is no run — a single prove, or nothing queued yet. */
@@ -84,7 +84,7 @@ export function RunProgress({ total, settled, demonstrated, beganAt, now }: RunP
   if (total <= 0) {
     return elapsed <= 0 ? null : (
       <div style={STRIP}>
-        <Tally value={clock(elapsed)} label="elapsed" />
+        <Tally value={duration(elapsed)} label="elapsed" />
       </div>
     )
   }
@@ -95,7 +95,7 @@ export function RunProgress({ total, settled, demonstrated, beganAt, now }: RunP
   // showed while both are running side by side.
   const eta =
     settled > 0 && settled < total
-      ? clock(Math.trunc(elapsed / settled) * (total - settled))
+      ? duration(Math.trunc(elapsed / settled) * (total - settled))
       : '—'
 
   return (
@@ -108,7 +108,7 @@ export function RunProgress({ total, settled, demonstrated, beganAt, now }: RunP
             and only one of those survives somebody editing the file next week. */}
         <Tally value={`${demonstrated}`} label="shown by a test" />
         <Tally value={`${settled - demonstrated}`} label="argued only" />
-        <Tally value={clock(elapsed)} label="elapsed" />
+        <Tally value={duration(elapsed)} label="elapsed" />
         <Tally value={eta} label="eta, extrapolated" />
       </div>
     </>

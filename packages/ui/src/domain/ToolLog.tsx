@@ -1,3 +1,8 @@
+// THE HEADING IS THE LIBRARY'S, AND THE MARGIN STAYS OURS. Our four copies of these five
+// declarations all omitted `fontWeight`, which is not a declaration that drifted but one nobody
+// made: an `h3` with no weight takes the browser's bold, so ours drew at 700 beside the
+// sibling's 500. The shared constant names the weight; only the margin is per-site.
+import { HEADING } from 'ratchet-ui/components'
 import { CodeBlock, type Style } from '../primitives'
 
 export type ToolCall = { tool: string; arguments: string; result: string }
@@ -20,14 +25,6 @@ const LIVE: Style = {
   ...BOX,
   borderLeft: '2px solid var(--state-proving)',
   paddingLeft: '10px',
-}
-
-const HEAD: Style = {
-  margin: 0,
-  fontSize: '11px',
-  textTransform: 'uppercase',
-  letterSpacing: '.06em',
-  color: 'var(--text-tertiary)',
 }
 
 const CALL: Style = { margin: '8px 0' }
@@ -55,7 +52,7 @@ export function ToolLog({ calls, answered }: ToolLogProps) {
   const many = calls.length === 1 ? '1 tool call' : `${calls.length} tool calls`
   return (
     <section style={answered ? BOX : LIVE}>
-      <h3 style={HEAD}>{answered ? many : `${many}, no answer yet`}</h3>
+      <h3 style={{ ...HEADING, margin: 0 }}>{answered ? many : `${many}, no answer yet`}</h3>
       {calls.map((call, index) => (
         // Keyed by position: a trace is append-only and one agent legitimately calls the same tool
         // with the same arguments twice. Nothing persists against this key — see the note above.

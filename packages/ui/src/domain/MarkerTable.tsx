@@ -1,4 +1,4 @@
-import type { Style } from '../primitives'
+import { HEAD, TABLE } from 'ratchet-ui/components'
 import { MarkerRow, type MarkerRowData } from './MarkerRow'
 
 export type MarkerTableProps = {
@@ -15,20 +15,6 @@ export type MarkerTableProps = {
    * nowhere else to get it.
    */
   markers: MarkerRowData[]
-}
-
-const TABLE: Style = { width: '100%', borderCollapse: 'collapse' }
-
-/** Java's `th` (CSS 49-50). */
-const HEAD: Style = {
-  textAlign: 'left',
-  color: 'var(--text-tertiary)',
-  fontWeight: 500,
-  fontSize: '11px',
-  textTransform: 'uppercase',
-  letterSpacing: '.06em',
-  padding: '9px 24px',
-  borderBottom: '1px solid var(--border-strong)',
 }
 
 /**
