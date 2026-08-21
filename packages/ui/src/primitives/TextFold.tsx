@@ -94,9 +94,11 @@ export function TextFold({
   const shown = open || !long ? body : clipped
   return (
     <div id={id}>
-      <div style={LABEL}>
-        {label} ({body.length} chars)
-      </div>
+      {label === '' ? null : (
+        <div style={LABEL}>
+          {label} ({body.length} chars)
+        </div>
+      )}
       <pre style={BODY}>{shown}</pre>
       {long ? (
         <button type="button" onClick={() => setOpen(!open)} style={MORE}>

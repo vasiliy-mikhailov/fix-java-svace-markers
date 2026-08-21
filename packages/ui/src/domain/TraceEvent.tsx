@@ -275,8 +275,12 @@ export function SaidEvent({
 }) {
   return (
     <>
-      <span style={WHO}>{agentLabel(agent)}</span>
+      {/* THE KIND FIRST, THEN WHO SAID IT. A reader scanning a lane is looking for the kind —
+          which row is a thought, which is a tool call — and the agent tells two lanes apart once
+          they have found it. The sibling's record reads that way and this one read the other way
+          round for no reason anybody wrote down. */}
       <span style={KIND}>{kind}</span>
+      <span style={WHO}>{agentLabel(agent)}</span>
       <TextFold
         id={`said:${agent}:${kind}:${said.length}`}
         label=""
