@@ -7,6 +7,7 @@ import {
   AskNotice,
   ChatTranscript,
   EmptyNote,
+  Loaded,
   PageHeader,
   StreamPanel,
   type ChatTurnData,
@@ -298,29 +299,23 @@ export default function ChatScreen() {
     setSaid(reply)
   }
 
-  if (failed !== null) {
+  // THE THREE STATES, IN ONE PLACE — see `Loaded`. Two early returns before, whose headers said
+  // different things and whose waiting branch drew nothing under the title.
+  if (failed !== null || chat === null) {
     return (
-      <>
-        {/* Zero draws NO badge rather than a badge reading zero, so this asserts nothing about the
-            critic — which is right, because this document does not carry the count. */}
-        <PageHeader
+      <Loaded
+        what="conversation"
+        failed={failed}
+        value={chat}
+        header={<PageHeader
           title={TITLE}
-          subtitle="could not read the conversation"
+          subtitle={SUBTITLE}
           back={BACK}
           findingsOpen={0}
-        />
-        <EmptyNote>{failed}</EmptyNote>
-      </>
-    )
-  }
-  if (chat === null) {
-    return (
-      <PageHeader
-        title={TITLE}
-        subtitle="reading the conversation…"
-        back={BACK}
-        findingsOpen={0}
-      />
+        />}
+      >
+        {() => null}
+      </Loaded>
     )
   }
 

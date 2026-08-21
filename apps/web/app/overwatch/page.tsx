@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   EmptyNote,
+  Loaded,
   EventFeed,
   FindingCard,
   FindingTally,
@@ -344,27 +345,23 @@ function SupervisorScreen() {
   // draws no badge at zero for that exact reason (2400-2403: a badge reading zero teaches a reader
   // to ignore it). A count guessed while the payload is in flight would be a claim about the
   // pipeline made out of the absence of an answer.
-  if (failed !== null) {
+  // THE THREE STATES, IN ONE PLACE — see `Loaded`. Two early returns before, whose headers said
+  // different things and whose waiting branch drew nothing under the title.
+  if (failed !== null || data === null) {
     return (
-      <>
-        <PageHeader
+      <Loaded
+        what="supervisor"
+        failed={failed}
+        value={data}
+        header={<PageHeader
           title="the supervisor"
-          subtitle="could not read what it has said"
+          subtitle="what it has concluded about the pipeline, and what its critic made of it"
           back={BACK}
           findingsOpen={0}
-        />
-        <EmptyNote>{failed}</EmptyNote>
-      </>
-    )
-  }
-  if (data === null) {
-    return (
-      <PageHeader
-        title="the supervisor"
-        subtitle="reading what it has said…"
-        back={BACK}
-        findingsOpen={0}
-      />
+        />}
+      >
+        {() => null}
+      </Loaded>
     )
   }
 

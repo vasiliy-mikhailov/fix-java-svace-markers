@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import {
   EmptyNote,
+  Loaded,
   type MarkerRowData,
   MarkerTable,
   PageHeader,
@@ -130,19 +131,19 @@ export default function MarkersScreen() {
     }
   }, [])
 
-  if (failed !== null) {
+  // THE THREE STATES, IN ONE PLACE. This was a pair of early returns whose two headers said
+  // different things and whose waiting branch said nothing at all — a reader watching a slow read
+  // saw a title and an empty page.
+  if (failed !== null || data === null) {
     return (
-      <>
-        <PageHeader title="markers" subtitle="could not read the run" findingsOpen={0} />
-        <EmptyNote>{failed}</EmptyNote>
-      </>
-    )
-  }
-  if (data === null) {
-    return (
-      <>
-        <PageHeader title="markers" subtitle="reading the run…" findingsOpen={0} />
-      </>
+      <Loaded
+        what="run"
+        failed={failed}
+        value={data}
+        header={<PageHeader title="markers" subtitle="the queue and what has settled" findingsOpen={0} />}
+      >
+        {() => null}
+      </Loaded>
     )
   }
 

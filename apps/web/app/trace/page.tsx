@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { EmptyNote, EventFeed, PageHeader, type Style, type TraceEventRecord } from '@fsm/ui'
+import { EmptyNote, EventFeed, Loaded, PageHeader, type Style, type TraceEventRecord } from '@fsm/ui'
 import { DISPOSITIONS, UNSETTLED, type AgentName, type MarkerState } from '@fsm/types'
 
 import { href, read } from '../../lib/api'
@@ -482,27 +482,23 @@ function TraceScreen() {
     })
   }, [])
 
-  if (failed !== null) {
+  // THE THREE STATES, IN ONE PLACE — see `Loaded`. Two early returns before, whose headers said
+  // different things and whose waiting branch drew nothing under the title.
+  if (failed !== null || held === null) {
     return (
-      <>
-        <PageHeader
+      <Loaded
+        what="record"
+        failed={failed}
+        value={held}
+        header={<PageHeader
           title="whole trace"
-          subtitle="could not read the record"
+          subtitle="every event this run has recorded"
           back={BACK}
           findingsOpen={0}
-        />
-        <EmptyNote>{failed}</EmptyNote>
-      </>
-    )
-  }
-  if (held === null) {
-    return (
-      <PageHeader
-        title="whole trace"
-        subtitle="reading the record…"
-        back={BACK}
-        findingsOpen={0}
-      />
+        />}
+      >
+        {() => null}
+      </Loaded>
     )
   }
 
