@@ -586,6 +586,14 @@ public final class Dashboard {
     private static void send(HttpExchange e, String type, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         e.getResponseHeaders().set("Content-Type", type);
+        // NOTHING THIS METHOD SENDS MAY BE STORED, AND ONE OF THEM IS A CREDENTIAL.
+        //
+        // Every response through here is a reading of a run in progress, so caching any of it is
+        // wrong on its own — but `/api/settings/model` now carries the API key verbatim, and a
+        // response with no `Cache-Control` is one a browser or any intermediary is free to keep.
+        // `ApiStream` and `Web` both set this already; the JSON path was the one that did not, and
+        // it became the one that mattered on the day the key started travelling in it.
+        e.getResponseHeaders().set("Cache-Control", "no-store");
         e.sendResponseHeaders(200, bytes.length);
         try (OutputStream out = e.getResponseBody()) {
             out.write(bytes);
