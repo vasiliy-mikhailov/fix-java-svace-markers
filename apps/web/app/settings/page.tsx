@@ -22,13 +22,14 @@ import {
   ParallelProvers,
   SaveRow,
   SecretField,
-  SettingRow,
+  SectionTabs,
+  SettingCard,
   SourceZip,
-  TabRow,
   UploadForm,
   UploadOutcome,
   type AgentGroup,
   type KeySource,
+  type Style,
 } from '@fsm/ui'
 import type { AgentName } from '@fsm/types'
 
@@ -63,6 +64,8 @@ import { href, read } from '../../lib/api'
  */
 
 type Tab = 'prompts' | 'run' | 'model' | 'subject'
+
+const STACK: Style = { display: 'grid', gap: '10px', padding: '10px 0' }
 
 /** The four faces, and the Java's URLs for them. `?a=` absent is the prompts page. */
 const TABS: { key: Tab; label: string; path: string }[] = [
@@ -330,11 +333,18 @@ function Screen({
         back={{ label: 'all markers', href: href('/') }}
         findingsOpen={findingsOpen}
       />
-      <TabRow
-        items={TABS.map(one => ({ href: href(one.path), label: one.label, on: one.key === tab }))}
-        trailing={[{ href: href('/overwatch'), label: 'the supervisor', on: false }]}
+      <SectionTabs
+        tabs={TABS.map(one => ({ href: href(one.path), label: one.label, current: one.key === tab }))}
+        // `current: false` KEEPS OUR BEHAVIOUR EXACTLY. The shared bar lights whatever `current`
+        // says, which is right for a section of this page wearing a divider and wrong for a link
+        // that leaves it: lighting a departure claims the reader is already there.
+        trailing={[{ href: href('/overwatch'), label: 'the supervisor', current: false }]}
+        label="settings sections"
       />
-      {children}
+      {/* THE ROW RHYTHM IS THE PAGE'S NOW. `SettingRow` carried `margin: '10px 0'` and `SettingCard`
+          carries no outer margin at all, on the grounds that spacing a stack is the job of whoever
+          stacks it. This is that stack, and it is the only one. */}
+      <div style={STACK}>{children}</div>
     </>
   )
 }
@@ -613,12 +623,18 @@ function ModelTab({ findingsOpen }: { findingsOpen: number }) {
           unreachable from the page that exists to reach them — somebody typing a key in was told it
           had saved. These are controlled inputs whose state this screen holds, so there is no longer
           a subtree that can be inside or outside a form by accident. */}
-      <SettingRow
-        name="the endpoint"
-        state={data.edited ? 'edited' : "the environment's"}
+      <SettingCard
+        title="the endpoint"
+        provenance={data.edited ? 'edited' : "the environment's"}
         changed={data.edited}
       >
-        <KeyStatus keyed={data.keySet} keySource={keySource} />
+        <KeyStatus
+            keyed={data.keySet}
+            keySource={keySource}
+            // OURS, BECAUSE NEITHER PAGE'S ABSENT SENTENCE IS TRUE OF THE OTHER: this one can set
+            // a key, and the sibling deliberately shows no key field at all.
+            whenAbsent="nothing is set here and nothing is set in the environment, so every agent call is refused before it is made"
+          />
         <SecretField
           name="api_key"
           label="API key"
@@ -653,7 +669,7 @@ function ModelTab({ findingsOpen }: { findingsOpen: number }) {
           // its state would have posted `revert=1` on every save.
           destructive={{ label: "put the environment's back", onConfirm: () => void write({ revert: '1' }) }}
         />
-      </SettingRow>
+      </SettingCard>
       <Account quiet>
         Takes effect on the next marker a prover starts. Nothing running is disturbed — a prove is a
         fresh process per marker, which is the only reason this is a form rather than an env var.

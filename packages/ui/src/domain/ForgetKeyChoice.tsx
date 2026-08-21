@@ -2,7 +2,13 @@
 
 import { useId } from 'react'
 import { Account, type Style } from '../primitives'
-import type { KeySource } from './KeyStatus'
+/**
+ * WHERE THE KEY IN FORCE CAME FROM. It lived in `KeyStatus` until that component went to
+ * `ratchet-ui`, whose prop is a plain string on the grounds that the set of places a key can
+ * come from is a fact about a deployment. It is a union here because this component asks a
+ * question whose wording depends on which of exactly two answers is true.
+ */
+export type KeySource = 'this page' | 'the environment'
 
 export type ForgetKeyChoiceProps = {
   keySource: KeySource

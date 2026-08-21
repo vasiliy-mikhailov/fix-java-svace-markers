@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Account, LabeledField, SaveRow, type Style } from '../primitives'
-import { SettingRow } from './SettingRow'
+import { SettingCard } from 'ratchet-ui/components'
 
 export type ParallelProversProps = {
   /**
@@ -55,13 +55,13 @@ export function ParallelProvers({ workers, least, most, fallback, onSave }: Para
     onSave(n)
   }
   return (
-    <SettingRow name="parallel provers" state={`currently ${workers}`} changed={workers !== fallback}>
+    <SettingCard title="parallel provers" provenance={`currently ${workers}`} changed={workers !== fallback}>
       <Account>
         {`How many markers are proved at the same time. Between ${least} and ${most}; ${fallback} when nothing readable is set. The server clamps what you save, so what appears here afterwards is what it kept, not what you typed.`}
       </Account>
       <LabeledField name="workers" label="provers" value={draft} onChange={setDraft} />
       {refused ? <p style={ERROR}>that is not a whole number, so nothing was sent</p> : null}
       <SaveRow onSave={save} />
-    </SettingRow>
+    </SettingCard>
   )
 }

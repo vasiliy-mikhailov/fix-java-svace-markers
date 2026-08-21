@@ -1,5 +1,5 @@
 import { Account, type Style } from '../primitives'
-import { SettingRow } from './SettingRow'
+import { SettingCard } from 'ratchet-ui/components'
 
 export type MarkerQueueProps = {
   /** How many markers `markers.txt` holds. */
@@ -31,9 +31,9 @@ const REPOS: Style = {
  */
 export function MarkerQueue({ queued, repos }: MarkerQueueProps) {
   return (
-    <SettingRow
-      name="the markers"
-      state={queued === 0 ? 'nothing queued' : `${queued} queued`}
+    <SettingCard
+      title="the markers"
+      provenance={queued === 0 ? 'nothing queued' : `${queued} queued`}
       changed={queued > 0}
     >
       {queued === 0 ? (
@@ -45,6 +45,6 @@ export function MarkerQueue({ queued, repos }: MarkerQueueProps) {
           ))}
         </ul>
       )}
-    </SettingRow>
+    </SettingCard>
   )
 }

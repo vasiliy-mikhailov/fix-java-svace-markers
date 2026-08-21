@@ -139,7 +139,11 @@ test('the prompts page lays every stage out as three', async ({ page }) => {
   // Each stage holds its own three, and holds them in role order.
   for (const stage of stages) {
     const names = await page
-      .locator(`section[aria-label="${stage.toLowerCase()}"] .fsm-prompt-grid > * header > span:first-child`)
+      // THE NAME MOVED FROM A `<header>` TO AN `<h3>` when `SettingRow` became `ratchet-ui`'s
+      // `SettingCard`: ours was a flex row with the name and the state as two spans, and the
+      // shared card is a heading with the state set beside it. Same two spans, same order — this
+      // selector is the only thing in this file that knew which element held them.
+      .locator(`section[aria-label="${stage.toLowerCase()}"] .fsm-prompt-grid > * h3 > span:first-child`)
       .allInnerTexts()
     expect(names, `${stage} holds its three roles`).toEqual([
       `${stage.toLowerCase()}-planner`,

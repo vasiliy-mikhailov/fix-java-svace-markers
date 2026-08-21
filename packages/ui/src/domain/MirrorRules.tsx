@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { SaveRow, type Style } from '../primitives'
-import { SettingRow } from './SettingRow'
+import { SettingCard } from 'ratchet-ui/components'
 
 export type MirrorRulesProps = {
   /** `<from> <to>` per line, as the record holds it. Blank when clones go where the markers say. */
@@ -54,9 +54,9 @@ export function MirrorRules({ rules, onSave }: MirrorRulesProps) {
   const [draft, setDraft] = useState(rules)
   const lines = draft.split('\n').filter(l => l.trim().length > 0).length
   return (
-    <SettingRow
-      name="the git mirror"
-      state={rules.trim().length === 0 ? 'not set' : `${lines} rule(s)`}
+    <SettingCard
+      title="the git mirror"
+      provenance={rules.trim().length === 0 ? 'not set' : `${lines} rule(s)`}
       changed={rules.trim().length > 0}
     >
       <p style={HELP}>
@@ -76,6 +76,6 @@ export function MirrorRules({ rules, onSave }: MirrorRulesProps) {
         onChange={e => setDraft(e.target.value)}
       />
       <SaveRow onSave={() => onSave(draft)} />
-    </SettingRow>
+    </SettingCard>
   )
 }

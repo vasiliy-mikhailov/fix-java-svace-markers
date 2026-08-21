@@ -51,11 +51,16 @@ export { FindingsButton, type FindingsButtonProps } from './FindingsButton'
 export { FindingTally, type FindingTallyProps } from './FindingTally'
 export { FixDiff, type FixDiffProps } from './FixDiff'
 export { FlaggedSource, type FlaggedSourceProps } from './FlaggedSource'
+export { type KeySource } from './ForgetKeyChoice'
 export { ForgetKeyChoice, type ForgetKeyChoiceProps } from './ForgetKeyChoice'
 export { GitCredential, type GitCredentialProps } from './GitCredential'
 export { HumanCost, type HumanCostProps } from 'ratchet-ui/components'
 export { JdkChoice, type JdkChoiceProps } from './JdkChoice'
-export { KeyStatus, type KeySource, type KeyStatusProps } from './KeyStatus'
+// THE PILL AND THE SENTENCE THAT ANSWERS IT. Both pages already agreed on "key set", "no key",
+// the two tones and the source sentence; what they could not agree on is the ABSENT case, because
+// this page can set a key and the sibling's deliberately renders no key field at all. So that
+// sentence is the caller's, as `whenAbsent`.
+export { KeyStatus, type KeyStatusProps } from 'ratchet-ui/components'
 export { LiveStream, type LiveStreamProps, type LiveView } from './LiveStream'
 export { MarkerAccount, type MarkerAccountProps } from './MarkerAccount'
 export { MarkerCrumb, type MarkerCrumbProps } from './MarkerCrumb'
@@ -90,7 +95,12 @@ export {
 export { RestartLog, type Restart, type RestartLogProps } from './RestartLog'
 export { RunProgress, type RunProgressProps } from './RunProgress'
 export { Lamp, Semaphore, type LampProps, type SemaphoreProps } from './Semaphore'
-export { SettingRow, type SettingRowProps } from './SettingRow'
+// ONE SETTING: WHAT IT IS CALLED, WHAT IT IS SET TO, AND THE CONTROL THAT CHANGES IT.
+// `name`/`state`/`anchorId` became `title`/`provenance`/`id`; `changed` kept its name and its
+// meaning, because the sibling's settings page only reads and had no opinion about what an
+// edited card looks like. It gains a `footnote`, which is where several rows here still put a
+// bare `<Account quiet>` by hand.
+export { SettingCard, type SettingCardProps } from 'ratchet-ui/components'
 export { SeverityBadge, type SeverityBadgeProps } from './SeverityBadge'
 export { SourceZip, type SourceZipProps } from './SourceZip'
 export { StateBadge, type StateBadgeProps } from './StateBadge'

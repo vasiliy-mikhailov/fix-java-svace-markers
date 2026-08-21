@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { LabeledField, SaveRow, SecretField } from '../primitives'
-import { SettingRow } from './SettingRow'
+import { SettingCard } from 'ratchet-ui/components'
 
 export type GitCredentialProps = {
   /** The host the token is for: `github.com`, an internal GitLab, whatever the subject is cloned from. */
@@ -33,9 +33,9 @@ export function GitCredential({ host, token, onSave, onForget }: GitCredentialPr
   const [draftToken, setDraftToken] = useState(token)
   const set = host.trim().length > 0 || token.length > 0
   return (
-    <SettingRow
-      name="the git credential"
-      state={set ? host.trim() || 'set' : 'not set'}
+    <SettingCard
+      title="the git credential"
+      provenance={set ? host.trim() || 'set' : 'not set'}
       changed={set}
     >
       <LabeledField
@@ -56,6 +56,6 @@ export function GitCredential({ host, token, onSave, onForget }: GitCredentialPr
         onSave={() => onSave(draftHost.trim(), draftToken)}
         destructive={{ label: 'forget it', onConfirm: onForget }}
       />
-    </SettingRow>
+    </SettingCard>
   )
 }

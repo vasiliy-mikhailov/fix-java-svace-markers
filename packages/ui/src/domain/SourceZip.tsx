@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Account, type Style } from '../primitives'
-import { SettingRow } from './SettingRow'
+import { SettingCard } from 'ratchet-ui/components'
 import { UploadForm } from './UploadForm'
 
 export type SourceZipProps = {
@@ -48,7 +48,7 @@ const CANCEL: Style = { ...PLAIN, border: 'none' }
 export function SourceZip({ present, onUpload, onRemove }: SourceZipProps) {
   const [armed, setArmed] = useState(false)
   return (
-    <SettingRow name="the source zip" state={present ? 'uploaded' : 'not uploaded'} changed={present}>
+    <SettingCard title="the source zip" provenance={present ? 'uploaded' : 'not uploaded'} changed={present}>
       {present ? (
         <Account quiet>
           a zip is in place; uploading another replaces it, and the size it was is not recorded
@@ -81,6 +81,6 @@ export function SourceZip({ present, onUpload, onRemove }: SourceZipProps) {
           )}
         </div>
       ) : null}
-    </SettingRow>
+    </SettingCard>
   )
 }

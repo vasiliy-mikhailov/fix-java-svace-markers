@@ -23,7 +23,12 @@ export { ProgressBar, type ProgressBarProps } from './ProgressBar'
 export { RelativeTime, type RelativeTimeProps } from './RelativeTime'
 export { SaveRow, type SaveRowProps } from './SaveRow'
 export { SecretField, type SecretFieldProps } from './SecretField'
-export { TabRow, type TabItem, type TabRowProps } from './TabRow'
+// THE BAR AT THE TOP OF A PAGE, AND IT IS NOT THE SIBLING'S `TabRow` — that name belongs there
+// to an underline row INSIDE a page. Two roles, one name, and only the page-top bar had a pair,
+// so the shared one is `SectionTabs` and ours is renamed with it. `items`/`on` become
+// `tabs`/`current`, `label` is new and required, and it is the `aria-label` a page with more
+// than one nav in it needs.
+export { SectionTabs, type SectionTab, type SectionTabsProps } from 'ratchet-ui/components'
 export { Tally, type TallyProps } from './Tally'
 export { TextFold, type TextFoldProps } from './TextFold'
 export type { Style } from './style'

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import type { AgentName } from '@fsm/types'
 import { SaveRow, TextFold, type Style } from '../primitives'
-import { SettingRow } from './SettingRow'
+import { SettingCard } from 'ratchet-ui/components'
 
 export type AgentPromptEditorProps = {
   agent: AgentName
@@ -64,14 +64,14 @@ export function AgentPromptEditor({ agent, builtIn, saved, differs, onSave, onRe
   const state =
     saved.trim().length === 0 ? "the code's own" : differs ? 'edited' : "edited, same as the code's"
   return (
-    <SettingRow
-      name={agent}
-      state={state}
+    <SettingCard
+      title={agent}
+      provenance={state}
       // The ACCENT follows `differs` — whether this agent is running something other than what the
       // code says — while the WORD follows `saved`, which is what the file holds. They are two
       // facts and a row that has been saved back to identical text is not an override.
       changed={differs}
-      anchorId={agent}
+      id={agent}
     >
       <textarea
         style={AREA}
@@ -88,6 +88,6 @@ export function AgentPromptEditor({ agent, builtIn, saved, differs, onSave, onRe
       {saved.trim().length === 0 ? null : (
         <TextFold id={`code:${agent}`} label="the prompt in the code" body={builtIn} defaultOpen={false} />
       )}
-    </SettingRow>
+    </SettingCard>
   )
 }

@@ -10,10 +10,10 @@ import {
   FindingTally,
   PageHeader,
   RestartLog,
-  TabRow,
+  SectionTabs,
   type FindingRecord,
   type Restart,
-  type TabItem,
+  type SectionTab,
   type TraceEventRecord,
 } from '@fsm/ui'
 import { VERDICTS, WATCH } from '@fsm/types'
@@ -148,16 +148,16 @@ function urlFor(a: string, folded: boolean): string {
  * ported, see `TabRow`). Settings is in `trailing` because it leaves this set rather than choosing
  * within it, and `TabRow` never lights a departure.
  */
-function tabs(a: string, folded: boolean): TabItem[] {
+function tabs(a: string, folded: boolean): SectionTab[] {
   return [
-    { href: urlFor('', folded), label: 'findings', on: a === '' },
+    { href: urlFor('', folded), label: 'findings', current: a === '' },
     // One tab per watcher, in the order the Java lists them — plan, do, verify, twice.
-    ...WATCH.map(agent => ({ href: urlFor(agent, folded), label: agent, on: a === agent })),
-    { href: urlFor('trace', folded), label: 'the record', on: a === 'trace' },
+    ...WATCH.map(agent => ({ href: urlFor(agent, folded), label: agent, current: a === agent })),
+    { href: urlFor('trace', folded), label: 'the record', current: a === 'trace' },
   ]
 }
 
-const DEPARTURES: TabItem[] = [{ href: href('/settings'), label: 'settings', on: false }]
+const DEPARTURES: SectionTab[] = [{ href: href('/settings'), label: 'settings', current: false }]
 
 /**
  * Every view gets the same exit crumb.
@@ -387,7 +387,7 @@ function SupervisorScreen() {
           back={BACK}
           findingsOpen={data.open}
         />
-        <TabRow items={items} trailing={DEPARTURES} />
+        <SectionTabs tabs={items} trailing={DEPARTURES} label="the supervisor's views" />
         <div style={GUTTER}>
           <FindingTally
             holds={tally.holds}
@@ -435,7 +435,7 @@ function SupervisorScreen() {
         back={BACK}
         findingsOpen={data.open}
       />
-      <TabRow items={items} trailing={DEPARTURES} />
+      <SectionTabs tabs={items} trailing={DEPARTURES} label="the supervisor's views" />
       {events.length === 0 ? (
         <EmptyNote>
           Nothing here yet. The supervisor looks on its own schedule, not on yours, and this page

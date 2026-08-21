@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Account, SaveRow, type Style } from '../primitives'
-import { SettingRow } from './SettingRow'
+import { SettingCard } from 'ratchet-ui/components'
 
 export type JdkChoiceProps = {
   /** What the record holds. It is not guaranteed to be one of `available` — see below. */
@@ -42,7 +42,7 @@ export function JdkChoice({ chosen, available, fallback, onSave }: JdkChoiceProp
   const [draft, setDraft] = useState(chosen)
   const known = available.includes(chosen)
   return (
-    <SettingRow name="the JDK" state={chosen.length === 0 ? 'not set' : chosen} changed={chosen !== fallback}>
+    <SettingCard title="the JDK" provenance={chosen.length === 0 ? 'not set' : chosen} changed={chosen !== fallback}>
       <Account quiet>What the subject is compiled and tested with. Only what this image carries can be chosen.</Account>
       <select
         style={SELECT}
@@ -80,6 +80,6 @@ export function JdkChoice({ chosen, available, fallback, onSave }: JdkChoiceProp
           onSave(draft)
         }}
       />
-    </SettingRow>
+    </SettingCard>
   )
 }
