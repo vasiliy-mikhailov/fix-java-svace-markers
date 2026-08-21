@@ -1,31 +1,16 @@
-import type { ReactNode } from 'react'
-import type { Style } from './style'
-
-export type AccountProps = {
-  children: ReactNode
-  /** The `<span class=k>` variant: the aside under a control, rather than the account beside it. */
-  quiet?: boolean
-}
-
-const ACCOUNT: Style = {
-  margin: '.5rem 0 .2rem',
-  fontSize: '.95rem',
-  lineHeight: 1.7,
-  color: 'var(--text-secondary)',
-  maxWidth: '52em',
-}
-
-const QUIET: Style = { ...ACCOUNT, fontSize: '.74rem', lineHeight: 1.6, color: 'var(--text-tertiary)' }
-
 /**
- * A paragraph explaining what a control does and why it is a control at all.
+ * A PARAGRAPH EXPLAINING WHAT A CONTROL DOES — NOW THE LIBRARY'S, AND REPAINTED.
  *
- * THE PROSE STAYS IN THE COMPONENT TREE AND NEVER GOES ON THE WIRE. It is not data — it does not
- * come from the record, it does not change per marker, and an API that ships it is an API whose
- * payload grows every time somebody improves a sentence. One exception, and it earns itself:
- * `theRun`'s paragraph interpolates `Workers.LEAST/MOST/DEFAULT` (1451-1452), so that sentence
- * lives inside `ParallelProvers` where those numbers already are.
+ * THE NAME, THE SHAPE AND `quiet` ARE OURS; EVERY NUMBER IS THE SIBLING'S. We had fourteen call
+ * sites of a component called `Account`; the sibling had the same paragraph typed out inline four
+ * times and had never named it. Under the rule this release runs on, naming it is our contribution
+ * and the metrics are theirs — 13px against our 15.2px, a 1.6 line against 1.7, a 72ch measure
+ * against 52em, and no colour at all against secondary.
+ *
+ * SO THIS IS THE ONE ADOPTION THAT REPAINTS A PAGE, and the page is settings. It is not reversible
+ * by a prop: if these metrics are wrong for us the answer is one line in the shared file, argued
+ * upstream. It is step two of the prescribed order for exactly that reason — one commit to revert.
+ *
+ * The prose still stays in the component tree and never goes on the wire.
  */
-export function Account({ children, quiet = false }: AccountProps) {
-  return <p style={quiet ? QUIET : ACCOUNT}>{children}</p>
-}
+export { ACCOUNT, ACCOUNT_QUIET, Account, type AccountProps } from 'ratchet-ui/components'
