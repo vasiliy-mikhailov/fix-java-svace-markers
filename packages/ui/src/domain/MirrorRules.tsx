@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { SaveRow, type Style } from '../primitives'
-import { SettingCard } from 'ratchet-ui/components'
+import { ACCOUNT_QUIET, SettingCard } from 'ratchet-ui/components'
 
 export type MirrorRulesProps = {
   /** `<from> <to>` per line, as the record holds it. Blank when clones go where the markers say. */
@@ -11,11 +11,9 @@ export type MirrorRulesProps = {
 }
 
 const HELP: Style = {
+  ...ACCOUNT_QUIET,
+  // ABOVE the textarea it explains, not under a control, which is the one declaration it keeps.
   margin: '0 0 8px',
-  fontSize: '11.5px',
-  lineHeight: 1.6,
-  color: 'var(--text-tertiary)',
-  maxWidth: '52em',
 }
 
 const AREA: Style = {

@@ -13,6 +13,19 @@ export type AskBoxProps = {
    * visible reason reads as a broken page.
    */
   answering: boolean
+  /**
+   * THIS READER'S OWN QUESTION, IN FLIGHT — WHICH IS NOT `answering` AND MUST NOT BORROW ITS WORDS.
+   *
+   * `answering` is a fact about the whole dashboard, and its note says so: the question being
+   * answered may be somebody else's, asked in another tab. This one is a POST that has not landed,
+   * so the record has not heard of it and nobody is answering anything. Folding the two would print
+   * that sentence at the one moment it is guaranteed to be false.
+   *
+   * It exists because the page cannot know it is answering until it has re-read. Between the post
+   * and that read the box was live with the LAST read's `answering`, and a second click in that
+   * window posted a second question.
+   */
+  sending?: boolean
   onAsk: (q: string) => void
 }
 
@@ -73,11 +86,13 @@ const BUTTON_OFF: Style = {
  * dashboard restarted mid-reply and NO ANSWER IS COMING. Whoever renders it must not give it a
  * spinner.
  */
-export function AskBox({ answering, onAsk }: AskBoxProps) {
+export function AskBox({ answering, sending = false, onAsk }: AskBoxProps) {
   const [draft, setDraft] = useState('')
+  // Both shut the control; only one of them can explain itself with `answering`'s sentence.
+  const shut = answering || sending
   const question = draft.trim()
   function ask() {
-    if (answering || question.length === 0) {
+    if (shut || question.length === 0) {
       return
     }
     onAsk(question)
@@ -95,9 +110,9 @@ export function AskBox({ answering, onAsk }: AskBoxProps) {
   return (
     <div>
       <textarea
-        style={answering ? AREA_OFF : AREA}
+        style={shut ? AREA_OFF : AREA}
         value={draft}
-        disabled={answering}
+        disabled={shut}
         onChange={event => setDraft(event.currentTarget.value)}
         onKeyDown={keyDown}
         aria-label="ask the supervisor"
@@ -106,8 +121,8 @@ export function AskBox({ answering, onAsk }: AskBoxProps) {
       <div style={ROW}>
         <button
           type="button"
-          disabled={answering || question.length === 0}
-          style={answering || question.length === 0 ? BUTTON_OFF : BUTTON}
+          disabled={shut || question.length === 0}
+          style={shut || question.length === 0 ? BUTTON_OFF : BUTTON}
           onClick={ask}
         >
           ask
@@ -117,6 +132,13 @@ export function AskBox({ answering, onAsk }: AskBoxProps) {
         <Account quiet>
           a question is being answered — it may be one somebody asked in another tab, because the
           supervisor answers one at a time for the whole dashboard
+        </Account>
+      ) : sending ? (
+        // A BOX DISABLED FOR NO VISIBLE REASON READS AS A BROKEN PAGE, which is this file's own
+        // rule and the whole reason `answering` says what it says. This is the other way it can
+        // be shut, so it gets its own sentence rather than the wrong one or none at all.
+        <Account quiet>
+          the question is on its way — nothing is in the conversation until the record says so
         </Account>
       ) : null}
     </div>

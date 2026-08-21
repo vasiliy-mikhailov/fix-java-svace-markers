@@ -624,6 +624,11 @@ function ModelTab({ findingsOpen }: { findingsOpen: number }) {
           had saved. These are controlled inputs whose state this screen holds, so there is no longer
           a subtree that can be inside or outside a form by accident. */}
       <SettingCard
+        // THE ONE PLACE `footnote` PAYS. This paragraph trailed the card as a bare
+        // `<Account quiet>` — the same markup in the same position, which `SettingCard` now
+        // renders itself. What changes is that it belongs to something instead of
+        // trailing the page.
+        footnote="Takes effect on the next marker a prover starts. Nothing running is disturbed — a prove is a fresh process per marker, which is the only reason this is a form rather than an env var."
         title="the endpoint"
         provenance={data.edited ? 'edited' : "the environment's"}
         changed={data.edited}
@@ -670,10 +675,6 @@ function ModelTab({ findingsOpen }: { findingsOpen: number }) {
           destructive={{ label: "put the environment's back", onConfirm: () => void write({ revert: '1' }) }}
         />
       </SettingCard>
-      <Account quiet>
-        Takes effect on the next marker a prover starts. Nothing running is disturbed — a prove is a
-        fresh process per marker, which is the only reason this is a form rather than an env var.
-      </Account>
     </Screen>
   )
 }

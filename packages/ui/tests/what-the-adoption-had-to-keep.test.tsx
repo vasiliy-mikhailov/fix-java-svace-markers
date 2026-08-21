@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
+import { AskBox } from '../src/domain/AskBox'
 import { MARKER_COLUMNS } from '../src/domain/MarkerRow'
 import { MarkerTable } from '../src/domain/MarkerTable'
 import type { MarkerRowData } from '../src/domain/MarkerRow'
@@ -90,5 +91,46 @@ describe('what the adoption had to keep', () => {
     // guards the one class the package itself ships; this guards the one we hand it.
     const html = renderToStaticMarkup(<MarkerTable markers={[MARKER]} />)
     expect(html).toContain('hover:bg-[var(--state-hover-bg)]')
+  })
+})
+
+/**
+ * AND THE ONE THING `useAsk` GAVE THIS PAGE HAD NOWHERE HONEST TO GO AT FIRST.
+ *
+ * <p>`useAsk`'s `busy` is a real gain — between the POST and the re-read that confirms it, `AskBox`
+ * was live with the LAST read's `answering` and a second click posted a second question. The
+ * shortest way to spend it is `answering={chat.answering || asking.busy}`, and that is wrong: the
+ * note under a disabled box says the question being answered "may be one somebody asked in another
+ * tab", which is a statement about a process-wide lock and is guaranteed FALSE during this reader's
+ * own in-flight post, before the record has heard of the question at all.
+ *
+ * <p>So the two are separate props with separate sentences, and this is what keeps them separate.
+ */
+describe('the box shut for two different reasons', () => {
+  const box = (props: { answering: boolean; sending?: boolean }) =>
+    renderToStaticMarkup(<AskBox {...props} onAsk={() => {}} />)
+
+  it('says the dashboard is busy only when the dashboard is busy', () => {
+    expect(box({ answering: true })).toContain('somebody asked in another tab')
+  })
+
+  it('and never says that about a question that has not landed yet', () => {
+    const html = box({ answering: false, sending: true })
+    expect(html, 'the record has not heard of this question').not.toContain('another tab')
+    expect(html, 'and a box shut for no visible reason reads as a broken page').toContain(
+      'the question is on its way',
+    )
+  })
+
+  it('shuts the control either way, which is the point of the prop', () => {
+    // ON THE TEXTAREA, NOT ON THE MARKUP. The ask BUTTON is disabled whenever the draft is empty,
+    // which it always is here — so `toContain('disabled')` passes on an OPEN box and proves nothing.
+    const area = (html: string) => html.slice(0, html.indexOf('>', html.indexOf('<textarea')))
+    for (const props of [{ answering: true }, { answering: false, sending: true }]) {
+      expect(area(box(props)), JSON.stringify(props)).toContain('disabled')
+    }
+    expect(area(box({ answering: false })), 'and open when neither is true').not.toContain(
+      'disabled',
+    )
   })
 })

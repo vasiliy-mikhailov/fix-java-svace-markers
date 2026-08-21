@@ -390,7 +390,12 @@ export default function ChatScreen() {
           rather than on the last turn's text: two questions can be the same words in the same
           second, and a key that collided would leave the second one's draft on screen.
         */}
-        <AskBox key={turns.length} answering={chat.answering || asking.busy} onAsk={asking.ask} />
+        <AskBox
+          key={turns.length}
+          answering={chat.answering}
+          sending={asking.busy}
+          onAsk={asking.ask}
+        />
       </div>
     </>
   )

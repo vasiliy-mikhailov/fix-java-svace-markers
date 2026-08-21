@@ -1,5 +1,7 @@
 'use client'
 
+import { ACCOUNT_QUIET } from 'ratchet-ui/components'
+
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import type { Style } from './style'
 
@@ -45,13 +47,16 @@ const ICON: Style = {
 
 const ICON_OFF: Style = { ...ICON, cursor: 'not-allowed', opacity: 0.45 }
 
-const HELP: Style = {
-  display: 'block',
-  marginTop: '.2rem',
-  fontSize: '.74rem',
-  maxWidth: '52em',
-  color: 'var(--text-tertiary)',
-}
+/**
+ * THE FOOTNOTE UNDER A FIELD, AND IT IS THE SAME FOOTNOTE `Account` DRAWS.
+ *
+ * It was a private copy of `Account`'s quiet metrics, written before there was an `Account` to share
+ * — and taking `ratchet-ui`'s version repainted every quiet paragraph on the settings page EXCEPT
+ * this one, so a page that had two footnote styles briefly had three. `ACCOUNT_QUIET` is exported
+ * for exactly this: the call site that sits directly under its own control and wants to be closer
+ * to it than a paragraph between two cards would.
+ */
+const HELP: Style = { ...ACCOUNT_QUIET, display: 'block', margin: '.2rem 0 0' }
 
 /**
  * A masked value with the two buttons that make a masked value usable.
