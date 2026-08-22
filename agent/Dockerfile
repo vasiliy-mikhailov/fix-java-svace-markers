@@ -16,11 +16,15 @@ FROM maven:3.9-eclipse-temurin-25 AS builder
 # THE CHAIN ENGINE IS A LIBRARY AND IT IS NOT ON MAVEN CENTRAL EITHER. Built here for the same
 # reason deepagents is: the commit that produced the artifact is then in the log of this build.
 #
-# PINNED TO A COMMIT, NOT TO A BRANCH. The pom asks for a fixed release, 0.3.0, on the reasoning that
-# two lanes on the same version number must not run different bytes — and a version number a branch
-# can move under says nothing at all. Bumping this is a visible line in a diff, which is the point.
+# PINNED TO A COMMIT, AND THE COMMIT IS NOW ONE A TAG POINTS AT. Two lanes on the same version
+# number must not run different bytes, so this stays a commit — a tag is mutable in git and a branch
+# says nothing at all. But it used to name a commit no tag pointed at, for a version, 0.3.0, that was
+# never tagged: the pom said "install it from its own source tree", and a fresh checkout installs
+# 0.5.0 and then fails to resolve 0.3.0. Whoever hit that went hunting for a hash.
+#
+# c65f374 IS TAG v0.5.0. Keep the two in step when bumping, and keep the pom's version with them.
 ARG RATCHET_REPO=https://github.com/vasiliy-mikhailov/ratchet.git
-ARG RATCHET_REF=9988aa05ed405378641feb00a81961f305f66e0e
+ARG RATCHET_REF=c65f3744f0d0bf7bc79e9434bf7ee940f3c867f4
 RUN git clone ${RATCHET_REPO} /src/ratchet \
     && git -C /src/ratchet checkout -q ${RATCHET_REF} \
     && mvn -q -f /src/ratchet -DskipTests install
