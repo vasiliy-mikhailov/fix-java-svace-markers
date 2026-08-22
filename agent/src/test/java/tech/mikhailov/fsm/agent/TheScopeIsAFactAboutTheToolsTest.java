@@ -105,7 +105,7 @@ class TheScopeIsAFactAboutTheToolsTest {
                 "a marker names a LINE, so the lines are numbered: " + read);
         // AND THE NEW TOOLS ARE FENCED LIKE EVERY OTHER ONE. They return the subject's own file,
         // which is the most obvious place for it to address the agent reading it.
-        assertTrue(read.startsWith(Tools.OPEN) && read.trim().endsWith(Tools.CLOSE),
+        assertTrue(read.startsWith(Tools.OPEN) && read.trim().endsWith(Tools.AFTER),
                 "a tool added later is a tool that can miss the border: " + read);
     }
 
