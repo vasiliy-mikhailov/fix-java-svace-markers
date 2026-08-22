@@ -73,6 +73,10 @@ importers:
   packages/config: {}
 
   packages/types:
+    dependencies:
+      ratchet-ui:
+        specifier: github:vasiliy-mikhailov/ratchet-ui#v0.4.0
+        version: https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/e9d0a5dcab1f611a45a9f80424ffd0601bf27bae(react@19.2.3)
     devDependencies:
       '@fsm/config':
         specifier: workspace:*

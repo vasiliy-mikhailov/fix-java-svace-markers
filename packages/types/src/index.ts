@@ -174,3 +174,31 @@ export type ChatTurn = {
   who: 'you' | 'supervisor'
   text: string
 }
+
+/**
+ * THE MOUNTING CONTRACT, WHICH IS THE SHELL'S AND NOT THIS PROGRAM'S.
+ *
+ * `Manifest`, `NavItem`, `Badge` and `Health` were written against the same spec in both dashboards
+ * and came out identical field for field, so there is nothing here to declare and nothing to
+ * translate. Taking them is an import.
+ *
+ * THE RENAMES ARE STILL DECLINED and that is a separate decision: `Marker` to `WorkItem`, `summary`
+ * to `because`, `TraceEvent` to `RecordEvent` are mechanical but not free — they cross these types,
+ * the Java that serves them and every page that reads them — and the odd names here are odd for
+ * reasons. Declining those was never a reason to decline these.
+ *
+ * `ratchet-ui`'s ROOT ENTRY REACHES NO REACT, which is a promise the package makes rather than an
+ * accident of its layout. That is why this package can depend on it: `@fsm/types` is imported by the
+ * Java-facing tests and by pages alike, and a types package that dragged in a React version would be
+ * the wrong shape whatever it bought.
+ */
+export type { Badge, Health, Manifest, NavItem } from 'ratchet-ui'
+
+/**
+ * And the validators for them. `checkManifest` is the one this repository was missing: it builds the
+ * set of badge names from `badges` and cross-checks every nav item's `badge` against it — the one
+ * class of failure a TYPE cannot catch, because a nav item naming a badge nobody defines is
+ * perfectly well-typed. The shell follows the name, gets undefined, polls nothing, and shows no
+ * count. Nobody finds out until somebody notices a number that never appears.
+ */
+export { checkManifest, describe } from 'ratchet-ui'
