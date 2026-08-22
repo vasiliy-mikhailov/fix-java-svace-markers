@@ -20,8 +20,24 @@ export type CodeBlockProps = {
  * ONE PASS, IN ONE ALTERNATION (Java `JAVA` pattern 2665-2679). A keyword inside a string has to
  * stay inside the string and a quote inside a comment must not open one; colouring by running four
  * separate replacements over the same text is how `// the "public" API` comes out with half a
- * comment and a stray keyword in it. Order in the alternation is the precedence: comment, then
- * string, then word, then number.
+ * comment and a stray keyword in it.
+ *
+ * WHAT PROTECTS A STRING IS CONSUMPTION, NOT THE ORDER OF THE BRANCHES — and this comment claimed
+ * the opposite. A global pattern finds the earliest match, takes the WHOLE token there, and resumes
+ * after it, so the quote seven characters into a `//` comment is never offered to the scanner and
+ * `public` is never a starting position at all.
+ *
+ * The order is not doing that work, because there is none to do: the four branches have disjoint
+ * opening characters — `/`, a quote, a letter, a digit — and alternation order only decides ties at
+ * the same starting index. There are none. Checked by running this alternation and its exact reverse
+ * over adversarial inputs including `// the "public" API`, a keyword inside a string, a quote inside
+ * a block comment, an escaped quote, and hex, underscored and exponent literals: identical tokens
+ * from both orders, every time.
+ *
+ * THE ORDER STAYS ANYWAY, as the right default for the first branch anyone adds whose opening
+ * character overlaps an existing one — an annotation, a text block. But a reader who believes order
+ * is the mechanism will reorder branches the day a string breaks, and the branches are not where the
+ * bug will be.
  */
 const JAVA =
   /(?<comment>\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(?<string>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|(?<word>\b(?:abstract|assert|boolean|break|byte|case|catch|char|class|const|continue|default|do|double|else|enum|extends|final|finally|float|for|goto|if|implements|import|instanceof|int|interface|long|native|new|package|private|protected|public|return|short|static|strictfp|super|switch|synchronized|this|throw|throws|transient|try|var|void|volatile|while|true|false|null|record|sealed|yield)\b)|(?<number>\b\d[\w.]*)/g
@@ -49,8 +65,16 @@ function kindOf(groups: Record<string, string | undefined>): TokenKind {
 function colourJava(source: string): ReactNode[] {
   const out: ReactNode[] = []
   let at = 0
-  // `matchAll` needs the /g flag and gives a fresh iterator, so this is re-entrant where a shared
-  // `lastIndex` on `exec` would not be — two code blocks on one page must not read each other's.
+  // `matchAll` NEVER WRITES THE SHARED CURSOR, which is a sharper purchase than re-entrancy and is
+  // not what this comment used to claim. It does not RESET `lastIndex` either: per spec it clones
+  // the pattern, copies the current `lastIndex` into the clone, and advances only the clone. One
+  // `exec` anywhere leaves the cursor mid-source, and the next scan copies it in and returns fewer
+  // tokens, or none — with no error, from a file that is not the file that looks wrong.
+  //
+  // So every block starts at zero only because nothing ever moves it off zero, and the rule that
+  // falls out is the one worth writing down: THIS PATTERN IS ONLY EVER HANDED TO `matchAll`. Never
+  // `exec`, never `test`, by anyone. `the-lexer-is-only-ever-scanned` holds that, and demonstrates
+  // the failure rather than asserting it.
   for (const match of source.matchAll(JAVA)) {
     // A match always carries both; the fallbacks are for the type, which cannot know that.
     const text = match[0] ?? ''
