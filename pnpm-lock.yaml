@@ -90,8 +90,8 @@ importers:
         specifier: workspace:*
         version: link:../types
       ratchet-ui:
-        specifier: github:vasiliy-mikhailov/ratchet-ui#v0.3.0
-        version: https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/a729954372b082212f61806d37c324636bb74c95(react@19.2.3)
+        specifier: github:vasiliy-mikhailov/ratchet-ui#v0.4.0
+        version: https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/e9d0a5dcab1f611a45a9f80424ffd0601bf27bae(react@19.2.3)
     devDependencies:
       '@fsm/config':
         specifier: workspace:*
@@ -1154,9 +1154,9 @@ packages:
     resolution: {integrity: sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ==}
     engines: {node: ^10.13.0 || ^12.13.0 || ^14.15.0 || >=15.0.0}
 
-  ratchet-ui@https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/a729954372b082212f61806d37c324636bb74c95:
-    resolution: {gitHosted: true, integrity: sha512-n5C2vsPZy3Yb9tVHqVQ8TtoX4TsK2NiYFwAoJFRJFVNEJt86vX/3P3fqXeRlnAVuzdIQ4o1+NjAa++piJZ5XlA==, tarball: https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/a729954372b082212f61806d37c324636bb74c95}
-    version: 0.3.0
+  ratchet-ui@https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/e9d0a5dcab1f611a45a9f80424ffd0601bf27bae:
+    resolution: {gitHosted: true, integrity: sha512-FEnipnvvRyXLOHTB2Rcy/SwqFmnv6FzLlbY9LLVzwbL1nX4Lh2mrIUTBgjrXX1rnMbCZHMNNdx1PGjCLtg9tkQ==, tarball: https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/e9d0a5dcab1f611a45a9f80424ffd0601bf27bae}
+    version: 0.4.0
     peerDependencies:
       react: '>=19'
 
@@ -2117,7 +2117,7 @@ snapshots:
       ansi-styles: 5.2.0
       react-is: 17.0.2
 
-  ratchet-ui@https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/a729954372b082212f61806d37c324636bb74c95(react@19.2.3):
+  ratchet-ui@https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/e9d0a5dcab1f611a45a9f80424ffd0601bf27bae(react@19.2.3):
     dependencies:
       react: 19.2.3
 

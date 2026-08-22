@@ -75,3 +75,50 @@ describe('the semaphore', () => {
     expect(html).not.toContain(`reproduced: the test failed first — ${THE_BUILD_SAID_SO}`)
   })
 })
+
+/**
+ * AND THE THREE STATES HAVE TO BE THREE PICTURES, not three sentences over two pictures.
+ *
+ * Every assertion above is on `aria-label`, and every one of them was already true and correct while
+ * dim and hollow were 1.10:1 apart in light and 1.04:1 in dark — the same neutral ring, and two
+ * fills a nine-pixel dot cannot separate. A screen reader got three states; a sighted reader got
+ * two. That is an unusual way round for an accessibility defect and it is exactly why a suite
+ * asserting only on text could never see it.
+ *
+ * So this asserts on what is DRAWN. It does not pin the specific colours — those belong to
+ * `ratchet-ui` and to this repository's tokens, and pinning them here would break on any retune —
+ * it pins that the three differ from each other at all.
+ */
+describe('the three appearances are three pictures', () => {
+  const styleOf = (html: string, nth: number) =>
+    [...html.matchAll(/style="([^"]*)"/g)].map(m => m[1] ?? '')[nth] ?? ''
+
+  // red lit / red dim / red hollow, each read off the FIRST lamp so the colour is held constant.
+  const lit = styleOf(renderToStaticMarkup(<Semaphore flags={{ red: true, green: null }} state={'needs-review' as never} />), 1)
+  const dim = styleOf(renderToStaticMarkup(<Semaphore flags={{ red: false, green: null }} state={'needs-review' as never} />), 1)
+  const hollow = styleOf(renderToStaticMarkup(<Semaphore flags={{ red: null, green: null }} state={'infra' as never} />), 1)
+
+  it('draws a lamp at all in each state', () => {
+    for (const [name, s] of [['lit', lit], ['dim', dim], ['hollow', hollow]] as const) {
+      expect(s.length, `${name} rendered no style`).toBeGreaterThan(0)
+    }
+  })
+
+  it('parts dim from hollow by more than a dash pattern', () => {
+    // THE DEFECT THIS EXISTS FOR. Both used to be a neutral ring around fills 1.10:1 apart.
+    expect(dim, 'dim and hollow are the same picture').not.toBe(hollow)
+    expect(dim, 'a stage that RAN and answered no is still about that colour').toContain('--build-red')
+    expect(hollow, 'a stage never reached has nothing to say in that colour').not.toContain('--build-red')
+    expect(hollow, 'and keeps the dash, so a reader who cannot separate two washes still has it')
+      .toContain('dashed')
+  })
+
+  it('parts lit from dim by the glow, which is what "the build said so" looks like', () => {
+    expect(lit).toContain('box-shadow')
+    expect(dim, 'a dim lamp must not glow').not.toContain('box-shadow')
+  })
+
+  it('and all three are distinct, which is the whole claim', () => {
+    expect(new Set([lit, dim, hollow]).size).toBe(3)
+  })
+})

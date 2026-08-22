@@ -94,7 +94,11 @@ export {
 } from './records'
 export { RestartLog, type Restart, type RestartLogProps } from './RestartLog'
 export { RunProgress, type RunProgressProps } from './RunProgress'
-export { Lamp, Semaphore, type LampProps, type SemaphoreProps } from './Semaphore'
+// `Lamp` IS THE PACKAGE'S NOW — it went upstream from here in 0.4.0, and what came back parts
+// dim from hollow by colour rather than by a dash pattern alone. `Semaphore` stays, because what
+// red and green MEAN is this pipeline's vocabulary and was never offered.
+export { Lamp } from 'ratchet-ui/components'
+export { Semaphore, type SemaphoreProps } from './Semaphore'
 // ONE SETTING: WHAT IT IS CALLED, WHAT IT IS SET TO, AND THE CONTROL THAT CHANGES IT.
 // `name`/`state`/`anchorId` became `title`/`provenance`/`id`; `changed` kept its name and its
 // meaning, because the sibling's settings page only reads and had no opinion about what an
