@@ -1,4 +1,11 @@
-@import "tailwindcss";
+/* AUTOMATIC SOURCE DETECTION IS OFF, AND THAT IS WHAT MAKES THE GLOBS BELOW MEAN ANYTHING.
+   Left on, Tailwind treats every readable non-ignored file in the project as a source of candidate
+   class names. The guard that exists to prove `Pill`'s utility survived the move into node_modules
+   then passed with its own `@source` line deleted — because the SPEC FILE spells the utility, twice,
+   and automatic detection scanned the spec. The test emitted the class it then grepped for.
+   With `source(none)` the three globs below are the whole story and a grep over the built
+   stylesheet means what it says. Verified: delete the dist glob and the class disappears. */
+@import "tailwindcss" source(none);
 @import "@fsm/ui/tokens.css";
 @import "@fsm/ui/domain.css";
 
