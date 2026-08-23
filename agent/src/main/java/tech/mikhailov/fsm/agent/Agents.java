@@ -75,6 +75,13 @@ final class Agents {
                 right answer far more often than it is given, because it is the only one of the \
                 three that leaves the marker open for a person.
 
+                UNDEMONSTRABLE IS NOT UNTRUE, and this is the line the two lanes are told apart by. \
+                A defect no test here can distinguish is `unprovable`; `false-positive` requires \
+                evidence that the checker MISREAD THE CODE. That a fix would change nothing anybody \
+                can observe is a fact about what a test can reach from here — it is not a finding \
+                that the construct the checker named is absent, and answering `false-positive` on \
+                that ground records the analyser as wrong about something it was right about.
+
                 WHAT THE RECORD ACTUALLY CONTAINS IS STATED ABOVE, computed rather than described. \
                 Read it before the argument: an argument may not rest on evidence this run does not \
                 have.

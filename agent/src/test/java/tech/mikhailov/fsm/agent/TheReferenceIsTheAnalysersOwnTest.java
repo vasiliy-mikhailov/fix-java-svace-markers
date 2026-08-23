@@ -195,4 +195,24 @@ class TheReferenceIsTheAnalysersOwnTest {
         assertTrue(planner.contains("a test may START a runtime"),
                 "the premise everyone got right needs the conclusion that actually follows beside it");
     }
+    @Test
+    @DisplayName("undemonstrable and untrue are told apart, which two deleted notes disagreed about")
+    void undemonstrableIsNotUntrue() throws Exception {
+        // THE HOLE THE DELETION OPENED. Two per-checker notes contradicted each other outright:
+        // one said a fix that changes nothing observable REFUTES the finding, the other said a true
+        // finding no test can distinguish is not a false positive. Which rule an agent received was
+        // decided by the checker name printed on its marker, which is reason enough to delete both.
+        //
+        // But they did not leave symmetrically. `reproduce-planner` still tells an agent to decline
+        // when a fix "changes nothing observable", and the sentence opposing that died with the
+        // files — so the prompt carried one side of a contradiction with nothing against it, which
+        // pushes markers toward `no test` and out through the wrong lane.
+        String prompts = Files.readString(
+                Path.of("src/main/java/tech/mikhailov/fsm/agent/Agents.java"), StandardCharsets.UTF_8);
+        assertTrue(prompts.contains("UNDEMONSTRABLE IS NOT UNTRUE"),
+                "declining to demonstrate a defect is not evidence the checker misread the code");
+        assertTrue(prompts.contains("MISREAD THE CODE"),
+                "`false-positive` has to name what it requires, or it becomes the residual and "
+                        + "`unprovable` stops meaning anything");
+    }
 }
