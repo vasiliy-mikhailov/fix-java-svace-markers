@@ -319,10 +319,14 @@ final class Tools {
     }
 
     /**
-     * The same tools, reporting themselves in full.
+     * The same tools, reporting themselves in full — and reporting the value the AGENT got.
      *
      * <p>A tool that throws is recorded as having thrown and then rethrown: an agent must still see
      * its own failure, and a reader must still see that it happened.
+     *
+     * <p>AND WHAT IS RECORDED IS WHAT WAS HANDED OVER, character for character. The fence is not
+     * something this class puts around a result; it is part of the result, and a record that
+     * strips it is a record of a message nobody sent.
      */
     private static Map<ToolSpecification, ToolExecutor> recorded(
             Map<ToolSpecification, ToolExecutor> tools, Trace trace, String agent) {
@@ -330,21 +334,25 @@ final class Tools {
         tools.forEach((spec, executor) -> wrapped.put(spec, (request, memoryId) -> {
             try {
                 String result = executor.execute(request, memoryId);
-                // RECORD WHAT IT RETURNED, HAND ON SOMETHING SAYABLE. The trace keeps the raw value,
-                // including the empty one, because that is what happened.
-                trace.tool(agent, spec.name(), request.arguments(),
-                        result != null && result.startsWith(HARNESS)
-                                ? result.substring(HARNESS.length()) : result);
-                // THE RECORD KEEPS THE RAW VALUE, the agent gets the fenced one. A reader of the
-                // trace is looking at what the tool returned; an agent is looking at something the
-                // subject may have written, and only one of those two needs a border.
+                // THE RECORD IS THE WIRE. What this executor returns IS the fenced string — the
+                // border and its trailer are the tool's return value, not decoration wrapped around
+                // it, and the agent reads them the same way it reads the file. So one value is
+                // computed, handed on, and recorded, and record and wire cannot drift.
+                //
+                // IT USED TO RECORD THE VALUE FROM BEFORE THE WRAPPER, on the reasoning that a
+                // reader of the trace wants what the tool found rather than what the harness said
+                // about it. The cost was not obvious until somebody went looking: EVERY tool result
+                // in EVERY record then looked unfenced, so the record could not answer the one
+                // question anybody asks it about fencing, and answered it wrongly by omission. A
+                // record that cannot show a border is a record that cannot show a MISSING border.
                 //
                 // Nothing to say is the harness speaking, not the subject, so it is not fenced —
                 // otherwise the fence would stop meaning "this came from the subject".
-                if (result != null && result.startsWith(HARNESS)) {
-                    return result.substring(HARNESS.length());
-                }
-                return result == null || result.isBlank() ? said(result) : untrusted(result);
+                String handed = result != null && result.startsWith(HARNESS)
+                        ? result.substring(HARNESS.length())
+                        : result == null || result.isBlank() ? said(result) : untrusted(result);
+                trace.tool(agent, spec.name(), request.arguments(), handed);
+                return handed;
             } catch (RuntimeException e) {
                 trace.tool(agent, spec.name(), request.arguments(),
                         "threw " + e.getClass().getSimpleName() + ": " + e.getMessage());

@@ -99,11 +99,48 @@ class TheSubjectCannotForgeTheBorderTest {
         // AND IT IS STRIPPED BEFORE EITHER READER SEES IT. `harness` puts the mark on; `recorded`
         // takes it off — for the agent AND for the trace. A mark that reached a prompt would be a
         // mark the subject could read there and copy back.
-        String tools = readTools();
-        int stripped = count(tools, "result.substring(HARNESS.length())");
-        assertTrue(stripped >= 2,
-                "the mark is removed on " + stripped + " of the two paths out of `recorded` — the "
-                        + "value handed to the agent and the value written to the record");
+        //
+        // ASKED OF THE RUNNING TOOL, NOT OF THE SOURCE. This used to count the two occurrences of
+        // the strip in `Tools`, which was a count of an implementation shape: the two paths have
+        // since become one value handed on and recorded, and the source check failed while the
+        // property it stood for was safer than before.
+        assertFalse(harnessSpeech().contains("\u0001"),
+                "the mark reached the agent, where the subject can read it and copy it back");
+        assertFalse(harnessSpeech().contains(mark), "the mark reached the agent whole");
+    }
+
+    /**
+     * What an agent is handed when the harness itself answers — {@code grep} with no pattern. The
+     * mark has to be gone by then, and this is the only way to ask that does not read the source.
+     */
+    private static String harnessSpeech() {
+        try {
+            Path dir = Files.createTempDirectory("mark");
+            var tools = Tools.reading(dir, quiet(), "x");
+            for (var tool : tools.entrySet()) {
+                if (tool.getKey().name().equals("grep")) {
+                    return tool.getValue().execute(dev.langchain4j.agent.tool.ToolExecutionRequest
+                            .builder().name("grep").arguments("{}").build(), "m");
+                }
+            }
+            throw new IllegalStateException("no grep among the reading tools");
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+    private static Trace quiet() {
+        return new Trace() {
+            @Override public void asked(String a, String p, String r) { }
+            @Override public void sent(String a, String role, String text) { }
+            @Override public void thought(String agent, String text) { }
+            @Override public void tool(String a, String t, String args, String result) { }
+            @Override public void built(String phase, Runner.Result result) { }
+            @Override public void settled(String m, String s, String b, boolean r, boolean g) { }
+            @Override public void failed(String marker, Throwable cause) { }
+            @Override public void progress(String marker, String note) { }
+            @Override public void priced(String marker, String minutes, String items) { }
+        };
     }
 
     @Test

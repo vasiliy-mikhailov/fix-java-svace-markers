@@ -83,17 +83,43 @@ class AnEmptyFileIsAnAnswerTest {
     }
 
     @Test
-    @DisplayName("the record keeps the empty result, because that is what happened")
+    @DisplayName("the record keeps the words the agent got, and they still say the file was empty")
     void tracedHonestly(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("empty.txt"), "");
-        run(Tools.reading(dir, trace(dir), "reader"), "read_file", "{\"path\": \"empty.txt\"}");
+        String handed = run(Tools.reading(dir, trace(dir), "reader"), "read_file",
+                "{\"path\": \"empty.txt\"}");
         String written = Files.readString(dir.resolve("t.jsonl"));
-        // The SUBSTITUTE must not reach the record. A reader of the trace has to be able to tell that
-        // the file was empty; a trace saying the tool returned a sentence about emptiness would be
-        // this fix quietly rewriting history to make itself invisible.
-        assertTrue(written.contains("\"result\":\"\"") || written.contains("\"result\": \"\""),
-                "the trace must record the empty result the tool actually returned, not the words "
-                        + "handed to the model in its place: " + written);
+
+        // THIS USED TO DEMAND `"result":""`, on the reasoning that the substitute must not reach the
+        // record — a trace saying the tool returned a sentence about emptiness would be the fix
+        // rewriting history to make itself invisible. The worry was right about substitutes and
+        // wrong about which value is the history. What HAPPENED is that the agent was handed a
+        // sentence; the empty string is a step on the way there that nobody ever read. And the
+        // carve-out had a cost paid elsewhere: if the record is the wire EXCEPT for empties, then
+        // the record cannot be read as the wire at all, and the fence went years unverifiable in
+        // exactly that gap.
+        assertTrue(written.contains(json(handed)),
+                "the trace must record what the agent was handed: " + written);
+        // AND THE ORIGINAL CONCERN STILL HOLDS, which is why it is asserted and not merely argued:
+        // a reader of the record can still tell the file was empty, because the words say so.
+        assertTrue(handed.contains("nothing") && handed.contains("empty file"),
+                "a reader of the record must still be able to see that the file was empty: " + handed);
+    }
+
+    /** The trace is JSON; a bare `contains` on the raw text would miss the escaping. */
+    private static String json(String value) {
+        StringBuilder b = new StringBuilder();
+        for (char c : value.toCharArray()) {
+            switch (c) {
+                case '"' -> b.append("\\\"");
+                case '\\' -> b.append("\\\\");
+                case '\n' -> b.append("\\n");
+                case '\r' -> b.append("\\r");
+                case '\t' -> b.append("\\t");
+                default -> b.append(c);
+            }
+        }
+        return b.toString();
     }
 
     @Test
