@@ -42,9 +42,6 @@ class TheRemedyIsKnownBeforeTheTestIsTest {
         return all.substring(at, all.indexOf("\"\"\");", at));
     }
 
-    private static String note() throws Exception {
-        return Files.readString(Path.of("src/main/resources/checkers/TAINTED_PTR.txt"));
-    }
 
     @Test
     @DisplayName("the fix is the known remedy, and is not the agent's to invent")
@@ -83,18 +80,4 @@ class TheRemedyIsKnownBeforeTheTestIsTest {
                         + "collapsing the distinction either way is a failure");
     }
 
-    @Test
-    @DisplayName("the note prefers the cheap assertion and still forbids its inverse")
-    void theNoteWasAimedAtTheWrongThing() throws Exception {
-        String note = note();
-        assertTrue(note.contains("THE CHEAPEST HONEST DEMONSTRATION IS THE SHAPE OF THE STATEMENT"),
-                "this was the assertion the old wording banned along with the bad one");
-        assertTrue(note.contains("DO NOT INVERT IT"),
-                "asserting the payload IS present is still worthless, and dropping that would trade "
-                        + "one failure for the other");
-        assertTrue(note.contains("assert it is not in the string"),
-                "absence is the assertion that carries weight, because only the fix can make it hold");
-        assertTrue(note.contains("WHEN THE PROPERTY GENUINELY DEPENDS ON EXECUTION"),
-                "and exploitability still has a way to be shown");
     }
-}

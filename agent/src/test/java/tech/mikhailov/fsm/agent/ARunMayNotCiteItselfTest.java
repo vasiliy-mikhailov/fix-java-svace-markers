@@ -31,9 +31,9 @@ class ARunMayNotCiteItselfTest {
 
     private static String whatThisRunMade(Path checkout) throws Exception {
         Constructor<Prove> c = Prove.class.getDeclaredConstructor(
-                Path.class, String.class, Agents.class, Runner.class, Trace.class);
+                Path.class, Path.class, String.class, Agents.class, Runner.class, Trace.class);
         c.setAccessible(true);
-        Prove prove = c.newInstance(checkout, MARKER, null, null, null);
+        Prove prove = c.newInstance(checkout, checkout, MARKER, null, null, null);
         Method m = Prove.class.getDeclaredMethod("whatThisRunMade");
         m.setAccessible(true);
         return (String) m.invoke(prove);

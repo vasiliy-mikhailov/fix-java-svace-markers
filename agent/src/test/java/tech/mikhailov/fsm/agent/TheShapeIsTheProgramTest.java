@@ -37,7 +37,7 @@ class TheShapeIsTheProgramTest {
         m.setAccessible(true);
         var ctor = Prove.class.getDeclaredConstructors()[0];
         ctor.setAccessible(true);
-        return (Agent) m.invoke(ctor.newInstance(java.nio.file.Path.of("."), "|||",
+        return (Agent) m.invoke(ctor.newInstance(java.nio.file.Path.of("."), java.nio.file.Path.of("."), "|||",
                 null, null, null));
     }
 

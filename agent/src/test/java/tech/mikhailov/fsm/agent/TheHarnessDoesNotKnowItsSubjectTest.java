@@ -14,6 +14,13 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
+ * NOTE: THE CHECKER-NOTE HALF OF THIS FILE IS GONE, and so are the notes. What a checker means is
+ * extracted from the analysers' own documentation now — see `TheReferenceIsTheAnalysersOwnTest`,
+ * which holds the same property against text this repository did not write and can therefore hold
+ * it exactly rather than approximately. What stays here is the half that mattered longest: the
+ * PROMPTS must not learn the subject either, and that is where it survived after the notes were cut.
+ */
+/**
  * WEBGOAT IS THE SUBJECT, NOT THE SUBJECT MATTER.
  *
  * <p>This harness proves or refutes static-analysis markers. WebGoat is merely the repository it is
@@ -87,34 +94,6 @@ class TheHarnessDoesNotKnowItsSubjectTest {
                 "reports the history of one run over one queue: a measurement the reading agent "
                         + "cannot check, false the moment the harness is pointed elsewhere"});
 
-    private static List<Path> notes() throws Exception {
-        try (Stream<Path> files = Files.list(CHECKERS)) {
-            return files.filter(p -> p.toString().endsWith(".txt")).sorted().toList();
-        }
-    }
-
-    @Test
-    @DisplayName("no checker note knows anything about the repository under test")
-    void theNotesAreAboutCheckers() throws Exception {
-        List<String> found = new ArrayList<>();
-        for (Path note : notes()) {
-            // Line 1 is the construct regex and can legitimately contain anything; the prose is what
-            // reaches the agents as prose.
-            String all = Files.readString(note);
-            int nl = all.indexOf('\n');
-            String prose = nl < 0 ? "" : all.substring(nl + 1);
-            for (String[] rule : FORBIDDEN) {
-                Matcher m = Pattern.compile(rule[0]).matcher(prose);
-                if (m.find()) {
-                    found.add(note.getFileName() + ": \"" + m.group() + "\" — " + rule[1]);
-                }
-            }
-        }
-        assertTrue(found.isEmpty(), "a checker note is pasted verbatim into the prompt of every "
-                + "agent that judges a marker of that checker, so anything it knows about the "
-                + "subject is something the agents were told instead of finding:\n  "
-                + String.join("\n  ", found));
-    }
 
     @Test
     @DisplayName("and neither does any prompt, which is where it survived longest")
@@ -142,45 +121,4 @@ class TheHarnessDoesNotKnowItsSubjectTest {
                 + "on one repository:\n  " + String.join("\n  ", found));
     }
 
-    @Test
-    @DisplayName("and none of them is long enough to be the prompt")
-    void theNotesAreNotThePrompt() throws Exception {
-        // The one that started this was 10,727 characters against a 13,549-character task. A note
-        // that outweighs the question is not context for the work, it IS the work.
-        List<String> fat = new ArrayList<>();
-        for (Path note : notes()) {
-            long size = Files.size(note);
-            if (size > 8_000) {
-                fat.add(note.getFileName() + " is " + size + " characters");
-            }
-        }
-        assertTrue(fat.isEmpty(), "a checker explains itself in a page; a note past this length has "
-                + "started accumulating findings again, which is how the last one reached 79% of "
-                + "the planner's task: " + fat);
     }
-
-    @Test
-    @DisplayName("every note still has its construct regex on line 1, and prose after it")
-    void theShapeSurvived() throws Exception {
-        List<String> broken = new ArrayList<>();
-        for (Path note : notes()) {
-            String all = Files.readString(note);
-            int nl = all.indexOf('\n');
-            if (nl < 0) {
-                broken.add(note.getFileName() + " has no second line, so Checkers.read returns null "
-                        + "and every agent is told this pipeline has no note for the checker");
-                continue;
-            }
-            try {
-                Pattern.compile(all.substring(0, nl).strip());
-            } catch (RuntimeException notARegex) {
-                broken.add(note.getFileName() + " line 1 does not compile: " + notARegex.getMessage());
-            }
-            if (all.substring(nl + 1).strip().length() < 200) {
-                broken.add(note.getFileName() + " has no prose left — a note that no longer says "
-                        + "what its checker means is worse than none, because the agent believes it");
-            }
-        }
-        assertTrue(broken.isEmpty(), String.join("\n  ", broken));
-    }
-}

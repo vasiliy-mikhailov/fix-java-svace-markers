@@ -115,7 +115,7 @@ public final class Prove {
             // THE SECOND FIELD OF THE MARKER IS THE FILE, and the agents that work on it are given
             // tools that can read that one and — four times, with a reason — anything else.
             String[] parts = marker.split("\\|");
-            Prove prove = new Prove(checkout, marker,
+            Prove prove = new Prove(checkout, results, marker,
                     new Agents(checkout, trace, runner, parts.length > 1 ? parts[1] : ""),
                     runner, trace);
             String account = prove.run();
@@ -143,6 +143,8 @@ public final class Prove {
     private final List<String> builds = new ArrayList<>();
 
     private final Path checkout;
+    /** This marker's lane, whose parent holds the run's sidecars. */
+    private final Path lane;
     private final String marker;
     private final Agents agents;
     private final Runner runner;
@@ -168,8 +170,9 @@ public final class Prove {
     private boolean redOk;
     private boolean greenOk;
 
-    private Prove(Path checkout, String marker, Agents agents, Runner runner, Trace trace) {
+    private Prove(Path checkout, Path lane, String marker, Agents agents, Runner runner, Trace trace) {
         this.checkout = checkout;
+        this.lane = lane;
         this.marker = marker;
         this.agents = agents;
         this.runner = runner;
@@ -186,7 +189,7 @@ public final class Prove {
      */
     static java.util.List<tech.mikhailov.ratchet.flow.Shape.Stage> stages() {
         return tech.mikhailov.ratchet.flow.Shape.of(
-                new Prove(Path.of("."), "|||", null, null, null).everything());
+                new Prove(Path.of("."), Path.of("."), "|||", null, null, null).everything());
     }
 
     /** Every agent a prove runs, in the order the tree reaches them. */
@@ -195,8 +198,9 @@ public final class Prove {
     }
 
     /** The whole prove. Read it top to bottom; that is the order, and nothing can reorder it. */
-    static String prove(Path checkout, String marker, Agents agents, Runner runner, Trace trace) {
-        return new Prove(checkout, marker, agents, runner, trace).run();
+    static String prove(Path checkout, Path lane, String marker, Agents agents, Runner runner,
+            Trace trace) {
+        return new Prove(checkout, lane, marker, agents, runner, trace).run();
     }
 
     private String run() {
@@ -204,6 +208,7 @@ public final class Prove {
         // tool calls, and fetching a file the caller already holds can spend most of them. File tools
         // are for reading what nobody anticipated.
         brief = "Marker: " + marker
+                + severityOf(marker)
                 + "\nThe checkout is your workspace; read further only if you need to.\n\n"
                 + Checkers.note(checkout, marker, checkerOf(marker), fileOf(marker), lineOf(marker))
                 + aTestThisBuildCannotRun(marker)
@@ -1027,6 +1032,33 @@ public final class Prove {
         } catch (NumberFormatException noNumber) {
             return 0;
         }
+    }
+
+    /**
+     * WHAT THE ANALYSER GRADED IT, which is the fourth thing Svace says and the one nobody passed on.
+     *
+     * <p>Svace's output is four columns — Severity, Checker, File, Line — and the queue carries
+     * three of them. The severity reached the markers TABLE, joined in from the same sidecar for
+     * display, and never reached a prover: fifteen agents judged each marker without the one grading
+     * the analyser itself put on it. That is a source of truth this program had and was dropping.
+     *
+     * <p>It is stated and not weighted. `Minor` is not permission to decline and `Critical` is not a
+     * finding — a defect that does not matter is still not a checker that is wrong — so this says
+     * what was graded and leaves the judgement where it belongs.
+     */
+    private String severityOf(String marker) {
+        String key = fileOf(marker).substring(fileOf(marker).lastIndexOf('/') + 1)
+                + "|" + lineOf(marker) + "|" + checkerOf(marker);
+        // The lane is `<results>/m/<id>`, so the run's sidecars are two levels up.
+        Path beside = lane.getParent() == null ? lane : lane.getParent().getParent();
+        for (String line : Dashboard.lines(
+                (beside == null ? lane : beside).resolve("severities.tsv"))) {
+            String[] f = line.split("\t");
+            if (f.length >= 4 && (f[0] + "|" + f[1] + "|" + f[2]).equals(key)) {
+                return "\nSvace graded it: " + f[3].strip() + ".";
+            }
+        }
+        return "";
     }
 
     private static String fileOf(String marker) {

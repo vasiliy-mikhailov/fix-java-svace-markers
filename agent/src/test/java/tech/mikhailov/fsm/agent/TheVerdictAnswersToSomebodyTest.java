@@ -35,9 +35,9 @@ class TheVerdictAnswersToSomebodyTest {
     /** A Prove that never runs, to reach the one method that reads only its build ledger. */
     private static Prove prove(String... builds) throws Exception {
         Constructor<Prove> c = Prove.class.getDeclaredConstructor(
-                Path.class, String.class, Agents.class, Runner.class, Trace.class);
+                Path.class, Path.class, String.class, Agents.class, Runner.class, Trace.class);
         c.setAccessible(true);
-        Prove p = c.newInstance(Path.of("."), MARKER, null, null, null);
+        Prove p = c.newInstance(Path.of("."), Path.of("."), MARKER, null, null, null);
         Field ledger = Prove.class.getDeclaredField("builds");
         ledger.setAccessible(true);
         @SuppressWarnings("unchecked")
@@ -117,7 +117,7 @@ class TheVerdictAnswersToSomebodyTest {
             @Override public void progress(String m, String n) { }
             @Override public void priced(String m, String min, String items) { }
         };
-        Object prove = ctor.newInstance(java.nio.file.Path.of("."), "r|f|1|C",
+        Object prove = ctor.newInstance(java.nio.file.Path.of("."), java.nio.file.Path.of("."), "r|f|1|C",
                 new Agents(java.nio.file.Path.of("."), null, (phase, test) -> null), null, quiet);
         String out = (String) m.invoke(prove, planner, doer, dead, "the task");
         assertTrue(out.startsWith("by-design"),

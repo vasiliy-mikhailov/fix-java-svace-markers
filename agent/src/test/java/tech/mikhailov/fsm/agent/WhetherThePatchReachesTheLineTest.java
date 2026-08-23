@@ -28,9 +28,9 @@ class WhetherThePatchReachesTheLineTest {
     /** Reaches the private through a Prove that never runs — the method touches no field but two. */
     private static String verdictOn(String diff) throws Exception {
         Constructor<Prove> c = Prove.class.getDeclaredConstructor(
-                Path.class, String.class, Agents.class, Runner.class, Trace.class);
+                Path.class, Path.class, String.class, Agents.class, Runner.class, Trace.class);
         c.setAccessible(true);
-        Prove prove = c.newInstance(Path.of("."), MARKER, null, null, null);
+        Prove prove = c.newInstance(Path.of("."), Path.of("."), MARKER, null, null, null);
         Method m = Prove.class.getDeclaredMethod("reachesTheFlaggedLine", String.class);
         m.setAccessible(true);
         return (String) m.invoke(prove, diff);

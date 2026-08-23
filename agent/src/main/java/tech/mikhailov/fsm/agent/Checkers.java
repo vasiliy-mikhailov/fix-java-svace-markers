@@ -10,7 +10,25 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
 /**
- * WHAT THE CHECKER IS ACTUALLY COMPLAINING ABOUT, AND HOW YOU WOULD SEE IT.
+ * WHAT THE CHECKER IS ACTUALLY COMPLAINING ABOUT, IN THE ANALYSER'S OWN WORDS.
+ *
+ * <p>THIS USED TO BE FORTY-EIGHT FILES THIS REPOSITORY WROTE, and they were the wrong thing on every
+ * axis. They were generated in one session against one subject and grew that subject's class names
+ * and lesson architecture; 216,650 characters across the directory, on one marker 41% of the task
+ * before an agent had read a line of code. Several dictated the settlement outright, and after that
+ * was cut what remained still told an agent how to CONCLUDE — what counts as evidence of intent —
+ * which is the same fault one level more abstract. And they could not travel: point this pipeline at
+ * a repository that is not the one they were grown against and they are wrong.
+ *
+ * <p>THE ANALYSER DOCUMENTS ITS OWN CHECKERS, so the reference is extracted rather than written.
+ * Three catalogues, because `FB.` marks a detector Svace imports rather than owns: the Svace user
+ * guide, SpotBugs, and the find-sec-bugs plugin. {@code agent/scripts/checker-catalogue.py} does the
+ * extraction and the output is committed, because the Svace host is not reachable from every
+ * developer machine and no prove should depend on three websites being up.
+ *
+ * <p>ALL OF THEM, NOT THE ONES ONE CORPUS RAISED. 1,376 checkers, against the 48 this subject
+ * happens to produce. The next repository will raise checkers this one never did, and a reference
+ * that covers only what has been seen is missing exactly when it is first needed.
  *
  * <p>A marker arrives as {@code file|line|checker} and nothing else, so every agent reconstructs the
  * claim from a bare name. They reconstruct it wrong in ways that decide markers: {@code JWT:180}
@@ -44,14 +62,27 @@ final class Checkers {
      * how the defect could be made visible.
      */
     static String note(Path checkout, String marker, String checker, String file, int line) {
-        String[] note = read(checker);
-        if (note == null) {
-            return "\n\nTHIS PIPELINE HAS NO NOTE FOR " + checker + ". Say in your answer which "
-                    + "construct you took that name to mean, so the next reader can tell a correct "
-                    + "answer from a lucky one.\n";
+        String said = described(checker);
+        StringBuilder b = new StringBuilder("\n\n");
+        if (said == null) {
+            // ABSENCE IS STATED, NEVER SILENT — and never filled in. A checker the analyser does not
+            // document is a checker nothing here knows about, and the honest move is to say so and
+            // ask what the agent took the name to mean, so a correct answer can be told from a lucky
+            // one afterwards.
+            b.append("NEITHER SVACE, SPOTBUGS NOR find-sec-bugs DOCUMENTS ").append(checker)
+                    .append(". Nothing in this pipeline knows what it reports. Say in your answer ")
+                    .append("which construct you took that name to mean.\n");
+        } else {
+            // ATTRIBUTED, because an agent that cannot tell the analyser's words from this program's
+            // cannot weigh them. This sentence is the checker's definition and nothing more: it says
+            // what is reported, never what to conclude.
+            b.append("WHAT ").append(checker).append(" REPORTS, per its own documentation: ")
+                    .append(said).append('\n');
         }
-        StringBuilder b = new StringBuilder("\n\nWHAT " + checker + " REPORTS: " + note[1] + "\n");
-        b.append(where(checkout, file, line, note[0]));
+        String shape = construct(checker);
+        if (shape != null) {
+            b.append(where(checkout, file, line, shape));
+        }
         return b.append('\n').toString();
     }
 
@@ -95,17 +126,41 @@ final class Checkers {
                                 + "meant, and say in your answer which line you judged.");
     }
 
-    /** {@code checkers/<name>.txt}: first line the construct's regex, the rest the note. */
-    private static String[] read(String checker) {
-        String safe = checker.replaceAll("[^A-Za-z0-9._-]", "");
-        try (InputStream in = Checkers.class.getResourceAsStream("/checkers/" + safe + ".txt")) {
+    /** The analyser's own description, or null where none of the three catalogues carries one. */
+    private static String described(String checker) {
+        return column("/checkers.tsv", checker, 2);
+    }
+
+    /**
+     * The construct's shape, and it is the ONE THING HERE THIS REPOSITORY STILL WRITES.
+     *
+     * <p>No catalogue publishes a pattern, so {@link #where} — which asks whether the flagged line
+     * actually holds what the checker reports — has no vendor input and would have to go with the
+     * notes. It fired on 81 of 354 lanes in the last full run, because these markers came off an
+     * older revision and some point at a line that has since moved.
+     *
+     * <p>It is kept as PATTERNS AND NOTHING ELSE, in one file, for a reason worth stating: a regex
+     * cannot argue. It either matches the line or it does not, the agent is holding the same source
+     * and can see which, and a wrong one produces a checkable claim rather than a settlement. That
+     * is the property the prose it replaces did not have.
+     */
+    private static String construct(String checker) {
+        return column("/checker-shapes.tsv", checker, 1);
+    }
+
+    /** One tab-separated reference, looked up by the name in the marker. */
+    private static String column(String resource, String checker, int field) {
+        try (InputStream in = Checkers.class.getResourceAsStream(resource)) {
             if (in == null) {
                 return null;
             }
-            String all = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            int nl = all.indexOf('\n');
-            return nl < 0 ? null : new String[] {all.substring(0, nl).strip(),
-                    all.substring(nl + 1).strip()};
+            for (String row : new String(in.readAllBytes(), StandardCharsets.UTF_8).split("\n")) {
+                String[] cells = row.split("\t", -1);
+                if (cells.length > field && cells[0].equals(checker) && !cells[field].isBlank()) {
+                    return cells[field].strip();
+                }
+            }
+            return null;
         } catch (IOException unreadable) {
             return null;
         }
