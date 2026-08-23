@@ -65,15 +65,21 @@ const globals = existsSync(GLOBALS) ? readFileSync(GLOBALS, 'utf8') : ''
 if (css.length === 0) {
   fail(1, 'no stylesheet was built at all', 'every check over the CSS below is vacuous; fix the build first')
 } else {
-  if (!css.includes(`.${UTILITY}`)) {
-    fail(1, `the ${UTILITY} utility is not in the built stylesheet`,
-      'add `@source "../../../packages/ui/node_modules/ratchet-ui/dist";` to app/globals.css — and '
-      + 'note it is `dist`, not `src`: pnpm ships only what `files` names, so a glob at `src` scans '
-      + 'one stylesheet, finds no class, and fails in the same silence')
-  }
-  if (!css.includes('@keyframes pulse')) {
-    fail(1, 'the utility is emitted but its keyframes are not',
-      'the class without its animation is a dot that does not move; check the Tailwind version')
+  // THREE PATTERNS, NOT ONE. Tailwind 4 emits `.animate-pulse{animation:var(--animate-pulse)}`, so
+  // the rule can be present while the custom property it reads is not — a class that exists and
+  // animates nothing, which is the same dead dot with the grep still green. The sibling's gate
+  // checks all three and this one checked two; the third is its contribution.
+  for (const [pattern, what] of [
+    [new RegExp(`\\.${UTILITY}\\s*\\{`), `the .${UTILITY} rule`],
+    [new RegExp(`--${UTILITY}\\s*:`), `the --${UTILITY} custom property it reads`],
+    [/@keyframes\s+pulse\s*\{/, 'the @keyframes pulse it animates through'],
+  ]) {
+    if (!pattern.test(css)) {
+      fail(1, `${what} is not in the built stylesheet`,
+        'add `@source "../../../packages/ui/node_modules/ratchet-ui/dist";` to app/globals.css — and '
+        + 'note it is `dist`, not `src`: pnpm ships only what `files` names, so a glob at `src` scans '
+        + 'one stylesheet, finds no class, and fails in the same silence')
+    }
   }
 }
 
