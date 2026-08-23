@@ -9,7 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "ratchet-ui": "github:vasiliy-mikhailov/ratchet-ui#v0.4.0"
+    "ratchet-ui": "github:vasiliy-mikhailov/ratchet-ui#v0.4.2"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

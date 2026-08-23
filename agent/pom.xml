@@ -84,14 +84,14 @@
 
     <!-- THE CHAIN GRAMMAR, AS A LIBRARY. `ratchet-core` declares no dependencies of its own, so
          this costs nothing transitively and can be adopted a stage at a time. It is not on Maven
-         Central: `git clone` it, `git checkout v0.11.1`, `mvn -DskipTests install`.
+         Central: `git clone` it, `git checkout v0.12.0`, `mvn -DskipTests install`.
            THE TAG IS PART OF THE INSTRUCTION: 0.3.0 was never tagged, so following this against a
            fresh checkout installed the tip and the build could not then resolve what this line
            asks for. The Dockerfile pins the commit that tag points at; keep the two in step. -->
     <dependency>
       <groupId>tech.mikhailov.ratchet</groupId>
       <artifactId>ratchet-core</artifactId>
-      <version>0.11.1</version>
+      <version>0.12.0</version>
     </dependency>
     <!-- THE RETRY, AND NOTHING ELSE FROM IT. `ratchet-llm` used to be all-or-nothing: its retry loop
          and its stall guard were package-private, so the only way in was `Model.forProducer`, which
@@ -101,7 +101,7 @@
     <dependency>
       <groupId>tech.mikhailov.ratchet</groupId>
       <artifactId>ratchet-llm</artifactId>
-      <version>0.11.1</version>
+      <version>0.12.0</version>
     </dependency>
     <dependency>
       <groupId>com.deepagents</groupId>

@@ -12,7 +12,12 @@ import tech.mikhailov.ratchet.llm.Retry;
 import tech.mikhailov.ratchet.llm.Retrying;
 import tech.mikhailov.ratchet.llm.Streamed;
 
+import dev.langchain4j.http.client.jdk.JdkHttpClientBuilder;
+import dev.langchain4j.model.chat.StreamingChatModel;
+import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
+
 import java.io.EOFException;
+import java.time.Duration;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -128,6 +133,55 @@ class ADroppedFrameIsNotASettlementTest {
         };
     }
 
+
+    @Test
+    @DisplayName("this program's own ceiling is refused too, because it says so with a type")
+    void ourCeilingIsRefused() {
+        // A STREAM THAT NEVER ANSWERS AND NEVER GOES QUIET. `Overheard` is fed nothing, but
+        // `listening()` restarts its clock on every call, so silence never trips and the ceiling is
+        // the only exit left — which is the case under test.
+        // The real builder, never asked to build one: the model below is a stub, so nothing here
+        // opens a socket. `Thinking` only ever asks this for its clock and its buffer.
+        Overheard overheard = new Overheard(new JdkHttpClientBuilder());
+        List<String> notes = new ArrayList<>();
+        Trace kept = new Trace() {
+            @Override public void asked(String a, String p, String r) { }
+            @Override public void sent(String a, String role, String text) { }
+            @Override public void thought(String agent, String text) { notes.add(text); }
+            @Override public void tool(String a, String t, String args, String result) { }
+            @Override public void built(String phase, Runner.Result result) { }
+            @Override public void settled(String m, String s, String b, boolean r, boolean g) { }
+            @Override public void failed(String m, Throwable cause) { }
+            @Override public void progress(String m, String note) { }
+            @Override public void priced(String m, String minutes, String items) { }
+        };
+        StreamingChatModel silent = new StreamingChatModel() {
+            @Override public void doChat(ChatRequest request, StreamingChatResponseHandler handler) {
+                // never answers, and never goes quiet either
+            }
+        };
+
+        ChatModel wedged = new Thinking(silent, overheard, new Connector(kept, "x"), kept, "x",
+                Duration.ofHours(1), Duration.ZERO);
+
+        AtomicInteger attempts = new AtomicInteger();
+        ChatModel counted = new ChatModel() {
+            @Override public ChatResponse doChat(ChatRequest request) {
+                attempts.incrementAndGet();
+                return wedged.chat(request);
+            }
+        };
+
+        assertThrows(Streamed.GaveUp.class, () -> Retrying.on(counted, instant(), noted(new ArrayList<>()))
+                .chat(ChatRequest.builder()
+                        .messages(dev.langchain4j.data.message.UserMessage.from("go")).build()));
+        // ONE. It used to be a plain RuntimeException, which `transportFailures()` does not
+        // recognise and therefore retries — so a lane this program deliberately gave up on would
+        // have been started again, each attempt running to the same wall.
+        assertEquals(1, attempts.get(), "the ceiling must not be retried");
+    }
+
+    /** A trace that keeps nothing: this test is about what the AGENT got, not what was recorded. */
     private static tech.mikhailov.ratchet.record.Trace noted(List<String> into) {
         Trace kept = new Trace() {
             @Override public void asked(String a, String p, String r) { }

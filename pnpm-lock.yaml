@@ -75,8 +75,8 @@ importers:
   packages/types:
     dependencies:
       ratchet-ui:
-        specifier: github:vasiliy-mikhailov/ratchet-ui#v0.4.0
-        version: https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/e9d0a5dcab1f611a45a9f80424ffd0601bf27bae(react@19.2.3)
+        specifier: github:vasiliy-mikhailov/ratchet-ui#v0.4.2
+        version: https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/4c5b42a7b28208a66fc6bb9aab923e7bd65711d5(react@19.2.3)
     devDependencies:
       '@fsm/config':
         specifier: workspace:*
@@ -94,8 +94,8 @@ importers:
         specifier: workspace:*
         version: link:../types
       ratchet-ui:
-        specifier: github:vasiliy-mikhailov/ratchet-ui#v0.4.0
-        version: https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/e9d0a5dcab1f611a45a9f80424ffd0601bf27bae(react@19.2.3)
+        specifier: github:vasiliy-mikhailov/ratchet-ui#v0.4.2
+        version: https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/4c5b42a7b28208a66fc6bb9aab923e7bd65711d5(react@19.2.3)
     devDependencies:
       '@fsm/config':
         specifier: workspace:*
@@ -1158,9 +1158,9 @@ packages:
     resolution: {integrity: sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ==}
     engines: {node: ^10.13.0 || ^12.13.0 || ^14.15.0 || >=15.0.0}
 
-  ratchet-ui@https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/e9d0a5dcab1f611a45a9f80424ffd0601bf27bae:
-    resolution: {gitHosted: true, integrity: sha512-FEnipnvvRyXLOHTB2Rcy/SwqFmnv6FzLlbY9LLVzwbL1nX4Lh2mrIUTBgjrXX1rnMbCZHMNNdx1PGjCLtg9tkQ==, tarball: https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/e9d0a5dcab1f611a45a9f80424ffd0601bf27bae}
-    version: 0.4.0
+  ratchet-ui@https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/4c5b42a7b28208a66fc6bb9aab923e7bd65711d5:
+    resolution: {gitHosted: true, integrity: sha512-poQj0faRXdUoVxGEKedngSlc4y57r2S4u05+BII63ReUCeuOedKHNGxRGsgd6w/KWkq+uyD6MdlE98vTRE0jWA==, tarball: https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/4c5b42a7b28208a66fc6bb9aab923e7bd65711d5}
+    version: 0.4.2
     peerDependencies:
       react: '>=19'
 
@@ -2121,7 +2121,7 @@ snapshots:
       ansi-styles: 5.2.0
       react-is: 17.0.2
 
-  ratchet-ui@https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/e9d0a5dcab1f611a45a9f80424ffd0601bf27bae(react@19.2.3):
+  ratchet-ui@https://codeload.github.com/vasiliy-mikhailov/ratchet-ui/tar.gz/4c5b42a7b28208a66fc6bb9aab923e7bd65711d5(react@19.2.3):
     dependencies:
       react: 19.2.3
 

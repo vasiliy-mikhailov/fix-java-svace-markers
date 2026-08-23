@@ -1,6 +1,8 @@
 package tech.mikhailov.fsm.agent;
 
 import java.time.Duration;
+
+import tech.mikhailov.ratchet.llm.Streamed;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -155,9 +157,20 @@ record Thinking(StreamingChatModel model, Overheard overheard, Connector connect
                 if (System.nanoTime() - start > ceiling.toNanos()) {
                     keep("cut off after " + ceiling.toMinutes() + " minutes, still generating");
                     answer.cancel(true);
-                    throw new RuntimeException(agent + ": still generating after "
-                            + ceiling.toMinutes() + " minutes — answering, but not finishing",
-                            stillGoing);
+                    // THE CEILING IS THE ONE FAILURE HERE THAT MUST NOT BE RETRIED, and saying so
+                    // takes a TYPE rather than a sentence. Since the model is wrapped in
+                    // `Retrying`, a plain RuntimeException falls through
+                    // `Retrying.transportFailures()` to its default — retry — so a lane this
+                    // program deliberately gave up on would be started again, up to ten times,
+                    // each one running to the same wall. `GaveUp` is the library's own name for
+                    // exactly this case and its predicate refuses it.
+                    //
+                    // The silence above stays retryable ON PURPOSE: an endpoint that stopped
+                    // speaking mid-answer is the transient this retry exists for. The difference
+                    // between the two is the whole reason the ceiling needs its own type.
+                    throw new Streamed.GaveUp(agent + ": still generating after "
+                            + ceiling.toMinutes() + " minutes — answering, but not finishing "
+                            + "(" + stillGoing + ")");
                 }
             } catch (ExecutionException failed) {
                 Throwable cause = failed.getCause() == null ? failed : failed.getCause();
