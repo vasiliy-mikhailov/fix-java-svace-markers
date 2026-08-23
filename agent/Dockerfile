@@ -22,9 +22,9 @@ FROM maven:3.9-eclipse-temurin-25 AS builder
 # never tagged: the pom said "install it from its own source tree", and a fresh checkout installs
 # 0.5.0 and then fails to resolve 0.3.0. Whoever hit that went hunting for a hash.
 #
-# c65f374 IS TAG v0.5.0. Keep the two in step when bumping, and keep the pom's version with them.
+# 7edb9e8 IS TAG v0.11.1. Keep the two in step when bumping, and keep the pom's version with them.
 ARG RATCHET_REPO=https://github.com/vasiliy-mikhailov/ratchet.git
-ARG RATCHET_REF=c65f3744f0d0bf7bc79e9434bf7ee940f3c867f4
+ARG RATCHET_REF=7edb9e83f8953f7ee28a8e68e53579cd1c19bc5d
 RUN git clone ${RATCHET_REPO} /src/ratchet \
     && git -C /src/ratchet checkout -q ${RATCHET_REF} \
     && mvn -q -f /src/ratchet -DskipTests install

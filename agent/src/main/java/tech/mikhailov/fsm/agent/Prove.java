@@ -7,6 +7,8 @@ import tech.mikhailov.ratchet.flow.Agent;
 import tech.mikhailov.ratchet.flow.Flow;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
+import tech.mikhailov.ratchet.llm.Retry;
+import tech.mikhailov.ratchet.llm.Retrying;
 import java.io.IOException;
 import java.net.http.HttpClient;
 import java.nio.file.Files;
@@ -1241,8 +1243,29 @@ public final class Prove {
                             "thinking_token_budget", Tuning.thinkingTokens()))
                     .build());
         }
-        return new Thinking(built.build(), overheard, connector, trace, agent, patience,
-                Tuning.ceiling());
+        // AND THE WHOLE THING BEHIND A RETRY, because the transport is the flakiest part of this.
+        //
+        // Five provers died inside two minutes on 23 Aug, all with the same cause: a dropped SSE
+        // frame — `LangChain4jException: closed`, under it `chunked transfer encoding, state:
+        // READING_LENGTH`, under that `EOFException`. One hiccup upstream, five markers retired,
+        // because the pool makes a single pass and a prove that throws does not come back.
+        //
+        // The loop is ratchet's, not this program's. It was unreachable until 0.11.0 — `Retrying`
+        // was package-private, so the only way to it was `Model.forProducer`, which builds the
+        // client and would have taken the settings page, the temperature and the stall guard with
+        // it (ratchet#5). Now it wraps whatever it is handed, so this keeps its own model.
+        //
+        // `Retrying.transportFailures()` is the default predicate and it refuses the two failures
+        // that must not be retried — `Streamed.GaveUp`, a stream that is producing and handing its
+        // slot back, and an interruption — and retries anything it does not recognise, which is
+        // what a dropped frame arrives as.
+        return Retrying.on(
+                new Thinking(built.build(), overheard, connector, trace, agent, patience,
+                        Tuning.ceiling()),
+                Retry.fibonacciSeconds(),
+                // THE LIBRARY REPORTS A FAILED ATTEMPT WITH NO KEY, because it does not know what it
+                // is retrying for. `Relay` supplies the marker so the note lands on this lane.
+                new Relay(trace, trace.marker()));
     }
 
     /**

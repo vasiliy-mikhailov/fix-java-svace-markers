@@ -117,6 +117,20 @@ interface Trace {
     /** Where a prove is up to, for anything watching while it runs. */
     void progress(String marker, String note);
 
+    /**
+     * THE SUBJECT THIS RECORD IS OF, for a bridge that has to name it.
+     *
+     * <p>{@link Relay} forwards a library's trace calls into this one, and the library has no marker
+     * to give: {@code Retrying} reports a failed attempt with an empty key because it does not know
+     * what it is retrying FOR. An empty key reaching {@link JsonlTrace#progress} would write a
+     * settlement row against no marker, so the bridge asks the record instead.
+     *
+     * <p>Default empty, because the stubs in the tests are records of nothing in particular.
+     */
+    default String marker() {
+        return "";
+    }
+
     /** What the same work would have cost a person, and the itemisation behind the number. */
     void priced(String marker, String minutes, String itemisation);
 }

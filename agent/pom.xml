@@ -84,17 +84,24 @@
 
     <!-- THE CHAIN GRAMMAR, AS A LIBRARY. `ratchet-core` declares no dependencies of its own, so
          this costs nothing transitively and can be adopted a stage at a time. It is not on Maven
-         Central: `git clone` it, `git checkout v0.5.0`, `mvn -DskipTests install`.
+         Central: `git clone` it, `git checkout v0.11.1`, `mvn -DskipTests install`.
            THE TAG IS PART OF THE INSTRUCTION: 0.3.0 was never tagged, so following this against a
            fresh checkout installed the tip and the build could not then resolve what this line
-           asks for. The Dockerfile pins the commit that tag points at; keep the two in step.
-           Only `ratchet-core` —
-         `ratchet-llm` reads its endpoint settings from the environment at process start, and this
-         program re-reads them per prove so a sweep stays steerable while it runs. -->
+           asks for. The Dockerfile pins the commit that tag points at; keep the two in step. -->
     <dependency>
       <groupId>tech.mikhailov.ratchet</groupId>
       <artifactId>ratchet-core</artifactId>
-      <version>0.5.0</version>
+      <version>0.11.1</version>
+    </dependency>
+    <!-- THE RETRY, AND NOTHING ELSE FROM IT. `ratchet-llm` used to be all-or-nothing: its retry loop
+         and its stall guard were package-private, so the only way in was `Model.forProducer`, which
+         builds the client too — and this program builds its own from settings a page can change
+         while a sweep runs. 0.11.0 made the loop reachable on its own (ratchet#5), so this takes
+         `Retrying.on` and leaves `Model` alone. -->
+    <dependency>
+      <groupId>tech.mikhailov.ratchet</groupId>
+      <artifactId>ratchet-llm</artifactId>
+      <version>0.11.1</version>
     </dependency>
     <dependency>
       <groupId>com.deepagents</groupId>
