@@ -168,9 +168,22 @@ public final class Dashboard {
         route(server, "/reprove", e -> {
             Map<String, String> form = form(e);
             String marker = form.getOrDefault("marker", "");
-            new Supervisor(here, new JsonlTrace(here.resolve("dashboard-trace.jsonl"),
+            String said = new Supervisor(here, new JsonlTrace(here.resolve("dashboard-trace.jsonl"),
                     here.resolve("dashboard-settlements.jsonl"), "dashboard"))
                     .reprove(marker, form.getOrDefault("why", "no reason given"));
+            // A REFUSAL USED TO LOOK EXACTLY LIKE A SUCCESS. `reprove` returns "queued again" or a
+            // sentence beginning REFUSED, and this route threw that away and answered 303 either
+            // way. Posting four markers to it as a query string rather than a body — `form()` reads
+            // the body — refused all four, redirected all four, and the only way to find out was to
+            // go and look at whether the directories had actually been cleared.
+            //
+            // A person following the redirect lands on the marker page, which looks the same either
+            // way; a script sees 303 and believes it. So a refusal answers 409 with the reason in
+            // the body, and only a real re-queue redirects.
+            if (said.startsWith("REFUSED")) {
+                send(e, "text/plain; charset=utf-8", said, 409);
+                return;
+            }
             e.getResponseHeaders().add("Location", "/marker/?k=" + enc(marker));
             e.sendResponseHeaders(303, -1);
             e.close();
@@ -581,6 +594,17 @@ public final class Dashboard {
                 }
             }
         };
+    }
+
+    private static void send(HttpExchange e, String type, String body, int status)
+            throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        e.getResponseHeaders().set("Content-Type", type);
+        e.getResponseHeaders().set("Cache-Control", "no-store");
+        e.sendResponseHeaders(status, bytes.length);
+        try (OutputStream out = e.getResponseBody()) {
+            out.write(bytes);
+        }
     }
 
     private static void send(HttpExchange e, String type, String body) throws IOException {
