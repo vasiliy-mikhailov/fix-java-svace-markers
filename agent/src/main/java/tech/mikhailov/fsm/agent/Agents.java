@@ -905,6 +905,13 @@ final class Agents {
                 with nothing run, which is the cheapest possible answer and the one this pipeline \
                 exists to stop being given.
 
+                A PROCESS BOUNDARY IS NOT AN OBSERVABILITY BOUNDARY, and this is the mistake that \
+                cost a whole family. Faced with a default fixed when the runtime starts, every agent \
+                reasoned that no test can vary it and declined — the premise is true and the \
+                conclusion does not follow, because a test may START a runtime. Anything settled \
+                before `main` is reachable from a test that forks one and sets it. Ask what would have \
+                to be true for the value to differ, and only then whether a test can arrange it.
+
                 Decline only when the defect CANNOT BE OBSERVED by any test from here: the flagged \
                 state is unreachable from any caller, or the checker names a code shape whose fix \
                 changes nothing observable. Then answer with exactly `no test` on its own line and \

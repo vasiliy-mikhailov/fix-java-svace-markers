@@ -177,4 +177,22 @@ class TheReferenceIsTheAnalysersOwnTest {
         // STATED, NOT WEIGHTED. `Minor` is not permission to decline and `Critical` is not a finding.
         assertTrue(said.contains("Svace graded it"), said);
     }
+    @Test
+    @DisplayName("the one fact worth keeping out of the deleted notes is in a prompt now")
+    void theFactSurvivedTheFiles() throws Exception {
+        // A WHOLE CHECKER FAMILY WAS WRITTEN OFF BY A CONCLUSION THAT DOES NOT FOLLOW. Thirty-three
+        // markers never produced a build, and every agent that looked at one said the same thing:
+        // the default is fixed when the runtime starts, therefore no test can vary it. True premise.
+        // A test may START a runtime.
+        //
+        // That fact lived in one per-checker file and died with it. It is general — it is about
+        // process boundaries, not about any checker or any repository — so it belongs in the prompt
+        // that decides whether a defect is observable, said once, for every marker.
+        String planner = Files.readString(
+                Path.of("src/main/java/tech/mikhailov/fsm/agent/Agents.java"), StandardCharsets.UTF_8);
+        assertTrue(planner.contains("A PROCESS BOUNDARY IS NOT AN OBSERVABILITY BOUNDARY"),
+                "the fact that unlocked thirty-three markers is nowhere in the prompts");
+        assertTrue(planner.contains("a test may START a runtime"),
+                "the premise everyone got right needs the conclusion that actually follows beside it");
+    }
 }
