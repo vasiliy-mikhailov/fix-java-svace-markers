@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import tech.mikhailov.ratchet.llm.Pause;
 import tech.mikhailov.ratchet.llm.Retry;
 import tech.mikhailov.ratchet.llm.Retrying;
-import tech.mikhailov.ratchet.llm.Streamed;
+import tech.mikhailov.ratchet.llm.GaveUp;
 
 import dev.langchain4j.http.client.jdk.JdkHttpClientBuilder;
 import dev.langchain4j.model.chat.StreamingChatModel;
@@ -60,7 +60,7 @@ class ADroppedFrameIsNotASettlementTest {
         ChatModel flaky = failingTimes(calls, 2, "the answer");
 
         List<String> notes = new ArrayList<>();
-        ChatModel retried = Retrying.on(flaky, instant(), noted(notes));
+        ChatModel retried = retried(flaky, instant(), noted(notes));
 
         ChatResponse got = retried.chat(ChatRequest.builder()
                 .messages(dev.langchain4j.data.message.UserMessage.from("go")).build());
@@ -93,7 +93,7 @@ class ADroppedFrameIsNotASettlementTest {
 
         AtomicInteger calls = new AtomicInteger();
         ChatModel flaky = failingTimes(calls, 1, "ok");
-        Retrying.on(flaky, instant(), new Relay(kept, kept.marker()))
+        retried(flaky, instant(), new Relay(kept, kept.marker()))
                 .chat(ChatRequest.builder()
                         .messages(dev.langchain4j.data.message.UserMessage.from("go")).build());
 
@@ -110,15 +110,30 @@ class ADroppedFrameIsNotASettlementTest {
         ChatModel wedged = new ChatModel() {
             @Override public ChatResponse doChat(ChatRequest request) {
                 calls.incrementAndGet();
-                throw new Streamed.GaveUp("still streaming after 3 hours");
+                throw new GaveUp("still streaming after 3 hours");
             }
         };
-        assertThrows(Streamed.GaveUp.class, () -> Retrying.on(wedged, instant(), noted(new ArrayList<>()))
+        assertThrows(GaveUp.class, () -> retried(wedged, instant(), noted(new ArrayList<>()))
                 .chat(ChatRequest.builder()
                         .messages(dev.langchain4j.data.message.UserMessage.from("go")).build()));
         // ONE CALL. Retrying a ceiling would spend the whole budget on a lane that is already
         // producing, which is the one failure the predicate is written to refuse.
         assertEquals(1, calls.get(), "the ceiling must not be retried");
+    }
+
+    /**
+     * THE ONLY DOOR, AND IT NO LONGER WANTS A CLIENT. `Retrying.on` took the library's own `Chat`,
+     * which this program cannot produce: its agent loop is `SubAgentRuntime` and that constructor
+     * demands a langchain4j `ChatModel`. `around` wraps a CALL (ratchet#8), so the loop is reachable
+     * from a consumer whose transport is fixed by something else — which is what `Prove.model` does.
+     */
+    private static ChatModel retried(ChatModel inner, Retry policy,
+                                     tech.mikhailov.ratchet.record.Trace trace) {
+        return new ChatModel() {
+            @Override public ChatResponse chat(ChatRequest request) {
+                return Retrying.around(() -> inner.chat(request), policy, trace).get();
+            }
+        };
     }
 
     /** A model that drops the frame `howMany` times and then answers. */
@@ -172,7 +187,7 @@ class ADroppedFrameIsNotASettlementTest {
             }
         };
 
-        assertThrows(Streamed.GaveUp.class, () -> Retrying.on(counted, instant(), noted(new ArrayList<>()))
+        assertThrows(GaveUp.class, () -> retried(counted, instant(), noted(new ArrayList<>()))
                 .chat(ChatRequest.builder()
                         .messages(dev.langchain4j.data.message.UserMessage.from("go")).build()));
         // ONE. It used to be a plain RuntimeException, which `transportFailures()` does not

@@ -3,6 +3,8 @@ package tech.mikhailov.fsm.agent;
 import com.deepagents.langchain4j.subagents.SubAgentRuntime;
 import dev.langchain4j.http.client.jdk.JdkHttpClientBuilder;
 import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.response.ChatResponse;
 import tech.mikhailov.ratchet.flow.Agent;
 import tech.mikhailov.ratchet.flow.Flow;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
@@ -1259,13 +1261,23 @@ public final class Prove {
         // that must not be retried — `Streamed.GaveUp`, a stream that is producing and handing its
         // slot back, and an interruption — and retries anything it does not recognise, which is
         // what a dropped frame arrives as.
-        return Retrying.on(
-                new Thinking(built.build(), overheard, connector, trace, agent, patience,
-                        Tuning.ceiling()),
-                Retry.fibonacciSeconds(),
-                // THE LIBRARY REPORTS A FAILED ATTEMPT WITH NO KEY, because it does not know what it
-                // is retrying for. `Relay` supplies the marker so the note lands on this lane.
-                new Relay(trace, trace.marker()));
+        Thinking thinking = new Thinking(built.build(), overheard, connector, trace, agent,
+                patience, Tuning.ceiling());
+        Retry policy = Retry.fibonacciSeconds();
+        // THE LIBRARY REPORTS A FAILED ATTEMPT WITH NO KEY, because it does not know what it is
+        // retrying for. `Relay` supplies the marker so the note lands on this lane.
+        tech.mikhailov.ratchet.record.Trace relay = new Relay(trace, trace.marker());
+        // AND THE LOOP IS REACHED WITHOUT HANDING IT A MODEL. `Retrying.on` took a type from the
+        // library's own client, which this program does not use and cannot: the agent loop is
+        // `SubAgentRuntime`, whose constructor demands a langchain4j `ChatModel`. `around` wraps a
+        // call rather than a client (ratchet#8), so the retry is available to a consumer whose
+        // transport is fixed by something else.
+        return new ChatModel() {
+            @Override
+            public ChatResponse chat(ChatRequest request) {
+                return Retrying.around(() -> thinking.chat(request), policy, relay).get();
+            }
+        };
     }
 
     /**

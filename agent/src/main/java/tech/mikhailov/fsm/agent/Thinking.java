@@ -2,7 +2,7 @@ package tech.mikhailov.fsm.agent;
 
 import java.time.Duration;
 
-import tech.mikhailov.ratchet.llm.Streamed;
+import tech.mikhailov.ratchet.llm.GaveUp;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -168,7 +168,7 @@ record Thinking(StreamingChatModel model, Overheard overheard, Connector connect
                     // The silence above stays retryable ON PURPOSE: an endpoint that stopped
                     // speaking mid-answer is the transient this retry exists for. The difference
                     // between the two is the whole reason the ceiling needs its own type.
-                    throw new Streamed.GaveUp(agent + ": still generating after "
+                    throw new GaveUp(agent + ": still generating after "
                             + ceiling.toMinutes() + " minutes — answering, but not finishing "
                             + "(" + stillGoing + ")");
                 }
