@@ -92,7 +92,15 @@ class TheHarnessDoesNotKnowItsSubjectTest {
             new String[] {"(?i)a marker has already been|markers? (of this family|in this family)"
                     + "|has been run by hand|never produced a single build",
                 "reports the history of one run over one queue: a measurement the reading agent "
-                        + "cannot check, false the moment the harness is pointed elsewhere"});
+                        + "cannot check, false the moment the harness is pointed elsewhere"},
+            // AND TWO SHAPES THE LIST ABOVE LET THROUGH, both found in prompt bodies afterwards.
+            new String[] {"[A-Za-z_$][\\w$]*\\.java_\\d+_[A-Z]",
+                "cites a marker id out of the subject's own queue. The `File.java:NN` rule above "
+                        + "misses it because a lane is named with underscores, and a worked example "
+                        + "built from a real marker teaches the shape of one repository's tree"},
+            new String[] {"\\b(?:Lesson|Assignment|Challenge)[A-Z]\\w*",
+                "names a class out of the subject. `\\blessons?\\b` misses it because the word is "
+                        + "glued to the rest of a class name, which is exactly how it survived"});
 
 
     @Test
@@ -103,8 +111,15 @@ class TheHarnessDoesNotKnowItsSubjectTest {
         // commits after the same detour was forbidden in STAKES. A prompt is the harness at its
         // most load-bearing: every agent reads it, on every marker, in every repository this is
         // ever pointed at.
-        String prompts = Agents.STAKES + "\n"
-                + String.join("\n", Agents.CHAIN.stream().map(Agents::staked).toList());
+        // EVERY PROMPT, NOT THE FIFTEEN IN THE CHAIN. This read `Agents.CHAIN` and therefore saw
+        // reproduce through price and nothing else — while `interpreter-*`, `overwatch-*` and `chat`
+        // went unread, and that is precisely where a worked example built from a real marker in the
+        // subject's own queue was sitting. A guard that covers the prompts somebody thought to list
+        // is a guard against the prompts somebody thought about.
+        StringBuilder every = new StringBuilder(Agents.STAKES);
+        Agents.builtIn(Path.of("."), null, null)
+                .forEach((name, body) -> every.append('\n').append(body));
+        String prompts = every.toString();
         List<String> found = new ArrayList<>();
         for (String[] rule : FORBIDDEN) {
             // `assignment` stays legal — a dead-store note and a prompt both have to talk about

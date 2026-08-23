@@ -70,7 +70,11 @@ class TheSubjectDoesNotDefineSuccessTest {
         assertTrue(doer.contains("ASSERT THE MARKER'S PROPERTY"),
                 "`assert on what it returns or changes` is what invited a solved-flag assertion — "
                         + "the flag IS what the class returns");
-        assertTrue(doer.contains("solved/completed/passed/score"),
+        // NAMED WITHOUT THE SUBJECT'S VOCABULARY. This asserted `solved/completed/passed/score`,
+        // and `solved` and `score` are a teaching application's words for its own progress — the
+        // shape is recognisable in any codebase without them, and naming it with them told every
+        // agent what kind of repository it was looking at.
+        assertTrue(doer.contains("completed/passed/succeeded"),
                 "naming the shape is what makes it recognisable in a codebase nobody has seen");
         assertTrue(doer.contains("statements about data"),
                 "the property has to be sayable without mentioning the subject's workflow");

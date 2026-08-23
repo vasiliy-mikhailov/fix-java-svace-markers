@@ -118,7 +118,9 @@ class TheSmallestThingThatShowsItTest {
         assertTrue(fixer.contains("ON THE FLOW THE MARKER NAMES"),
                 "`minimally` on its own does not say WHERE, and a small edit in the wrong place is "
                         + "the goalpost-moving the fix-verifier was taught to reject");
-        assertTrue(fixer.contains("decide whether it is happy with itself"),
-                "the same status signals, from the other end: a patch must not reach them either");
+        assertTrue(fixer.contains("report whether an operation succeeded"),
+                "the same status signals, from the other end: a patch must not reach them either. "
+                        + "Said as `whether it is happy with itself` this leaned on a subject that "
+                        + "keeps an opinion of itself; every program has operations that report");
     }
 }
