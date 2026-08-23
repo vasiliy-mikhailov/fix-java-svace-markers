@@ -782,26 +782,57 @@ public final class Prove {
                 || before.contains("cannot ") || before.contains("no longer ");
     }
 
+    /**
+     * TWO THINGS USED TO EAT A DECLARATION, AND ONE VERDICT WENT IN WRONG BECAUSE OF BOTH.
+     *
+     * <p>An argue-doer opened with {@code false-positive}, argued its way off it, and closed with
+     * <code>**`by-design`** — the claim holds ... and it is deliberate: `WebGoat.java:34-38` wires
+     * ...</code>, then said in words that it had refined the word. The record kept the opening one.
+     *
+     * <p>THE EMPHASIS WAS ONLY STRIPPED AT THE ENDS. A run of markdown at the start of the line went,
+     * and a run at the very end went, but the backtick and asterisks sitting immediately AFTER the
+     * word did not — so the line began {@code by-design`**} and matched neither {@code equals} nor
+     * {@code startsWith(word + " ")}. Emphasis is now removed wherever it appears, which is safe
+     * because no disposition contains one of those characters.
+     *
+     * <p>AND THE COLON RULE TOOK THE LAST COLON IN THE LINE. It exists for {@code Settlement:
+     * by-design}, a short label and then the word — but applied to {@code lastIndexOf} it cut that
+     * same line down to {@code 34-38` wires ...}, because a sentence citing a file and a line has a
+     * colon in it. It now takes the FIRST colon and only when what precedes it is short enough to be
+     * a label, and the whole line is tried as well, so a colon can no longer destroy a declaration.
+     */
     private static String declaration(String reply, String... allowed) {
         String found = "";
         for (String raw : reply.split("\\R")) {
             String line = raw.strip().toLowerCase()
-                    .replaceAll("^[#*_`\\s>-]+", "")
-                    .replaceAll("[#*_`\\s.!]+$", "");
-            int colon = line.lastIndexOf(':');
-            if (colon >= 0 && colon < line.length() - 1) {
-                line = line.substring(colon + 1).strip();
+                    .replace("`", "").replace("*", "").replace("_", "")
+                    .replaceAll("^[#\\s>-]+", "")
+                    .replaceAll("[#\\s.!]+$", "");
+            // The line as written, AND what follows a leading label. Either may carry the word.
+            java.util.List<String> candidates = new java.util.ArrayList<>();
+            candidates.add(line);
+            int colon = line.indexOf(':');
+            if (colon > 0 && colon < line.length() - 1 && colon <= 24) {
+                candidates.add(line.substring(colon + 1).strip());
             }
-            for (String word : allowed) {
-                // THE WORD, THEN ITS REASON. Every verifier prompt here asks for the word and then
-                // one sentence, so `equals` alone declared almost nothing and control fell through
-                // to the substring scan below — which is where `unsound` certified a patch.
-                if (line.equals(word) || line.startsWith(word + " ") || line.startsWith(word + ":")
-                        || line.startsWith(word + ".") || line.startsWith(word + ",")
-                        || line.startsWith(word + ";") || line.startsWith(word + "—")
-                        || line.startsWith(word + " —")) {
-                    found = word;
-                }
+            for (String candidate : candidates) {
+                found = declaredIn(candidate, found, allowed);
+            }
+        }
+        return found;
+    }
+
+    /** One candidate line: the word alone, or the word and then its reason. */
+    private static String declaredIn(String line, String found, String... allowed) {
+        for (String word : allowed) {
+            // THE WORD, THEN ITS REASON. Every verifier prompt here asks for the word and then one
+            // sentence, so `equals` alone declared almost nothing and control fell through to the
+            // substring scan in `verdict` — which is where `unsound` certified a patch.
+            if (line.equals(word) || line.startsWith(word + " ") || line.startsWith(word + ":")
+                    || line.startsWith(word + ".") || line.startsWith(word + ",")
+                    || line.startsWith(word + ";") || line.startsWith(word + "—")
+                    || line.startsWith(word + " —")) {
+                found = word;
             }
         }
         return found;
