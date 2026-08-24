@@ -96,6 +96,17 @@ public final class Dashboard {
         // cannot disagree while both exist.
         route(server, "/api/index", e -> send(e, "application/json",
                 Api.index(settlements, trace, Api.queue(settlements))));
+        // THE WHOLE RUN AS ONE FILE, which no screen can be. The test, the patch and the argument
+        // are the artefacts a reader wants out of this program, and they live one click deep on
+        // three hundred separate pages; this is all of them in columns.
+        //
+        // `Content-Disposition` is set BEFORE `send`, which sets only Content-Type and
+        // Cache-Control and then commits the headers — so anything added after it is written to a
+        // response that has already gone.
+        route(server, "/api/markers.csv", e -> {
+            e.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"markers.csv\"");
+            send(e, "text/csv; charset=utf-8", ApiExport.csv(settlements, trace));
+        });
         // AND THE OTHER SEVEN. Every screen the zone renders now has a document to render from,
         // and each is answered from the same files the page beside it reads.
         route(server, "/api/marker", e -> send(e, "application/json",

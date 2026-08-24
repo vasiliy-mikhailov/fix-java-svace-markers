@@ -122,25 +122,9 @@ final class ApiMarker {
         // yet, so serving them alone would delete the test and the patch from this screen — they
         // are the two artefacts the whole prove turns on. Once a settlement is written with
         // test_code and fix_diff in it, both recoveries below can go.
-        String testPath = Dashboard.field(settled, "test_path");
-        String testCode = Dashboard.field(settled, "test_code");
-        if (testCode.isBlank()) {
-            // The LAST write_file, and its path from the same event. Only the reproducer has
-            // write_file — the fixer is given edit_file precisely so it cannot write a test — so
-            // this is the reproducer's test by construction rather than by luck.
-            for (String event : mine) {
-                if (!Dashboard.field(event, "kind").equals("tool")
-                        || !Dashboard.field(event, "tool").equals("write_file")) {
-                    continue;
-                }
-                String arguments = Dashboard.field(event, "arguments");
-                String content = Dashboard.field(arguments, "content");
-                if (!content.isBlank()) {
-                    testCode = content;
-                    testPath = Dashboard.field(arguments, "path");
-                }
-            }
-        }
+        String[] test = test(settled, mine);
+        String testPath = test[0];
+        String testCode = test[1];
         String fixDiff = Dashboard.field(settled, "fix_diff");
         if (fixDiff.isBlank()) {
             fixDiff = patch(mine);
@@ -451,7 +435,7 @@ final class ApiMarker {
         return row;
     }
 
-    private static String settled(Path settlements, String key) {
+    static String settled(Path settlements, String key) {
         String row = "";
         for (String line : Dashboard.lines(settlements)) {
             if (!Dashboard.field(line, "suspicion_key").equals(key)
@@ -485,7 +469,42 @@ final class ApiMarker {
                             "the fix stage has no verifier; the diff on every marker page comes out "
                                     + "of its prompt: " + Agents.CHAIN));
 
-    private static String patch(List<String> events) {
+    /**
+     * THE TEST, FROM THE RECORD FIRST AND THE TRACE ONLY IF THE RECORD HAS NOT GOT IT.
+     *
+     * <p>A rule rather than a block inside one reader, because there are two now: the marker page
+     * and the CSV export. Copied, it would drift the moment `Settlement` starts carrying
+     * `test_code` for real — one reader would stop recovering and the other would go on doing it,
+     * and nothing would fail.
+     *
+     * <p>The LAST write_file, and its path from the same event. Only the reproducer has
+     * write_file — the fixer is given edit_file precisely so it cannot write a test — so this is
+     * the reproducer's test by construction rather than by luck.
+     *
+     * @return path at 0 and code at 1, both possibly empty
+     */
+    static String[] test(String settled, List<String> events) {
+        String path = Dashboard.field(settled, "test_path");
+        String code = Dashboard.field(settled, "test_code");
+        if (!code.isBlank()) {
+            return new String[] {path, code};
+        }
+        for (String event : events) {
+            if (!Dashboard.field(event, "kind").equals("tool")
+                    || !Dashboard.field(event, "tool").equals("write_file")) {
+                continue;
+            }
+            String arguments = Dashboard.field(event, "arguments");
+            String content = Dashboard.field(arguments, "content");
+            if (!content.isBlank()) {
+                code = content;
+                path = Dashboard.field(arguments, "path");
+            }
+        }
+        return new String[] {path, code};
+    }
+
+    static String patch(List<String> events) {
         String found = "";
         for (String e : events) {
             // THE NAME IS THE MATCH KEY, AND A RENAME BROKE IT SILENTLY. This read "fix-critic"
@@ -510,11 +529,36 @@ final class ApiMarker {
                 stop = prompt.indexOf("\nTHE PATCH DOES NOT TOUCH", start);
             }
             if (start > 0) {
-                found = (stop > start ? prompt.substring(start, stop)
-                        : prompt.substring(start)).strip();
+                found = unfenced((stop > start ? prompt.substring(start, stop)
+                        : prompt.substring(start)).strip());
             }
         }
         return found;
+    }
+
+    /**
+     * THE DIFF WITHOUT THE HARNESS'S WRAPPER ROUND IT.
+     *
+     * <p>The patch is recovered out of a PROMPT, and everything quoted into a prompt from a tool
+     * arrives between {@link Tools#OPEN} and {@link Tools#CLOSE} with the standing rule after it.
+     * That border is right where it is — it is what tells an agent whose words these are — and it
+     * is not part of the patch. Left in, every diff on the marker page and every {@code fix_diff}
+     * cell in the export opens with {@code <untrusted-data>} and closes with a paragraph about
+     * unsafe data, which reads as though the patch itself contained them.
+     *
+     * <p>Trimmed rather than parsed: the fence is this program's own text, so finding it is a
+     * string match and failing to find it means there was none.
+     */
+    private static String unfenced(String text) {
+        String out = text;
+        if (out.startsWith(Tools.OPEN)) {
+            out = out.substring(Tools.OPEN.length());
+        }
+        int close = out.lastIndexOf(Tools.CLOSE);
+        if (close >= 0) {
+            out = out.substring(0, close);
+        }
+        return out.strip();
     }
 
     /**
@@ -552,7 +596,7 @@ final class ApiMarker {
      * screen shows the body after it, but a file with no blank line IS both halves — splitting here
      * would send it twice and let two screens say the same thing in different words.
      */
-    private static String summary(Path results, String id) {
+    static String summary(Path results, String id) {
         Path file = results.resolve("m").resolve(id).resolve("summary.txt");
         try {
             return Files.isReadable(file) ? Files.readString(file).strip() : null;

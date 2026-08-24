@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import {
   EmptyNote,
+  ExportLink,
   Loaded,
   type MarkerRowData,
   MarkerTable,
@@ -13,7 +14,7 @@ import {
 } from '@fsm/ui'
 import type { MarkerState, Severity } from '@fsm/types'
 
-import { read } from '../lib/api'
+import { href, read } from '../lib/api'
 
 /**
  * THE MARKERS SCREEN — the first page of the port, and the one everybody opens.
@@ -170,6 +171,12 @@ export default function MarkersScreen() {
           </>
         }
         findingsOpen={run.findingsOpen}
+        extra={
+          <ExportLink
+            href={href('/api/markers.csv')}
+            title="download every marker as CSV — test, patch and verdict in their own columns"
+          />
+        }
       />
       {markers.length === 0 ? (
         // A WHOLE-PAGE EMPTY STATE, so the room is re-added here. `EmptyNote` is a compact italic

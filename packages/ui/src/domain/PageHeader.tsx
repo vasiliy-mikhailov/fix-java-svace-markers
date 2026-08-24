@@ -38,6 +38,16 @@ export type PageHeaderProps = {
   /** Absent on `/`: `index()` calls the two-arg overload, because the list is where back GOES. */
   back?: Crumb
   findingsOpen: number
+  /**
+   * ONE SCREEN'S OWN CONTROL, BESIDE THE THREE EVERY SCREEN WEARS.
+   *
+   * `Corner` is deliberately fixed — findings, chat, settings, on every page — and an export
+   * button belongs on the markers list and nowhere else. Adding it to `Corner` would put a
+   * download link on the settings page; adding a second actions slot would give the header two
+   * places a control can live. So this renders BEFORE the corner, in the same row, and pages that
+   * pass nothing look exactly as they did.
+   */
+  extra?: ReactNode
 }
 
 /**
@@ -60,7 +70,27 @@ export function Corner({ open }: { open: number }) {
   )
 }
 
-export function PageHeader({ title, subtitle, back, findingsOpen }: PageHeaderProps) {
+/**
+ * A DOWNLOAD, WEARING THE SAME CORNER AS THE OTHER THREE.
+ *
+ * <p>An anchor rather than a button with a fetch behind it: the file is built by the server, can
+ * run to megabytes, and a plain link gets the browser's own download handling — a name, a progress
+ * indicator, and a retry — for nothing. A fetch would have to hold the whole thing in memory to
+ * hand it back as a blob.
+ *
+ * <p>THE HREF IS THE CALLER'S, because the base path is. A link written `/api/...` here works
+ * standalone and 404s the moment a shell mounts this tool at a prefix, which is the bug `href()`
+ * in the app exists to prevent — so this takes a resolved one and never builds it.
+ */
+export function ExportLink({ href, title }: { href: string; title: string }) {
+  return (
+    <a href={href} style={CORNER} title={title} aria-label={title} download>
+      <span aria-hidden="true">{'⇩'}</span>
+    </a>
+  )
+}
+
+export function PageHeader({ title, subtitle, back, findingsOpen, extra }: PageHeaderProps) {
   // SPREAD, NOT `back={back}`. `exactOptionalPropertyTypes` distinguishes an absent property from
   // one present and undefined, and `/` genuinely has no crumb — the list is where back GOES.
   return (
@@ -68,7 +98,12 @@ export function PageHeader({ title, subtitle, back, findingsOpen }: PageHeaderPr
       title={title}
       subtitle={subtitle}
       {...(back === undefined ? {} : { back })}
-      actions={<Corner open={findingsOpen} />}
+      actions={
+        <>
+          {extra}
+          <Corner open={findingsOpen} />
+        </>
+      }
     />
   )
 }

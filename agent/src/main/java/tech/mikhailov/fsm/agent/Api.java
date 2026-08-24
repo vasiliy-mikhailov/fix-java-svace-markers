@@ -229,7 +229,7 @@ final class Api {
     }
 
     /** {@code file|line|checker} → severity, from the sidecar the queue does not carry. */
-    private static Map<String, String> severities(Path beside) {
+    static Map<String, String> severities(Path beside) {
         Map<String, String> by = new LinkedHashMap<>();
         for (String line : Dashboard.lines(beside.resolveSibling("severities.tsv"))) {
             String[] f = line.split("\t");
@@ -276,7 +276,7 @@ final class Api {
      * disk is months of {@code infra} lines carrying {@code red_verified=false} because a
      * {@code boolean} could not say "nothing ran". Delete it when no such line is left.
      */
-    private static boolean reportsBuild(String line) {
+    static boolean reportsBuild(String line) {
         if (Dashboard.field(line, "red_verified").isBlank()) {
             return false;
         }
