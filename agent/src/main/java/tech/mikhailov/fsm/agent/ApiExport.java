@@ -104,13 +104,10 @@ final class ApiExport {
 
             row(out, List.of(
                     key, repo, file, line, checker,
-                    // THE KEY IS `file|line|checker` AND THE FILE IS ITS BASENAME, which is the
-                    // shape `severities.tsv` is written in and the shape /api/index looks it up
-                    // by. Inventing a key here — repo|file|line was the first attempt — produces a
-                    // column of empty strings and no error, which is the failure this file's own
-                    // header warns about, made while writing it.
-                    severity.getOrDefault(
-                            file.substring(file.lastIndexOf('/') + 1) + "|" + line + "|" + checker, ""),
+                    // THROUGH THE SHARED RULE. Inventing a key here — repo|file|line was the
+                    // first attempt — produced a column of empty strings and no error, which is
+                    // the failure this file's own header warns about, made while writing it.
+                    Api.severityOf(severity, repo, file, line, checker),
                     entry.getValue().state(),
                     Dashboard.field(built, "red_verified"),
                     Dashboard.field(built, "green_verified"),

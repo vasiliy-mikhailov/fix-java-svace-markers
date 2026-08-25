@@ -39,14 +39,31 @@ final class Subject {
     private Subject() {
     }
 
-    /** Which JDK the builds use. 25 unless one has been chosen. */
-    static String jdk(Path results) {
+    /**
+     * Which JDK the builds use FOR ONE SUBJECT. 25 unless somebody has said otherwise.
+     *
+     * <p>Per repository, because a run may carry more than one and they disagree: the queue this
+     * was written against declares Java 25 and the second subject added to it targets 21. One
+     * setting for the whole run built the second under the first one's JDK, which is the failure
+     * the other JDKs in this image exist to prevent.
+     */
+    static String jdk(Path results, String repo) {
+        return Projects.jdkFor(results, repo);
+    }
+
+    /** The run-wide setting, which is the fallback when the registry says nothing. */
+    static String runJdk(Path results) {
         try {
             String chosen = Files.readString(results.resolve("jdk")).strip();
             return JDKS.contains(chosen) ? chosen : "25";
         } catch (IOException | RuntimeException none) {
             return "25";
         }
+    }
+
+    /** No subject named: the run-wide setting. For the pages that build an agent to read a prompt. */
+    static String jdk(Path results) {
+        return runJdk(results);
     }
 
     /**
@@ -56,7 +73,15 @@ final class Subject {
      * not choose and should not hard-code — leaving JAVA_HOME alone is how a build gets it.
      */
     static String javaHome(Path results) {
-        String chosen = jdk(results);
+        return home(runJdk(results));
+    }
+
+    /** The same question asked about one subject. */
+    static String javaHome(Path results, String repo) {
+        return home(jdk(results, repo));
+    }
+
+    private static String home(String chosen) {
         return chosen.equals("25") ? "" : "/opt/java/" + chosen;
     }
 

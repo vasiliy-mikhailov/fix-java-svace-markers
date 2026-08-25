@@ -41,14 +41,19 @@ interface Runner {
      */
     Result run(String phase, String test);
 
-    /** Maven if there is a pom, Gradle if there is a build script. */
-    static Runner of(Path checkout) {
+    /**
+     * Maven if there is a pom, Gradle if there is a build script.
+     *
+     * @param repo which subject this is, because the JDK its tests run on is the subject's and not
+     *             the run's — a queue may carry two projects that disagree about it
+     */
+    static Runner of(Path checkout, String repo) {
         if (Files.exists(checkout.resolve("pom.xml"))) {
-            return new Maven(checkout);
+            return new Maven(checkout, repo);
         }
         if (Files.exists(checkout.resolve("build.gradle"))
                 || Files.exists(checkout.resolve("build.gradle.kts"))) {
-            return new Gradle(checkout);
+            return new Gradle(checkout, repo);
         }
         // Refusing here beats guessing Maven and reporting every marker in the repository as infra.
         throw new IllegalStateException(

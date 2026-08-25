@@ -38,7 +38,7 @@ class TellingAFactFromAnOpinionTest {
     @Test
     void aRunnerWithNoTestNamedRefuses() throws Exception {
         Files.writeString(dir.resolve("pom.xml"), "<project/>");
-        Runner.Result r = Runner.of(dir).run("red", "");
+        Runner.Result r = Runner.of(dir, "").run("red", "");
         assertTrue(r.infra(), "a blank test name is infra, never a pass");
         assertFalse(r.passed());
     }
@@ -47,12 +47,12 @@ class TellingAFactFromAnOpinionTest {
     @Test
     void theRunnerIsChosenByWhatTheProjectHas() throws Exception {
         Files.writeString(dir.resolve("pom.xml"), "<project/>");
-        assertTrue(Runner.of(dir) instanceof Maven);
+        assertTrue(Runner.of(dir, "") instanceof Maven);
 
         Path g = dir.resolve("g");
         Files.createDirectory(g);
         Files.writeString(g.resolve("build.gradle"), "");
-        assertTrue(Runner.of(g) instanceof Gradle);
+        assertTrue(Runner.of(g, "") instanceof Gradle);
     }
 
     /**
@@ -64,7 +64,7 @@ class TellingAFactFromAnOpinionTest {
         Path empty = dir.resolve("empty");
         Files.createDirectory(empty);
         try {
-            Runner.of(empty);
+            Runner.of(empty, "");
             throw new AssertionError("expected a refusal");
         } catch (IllegalStateException expected) {
             assertTrue(expected.getMessage().contains("nothing can run the test"));

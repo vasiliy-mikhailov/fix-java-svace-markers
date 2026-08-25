@@ -10,9 +10,11 @@ final class Maven implements Runner {
             Path.of(System.getenv().getOrDefault("RESULTS", "/results"));
 
     private final Path checkout;
+    private final String repo;
 
-    Maven(Path checkout) {
+    Maven(Path checkout, String repo) {
         this.checkout = checkout;
+        this.repo = repo;
     }
 
     @Override
@@ -22,7 +24,7 @@ final class Maven implements Runner {
         }
         Shell.Output out = // NOT -q: it suppresses the compiler error, leaving a build that failed and a summary
         // that says only that lombok called a deprecated method.
-        Shell.runWith(checkout, Subject.javaHome(RESULTS), "mvn", "-B", "test",
+        Shell.runWith(checkout, Subject.javaHome(RESULTS, repo), "mvn", "-B", "test",
                 "-Dtest=" + test, "-Dsurefire.failIfNoSpecifiedTests=false");
         if (out.timedOut()) {
             return new Result(true, false, phase + ": the build did not finish in time\n" + out.text());

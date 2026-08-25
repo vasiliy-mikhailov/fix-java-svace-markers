@@ -115,10 +115,12 @@ public final class Prove {
         JsonlTrace trace = new JsonlTrace(results.resolve("trace.jsonl"),
                 results.resolve("settlements.jsonl"), marker);
         try {
-            Runner runner = Runner.of(checkout);
+            // THE FIRST FIELD OF THE MARKER IS THE SUBJECT, and it decides which JDK the build
+            // runs on: a queue may carry two projects that declare different ones.
+            String[] parts = marker.split("\\|");
+            Runner runner = Runner.of(checkout, parts.length > 0 ? parts[0] : "");
             // THE SECOND FIELD OF THE MARKER IS THE FILE, and the agents that work on it are given
             // tools that can read that one and — four times, with a reason — anything else.
-            String[] parts = marker.split("\\|");
             Prove prove = new Prove(checkout, results, marker,
                     new Agents(checkout, trace, runner, parts.length > 1 ? parts[1] : ""),
                     runner, trace);

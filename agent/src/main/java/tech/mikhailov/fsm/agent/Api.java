@@ -178,7 +178,6 @@ final class Api {
             String file = parts.length > 1 ? parts[1] : "";
             long line = parts.length > 2 ? num(parts[2]) : 0;
             String checker = parts.length > 3 ? parts[3] : "";
-            String shortFile = file.substring(file.lastIndexOf('/') + 1);
             b.append("{\"key\":").append(quote(key));
             b.append(",\"id\":").append(quote(Supervisor.slug(key)));
             b.append(",\"repo\":").append(quote(parts.length > 0 ? parts[0] : ""));
@@ -187,7 +186,8 @@ final class Api {
             b.append(",\"checker\":").append(quote(checker));
             // NULL RATHER THAN A GUESS. Severity is joined in from severities.tsv by
             // file|line|checker and is genuinely absent for the src/it and src/test markers.
-            String sev = severity.get(shortFile + "|" + line + "|" + checker);
+            String sev = severityOf(severity, parts.length > 0 ? parts[0] : "", file,
+                    parts.length > 2 ? parts[2] : "", checker);
             b.append(",\"severity\":").append(sev == null || sev.isBlank() ? "null" : quote(sev));
             b.append(",\"state\":").append(quote(row.state()));
             b.append(",\"hasSettlement\":").append(row.hasSettlement());
@@ -233,11 +233,34 @@ final class Api {
         Map<String, String> by = new LinkedHashMap<>();
         for (String line : Dashboard.lines(beside.resolveSibling("severities.tsv"))) {
             String[] f = line.split("\t");
-            if (f.length >= 4) {
+            // FIVE FIELDS NAME THE SUBJECT, FOUR DO NOT. `file|line|checker` is unique within one
+            // project and is not across two: a run carrying WebGoat and another Java service will
+            // meet the same basename, line and checker in both, and whichever row was read last
+            // would answer for the other. The four-field form is still read, because the file on
+            // disk predates the second subject.
+            if (f.length >= 5) {
+                by.put(f[0] + "|" + f[1] + "|" + f[2] + "|" + f[3], f[4]);
+            } else if (f.length >= 4) {
                 by.put(f[0] + "|" + f[1] + "|" + f[2], f[3]);
             }
         }
         return by;
+    }
+
+    /**
+     * ONE RULE, BECAUSE TWO READERS ASK IT. The marker page and the CSV export both join severity
+     * in, and a copy of this expression in each would drift the first time the file grows a column.
+     * Repo-scoped first, then the unscoped form the file used to have.
+     */
+    static String severityOf(Map<String, String> by, String repo, String file, String line,
+                             String checker) {
+        String base = file.substring(file.lastIndexOf('/') + 1);
+        String scoped = by.get(repo + "|" + base + "|" + line + "|" + checker);
+        if (scoped != null && !scoped.isBlank()) {
+            return scoped;
+        }
+        String plain = by.get(base + "|" + line + "|" + checker);
+        return plain == null ? "" : plain;
     }
 
     private static long num(String s) {

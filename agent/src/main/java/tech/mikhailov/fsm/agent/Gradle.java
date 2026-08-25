@@ -18,9 +18,11 @@ final class Gradle implements Runner {
             Path.of(System.getenv().getOrDefault("RESULTS", "/results"));
 
     private final Path checkout;
+    private final String repo;
 
-    Gradle(Path checkout) {
+    Gradle(Path checkout, String repo) {
         this.checkout = checkout;
+        this.repo = repo;
     }
 
     @Override
@@ -31,7 +33,7 @@ final class Gradle implements Runner {
         Path results = checkout.resolve("build/test-results/test");
         long before = stamp(results);
         String wrapper = Files.exists(checkout.resolve("gradlew")) ? "./gradlew" : "gradle";
-        Shell.Output out = Shell.runWith(checkout, Subject.javaHome(RESULTS), wrapper, "test", "--tests", test, "--console=plain");
+        Shell.Output out = Shell.runWith(checkout, Subject.javaHome(RESULTS, repo), wrapper, "test", "--tests", test, "--console=plain");
         if (out.timedOut()) {
             return new Result(true, false, phase + ": the build did not finish in time\n" + out.text());
         }

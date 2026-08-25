@@ -135,6 +135,10 @@ checkout() {
 # repo|file|line|checker — the repository is the first field.
 repo_of() { echo "$1" | cut -d'|' -f1; }
 
+# WHERE `checkout` PUT A REPOSITORY, without preparing it. The same expression `checkout` uses for
+# its directory and nothing else: a caller inside the pool needs the path and must not clean.
+tree_of() { echo "$CHECKOUTS/$(echo "$1" | sed 's|.*/||; s|\.git$||')"; }
+
 case "${1:-dashboard}" in
 
     prove)
@@ -179,8 +183,16 @@ case "${1:-dashboard}" in
         # on the way past, which meant four subshells mutating the repository the others were adding
         # worktrees from — and a worktree taken mid-clean is a directory with no pom.xml in it, which
         # this program reports as "nothing can run the test" for a marker that was fine.
-        reference=$(checkout "$(repo_of "$(head -1 "$2")")")
-        echo "reference clone ready at $reference; worktrees are per marker"
+        # ONE PER SUBJECT, NOT ONE PER RUN. A marker has always carried its repository in its
+        # first field, so a queue could always name two — but this took the FIRST line's and used
+        # it for every marker, so a second project was proved against the first one's tree.
+        # `checkout` is what cleans and resets, so it runs here, outside the loop, once per
+        # distinct repository; the loop below only computes where that tree already is.
+        for repo in $(cut -d'|' -f1 "$2" | grep -v '^[[:space:]]*$' | sort -u); do
+            prepared=$(checkout "$repo")
+            echo "reference clone ready at $prepared for $repo"
+        done
+        echo "worktrees are per marker"
 
         # WHAT COUNTS AS SETTLED IS A DISPOSITION, NOT "ANYTHING THAT IS NOT PROVING".
         #
@@ -297,6 +309,10 @@ case "${1:-dashboard}" in
                 # A WORKTREE PER MARKER. It shares the reference clone's objects, so this costs a
                 # file copy and no network, and it is thrown away afterwards — which is a stronger
                 # isolation than resetting a tree, because nothing ignored survives it either.
+                # THIS MARKER'S SUBJECT, not the run's. `tree_of` computes where `checkout`
+                # already put it and does not touch it: cleaning a reference while other
+                # lanes add worktrees from it is the failure the note above is about.
+                reference=$(tree_of "$(repo_of "$marker")")
                 tree="$CHECKOUTS/tree-$id"
                 rm -rf "$tree"
                 git -C "$reference" worktree add --detach -f "$tree" HEAD >> "$out/slice.log" 2>&1 \
@@ -339,6 +355,10 @@ case "${1:-dashboard}" in
                 fi
                 mkdir -p "$out"
                 echo "=== proving again after the queue: $marker" | tee -a "$out/slice.log"
+                # THIS MARKER'S SUBJECT, not the run's. `tree_of` computes where `checkout`
+                # already put it and does not touch it: cleaning a reference while other
+                # lanes add worktrees from it is the failure the note above is about.
+                reference=$(tree_of "$(repo_of "$marker")")
                 tree="$CHECKOUTS/tree-$id"
                 rm -rf "$tree"
                 git -C "$reference" worktree add --detach -f "$tree" HEAD >> "$out/slice.log" 2>&1 \
