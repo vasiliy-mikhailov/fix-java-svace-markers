@@ -23,6 +23,20 @@ export type DisclosureProps = {
    * it is a URL fact, not a prop name.
    */
   defaultOpen?: boolean
+  /**
+   * THE HIT AREA BELONGS TO WHOEVER KNOWS HOW BIG THE THING BEING DISCLOSED IS.
+   *
+   * The default is an 11px line of tertiary text — right for a fold tucked inside a table cell, and
+   * pixel-hunting when the fold is a heading over four hundred rows and a reader wants it shut. A
+   * `<summary>` is block-level, so the row is already full width; what it lacks is height.
+   *
+   * The class is separate from the style because a hover band cannot be an inline style, and
+   * because a Tailwind utility only exists if the CONSUMER's generator saw the literal in its own
+   * source — one shipped from inside a package may simply never be emitted, with no error and no
+   * failing test.
+   */
+  summaryStyle?: Style
+  summaryClassName?: string
 }
 
 const DETAILS: Style = { margin: '6px 0' }
@@ -46,7 +60,14 @@ const SUMMARY: Style = {
  * persist across a refresh — a live page that snaps every fold shut on a fifteen-second timer is a
  * page that fights whoever is reading it.
  */
-export function Disclosure({ id, summary, children, defaultOpen = true }: DisclosureProps) {
+export function Disclosure({
+  id,
+  summary,
+  children,
+  defaultOpen = true,
+  summaryStyle,
+  summaryClassName,
+}: DisclosureProps) {
   const [open, setOpen] = useState(defaultOpen)
   return (
     <details
@@ -55,7 +76,9 @@ export function Disclosure({ id, summary, children, defaultOpen = true }: Disclo
       onToggle={(event: ToggleEvent<HTMLDetailsElement>) => setOpen(event.currentTarget.open)}
       style={DETAILS}
     >
-      <summary style={SUMMARY}>{summary}</summary>
+      <summary style={{ ...SUMMARY, ...summaryStyle }} className={summaryClassName}>
+        {summary}
+      </summary>
       {children}
     </details>
   )

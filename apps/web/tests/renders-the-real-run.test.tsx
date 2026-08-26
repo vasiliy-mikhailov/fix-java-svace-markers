@@ -248,6 +248,27 @@ describe('the three levels draw the real run', () => {
     expect(html).toContain('<details')
   })
 
+  it('shuts the modules when there is a choice to make, and opens the one when there is not', () => {
+    // THE PAGE WAS LONG BECAUSE EVERYTHING WAS OPEN. Sixteen modules and 501 rows arrive expanded,
+    // and closing them one at a time meant aiming at a seventeen-pixel line of 11px text. A reader
+    // who has navigated INTO a project is choosing a module, not reading every marker in it.
+    const many = renderToStaticMarkup(<ProjectModules markers={rows.filter(r => r.project === 'ca2_back')} />)
+    // MATCHED BY THE FOLD'S OWN ID. Every row also carries an interpretation fold, and those are
+    // open by default — a bare search for `<details open` would be answered by one of those.
+    const openModule = /<details id="m:[^"]*" open=""/
+    expect(many, 'sixteen modules, all shut').not.toMatch(openModule)
+    expect(many, 'and each still says what it holds').toContain('416 markers')
+    expect(many, 'with a way out of the pixel hunting entirely').toContain('>close all</button>')
+
+    // AND THE OPPOSITE, for the same reason: a fold that hides the only thing on the page is a
+    // click that asks a question with one answer.
+    const one = renderToStaticMarkup(<ProjectModules markers={rows.filter(r => r.project === 'WebGoat')} />)
+    expect(one, 'one module, open').toMatch(openModule)
+    // AS AN ELEMENT, NOT AS A PHRASE: a model's verdict on one of these markers uses the words
+    // "close all" in a sentence, and a bare search finds that instead.
+    expect(one, 'and nothing to open or close in bulk').not.toContain('>close all</button>')
+  })
+
   it('every marker of a project reaches its module, and none is lost between them', () => {
     for (const project of ['WebGoat', 'ca2_back']) {
       const own = rows.filter(r => r.project === project)
