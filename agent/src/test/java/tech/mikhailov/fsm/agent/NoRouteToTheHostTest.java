@@ -35,11 +35,16 @@ class NoRouteToTheHostTest {
     @DisplayName("the reason a clone failed is kept, and goes to stderr")
     void theReasonSurvives() throws Exception {
         String sh = entrypoint();
-        assertTrue(!sh.contains("git clone --depth 1 \"$repo\" \"$dir\" >/dev/null 2>&1"),
+        assertTrue(!sh.contains(">/dev/null 2>&1)") || !sh.contains("clone_said="),
                 "the clone is discarding what git said again, which is how a network failure comes "
                         + "back as a missing pom.xml");
-        assertTrue(sh.contains("clone_said=$(git clone --depth 1 \"$repo\" \"$dir\" 2>&1)"),
+        // THE COMMAND IS ASSEMBLED NOW, not written out, because the registry may name a branch to
+        // clone. This asserts the property that mattered — git's output is CAPTURED — rather than
+        // the spelling of the arguments, which was what broke when `--branch` arrived.
+        assertTrue(sh.contains("clone_said=$(git clone") && sh.contains("2>&1)"),
                 "git's own words are what tell somebody the host is unreachable");
+        assertTrue(sh.contains("--branch \"$want_branch\""),
+                "and a subject that only builds on a stubbed branch has to be cloned on it");
         // STDERR, NOT STDOUT, and this is not a style point: `checkout()` returns the path by command
         // substitution, so anything on stdout is appended to the directory the caller then builds in.
         int said = sh.indexOf("clone_said=$(git clone");
