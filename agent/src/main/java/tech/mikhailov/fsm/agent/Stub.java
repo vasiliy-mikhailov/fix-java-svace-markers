@@ -282,7 +282,7 @@ final class Stub {
         lastBuild = reactor.compile(module);
         unresolved = lastBuild.ok() ? Set.of()
                 : Symbols.undefinedIn(lastBuild.log(), checkout);
-        Guards.Report guarded = Guards.read(checkout, baseline);
+        Guards.Report guarded = Guards.read(checkout, baseline, relativeWrites());
         if (!guarded.clean()) {
             trace.progress(repo, "guards: " + guarded.said());
         }
@@ -296,7 +296,7 @@ final class Stub {
             return "not run: the module does not compile yet";
         }
         lastTest = reactor.test(module);
-        Guards.Report guarded = Guards.read(checkout, baseline);
+        Guards.Report guarded = Guards.read(checkout, baseline, relativeWrites());
         if (!guarded.clean()) {
             trace.progress(repo, "guards: " + guarded.said());
         }
@@ -436,6 +436,24 @@ final class Stub {
             return "compiles";
         }
         return fabricatedValues.isEmpty() ? "green" : "wired";
+    }
+
+    /**
+     * What this run has written, as the guard sees paths: relative to the tree.
+     *
+     * <p>WITHOUT THIS THE LOOP CANNOT WORK AT ALL. A stand-in written on turn one and given a member
+     * on turn four is a MODIFICATION of a tracked file, which is exactly what the new guard reverts —
+     * and a member error cannot appear until its type exists, so reverting it would make every one
+     * of ca2_messages' 119 static members permanently unsatisfiable.
+     */
+    private Set<String> relativeWrites() {
+        Set<String> relative = new LinkedHashSet<>();
+        for (String written : fabricatedTypes) {
+            Path path = Path.of(written);
+            relative.add(path.startsWith(checkout)
+                    ? checkout.relativize(path).toString().replace('\\', '/') : written);
+        }
+        return relative;
     }
 
     private String label() {

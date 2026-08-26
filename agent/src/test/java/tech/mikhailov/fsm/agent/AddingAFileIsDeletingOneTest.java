@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -111,6 +112,53 @@ class AddingAFileIsDeletingOneTest {
         assertEquals("package a; class RouteTest {}\n",
                 Files.readString(tree.resolve("src/test/java/a/RouteTest.java")),
                 "editing the assertion is the same attack as deleting the file, one character smaller");
+    }
+
+    @Test
+    @DisplayName("gutting production code nothing covers is invisible to test conservation")
+    void theHoleASiblingProjectNamed(@TempDir Path dir) throws Exception {
+        // A VERSION BUMP IN A SIBLING PROJECT'S CORPUS REACHED PASS BY DELETING A CAPTCHA
+        // IMPLEMENTATION, and both of its critics approved. Every test still passed, because
+        // nothing covered the code that went. Conservation of test names cannot see it.
+        Path tree = repo(dir);
+        Files.createDirectories(tree.resolve("src/main/java/a"));
+        Files.writeString(tree.resolve("src/main/java/a/Captcha.java"),
+                "package a; class Captcha { boolean solved(String s) { return check(s); } }\n");
+        Git.run(tree, "add", "-A");
+        Git.run(tree, "commit", "-qm", "with the captcha");
+        Baseline baseline = Baseline.of(tree, Git.sha(tree, "HEAD"));
+
+        Files.writeString(tree.resolve("src/main/java/a/Captcha.java"),
+                "package a; class Captcha { boolean solved(String s) { return true; } }\n");
+
+        Guards.Report report = Guards.read(tree, baseline);
+        assertFalse(report.clean(), "the tests are untouched and every one still passes: " + report);
+        assertTrue(Files.readString(tree.resolve("src/main/java/a/Captcha.java")).contains("check(s)"),
+                "shape 1 has no edit_file and its only writer refuses a name the tree defines — "
+                        + "which is three reasons this cannot happen through a path anybody thought "
+                        + "of, and exactly the reasoning that misses the fourth");
+    }
+
+    @Test
+    @DisplayName("a stand-in this run wrote may gain members, or no member error is ever satisfiable")
+    void theMonotoneRewriteSurvives(@TempDir Path dir) throws Exception {
+        Path tree = repo(dir);
+        Baseline baseline = Baseline.of(tree, Git.sha(tree, "HEAD"));
+
+        // Turn one wrote the type. Turn two adds the member javac could only name once the type
+        // existed — `cannot find symbol: method isAuthorised(), location: interface WRAuthService`.
+        Files.createDirectories(tree.resolve("src/main/java/a"));
+        Files.writeString(tree.resolve("src/main/java/a/Stood.java"), "package a; interface Stood {}\n");
+        Git.run(tree, "add", "-A");
+        Git.run(tree, "commit", "-qm", "turn one");
+        Files.writeString(tree.resolve("src/main/java/a/Stood.java"),
+                "package a; interface Stood { boolean go(); }\n");
+
+        Guards.Report report = Guards.read(tree, baseline, Set.of("src/main/java/a/Stood.java"));
+        assertTrue(Files.readString(tree.resolve("src/main/java/a/Stood.java")).contains("go()"),
+                "reverting this would make ca2_messages' 119 static members permanently "
+                        + "unsatisfiable and route 1,587 markers to unstubbable with nobody doing "
+                        + "anything wrong: " + report);
     }
 
     @Test

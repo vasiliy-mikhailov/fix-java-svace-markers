@@ -63,6 +63,15 @@ final class Guards {
      * 2's job and nobody else's.
      */
     static Report read(Path tree, Baseline baseline) {
+        return read(tree, baseline, Set.of());
+    }
+
+    /**
+     * @param wrote the paths this run created, relative to the tree. A stand-in it wrote and then
+     *              ADDED a member to is the monotone rewrite the loop depends on, and reverting it
+     *              would make every member error permanently unsatisfiable.
+     */
+    static Report read(Path tree, Baseline baseline, Set<String> wrote) {
         List<String> reverted = new ArrayList<>();
         List<String> refused = new ArrayList<>();
         if (baseline.sha().isBlank()) {
@@ -80,6 +89,27 @@ final class Guards {
                 // the three is shape 1's to do, and all three change what "the suite passed" means.
                 if (undo(tree, baseline.sha(), path, letter)) {
                     reverted.add(letter + " " + path);
+                } else {
+                    refused.add(path + " (could not be restored)");
+                }
+                continue;
+            }
+            // PRODUCTION CODE THAT WAS ALREADY HERE IS NOT SHAPE 1'S TO CHANGE.
+            //
+            // NAMED BY A SIBLING PROJECT RATHER THAN FOUND HERE, and worth writing down: a version
+            // bump in their corpus reached PASS with the right numbers by DELETING a captcha
+            // implementation, and both of its critics approved. Test conservation cannot see that —
+            // the tests all still pass, because nothing covered the code that went.
+            //
+            // Shape 1 should be unable to do it: it has no edit_file, its planners have no tools,
+            // and the only writer refuses any fully-qualified name the tree already defines. That
+            // is three reasons it cannot happen through a path anybody thought of, which is exactly
+            // the reasoning that misses the fourth. So the tree is measured instead of the tool
+            // surface being trusted: anything tracked, modified or deleted, that this run did not
+            // create, goes back.
+            if ((letter.startsWith("M") || letter.startsWith("D")) && !wrote.contains(path)) {
+                if (undo(tree, baseline.sha(), path, letter)) {
+                    reverted.add(letter + " " + path + " (a file this run did not write)");
                 } else {
                     refused.add(path + " (could not be restored)");
                 }
