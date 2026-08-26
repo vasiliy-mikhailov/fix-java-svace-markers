@@ -78,6 +78,7 @@
   /* === Severity, which is joined in from severities.tsv and is often absent === */
   --severity-critical: #CF222E;
   --severity-major: #BC4C00;
+  --severity-normal: #9A6700;
   --severity-minor: var(--text-tertiary);
 
   /* === Syntax, for the flagged source and diffs === */
@@ -119,6 +120,7 @@
 
   --severity-critical: #F85149;
   --severity-major: #F0883E;
+  --severity-normal: #D29922;
   --severity-minor: var(--text-tertiary);
 
   --code-keyword: #FF7B72;

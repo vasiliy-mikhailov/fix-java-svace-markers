@@ -15,6 +15,15 @@ export type MarkerIdentityProps = {
   /** A string, because it comes out of the key by splitting on `|` and may be anything at all. */
   line: string
   checker: string
+  /**
+   * THE MODULE A GROUP HEADING HAS ALREADY NAMED, taken off the front of the directory line.
+   *
+   * Display only, and it changes nothing about which marker this is. `ca2-client/ca2-messages-client`
+   * is 33 characters in front of the part that tells two rows apart, repeated down 416 rows that are
+   * all in it — the same argument that takes `src/main/java/` off, for a prefix that only this
+   * caller knows is redundant.
+   */
+  within?: string
 }
 
 const LINK: Style = { color: 'var(--accent-primary)', textDecoration: 'none' }
@@ -35,12 +44,15 @@ const QUIET: Style = { color: 'var(--text-tertiary)', fontSize: '11px' }
  * tree starts with one of them, so those twelve characters distinguish nothing and push the part that
  * does off the end of the column.
  */
-export function MarkerIdentity({ markerKey, file, line, checker }: MarkerIdentityProps) {
+export function MarkerIdentity({ markerKey, file, line, checker, within }: MarkerIdentityProps) {
   const name = file.slice(file.lastIndexOf('/') + 1)
   const directory = file.includes('/') ? file.slice(0, file.lastIndexOf('/')) : ''
   // `replaceAll`, because Java's two-CharSequence `replace` is itself replace-all — a path with
   // `src/main/java/` twice in it (a nested checkout) would keep the second one otherwise.
-  const tail = directory.replaceAll('src/main/java/', '').replaceAll('src/test/java/', '')
+  const under = within !== undefined && within !== '' && directory.startsWith(`${within}/`)
+    ? directory.slice(within.length + 1)
+    : directory
+  const tail = under.replaceAll('src/main/java/', '').replaceAll('src/test/java/', '')
   return (
     <>
       {/*

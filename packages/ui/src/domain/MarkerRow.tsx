@@ -19,6 +19,10 @@ export type MarkerRowData = {
   key: MarkerKey
   /** Only used to fetch the flagged source, which the server has already done. Kept: it is identity. */
   repo: string
+  /** `repo` as a person says it — `WebGoat`, `ca2_back`. `Projects.nameOf` on the server. */
+  project: string
+  /** The module, or `''` for a repository that is one module. `Projects.moduleOf` on the server. */
+  module: string
   file: string
   line: string
   checker: string
@@ -83,6 +87,7 @@ export const MARKER_COLUMNS: Column<MarkerRowData>[] = [
         file={marker.file}
         line={marker.line}
         checker={marker.checker}
+        within={marker.module}
       />
     ),
   },

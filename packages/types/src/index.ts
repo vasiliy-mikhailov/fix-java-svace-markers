@@ -109,7 +109,15 @@ export type AgentName = (typeof AGENTS)[number]
  * `results/severities.tsv` by `file|line|checker`. So it can legitimately be absent, and a UI that
  * assumes every marker has one will render an empty cell it did not plan for.
  */
-export const SEVERITIES = ['Critical', 'Major', 'Minor'] as const
+/*
+ * FOUR, AND `Normal` IS THE ONE THAT WAS MISSING. The three here were every value the WebGoat
+ * sidecar contained, so the list read as the whole scale and was in fact the whole of one file.
+ * The analyser's own scale has four, and the second project queued brought 28 of them — which
+ * rendered as a chip whose colour token did not exist, drawn in whatever the row inherited.
+ *
+ * Ordered worst-first, because that is the scale and not because anything sorts on it.
+ */
+export const SEVERITIES = ['Critical', 'Major', 'Normal', 'Minor'] as const
 export type Severity = (typeof SEVERITIES)[number]
 
 /** `repo|file|line|checker`. The identity of a marker everywhere in this system. */

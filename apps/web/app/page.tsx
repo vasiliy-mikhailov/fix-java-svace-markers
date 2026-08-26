@@ -5,8 +5,8 @@ import {
   EmptyNote,
   ExportLink,
   Loaded,
+  MarkerGroups,
   type MarkerRowData,
-  MarkerTable,
   PageHeader,
   RelativeTime,
   RunProgress,
@@ -34,6 +34,8 @@ type ApiMarker = {
   key: string
   id: string
   repo: string
+  project: string
+  module: string
   file: string
   line: number
   checker: string
@@ -86,6 +88,8 @@ function toRow(m: ApiMarker): MarkerRowData {
   return {
     key: m.key,
     repo: m.repo,
+    project: m.project,
+    module: m.module,
     file: m.file,
     line: String(m.line),
     checker: m.checker,
@@ -198,7 +202,7 @@ export default function MarkersScreen() {
             counts={run.countsByState as Partial<Record<MarkerState, number>>}
             humanMinutes={run.humanMinutes}
           />
-          <MarkerTable markers={markers.map(toRow)} />
+          <MarkerGroups markers={markers.map(toRow)} />
         </>
       )}
     </>

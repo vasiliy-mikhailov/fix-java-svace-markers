@@ -28,6 +28,8 @@ describe('what the adoption had to keep', () => {
   const MARKER: MarkerRowData = {
     key: 'https://x.git|A.java|1|TAINTED_PTR' as MarkerRowData['key'],
     repo: 'https://x.git',
+    project: 'x',
+    module: '',
     file: 'A.java',
     line: '1',
     checker: 'TAINTED_PTR',

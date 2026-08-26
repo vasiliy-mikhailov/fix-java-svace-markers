@@ -33,6 +33,7 @@ export type SeverityBadgeProps = {
 const TOKEN: Record<Severity, string> = {
   Critical: 'var(--severity-critical)',
   Major: 'var(--severity-major)',
+  Normal: 'var(--severity-normal)',
   Minor: 'var(--severity-minor)',
 }
 

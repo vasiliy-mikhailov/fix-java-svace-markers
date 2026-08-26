@@ -68,6 +68,47 @@ final class Projects {
         return Subject.runJdk(results);
     }
 
+    /**
+     * A REPOSITORY AS A PERSON SAYS IT: the last path segment, without {@code .git}.
+     *
+     * <p>The key holds a clone URL because that is what a prover needs, and no screen wants to read
+     * {@code http://gitlab/root/ca2_back.git} eight hundred times. This is deliberately the same
+     * rule as {@code entrypoint.sh}'s {@code tree_of} — the checkout directory is named this way, so
+     * a name on screen and a directory in a log are the same word.
+     */
+    static String nameOf(String repo) {
+        if (repo == null || repo.isBlank()) {
+            return "";
+        }
+        String tail = repo.strip();
+        int slash = tail.lastIndexOf('/');
+        if (slash >= 0) {
+            tail = tail.substring(slash + 1);
+        }
+        return tail.endsWith(".git") ? tail.substring(0, tail.length() - 4) : tail;
+    }
+
+    /**
+     * THE MODULE A FILE IS IN — everything above its source root, or {@code ""} for a repository
+     * that is one module.
+     *
+     * <p>WHY THE SOURCE ROOT AND NOT THE FIRST SEGMENT. Modules nest: 416 of this queue's markers
+     * are in {@code ca2-client/ca2-messages-client}, and grouping on the first segment would file
+     * them all under {@code ca2-client} with twelve sibling modules. {@code /src/} is the boundary
+     * Maven itself draws and it is the only one visible in a path.
+     *
+     * <p>A single-module repository answers {@code ""} rather than {@code src} — WebGoat's paths all
+     * begin {@code src/main/java}, and "the src module" is not a thing anybody has. Callers show
+     * that as no module at all, which is what it is.
+     */
+    static String moduleOf(String file) {
+        if (file == null) {
+            return "";
+        }
+        int at = file.indexOf("/src/");
+        return at < 0 ? "" : file.substring(0, at);
+    }
+
     /** Every repository the queue names, deduplicated, in the order the queue names them. */
     static List<String> inQueue(Path settlements) {
         List<String> repos = new ArrayList<>();

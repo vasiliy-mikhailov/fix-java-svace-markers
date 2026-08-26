@@ -180,13 +180,20 @@ final class Api {
             String checker = parts.length > 3 ? parts[3] : "";
             b.append("{\"key\":").append(quote(key));
             b.append(",\"id\":").append(quote(Supervisor.slug(key)));
-            b.append(",\"repo\":").append(quote(parts.length > 0 ? parts[0] : ""));
+            String repo = parts.length > 0 ? parts[0] : "";
+            b.append(",\"repo\":").append(quote(repo));
+            // THE TWO A READER GROUPS BY, derived here rather than on the client, because the CSV
+            // and any next reader want the same two words and a path rule copied is a path rule
+            // that drifts. `repo` stays the clone URL: it is identity, and the flagged-source fetch
+            // still needs it.
+            b.append(",\"project\":").append(quote(Projects.nameOf(repo)));
+            b.append(",\"module\":").append(quote(Projects.moduleOf(file)));
             b.append(",\"file\":").append(quote(file));
             b.append(",\"line\":").append(line);
             b.append(",\"checker\":").append(quote(checker));
             // NULL RATHER THAN A GUESS. Severity is joined in from severities.tsv by
             // file|line|checker and is genuinely absent for the src/it and src/test markers.
-            String sev = severityOf(severity, parts.length > 0 ? parts[0] : "", file,
+            String sev = severityOf(severity, repo, file,
                     parts.length > 2 ? parts[2] : "", checker);
             b.append(",\"severity\":").append(sev == null || sev.isBlank() ? "null" : quote(sev));
             b.append(",\"state\":").append(quote(row.state()));
