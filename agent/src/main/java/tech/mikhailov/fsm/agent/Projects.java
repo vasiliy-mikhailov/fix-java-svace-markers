@@ -20,8 +20,14 @@ import java.util.Map;
  *
  * <pre>
  * https://github.com/WebGoat/WebGoat.git              25
- * http://gitlab/nrdirect/ca2_back.git                 21
+ * http://gitlab/nrdirect/ca2_back.git                 21   stubbed
  * </pre>
+ *
+ * <p>THE THIRD COLUMN IS WHERE THE SUBJECT IS PROVED FROM, and it is empty for every project that
+ * builds on its own. A CA2 module does not build at all — its parent pom is on a Nexus nobody here
+ * can reach — so the markers in it are unreachable until somebody writes stubs, and the stubs live
+ * on a branch of the subject's own repository rather than in a second repository. Empty means the
+ * clone's default branch, which is what every run did before this column existed.
  *
  * <p>ABSENT IS NOT EMPTY. A run with no registry behaves exactly as it did before this file
  * existed: the global {@code jdk} setting if there is one, and 25 if there is not. That matters
@@ -30,7 +36,7 @@ import java.util.Map;
 final class Projects {
 
     /** What a run needs to know about one subject beyond its markers. */
-    record Project(String repo, String jdk) {
+    record Project(String repo, String jdk, String branch) {
     }
 
     private Projects() {
@@ -49,7 +55,11 @@ final class Projects {
             }
             String repo = f[0].strip();
             String jdk = f.length > 1 ? f[1].strip() : "";
-            by.put(repo, new Project(repo, Subject.JDKS.contains(jdk) ? jdk : ""));
+            // A BRANCH IS NOT VALIDATED AGAINST A LIST the way a JDK is: the set of branch names is
+            // whatever the subject's repository holds, and a typo here is a clone that fails loudly
+            // rather than a build that silently runs under the wrong Java version.
+            String branch = f.length > 2 ? f[2].strip() : "";
+            by.put(repo, new Project(repo, Subject.JDKS.contains(jdk) ? jdk : "", branch));
         }
         return by;
     }
@@ -107,6 +117,18 @@ final class Projects {
         }
         int at = file.indexOf("/src/");
         return at < 0 ? "" : file.substring(0, at);
+    }
+
+    /**
+     * THE REF A PROVE SHOULD CHECK OUT for one repository, or {@code ""} for the clone's default.
+     *
+     * <p>ABSENT IS NOT A BUG AND MUST NOT BECOME ONE. Every run before shape 1 existed proved
+     * against whatever the clone gave it, and a registry that has never named a branch has to go on
+     * behaving exactly that way — the same rule {@link #jdkFor} keeps for the JDK.
+     */
+    static String branchFor(Path results, String repo) {
+        Project p = repo == null ? null : all(results).get(repo.strip());
+        return p == null ? "" : p.branch();
     }
 
     /** Every repository the queue names, deduplicated, in the order the queue names them. */

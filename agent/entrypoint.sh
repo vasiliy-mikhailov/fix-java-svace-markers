@@ -118,7 +118,18 @@ checkout() {
         #
         # To STDERR and not stdout: this function returns the checkout path by command substitution,
         # so a word printed on stdout becomes part of the path its caller uses.
-        if ! clone_said=$(git clone --depth 1 "$repo" "$dir" 2>&1); then
+        # THE REGISTRY MAY NAME A BRANCH, and for a subject that does not build on its own it
+        # always will. A CA2 module cannot compile — its parent pom is on a Nexus nobody here can
+        # reach — so its markers are proved against a `stubbed` branch of its OWN repository, which
+        # keeps the marker key naming the repository the finding is actually about. Empty is the
+        # clone's default branch, which is what every run did before this column existed.
+        want_branch=$(branch_of "$repo")
+        if [ -n "$want_branch" ]; then
+            set -- --depth 1 --branch "$want_branch" "$repo" "$dir"
+        else
+            set -- --depth 1 "$repo" "$dir"
+        fi
+        if ! clone_said=$(git clone "$@" 2>&1); then
             {
                 echo "fsm: could not clone $repo"
                 echo "$clone_said" | sed 's/^/    /'
@@ -134,6 +145,20 @@ checkout() {
 
 # repo|file|line|checker — the repository is the first field.
 repo_of() { echo "$1" | cut -d'|' -f1; }
+
+# THE BRANCH THE REGISTRY NAMES FOR A REPOSITORY, or nothing.
+#
+# READ HERE AND NOT ONLY IN JAVA because the clone happens in this file, before any JVM starts. The
+# format is the one `Projects.all` parses: tab-separated, `#` comments, repo then jdk then branch.
+# A blank third column and an absent registry are the same answer — the clone's own default — which
+# is what keeps a queue written before this column existed behaving exactly as it did.
+branch_of() {
+    [ -f "$RESULTS/projects.tsv" ] || return 0
+    awk -F'\t' -v repo="$1" '
+        /^[[:space:]]*#/ { next }
+        $1 == repo { gsub(/^[[:space:]]+|[[:space:]]+$/, "", $3); print $3; exit }
+    ' "$RESULTS/projects.tsv"
+}
 
 # WHERE `checkout` PUT A REPOSITORY, without preparing it. The same expression `checkout` uses for
 # its directory and nothing else: a caller inside the pool needs the path and must not clean.
