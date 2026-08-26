@@ -135,6 +135,23 @@ public final class Dashboard {
         // and writes frames as the lane produces them — the page stops asking and the server tells.
         route(server, "/api/stream",
                 e -> ApiStream.stream(e, settlements, query(e, "k"), query(e, "have")));
+        // THE THREE LEVELS, AND THE TWO STREAMS THAT KEEP THEM CURRENT.
+        //
+        // `/api/index` still answers the whole run for whoever wants it, and costs a second and
+        // 3.86 MB to do it. These are the documents the screens actually read: a registry of two
+        // kilobytes, and one project at a time. Serving `/api/projects` from the SAME snapshot the
+        // stream pushes is deliberate — the first paint and the first frame are byte-identical, so
+        // the page cannot show one set of numbers and swap them a second later.
+        //
+        // LONGEST PREFIX WINS, which is what keeps these four apart from each other and from
+        // `/api/settings/run`; `route()` mirrors each under `Zone.basePath()` on its own.
+        route(server, "/api/projects", e -> send(e, "application/json",
+                Pulse.latest(settlements).json()));
+        route(server, "/api/projects/stream", e -> ApiStream.projects(e, settlements));
+        route(server, "/api/project", e -> send(e, "application/json",
+                ApiProject.project(settlements, query(e, "p"))));
+        route(server, "/api/project/stream",
+                e -> ApiStream.project(e, settlements, query(e, "p")));
         route(server, "/api/settings/model", e -> send(e, "application/json", ApiSettings.model()));
         route(server, "/api/settings/subject", e -> send(e, "application/json",
                 ApiSettings.subject(here)));

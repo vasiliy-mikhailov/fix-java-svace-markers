@@ -34,7 +34,7 @@ import {
 } from '@fsm/ui'
 import { isDisposition, type AgentName, type MarkerState } from '@fsm/types'
 
-import { href, live as subscribe, read } from '../../lib/api'
+import { href, live as subscribe, projectUrl, read } from '../../lib/api'
 
 /**
  * ONE MARKER — the summary, each agent's tab, the prompts it ran under, the live stream, and this
@@ -82,6 +82,8 @@ type ApiMarker = {
   key: string
   id: string
   repo: string
+  /** `Projects.nameOf(repo)`. Optional: a record written before the field existed carries none. */
+  project?: string
   file: string
   line: number
   checker: string
@@ -993,7 +995,7 @@ function MarkerScreen() {
         <PageHeader
           title="a marker"
           subtitle="no marker was asked for"
-          back={{ label: 'all markers', href: href('/') }}
+          back={{ label: 'all projects', href: href('/') }}
           findingsOpen={findings}
         />
         <EmptyNote>
@@ -1010,7 +1012,7 @@ function MarkerScreen() {
         <PageHeader
           title={key.slice(key.lastIndexOf('/') + 1)}
           subtitle={failed === null ? 'reading the marker…' : 'could not read the marker'}
-          back={{ label: 'all markers', href: href('/') }}
+          back={{ label: 'all projects', href: href('/') }}
           findingsOpen={findings}
         />
         {failed === null ? null : <EmptyNote>{failed}</EmptyNote>}
@@ -1050,7 +1052,15 @@ function MarkerScreen() {
             </>
           )
         }
-        back={{ label: 'all markers', href: href('/') }}
+        back={
+          // BACK GOES UP ONE LEVEL, NOT HOME. This is the third of three, and the second is the
+          // project this marker belongs to — a reader who came down through the registry expects
+          // to land where they were. It falls back to the registry when the document predates the
+          // `project` field: a crumb whose destination is a guess is worse than a plain one.
+          marker.project === undefined || marker.project === ''
+            ? { label: 'all projects', href: href('/') }
+            : { label: marker.project, href: projectUrl(marker.project) }
+        }
         findingsOpen={findings}
       />
       <div style={BODY}>
@@ -1139,7 +1149,7 @@ export default function MarkerPage() {
         <PageHeader
           title="a marker"
           subtitle="reading the address…"
-          back={{ label: 'all markers', href: href('/') }}
+          back={{ label: 'all projects', href: href('/') }}
           findingsOpen={0}
         />
       }

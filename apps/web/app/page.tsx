@@ -5,167 +5,149 @@ import {
   EmptyNote,
   ExportLink,
   Loaded,
-  MarkerGroups,
-  type MarkerRowData,
   PageHeader,
+  type ProjectEntry,
+  ProjectRegistry,
   RelativeTime,
   RunProgress,
   StateCounts,
 } from '@fsm/ui'
-import type { MarkerState, Severity } from '@fsm/types'
+import type { MarkerState } from '@fsm/types'
 
-import { href, read } from '../lib/api'
+import { href, live, projectUrl, read } from '../lib/api'
 
 /**
- * THE MARKERS SCREEN — the first page of the port, and the one everybody opens.
+ * THE REGISTRY — the first of three levels, and the page everybody opens.
  *
- * <p>It fetches on the client, because the zone is statically exported: there is no server here to
- * render against, and every value on the page is a projection of files the Java side already holds.
+ * <p>IT WAS 857 ROWS AND 3,863,289 BYTES, REFETCHED EVERY FIFTEEN SECONDS. One list of every marker
+ * of every project, each carrying whatever a model had written about it, with nothing on the page
+ * naming either project and the largest module in the run — 416 markers, half of it —
+ * indistinguishable from the twelve holding one. Now: which projects, and how far has each got.
+ * 860 bytes, seven milliseconds, and the whole document arrives on a stream rather than being asked
+ * for on a timer.
  *
- * <p>THE ADAPTER IS THE POINT OF THIS FILE. The components were specified from the Java they replace
- * and the API from the same reading, and the two names for a thing drifted apart in a couple of
- * places — `redVerified`/`greenVerified` on the wire against a `flags` record in the component,
- * `summary` against `headline`. Reconciling that HERE rather than in either half is deliberate: the
- * API sends what the record holds, the component takes what it draws, and the screen is the one
- * place allowed to know both vocabularies.
+ * <p>THE RUN-WIDE BLOCK STAYS ABOVE THE TABLE. `RunProgress` and `StateCounts` describe the run and
+ * not any one project, and the last-event line is the only thing on the page that says the thing is
+ * alive — a reader who has to open a project to find out whether anything is happening has been
+ * given a worse page in exchange for a shorter one.
+ *
+ * <p>NO CRUMB. This is where back goes.
  */
 
-type ApiMarker = {
-  key: string
-  id: string
+type ApiProject = {
+  name: string
   repo: string
-  project: string
-  module: string
-  file: string
-  line: number
-  checker: string
-  severity: string | null
-  state: string
-  hasSettlement: boolean
-  redVerified: boolean | null
-  greenVerified: boolean | null
-  events: number
-  spanMs: number
-  humanMinutes: number
-  summary: string
-  verdictText: string
-  lastNote: string
+  jdk: string
+  markers: number
+  decided: number
+  demonstrated: number
+  modules: number
+  countsByState: Record<string, number>
 }
 
-type ApiIndex = {
+type ApiRegistry = {
   run: {
     total: number
     settled: number
+    demonstrated: number
     beganAt: number
     serverNow: number
     traceEvents: number
-    /** Of `settled`, how many had a RED build — something actually executed. */
-    demonstrated: number
-    /**
-     * WHEN THE NEWEST EVENT IN THE RUN LANDED, or 0 when nothing has run.
-     *
-     * Everything else in this payload describes what HAS happened; none of it says when. A run wedged
-     * for fifty-five minutes rendered byte-identically to a working one — same totals, same tiles,
-     * same rows — and the only way to notice was to read a number, wait, and read it again.
-     */
     lastEventAt: number
     humanMinutes: number
     findingsOpen: number
     countsByState: Record<string, number>
   }
-  markers: ApiMarker[]
+  projects: ApiProject[]
 }
 
-/**
- * One wire marker as the table wants it.
- *
- * <p>`flags` is null until a settling row exists, which is not the same as both lamps being off:
- * `Settlement.note` writes false on every `proving` stage row, so a marker whose RED has not run
- * would otherwise read as a test that ran and did not fail. The API sends null for exactly that
- * reason and the null survives to here rather than being defaulted away.
- */
-function toRow(m: ApiMarker): MarkerRowData {
+function toEntry(project: ApiProject): ProjectEntry {
   return {
-    key: m.key,
-    repo: m.repo,
-    project: m.project,
-    module: m.module,
-    file: m.file,
-    line: String(m.line),
-    checker: m.checker,
-    severity: (m.severity as Severity | null) ?? null,
-    state: m.state as MarkerState,
-    flags: m.hasSettlement ? { red: m.redVerified, green: m.greenVerified } : null,
-    events: m.events,
-    spanMs: m.spanMs,
-    humanMinutes: m.humanMinutes,
-    // The interpreter's account is the headline when there is one; the row falls back to the
-    // argument and then to the last thing said, which is what the Java's own column did.
-    headline: m.summary,
-    verdictText: m.verdictText,
-    lastNote: m.lastNote,
-    flagged: null,
+    name: project.name,
+    repo: project.repo,
+    jdk: project.jdk,
+    markers: project.markers,
+    decided: project.decided,
+    demonstrated: project.demonstrated,
+    modules: project.modules,
+    // BUILT HERE, because only the app knows the base path — see `ProjectEntry.href`.
+    href: projectUrl(project.name),
   }
 }
 
-export default function MarkersScreen() {
-  const [data, setData] = useState<ApiIndex | null>(null)
+export default function RegistryScreen() {
+  const [data, setData] = useState<ApiRegistry | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
+  const [reachable, setReachable] = useState(true)
 
   useEffect(() => {
-    let live = true
-    const load = () =>
-      read<ApiIndex>('/api/index')
-        .then(d => {
-          if (live) {
-            setData(d)
+    let alive = true
+    // THE FIRST PAINT IS STILL A READ, and that is not belt-and-braces. A page that only subscribes
+    // renders its loading state forever wherever `EventSource` is absent — which is every vitest
+    // run, because happy-dom ships none — and it would do the same behind any proxy that buffers an
+    // event stream. The server answers this from the SAME snapshot the stream pushes, so the first
+    // paint and the first frame are byte-identical and nothing flickers.
+    read<ApiRegistry>('/api/projects')
+      .then(d => {
+        if (alive) {
+          setData(d)
+          setFailed(null)
+        }
+      })
+      .catch((e: unknown) => {
+        if (alive) {
+          setFailed(e instanceof Error ? e.message : String(e))
+        }
+      })
+    // AND THEN THE SERVER TELLS. The frame IS the document — a couple of kilobytes — so there is no
+    // merge to get wrong, no ordering to preserve and nothing to go and fetch. The fifteen-second
+    // timer that used to live here pulled 3.86 MB each time to redraw a summary of two rows.
+    const stop = live(
+      '/api/projects/stream',
+      {
+        run: frame => {
+          if (alive) {
+            setData(frame as ApiRegistry)
             setFailed(null)
           }
-        })
-        .catch((e: unknown) => {
-          if (live) {
-            setFailed(e instanceof Error ? e.message : String(e))
-          }
-        })
-    void load()
-    // The run moves while somebody watches it. Fifteen seconds is the Java page's own cadence.
-    const timer = setInterval(() => void load(), 15_000)
+        },
+      },
+      up => {
+        if (alive) {
+          setReachable(up)
+        }
+      },
+    )
     return () => {
-      live = false
-      clearInterval(timer)
+      alive = false
+      stop()
     }
   }, [])
 
-  // THE THREE STATES, IN ONE PLACE. This was a pair of early returns whose two headers said
-  // different things and whose waiting branch said nothing at all — a reader watching a slow read
-  // saw a title and an empty page.
   if (failed !== null || data === null) {
     return (
       <Loaded
         what="run"
         failed={failed}
         value={data}
-        header={<PageHeader title="markers" subtitle="the queue and what has settled" findingsOpen={0} />}
+        header={
+          <PageHeader title="projects" subtitle="what this run is about" findingsOpen={0} />
+        }
       >
         {() => null}
       </Loaded>
     )
   }
 
-  const { run, markers } = data
+  const { run, projects } = data
   return (
     <>
       <PageHeader
-        title="markers"
+        title="projects"
         subtitle={
           <>
-            {`${run.total} marker(s) · ${run.traceEvents.toLocaleString()} trace event(s)`}
-            {/*
-              THE ONE NUMBER ON THIS PAGE THAT ANSWERS "IS IT ALIVE". It ticks by itself — under
-              ninety seconds `RelativeTime` re-renders every second — so a run that stops is visible
-              by watching rather than by reloading. Omitted rather than shown as a huge age when
-              nothing has run: 0 is "no events", and "56 years ago" is what printing it would say.
-            */}
+            {`${projects.length} project(s) · ${run.total} marker(s) · `}
+            {`${run.traceEvents.toLocaleString()} trace event(s)`}
             {run.lastEventAt > 0 ? (
               <>
                 {' · last event '}
@@ -182,10 +164,18 @@ export default function MarkersScreen() {
           />
         }
       />
-      {markers.length === 0 ? (
-        // A WHOLE-PAGE EMPTY STATE, so the room is re-added here. `EmptyNote` is a compact italic
-        // line now, which is right beside content and too tight as the only thing on a screen —
-        // and that is a fact about this page rather than about the primitive.
+      {/*
+        NEVER REPLACING WHAT IS ALREADY ON SCREEN. A dropped stream does not make the last numbers
+        wrong, it makes them old — so this says so quietly and leaves them up, which is the rule the
+        live panel already follows. Without it a stream that dies is invisible: the page keeps
+        showing plausible figures and the clock beside "last event" keeps ticking.
+      */}
+      {reachable ? null : (
+        <div style={{ padding: '0 24px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
+          the stream dropped — this is the last thing it said
+        </div>
+      )}
+      {projects.length === 0 ? (
         <div style={{ padding: '48px 24px' }}>
           <EmptyNote>No markers queued and no prove has run.</EmptyNote>
         </div>
@@ -202,7 +192,7 @@ export default function MarkersScreen() {
             counts={run.countsByState as Partial<Record<MarkerState, number>>}
             humanMinutes={run.humanMinutes}
           />
-          <MarkerGroups markers={markers.map(toRow)} />
+          <ProjectRegistry projects={projects.map(toEntry)} />
         </>
       )}
     </>

@@ -134,6 +134,11 @@ final class ApiMarker {
         b.append("\"key\":").append(quote(key));
         b.append(",\"id\":").append(quote(id));
         b.append(",\"repo\":").append(quote(repo));
+        // WHICH PROJECT AND MODULE, DERIVED HERE FOR THE SAME REASON THE INDEX DERIVES THEM:
+        // a marker page needs to say where "back" goes, and the alternative is a copy of the
+        // path rule in the client — or a 3.86 MB fetch to look up one string.
+        b.append(",\"project\":").append(quote(Projects.nameOf(repo)));
+        b.append(",\"module\":").append(quote(Projects.moduleOf(file)));
         b.append(",\"file\":").append(quote(file));
         b.append(",\"line\":").append(num(line));
         b.append(",\"checker\":").append(quote(checker));

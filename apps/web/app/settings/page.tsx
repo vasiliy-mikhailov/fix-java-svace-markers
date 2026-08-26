@@ -338,7 +338,7 @@ function Screen({
         subtitle={subtitle}
         // A LABEL IS NOT A DESTINATION — the Java hard-coded `href='/'` whatever the words said, and
         // every settings view happened to mean "all markers". Both fields are carried now.
-        back={{ label: 'all markers', href: href('/') }}
+        back={{ label: 'all projects', href: href('/') }}
         findingsOpen={findingsOpen}
       />
       <SectionTabs

@@ -9,6 +9,8 @@ import index from './payloads/index.json' with { type: 'json' }
 import live from './payloads/live.json' with { type: 'json' }
 import marker from './payloads/marker.json' with { type: 'json' }
 import overwatch from './payloads/overwatch.json' with { type: 'json' }
+import project from './payloads/project.json' with { type: 'json' }
+import projects from './payloads/projects.json' with { type: 'json' }
 import settingsModel from './payloads/settingsModel.json' with { type: 'json' }
 import settingsPrompts from './payloads/settingsPrompts.json' with { type: 'json' }
 import settingsRun from './payloads/settingsRun.json' with { type: 'json' }
@@ -38,6 +40,8 @@ const BY_PATH: Record<string, unknown> = {
   '/api/chat': chat,
   '/api/badges': badges,
   '/api/marker': marker,
+  '/api/projects': projects,
+  '/api/project': project,
   '/api/live': live,
   '/api/settings/prompts': settingsPrompts,
   '/api/settings/run': settingsRun,
@@ -47,8 +51,43 @@ const BY_PATH: Record<string, unknown> = {
 
 let asked: string[] = []
 
+/**
+ * WHICH STREAMS A SCREEN OPENED, and until now nothing could see them.
+ *
+ * happy-dom ships no `EventSource`, so `live()` returned its no-op teardown and every subscription
+ * in this app was silently untested — a screen converted to a stream would have rendered its
+ * loading state forever here and stayed green. Worse in both directions: on a runtime that DOES
+ * supply the global the guard stops guarding and the same suite behaves differently with no code
+ * change. So the stub is the pin, not merely the enabler.
+ */
+let subscribed: string[] = []
+
+class Stub {
+  static handlers = new Map<string, Record<string, (event: unknown) => void>>()
+  onopen: (() => void) | null = null
+  onerror: (() => void) | null = null
+
+  constructor(readonly url: string) {
+    subscribed.push(url)
+    Stub.handlers.set(url, {})
+  }
+
+  addEventListener(name: string, handle: (event: unknown) => void) {
+    const own = Stub.handlers.get(this.url) ?? {}
+    own[name] = handle
+    Stub.handlers.set(this.url, own)
+  }
+
+  close() {
+    Stub.handlers.delete(this.url)
+  }
+}
+
 beforeEach(() => {
   asked = []
+  subscribed = []
+  Stub.handlers.clear()
+  vi.stubGlobal('EventSource', Stub)
   vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
     const url = String(input)
     const path = url.split('?')[0] ?? url
@@ -92,12 +131,56 @@ async function mount(load: () => Promise<{ default: () => React.ReactNode }>, qu
 }
 
 describe('every screen mounts against the real record', () => {
-  it('the markers table draws the run', async () => {
+  it('the registry draws every project the run is about', async () => {
     await mount(() => import('../app/page'))
     await waitFor(() => expect(screen.getByText(/marker\(s\)/)).toBeTruthy(), { timeout: 4000 })
-    expect(asked.some(u => u.includes('/api/index'))).toBe(true)
-    // The record says 356; the page must not round, sample or sort it away.
-    expect(document.body.textContent).toContain('356')
+    // IT READS THE REGISTRY, NOT THE INDEX. That is the whole change: 860 bytes against 3,863,289
+    // to draw a summary of two rows, and the reason this page could stop polling at all.
+    expect(asked.some(u => u.includes('/api/projects'))).toBe(true)
+    expect(asked.some(u => u.includes('/api/index'))).toBe(false)
+    for (const named of projects.projects) {
+      expect(document.body.textContent, `${named.name} is in the record`).toContain(named.name)
+    }
+    expect(document.body.textContent).toContain(String(projects.run.total))
+  })
+
+  it('the registry stops asking and starts being told', async () => {
+    await mount(() => import('../app/page'))
+    await waitFor(() => expect(subscribed.length).toBeGreaterThan(0), { timeout: 4000 })
+    expect(subscribed.some(u => u.includes('/api/projects/stream'))).toBe(true)
+    // ONE STREAM PER PAGE. `com.sun.net.httpserver` speaks HTTP/1.1, so every EventSource is one of
+    // the browser's six sockets to this origin and is held for an hour; a page that opens one per
+    // effect exhausts them and its next ordinary fetch queues forever, with nothing in any log.
+    expect(subscribed.length).toBe(1)
+  })
+
+  it('nothing on the registry asks again on a timer', async () => {
+    // THE CLOCK GOES ON AFTER THE MOUNT, NOT BEFORE IT. `waitFor` is itself driven by timers, so
+    // faking them first freezes the very wait that gets the page onto the screen — the test then
+    // times out and, worse, leaves the fake clock installed for every test after it.
+    await mount(() => import('../app/page'))
+    await waitFor(() => expect(screen.getByText(/marker\(s\)/)).toBeTruthy(), { timeout: 4000 })
+    const first = asked.length
+    vi.useFakeTimers()
+    try {
+      await vi.advanceTimersByTimeAsync(60_000)
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(asked.length, 'the poll is gone: the server tells, four times over').toBe(first)
+  })
+
+  it('one project draws its own modules', async () => {
+    await mount(() => import('../app/project/page'), 'p=ca2_back')
+    await waitFor(() => expect(asked.some(u => u.includes('/api/project?'))).toBe(true))
+    await waitFor(
+      () => expect(document.body.textContent).toContain('ca2-client/ca2-messages-client'),
+      { timeout: 4000 },
+    )
+    expect(subscribed.some(u => u.includes('/api/project/stream'))).toBe(true)
+    // A SINGLE-MODULE PROJECT MUST STILL SAY WHICH MODULE. `MarkerGroups` collapses that case to a
+    // bare table, which is right on the whole-run page and wrong here — hence a second component.
+    expect(document.body.textContent).not.toContain('WebGoat')
   })
 
   it('the whole trace draws its events', async () => {
@@ -138,11 +221,19 @@ describe('every screen mounts against the real record', () => {
       [() => import('../app/overwatch/page'), ''],
       [() => import('../app/chat/page'), ''],
       [() => import('../app/settings/page'), ''],
+      [() => import('../app/project/page'), 'p=ca2_back'],
     ] as const) {
       asked = []
+      subscribed = []
       await mount(load as never, q)
       for (const url of asked) {
         const path = url.split('?')[0] ?? url
+        expect(BY_PATH[path], `${path} is not an endpoint this system serves`).toBeDefined()
+      }
+      // A MISTYPED STREAM PATH MUST FAIL THE WAY A MISTYPED FETCH DOES. It would otherwise be
+      // invisible: an EventSource to a 404 fires `error` and the page simply never updates.
+      for (const url of subscribed) {
+        const path = (url.split('?')[0] ?? url).replace(/\/stream$/, '')
         expect(BY_PATH[path], `${path} is not an endpoint this system serves`).toBeDefined()
       }
       cleanup()

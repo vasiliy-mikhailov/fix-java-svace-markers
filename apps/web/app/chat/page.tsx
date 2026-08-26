@@ -106,7 +106,7 @@ const WHO = 'supervisor'
  * through `href()` because a link written as `/` leaves the zone the moment a shell mounts it at a
  * prefix.
  */
-const BACK: Crumb = { label: 'all markers', href: href('/') }
+const BACK: Crumb = { label: 'all projects', href: href('/') }
 
 const TITLE = 'ask the supervisor'
 

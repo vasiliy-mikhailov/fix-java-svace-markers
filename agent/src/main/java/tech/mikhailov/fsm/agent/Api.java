@@ -223,8 +223,16 @@ final class Api {
         }
     }
 
-    /** Findings the critic has not dismissed. A blank verdict counts: nobody reached it. */
-    private static int open(Path findings) {
+    /**
+     * Findings the critic has not dismissed. A blank verdict counts: nobody reached it.
+     *
+     * <p>PACKAGE-PRIVATE BECAUSE THE REGISTRY ASKS THE SAME QUESTION, and there was already a second
+     * answer to it: {@code Zone.open} reads only the top-level file and applies no {@code "finding"}
+     * filter, so the two disagree the moment {@code overwatch.jsonl} has anything in it. Both feed
+     * the same badge on the same header. A third reader would have made it three; this one is the
+     * rule the index has always used, so the registry uses it too rather than inventing a fourth.
+     */
+    static int open(Path findings) {
         int n = 0;
         for (String line : Dashboard.lines(findings)) {
             String verdict = Dashboard.field(line, "verdict");

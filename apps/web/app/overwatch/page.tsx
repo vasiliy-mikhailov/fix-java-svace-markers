@@ -167,7 +167,7 @@ const DEPARTURES: SectionTab[] = [{ href: href('/settings'), label: 'settings', 
  * two call sites rather than a decision, and there is no view here from which "all markers" is the
  * wrong place to go.
  */
-const BACK = { label: 'all markers', href: href('/') }
+const BACK = { label: 'all projects', href: href('/') }
 
 /* ------------------------------------------------------------------ the adapters */
 

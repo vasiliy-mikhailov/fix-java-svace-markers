@@ -26,7 +26,8 @@ function watchConsole(page: Page): string[] {
 }
 
 const SCREENS = [
-  { path: '/', name: 'markers' },
+  { path: '/', name: 'the registry' },
+  { path: '/project/?p=WebGoat', name: 'one project' },
   { path: '/trace/', name: 'the whole trace' },
   { path: '/overwatch/', name: 'the supervisor' },
   { path: '/chat/', name: 'the chat' },
@@ -64,26 +65,40 @@ for (const screen of SCREENS) {
   })
 }
 
-test('the markers table draws the run the API reports', async ({ page }) => {
+test('the registry draws a row per project and they sum to the run', async ({ page }) => {
+  // THIS ASSERTED ONE `tbody tr` PER MARKER ON `/`, and `/` is a registry now. Moving the count
+  // rather than deleting it: a table that silently drops its tail still looks exactly like a table
+  // that does not, and the level that has one row per marker is the project page.
   const errors = watchConsole(page)
-  const api = await (await page.request.get('/api/index')).json()
+  const api = await (await page.request.get('/api/projects')).json()
   await page.goto('/')
-  await page.waitForFunction(() => document.querySelectorAll('tr').length > 1, undefined, {
+  await page.waitForFunction(() => document.querySelectorAll('tbody tr').length > 0, undefined, {
     timeout: 15_000,
   })
 
-  // A row per marker. Not "some rows" — the count is the assertion, because a table that silently
-  // drops the tail looks exactly like a table that does not.
   const rows = await page.locator('tbody tr').count()
-  expect(rows, 'one row per queued marker').toBe(api.run.total)
+  expect(rows, 'one row per project the queue names').toBe(api.projects.length)
+  const counted = api.projects.reduce((n: number, p: { markers: number }) => n + p.markers, 0)
+  expect(counted, 'every marker belongs to exactly one project').toBe(api.run.total)
 
-  // And the totals on the page are the record's own, not a recount the client did differently.
   await expect(page.getByText(String(api.run.total), { exact: false }).first()).toBeVisible()
   expect(errors).toEqual([])
 })
 
+test('a project draws a row per marker it owns, and none it does not', async ({ page }) => {
+  const errors = watchConsole(page)
+  const api = await (await page.request.get('/api/project?p=WebGoat')).json()
+  await page.goto('/project/?p=WebGoat')
+  await page.waitForFunction(() => document.querySelectorAll('tbody tr').length > 0, undefined, {
+    timeout: 15_000,
+  })
+  const rows = await page.locator('tbody tr').count()
+  expect(rows, 'one row per marker of this project').toBe(api.run.total)
+  expect(errors).toEqual([])
+})
+
 test('a state the record holds reaches the screen', async ({ page }) => {
-  const api = await (await page.request.get('/api/index')).json()
+  const api = await (await page.request.get('/api/projects')).json()
   await page.goto('/')
   await page.waitForFunction(() => document.querySelectorAll('tr').length > 1, undefined, {
     timeout: 15_000,
@@ -98,11 +113,14 @@ test('the markers page says how long ago anything last happened', async ({ page 
   // A RUN WEDGED FOR FIFTY-FIVE MINUTES RENDERED IDENTICALLY TO A WORKING ONE. Every number on this
   // page describes what HAS happened; none said when, so the only way to tell a stopped run from a
   // busy one was to read a total, wait, and read it again. The age is the one figure that answers it.
-  const api = await (await page.request.get('/api/index')).json()
+  const api = await (await page.request.get('/api/projects')).json()
   expect(api.run.lastEventAt, 'the wire must carry it before the page can show it').toBeGreaterThan(0)
 
   await page.goto('/')
-  await page.waitForFunction(() => document.querySelectorAll('tbody tr').length > 1, undefined, {
+  // ONE ROW, NOT MORE THAN ONE. The fixture is a single repository, so a registry has exactly one
+  // row — and `> 1` here would not fail, it would hang for fifteen seconds and then fail saying
+  // nothing about why.
+  await page.waitForFunction(() => document.querySelectorAll('tbody tr').length > 0, undefined, {
     timeout: 15_000,
   })
   const head = await page.locator('body').innerText()
@@ -282,7 +300,15 @@ test('everything the page references actually resolves', async ({ page }) => {
   })
   for (const screen of SCREENS) {
     await page.goto(screen.path)
-    await page.waitForLoadState('networkidle')
+    // NOT `networkidle`, AND THAT IS NOT A LOOSENING. Two of these screens hold an EventSource
+    // open for an hour, so there is deliberately always a request in flight and the idle state
+    // never arrives — the test would hang rather than fail. `load` plus a wait for the page to
+    // have drawn something is the same check: every asset the document references has been
+    // requested by then, which is what the response listener above is counting.
+    await page.waitForLoadState('load')
+    await page.waitForFunction(() => (document.body.textContent ?? '').length > 40, undefined, {
+      timeout: 15_000,
+    })
   }
   expect(missing, `the page asked for things that are not there: ${missing.join(', ')}`).toEqual([])
 })

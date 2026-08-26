@@ -72,7 +72,7 @@ test.describe('the chain strip', () => {
       await route.fulfill({ response, body: JSON.stringify(body) })
     })
     await page.goto(MARKER)
-    await expect(page.getByText('all markers')).toBeVisible()
+    await expect(page.getByText(/all projects|WebGoat/)).toBeVisible()
     await expect(page.locator('body')).toContainText('TAINTED_PTR')
     expect(await page.locator('a[href*="a=reproduce-planner"]').count(),
       'the strip is absent rather than stale').toBe(0)

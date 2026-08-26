@@ -83,7 +83,7 @@ const WINDOW = 500
  */
 const PAST_THE_END = 2147483647
 
-const BACK = { label: 'all markers', href: href('/') }
+const BACK = { label: 'all projects', href: href('/') }
 
 /** Every word a settlement may carry. Anything else is not a state this run can be in. */
 const STATES: readonly string[] = [...DISPOSITIONS, ...UNSETTLED]

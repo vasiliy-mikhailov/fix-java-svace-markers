@@ -87,7 +87,7 @@ final class Zone {
                   "api": "%s/api",
                   "health": "%s/api/health",
                   "nav": [
-                    {"label": "Markers", "path": "/", "badge": null},
+                    {"label": "Projects", "path": "/", "badge": null},
                     {"label": "Findings", "path": "/overwatch", "badge": "findings"},
                     {"label": "Ask", "path": "/chat", "badge": null},
                     {"label": "Settings", "path": "/settings", "badge": null}

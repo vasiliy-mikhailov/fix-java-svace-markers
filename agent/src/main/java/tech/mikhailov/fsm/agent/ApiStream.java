@@ -48,14 +48,15 @@ final class ApiStream {
 
     static void stream(HttpExchange exchange, Path settlements, String key, String have)
             throws IOException {
-        exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
-        exchange.getResponseHeaders().set("Cache-Control", "no-store");
-        exchange.getResponseHeaders().set("Connection", "keep-alive");
-        // A PROXY THAT BUFFERS AN EVENT STREAM DELIVERS IT ALL AT THE END, which on the far side
-        // looks exactly like a server that never sent anything.
-        exchange.getResponseHeaders().set("X-Accel-Buffering", "no");
-        // Zero means a body of unknown length, which is the whole point of this response.
-        exchange.sendResponseHeaders(200, 0);
+        // BEFORE THE HEADERS, AND THAT POSITION IS THE WHOLE OF IT. Delegating further down — at the
+        // old keyless branch inside the loop — would leave this method's own sendResponseHeaders
+        // already called, so the registry loop's would throw on a committed exchange: no status, no
+        // body, and `Dashboard.guarded` unable to report any of it.
+        if (key == null || key.isBlank()) {
+            projects(exchange, settlements);
+            return;
+        }
+        opened(exchange);
 
         Path lane = laneTrace(settlements, key);
         // THE BROWSER RECONNECTS BY ITSELF, and when it does it re-requests this same URL — so a
@@ -72,21 +73,12 @@ final class ApiStream {
         long from = lane == null ? 0 : "end".equals(at) ? size(lane) : after(lane, at);
         java.util.concurrent.atomic.AtomicLong line = new java.util.concurrent.atomic.AtomicLong(
                 "end".equals(at) ? lineCount(lane) : count(at));
-        long lastMoved = -1;
         long beat = System.currentTimeMillis();
         long until = System.currentTimeMillis() + CEILING.toMillis();
 
         try (OutputStream out = exchange.getResponseBody()) {
             while (System.currentTimeMillis() < until) {
-                if (lane != null) {
-                    from = tail(out, lane, from, line);
-                } else {
-                    long moved = movedAt(settlements);
-                    if (moved != lastMoved) {
-                        lastMoved = moved;
-                        write(out, 0, "changed", "{\"at\":" + moved + "}");
-                    }
-                }
+                from = tail(out, lane, from, line);
                 if (System.currentTimeMillis() - beat > HEARTBEAT_MS) {
                     // A COMMENT LINE IS NOT AN EVENT. It keeps the connection from being reaped
                     // without putting anything on the page.
@@ -101,6 +93,123 @@ final class ApiStream {
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /**
+     * THE FIVE HEADERS, IN ONE PLACE, because there are three loops now and a stream that loses
+     * {@code X-Accel-Buffering} is a stream that arrives all at once when the tab is closed.
+     */
+    private static void opened(HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
+        exchange.getResponseHeaders().set("Connection", "keep-alive");
+        // A PROXY THAT BUFFERS AN EVENT STREAM DELIVERS IT ALL AT THE END, which on the far side
+        // looks exactly like a server that never sent anything.
+        exchange.getResponseHeaders().set("X-Accel-Buffering", "no");
+        // Zero means a body of unknown length, which is the whole point of this response.
+        exchange.sendResponseHeaders(200, 0);
+    }
+
+    /**
+     * THE REGISTRY, PUSHED — the whole document, not a nudge to go and fetch it.
+     *
+     * <p>The old keyless branch of {@link #stream} sent {@code {"at":<millis>}} and left the page to
+     * re-request 3.86 MB, which is the poll it was supposed to replace wearing a different hat. The
+     * registry document is a couple of kilobytes, so the frame can simply BE the answer: the client
+     * has no merge to get wrong, no ordering to preserve and nothing to ask for.
+     *
+     * <p>{@link Pulse} builds it once for every reader and refuses to build it faster than this loop
+     * ticks, so a hundred open tabs cost what one costs.
+     */
+    static void projects(HttpExchange exchange, Path settlements) throws IOException {
+        opened(exchange);
+        long seen = -1;
+        long beat = System.currentTimeMillis();
+        long until = System.currentTimeMillis() + CEILING.toMillis();
+        try (OutputStream out = exchange.getResponseBody()) {
+            while (System.currentTimeMillis() < until) {
+                // SEEN STARTS AT -1 SO THE FIRST TICK OF EVERY CONNECTION ALWAYS SENDS. A reader
+                // that has just reconnected has no idea what it missed, and a stream whose first
+                // frame waits for the next change is a page that stays on its loading state for as
+                // long as the run happens to be quiet.
+                Pulse.Snapshot snapshot = quietly(settlements);
+                if (snapshot != null && snapshot.content() + snapshot.pulse() != seen) {
+                    seen = snapshot.content() + snapshot.pulse();
+                    write(out, 0, "run", snapshot.json());
+                }
+                beat = beaten(out, beat);
+                Thread.sleep(TICK_MS);
+            }
+        } catch (IOException readerWentAway) {
+            // The ordinary end of one of these: a tab was closed.
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * ONE PROJECT'S MARKERS, PUSHED ON CHANGE AND NOT ON ACTIVITY.
+     *
+     * <p>TWO FRAMES, BECAUSE TWO THINGS MOVE AT DIFFERENT RATES AND ONE OF THEM IS EXPENSIVE. A
+     * project document carries every marker it has and the prose written about them; pushing that
+     * whenever any agent writes a trace line would be the megabyte-a-tick problem again. So the
+     * document goes out only when the CONTENT stamp moves — a marker actually changing state — and
+     * the run's own heartbeat rides a {@code tick} frame of two numbers, which is all the page needs
+     * to keep saying how long ago anything last happened.
+     */
+    static void project(HttpExchange exchange, Path settlements, String name) throws IOException {
+        opened(exchange);
+        Path results = Pulse.beside(settlements);
+        long content = -1;
+        long pulse = -1;
+        long beat = System.currentTimeMillis();
+        long until = System.currentTimeMillis() + CEILING.toMillis();
+        try (OutputStream out = exchange.getResponseBody()) {
+            while (System.currentTimeMillis() < until) {
+                try {
+                    long now = Pulse.content(results);
+                    if (now != content) {
+                        content = now;
+                        write(out, 0, "project", ApiProject.project(settlements, name));
+                    }
+                    long awake = Pulse.pulse(results);
+                    if (awake != pulse) {
+                        pulse = awake;
+                        write(out, 0, "tick", "{\"lastEventAt\":" + Pulse.lastEventAt(results)
+                                + ",\"serverNow\":" + System.currentTimeMillis() + "}");
+                    }
+                } catch (RuntimeException broken) {
+                    // KEEP TICKING. The headers are long committed, so there is no status left to
+                    // report with and `Dashboard.guarded` cannot see this; a reader whose stream
+                    // dies silently is worse off than one whose numbers pause for a tick.
+                }
+                beat = beaten(out, beat);
+                Thread.sleep(TICK_MS);
+            }
+        } catch (IOException readerWentAway) {
+            // The ordinary end of one of these: a tab was closed.
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /** The snapshot, or null rather than a dead stream when building it threw. */
+    private static Pulse.Snapshot quietly(Path settlements) {
+        try {
+            return Pulse.latest(settlements);
+        } catch (RuntimeException broken) {
+            return null;
+        }
+    }
+
+    /** A comment line is not an event: it keeps the connection without putting anything on screen. */
+    private static long beaten(OutputStream out, long beat) throws IOException {
+        if (System.currentTimeMillis() - beat <= HEARTBEAT_MS) {
+            return beat;
+        }
+        out.write(": still here\n\n".getBytes(StandardCharsets.UTF_8));
+        out.flush();
+        return System.currentTimeMillis();
     }
 
     /** The lane's own record, or null when no marker was named. */
@@ -231,25 +340,6 @@ final class ApiStream {
             }
         }
         return from + lastNewline + 1;
-    }
-
-    /** The newest change anywhere under the results tree, as a stamp the page can compare. */
-    private static long movedAt(Path settlements) {
-        Path results = settlements.getParent() == null ? Path.of(".") : settlements.getParent();
-        Path lanes = results.resolve("m");
-        long newest = 0;
-        try (var dirs = Files.list(Files.isDirectory(lanes) ? lanes : results)) {
-            for (Path dir : dirs.toList()) {
-                try {
-                    newest = Math.max(newest, Files.getLastModifiedTime(dir).toMillis());
-                } catch (IOException gone) {
-                    // A lane can be swept between listing it and asking about it.
-                }
-            }
-        } catch (IOException none) {
-            return newest;
-        }
-        return newest;
     }
 
     /**

@@ -1,6 +1,15 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { MarkerGroups, MarkerTable, RunProgress, StateCounts, groupsOf, type MarkerRowData } from '@fsm/ui'
+import {
+  MarkerGroups,
+  MarkerTable,
+  ProjectModules,
+  ProjectRegistry,
+  RunProgress,
+  StateCounts,
+  groupsOf,
+  type MarkerRowData,
+} from '@fsm/ui'
 import { SEVERITIES, type MarkerState, type Severity } from '@fsm/types'
 
 import fixture from './fixture.json' with { type: 'json' }
@@ -209,5 +218,67 @@ describe('the markers screen groups the real run by repository and module', () =
     // which is why this asks about the group's summary rather than about `<details>`.)
     expect(grouped).not.toContain('the repository root')
     expect(grouped).not.toContain('markers · ')
+  })
+})
+
+/**
+ * THE TWO NEW LEVELS, AGAINST THE SAME CAPTURE.
+ *
+ * <p>The flat table is not gone — `MarkerGroups` still draws the whole run for whoever asks — but
+ * nothing routes to it any more, and these are the components a reader actually meets.
+ */
+describe('the three levels draw the real run', () => {
+  it('a project shows its own modules and nobody else’s', () => {
+    const ca2 = rows.filter(r => r.project === 'ca2_back')
+    const html = renderToStaticMarkup(<ProjectModules markers={ca2} />)
+    expect(html).toContain('ca2-client/ca2-messages-client')
+    expect(html).toContain('416 markers')
+    expect(html, 'the other project is a different page').not.toContain('WebGoat')
+  })
+
+  it('a repository that is one module still says which module it is', () => {
+    // THE CASE `MarkerGroups` FLATTENS, AND THE REASON THIS IS A SECOND COMPONENT. Its
+    // `groups.length <= 1` short-circuit drops every heading — right for the whole-run table, which
+    // had nothing else to say, and wrong here, where the reader has navigated to WebGoat precisely
+    // to be told how its markers are arranged.
+    const webgoat = rows.filter(r => r.project === 'WebGoat')
+    const html = renderToStaticMarkup(<ProjectModules markers={webgoat} />)
+    expect(html).toContain('the repository root')
+    expect(html).toContain('356 markers')
+    expect(html).toContain('<details')
+  })
+
+  it('every marker of a project reaches its module, and none is lost between them', () => {
+    for (const project of ['WebGoat', 'ca2_back']) {
+      const own = rows.filter(r => r.project === project)
+      const grouped = groupsOf(own)
+      expect(grouped.reduce((n, g) => n + g.markers.length, 0), project).toBe(own.length)
+    }
+  })
+
+  it('the registry names every project once, with a link to its own page', () => {
+    const seen = new Map<string, number>()
+    for (const row of rows) {
+      seen.set(row.project, (seen.get(row.project) ?? 0) + 1)
+    }
+    const html = renderToStaticMarkup(
+      <ProjectRegistry
+        projects={[...seen].map(([name, markers]) => ({
+          name,
+          repo: rows.find(r => r.project === name)?.repo ?? '',
+          jdk: '',
+          markers,
+          decided: 0,
+          demonstrated: 0,
+          modules: groupsOf(rows.filter(r => r.project === name)).length,
+          href: `/project?p=${encodeURIComponent(name)}`,
+        }))}
+      />
+    )
+    expect(html).toContain('WebGoat')
+    expect(html).toContain('ca2_back')
+    expect(html).toContain('/project?p=ca2_back')
+    // 857 rows became two, which is the whole of what the reader asked for.
+    expect(html.split('<tr').length - 1, 'a header row and one row per project').toBe(3)
   })
 })

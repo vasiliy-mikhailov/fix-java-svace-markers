@@ -34,6 +34,19 @@ export function href(path: string): string {
 }
 
 /**
+ * THE ADDRESS OF ONE PROJECT'S PAGE, spelt in one place because three screens link to it.
+ *
+ * `?p=` CARRIES THE NAME, NOT THE CLONE URL — `Projects.nameOf`, the last path segment without
+ * `.git`, which is also what the checkout directory is called. Two repositories whose URLs end in
+ * the same segment therefore collapse into one page. That is the same limitation the grouped table
+ * has had since projects existed, so it is consistent rather than newly broken; the unambiguous
+ * alternative is the whole URL, which is what a marker key already carries as its first field.
+ */
+export function projectUrl(project: string): string {
+  return href(`/project?p=${encodeURIComponent(project)}`)
+}
+
+/**
  * THE SERVER TELLING, RATHER THAN THE PAGE ASKING.
  *
  * Every view here polls. The record tab reads a window of the whole run every fifteen seconds and
@@ -50,11 +63,24 @@ export function href(path: string): string {
 export function live(
   path: string,
   handlers: Record<string, (data: unknown) => void>,
+  /**
+   * WHETHER THE STREAM IS UP, WHICH ONLY BECAME A SEPARATE FACT WHEN THE POLL WENT AWAY.
+   *
+   * While every screen polled, "the server is unreachable" and "the run is quiet" were one
+   * observable: the next read either threw or came back. Now they are two, and only one of them is
+   * `lastEventAt`. A page whose stream died shows numbers that stay plausible forever, which is the
+   * wedged-run failure in a new place. Optional, so the existing call site is untouched.
+   */
+  onReachable?: (up: boolean) => void,
 ): () => void {
   if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
     return () => undefined
   }
   const source = new EventSource(href(path))
+  // NO `close()` HERE AND NO BACKOFF OF OUR OWN. The browser's automatic reconnection is the half of
+  // a socket this helper exists not to write, and closing on the first error throws it away.
+  source.onopen = () => onReachable?.(true)
+  source.onerror = () => onReachable?.(false)
   for (const [name, handle] of Object.entries(handlers)) {
     source.addEventListener(name, event => {
       try {
