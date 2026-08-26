@@ -447,6 +447,68 @@ case "${1:-dashboard}" in
             "$RESULTS/settlements.jsonl" "${PORT:-8087}"
         ;;
 
+    stub)
+        # stub [repo …] — make repositories build, on a branch called `stubbed`.
+        #
+        # THE PARALLELISM IS ONE PROCESS PER REPOSITORY AND NOT PER MODULE. The output of a run is a
+        # branch, and a branch has one writer; building one module needs `-am`, so two workers on two
+        # modules of one repository race on the same worktree. Eight repositories at once is the same
+        # grain the prove pool already uses, and it is the grain that has no shared state.
+        #
+        # With no arguments it walks every repository the registry names.
+        shift || true
+        repos="$*"
+        if [ -z "$repos" ]; then
+            repos=$(awk -F'\t' '/^[[:space:]]*#/ {next} NF {print $1}' "$RESULTS/projects.tsv" 2>/dev/null)
+        fi
+        mkdir -p "$RESULTS/stub-claims" "$RESULTS/s"
+        for repo in $repos; do
+            limit=$(width)
+            while [ "$(jobs -p | wc -l)" -ge "$limit" ]; do
+                wait -n 2>/dev/null || sleep 2
+                limit=$(width)
+            done
+            (
+                name=$(echo "$repo" | sed 's|.*/||; s|\.git$||')
+                # A DIRECTORY IS THE CLAIM, because mkdir is atomic and a file is not. The same rule
+                # the prove pool uses, in its own namespace: the stale-claim sweep walks `claims/`
+                # and would reap a stubbing that is still running.
+                mkdir "$RESULTS/stub-claims/$name" 2>/dev/null || exit 0
+                reference=$(checkout "$repo")
+                [ -d "$reference/.git" ] || { rm -rf "$RESULTS/stub-claims/$name"; exit 0; }
+
+                # A WORKTREE, NOT THE REFERENCE CLONE. The prove pool takes every tree from
+                # $CHECKOUTS/<name> at HEAD; leaving that clone sitting on `stubbed` would prove
+                # every later marker against fabricated types with nothing in the settlement saying
+                # so. A worktree shares the objects and leaves the reference where it was.
+                #
+                # -B, not --detach: the branch is created in the reference's shared ref store, so it
+                # survives `worktree remove` — which is the whole output of shape 1.
+                tree="$CHECKOUTS/stub-$name"
+                base=$(git -C "$reference" rev-parse HEAD)
+                rm -rf "$tree"
+                git -C "$reference" worktree add -f -B stubbed "$tree" "$base" >/dev/null 2>&1
+
+                echo "=== stubbing $name at ${base%${base#???????}}"
+                java -cp "$CP" tech.mikhailov.fsm.agent.Stub "$tree" "$repo" "$RESULTS" "$base" \
+                    || echo "=== $name ended early"
+
+                # WHAT WAS WRITTEN IS COMMITTED, and nothing is pushed. The branch is the artefact
+                # and `git diff <base>..stubbed` is the audit; a push would put fabrications in front
+                # of the team that owns the code without anybody having read them.
+                if [ -n "$(git -C "$tree" status --porcelain)" ]; then
+                    git -C "$tree" add -A >/dev/null 2>&1
+                    git -C "$tree" -c user.email=fsm@local -c user.name=fsm \
+                        commit -qm "stand-ins written by fsm shape 1" >/dev/null 2>&1
+                fi
+                git -C "$reference" worktree remove --force "$tree" >/dev/null 2>&1 || rm -rf "$tree"
+                rm -rf "$RESULTS/stub-claims/$name"
+            ) &
+        done
+        wait
+        echo "=== stubbing done"
+        ;;
+
     dashboard)
         exec java -cp "$CP" tech.mikhailov.fsm.agent.Dashboard \
             "$RESULTS/settlements.jsonl" "${PORT:-8087}"

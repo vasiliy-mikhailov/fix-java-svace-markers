@@ -768,6 +768,18 @@ final class Agents {
      * this process is absent — true of the dashboard, which builds none. So the editor asks a
      * throwaway {@link Agents} to construct all of them first, purely to collect their text.
      */
+    /**
+     * SHAPE 1'S PROMPTS REGISTER HERE TOO, and through a method rather than by widening the map.
+     *
+     * <p>The prompts page reads {@code BUILT_IN} to show what an agent is told and to offer an
+     * edit. A shape whose prompts were not in it would be the one part of the pipeline nobody could
+     * see into or correct — and the map staying private is what keeps "registered" a deliberate act
+     * rather than something a caller can do to it by accident.
+     */
+    static void declare(String agent, String builtIn) {
+        BUILT_IN.put(agent, builtIn);
+    }
+
     private static final java.util.Map<String, String> BUILT_IN =
             new java.util.concurrent.ConcurrentHashMap<>();
 

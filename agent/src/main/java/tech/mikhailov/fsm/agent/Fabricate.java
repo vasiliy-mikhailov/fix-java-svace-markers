@@ -79,6 +79,124 @@ final class Fabricate {
     private Fabricate() {
     }
 
+    /**
+     * WHAT A PLANNER SAYS, AS LINES — and not as JSON, which is a decision paid for elsewhere.
+     *
+     * <p>A model asked for JSON produces JSON that is nearly right: a trailing comma, a comment, a
+     * key it invented, prose wrapped around the object. Every one of those is a parse failure that
+     * costs a turn and teaches nothing, and the model cannot see what it did wrong. A line grammar
+     * degrades instead of failing: an unreadable line is dropped, NAMED BACK to the planner, and
+     * the readable lines around it still do their work.
+     *
+     * <pre>
+     * interface  ru.nsd.core.wrauthclient.service.WRAuthService
+     * class      ru.nsd.a.Boom extends java.lang.RuntimeException
+     *   method   go boolean java.lang.String,int
+     *   field    CA_FORM java.lang.String
+     * enum       ru.nsd.a.State
+     *   constant CREATED
+     * annotation ru.nsd.a.HasPermission
+     * why        the compiler named it at SampleController:29
+     * </pre>
+     *
+     * <p>There is no syntax for a body. That is not enforcement, it is absence: there is nothing to
+     * write in.
+     */
+    record Read(List<Declaration> declarations, List<String> unreadable) {
+    }
+
+    static Read read(String plan) {
+        List<Declaration> found = new ArrayList<>();
+        List<String> unreadable = new ArrayList<>();
+        String fqn = null;
+        Declaration.Kind kind = null;
+        List<String> supers = new ArrayList<>();
+        List<Member> members = new ArrayList<>();
+        List<String> constants = new ArrayList<>();
+        StringBuilder why = new StringBuilder();
+
+        for (String raw : (plan == null ? "" : plan).split("\n")) {
+            String line = raw.strip();
+            if (line.isEmpty() || line.startsWith("//") || line.startsWith("#")) {
+                continue;
+            }
+            String[] word = line.split("[ \\t]+");
+            String head = word[0].toLowerCase(Locale.ROOT);
+            Declaration.Kind next = switch (head) {
+                case "interface" -> Declaration.Kind.INTERFACE;
+                case "class" -> Declaration.Kind.CLASS;
+                case "abstract" -> Declaration.Kind.ABSTRACT_CLASS;
+                case "annotation" -> Declaration.Kind.ANNOTATION;
+                case "enum" -> Declaration.Kind.ENUM;
+                default -> null;
+            };
+            if (next != null && word.length >= 2) {
+                if (fqn != null) {
+                    found.add(new Declaration(fqn, kind, List.copyOf(supers), List.copyOf(members),
+                            List.copyOf(constants), why.toString().strip()));
+                }
+                fqn = word[1];
+                kind = next;
+                supers = new ArrayList<>();
+                members = new ArrayList<>();
+                constants = new ArrayList<>();
+                why = new StringBuilder();
+                for (int i = 2; i + 1 < word.length; i++) {
+                    if (word[i].equalsIgnoreCase("extends") || word[i].equalsIgnoreCase("implements")) {
+                        supers.addAll(List.of(word[i + 1].split(",")));
+                    }
+                }
+                continue;
+            }
+            if (fqn == null) {
+                // Prose before the first declaration is the model thinking aloud, not an error.
+                continue;
+            }
+            switch (head) {
+                case "method" -> {
+                    if (word.length < 3) {
+                        unreadable.add(line);
+                        break;
+                    }
+                    List<String> parameters = word.length > 3 && !word[3].equals("()")
+                            ? List.of(word[3].split(",")) : List.of();
+                    members.add(new Member(word[1], word[2], parameters, false));
+                }
+                case "static" -> {
+                    if (word.length < 4 || !word[1].equalsIgnoreCase("method")) {
+                        unreadable.add(line);
+                        break;
+                    }
+                    List<String> parameters = word.length > 4 ? List.of(word[4].split(",")) : List.of();
+                    members.add(new Member(word[2], word[3], parameters, true));
+                }
+                // A FIELD IS A MEMBER WITH NO PARAMETER LIST AT ALL, which is what `null` means here
+                // and why it is not an empty list: an empty list is a no-argument method.
+                case "field" -> {
+                    if (word.length < 3) {
+                        unreadable.add(line);
+                        break;
+                    }
+                    members.add(new Member(word[1], word[2], null, true));
+                }
+                case "constant" -> {
+                    if (word.length < 2) {
+                        unreadable.add(line);
+                        break;
+                    }
+                    constants.add(word[1]);
+                }
+                case "why" -> why.append(line.substring(3).strip()).append(' ');
+                default -> unreadable.add(line);
+            }
+        }
+        if (fqn != null) {
+            found.add(new Declaration(fqn, kind, List.copyOf(supers), List.copyOf(members),
+                    List.copyOf(constants), why.toString().strip()));
+        }
+        return new Read(List.copyOf(found), List.copyOf(unreadable));
+    }
+
     /** Why a declaration was refused, for the planner. Never a silent drop. */
     record Refusal(String fqn, String because) {
     }
