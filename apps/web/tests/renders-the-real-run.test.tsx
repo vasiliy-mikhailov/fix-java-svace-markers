@@ -299,6 +299,13 @@ describe('the three levels draw the real run', () => {
     expect(html).toContain('WebGoat')
     expect(html).toContain('ca2_back')
     expect(html).toContain('/project?p=ca2_back')
+    // AND THE REPOSITORY IS SOMEWHERE A READER CAN GO. These said `http://gitlab/root/…` for a
+    // day — a hostname that resolves only inside one docker network, printed for a person on a
+    // laptop. New tab and no referrer: it leaves this dashboard for somebody else's host.
+    const repo = rows.find(r => r.project === 'WebGoat')?.repo ?? ''
+    expect(repo).toMatch(/^https:\/\//)
+    expect(html).toContain(`href="${repo}"`)
+    expect(html).toContain('rel="noreferrer noopener"')
     // 857 rows became two, which is the whole of what the reader asked for.
     expect(html.split('<tr').length - 1, 'a header row and one row per project').toBe(3)
   })

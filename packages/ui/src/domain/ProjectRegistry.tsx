@@ -11,7 +11,15 @@ import type { Style } from '../primitives'
  */
 export type ProjectEntry = {
   name: string
-  /** The clone URL. Shown small under the name: it is the identity, the name is only its tail. */
+  /**
+   * THE CLONE URL, AND IT IS THE IDENTITY — the name is only its last path segment, and two
+   * repositories whose URLs end the same collapse into one name.
+   *
+   * IT IS ALSO A PLACE A READER CAN GO, which it was not while these said `http://gitlab/root/…`:
+   * a hostname that resolves only inside one docker network, shown to a person on a laptop. The
+   * record names the canonical repository now and git's own `insteadOf` sends the fetch somewhere
+   * this network can reach — so this is a working address and is linked as one.
+   */
   repo: string
   /** From `projects.tsv`, `''` when the registry does not name this project. */
   jdk: string
@@ -69,7 +77,22 @@ const COLUMNS: Column<ProjectEntry>[] = [
         <a href={project.href} style={LINK} className="hover:underline">
           {project.name}
         </a>
-        <div style={QUIET}>{project.repo}</div>
+        {/*
+          A NEW TAB AND NO REFERRER. This leaves the dashboard for somebody else's host — GitHub for
+          one of these, a private GitLab for the rest — and a reader following it has not finished
+          with the page they were on.
+        */}
+        <div>
+          <a
+            href={project.repo}
+            target="_blank"
+            rel="noreferrer noopener"
+            style={{ ...QUIET, textDecoration: 'none' }}
+            className="hover:underline"
+          >
+            {project.repo}
+          </a>
+        </div>
       </>
     ),
   },

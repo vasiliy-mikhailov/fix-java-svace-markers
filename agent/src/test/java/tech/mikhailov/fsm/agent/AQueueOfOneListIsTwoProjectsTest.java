@@ -27,6 +27,16 @@ class AQueueOfOneListIsTwoProjectsTest {
         // in a log should be the same word.
         assertEquals("WebGoat", Projects.nameOf("https://github.com/WebGoat/WebGoat.git"));
         assertEquals("ca2_back", Projects.nameOf("http://gitlab/root/ca2_back.git"));
+        // THE CANONICAL HOST, WHICH IS WHAT THE KEYS SAY NOW. They named `http://gitlab` — a host
+        // that resolves only inside one docker network — and that string was on screen in front of
+        // a person. The record names the repository and `insteadOf` redirects the fetch; the name
+        // this derives must not change when it does.
+        assertEquals("ca2_cas_data",
+                Projects.nameOf("https://gitlab.mikhailov.tech/root/ca2_cas_data.git"));
+        assertEquals(Projects.nameOf("http://gitlab/root/ca2_back.git"),
+                Projects.nameOf("https://gitlab.mikhailov.tech/root/ca2_back.git"),
+                "the same repository behind two hostnames is one project, which is the whole "
+                        + "premise of the mirror");
         // A URL without the suffix, and a bare name, are both things a projects.tsv may hold.
         assertEquals("ca2_back", Projects.nameOf("http://gitlab/root/ca2_back"));
         assertEquals("WebGoat", Projects.nameOf("WebGoat"));
