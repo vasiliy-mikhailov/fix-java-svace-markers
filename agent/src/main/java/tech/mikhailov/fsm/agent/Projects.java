@@ -75,7 +75,46 @@ final class Projects {
         if (p != null && !p.jdk().isBlank()) {
             return p.jdk();
         }
+        // WHAT SHAPE 1 WORKED OUT, BETWEEN THE REGISTRY AND THE RUN-WIDE DEFAULT.
+        //
+        // A person's explicit row always wins: somebody who wrote 21 in projects.tsv has made a
+        // decision and a detector must not quietly overrule it. But every JDK in that file today was
+        // put there by a person reading poms, CI images and Dockerfile bases by hand, and the day
+        // nobody does that the row is absent — which used to mean the run-wide default, silently.
+        // A wrong JDK reports "no test executed", which reads like the subject being broken.
+        String found = detected(results, repo);
+        if (!found.isBlank()) {
+            return found;
+        }
         return Subject.runJdk(results);
+    }
+
+    /** What a stubbing run detected and then CONFIRMED with a build, or {@code ""}. */
+    static String detected(Path results, String repo) {
+        if (repo == null || repo.isBlank()) {
+            return "";
+        }
+        Path file = results.resolve("detected").resolve(nameOf(repo) + ".jdk");
+        try {
+            String said = java.nio.file.Files.readString(file).strip();
+            return Subject.JDKS.contains(said) ? said : "";
+        } catch (java.io.IOException | RuntimeException none) {
+            return "";
+        }
+    }
+
+    /** Record a detection. Only ever called after a build has agreed with it. */
+    static void detectedIs(Path results, String repo, String jdk) {
+        if (repo == null || !Subject.JDKS.contains(jdk)) {
+            return;
+        }
+        try {
+            Path file = results.resolve("detected").resolve(nameOf(repo) + ".jdk");
+            java.nio.file.Files.createDirectories(file.getParent());
+            java.nio.file.Files.writeString(file, jdk + "\n");
+        } catch (java.io.IOException | RuntimeException cannot) {
+            // A detection that cannot be written is a detection made again next run, not a failure.
+        }
     }
 
     /**

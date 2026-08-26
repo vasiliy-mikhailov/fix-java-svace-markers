@@ -62,7 +62,7 @@ final class Stub {
     private final String repo;
     private final String baseSha;
     private final JsonlTrace trace;
-    private final Reactor reactor;
+    private Reactor reactor;
 
     private final List<String> modules = new ArrayList<>();
     private int at;
@@ -74,6 +74,8 @@ final class Stub {
     private final Set<String> fabricatedTypes = new LinkedHashSet<>();
     private final List<String> fabricatedValues = new ArrayList<>();
     private String settleBecause = "";
+    private final String tool;
+    private String jdk = "";
     private boolean stalled;
 
     private Stub(Path checkout, String repo, Path results, String baseSha) {
@@ -85,6 +87,7 @@ final class Stub {
         this.trace = new JsonlTrace(lane.resolve("trace.jsonl"), lane.resolve("settlements.jsonl"),
                 repo);
         this.reactor = Reactor.of(checkout, repo, results, lane);
+        this.tool = reactor.tool();
     }
 
     public static void main(String[] args) throws IOException {
@@ -113,6 +116,7 @@ final class Stub {
     private void everything() throws IOException {
         Flow.seq("stub",
                 Flow.code("survey", this::surveyPhase),
+                Flow.code("detect", this::detectPhase).triplet(),
                 Flow.loop("modules", 64, () -> at >= modules.size(),
                         Flow.code("module", this::modulePhase))
         ).run("");
@@ -148,6 +152,90 @@ final class Stub {
         trace.progress(repo, "survey: " + modules.size() + " module(s) with markers, "
                 + baseline.declared() + " test class(es) declared before anything ran");
         return String.join(", ", modules);
+    }
+
+    /**
+     * WHICH JAVA THIS SUBJECT IS — planned by a model, decided by a build.
+     *
+     * <p>THE REGISTRY WINS IF IT SAYS ANYTHING. Somebody who wrote a row in {@code projects.tsv} has
+     * made a decision, and a detector that overruled it would be the silent inheritance this whole
+     * column exists to end, pointing the other way.
+     *
+     * <p>THE VERIFIER IS THE BUILD, and it is unusually good at this: a wrong JDK does not produce a
+     * vague failure, it produces {@code Unsupported class file major version} or
+     * {@code invalid target release} — sentences that mention no JDK and read like the subject being
+     * broken, which is exactly why a person hunting one loses an afternoon. {@link Detect} knows
+     * those three shapes, so the loop can tell "wrong Java" from "broken project" without a model.
+     */
+    private String detectPhase(String ignored) {
+        String declared = Projects.jdkFor(results, repo);
+        Projects.Project row = Projects.all(results).get(repo.strip());
+        if (row != null && !row.jdk().isBlank()) {
+            jdk = row.jdk();
+            trace.progress(repo, "detect: the registry says jdk " + jdk + ", which settles it");
+            return "registry: jdk " + jdk;
+        }
+
+        String brief = Detect.brief(checkout, tool);
+        for (int turn = 0; turn < 2; turn++) {
+            String said = Stubs.detector(trace, repo).run(brief);
+            String chosen = jdkIn(said);
+            if (chosen.isBlank()) {
+                brief = brief + "\n\nYour answer did not begin with `jdk <number>`, or named a "
+                        + "version this image does not have. It has: "
+                        + String.join(", ", Subject.JDKS) + ".";
+                continue;
+            }
+            Projects.detectedIs(results, repo, chosen);
+            reactor = Reactor.of(checkout, repo, results, lane);
+            Reactor.Result read = reactor.validate();
+            String output = readLog(read);
+            if (read.ok() || !Detect.blamesTheJdk(output)) {
+                // EITHER IT WORKED, OR IT FAILED FOR A REASON THAT IS NOT THE JAVA VERSION — and the
+                // second is still a confirmed detection. A project that cannot resolve its parent
+                // pom fails identically under every JDK, and re-planning the version would be
+                // twenty turns spent on the wrong question.
+                jdk = chosen;
+                trace.progress(repo, "detect: jdk " + chosen + (read.ok() ? ", and it builds"
+                        : ", and what fails is not the Java version"));
+                return "jdk " + chosen + "\n" + said.strip();
+            }
+            brief = brief + "\n\nYou said jdk " + chosen + " and the build refused it in words "
+                    + "that name the Java version:\n" + fenced(firstBlame(output));
+        }
+        jdk = declared;
+        Projects.detectedIs(results, repo, "");
+        trace.progress(repo, "detect: no version was confirmed; falling back to " + declared);
+        return "unconfirmed: " + declared;
+    }
+
+    /** The first line of the answer, if it is `jdk <n>` and this image has that n. */
+    private static String jdkIn(String said) {
+        for (String line : (said == null ? "" : said).lines().toList()) {
+            java.util.regex.Matcher m =
+                    java.util.regex.Pattern.compile("^\\s*jdk\\s+([0-9]{1,2})\\b").matcher(line);
+            if (m.find() && Subject.JDKS.contains(m.group(1))) {
+                return m.group(1);
+            }
+        }
+        return "";
+    }
+
+    private static String readLog(Reactor.Result result) {
+        try {
+            return result.log() == null ? result.summary() : Files.readString(result.log());
+        } catch (IOException | RuntimeException unreadable) {
+            return result.summary();
+        }
+    }
+
+    private static String firstBlame(String output) {
+        for (String line : output.lines().toList()) {
+            if (Detect.blamesTheJdk(line)) {
+                return line.strip();
+            }
+        }
+        return output.lines().limit(3).reduce("", (a, b) -> a + b + "\n");
     }
 
     /** One module: try it, then stub until it works or until it is honestly hopeless. */

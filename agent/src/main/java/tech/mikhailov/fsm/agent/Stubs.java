@@ -117,6 +117,48 @@ final class Stubs {
     }
 
     /**
+     * The planner that says which Java this subject is.
+     *
+     * <p>A MODEL BECAUSE THE EVIDENCE DISAGREES WITH ITSELF, not because the lookup is hard. CA2's
+     * poms name no Java version at all; the answer is in a parent pom's version STRING, in CI
+     * images and in Dockerfile bases, and those three can differ. edo-biz-mon declares
+     * {@code sourceCompatibility = 11} and pins a Gradle that cannot run on anything newer than 13,
+     * which is a second constraint pointing the same way. Weighing that is a judgement; running the
+     * build afterwards is not, and the build is what decides.
+     */
+    static Agents.Agent detector(JsonlTrace trace, String repo) {
+        return runtime("detect-planner", trace, repo, """
+                You say which Java version a project is built with, from evidence in the project.
+
+                Answer with exactly one line:
+
+                    jdk <number>
+
+                and then, on following lines, the evidence you used and anything that disagreed. The
+                number must be one of the versions this image has. Nothing else on the first line.
+
+                WHERE THE ANSWER USUALLY IS, in the order worth trusting:
+
+                  - an explicit `<java.version>`, `maven.compiler.release`, `sourceCompatibility` or
+                    toolchain declaration. If one exists, it is almost always the answer.
+                  - a PARENT POM's version string. A parent that cannot be downloaded is still
+                    evidence: `107.0-jdk21-SNAPSHOT` says 21 in plain text.
+                  - the CI image and the Dockerfile base. Sometimes the only place it is written
+                    down: `eclipse-temurin:java21_certs`, `image: jdk-21`.
+
+                AND ONE CONSTRAINT THAT OVERRIDES ALL OF THEM. For a Gradle project, Gradle's own
+                version caps the JDK it can run on, and exceeding it fails while parsing the build
+                script — before any of the project is read, with an error about class file versions
+                that looks nothing like a JDK problem. If the wrapper pins an old Gradle, the answer
+                is capped by it whatever the source compatibility says.
+
+                If the evidence conflicts, say so and pick the one a build would actually use. If
+                there is no evidence at all, say `jdk` and the newest version in the image, and say
+                that you are guessing.
+                """);
+    }
+
+    /**
      * The same construction {@code Agents.runtime} uses, minus the tools.
      *
      * <p>THE PROMPT IS RECORDED BEFORE ANYTHING CAN THROW, and it is editable through the same
