@@ -96,6 +96,29 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 # this container serves.
 RUN pnpm --filter @fsm/web build
 
+# ---------------------------------------------------------------- gradle
+#
+# FOR A SUBJECT WITH NO WRAPPER, AND ONLY THEN. A Gradle project's wrapper pins the version it was
+# written for, and running a newer one against it fails on syntax and plugin APIs that were removed
+# in between — which reports the subject as broken for a reason that belongs to us. So the reactor
+# prefers `./gradlew` and reaches for this only when there is no wrapper at all.
+#
+# It is here because there was NO gradle in this image and nothing said so: `Runner.of` has picked
+# Gradle for a build.gradle since the day it was written, and then ran `gradle` off a PATH that has
+# never had one. Every Gradle subject would have failed with "command not found" reported as a
+# subject that cannot build.
+FROM eclipse-temurin:21-jdk AS gradle
+ARG GRADLE_VERSION=8.10
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && curl -sSL -o /tmp/gradle.zip \
+        https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip \
+    && mkdir -p /opt && cd /opt \
+    && jar xf /tmp/gradle.zip \
+    && mv gradle-${GRADLE_VERSION} gradle \
+    && chmod +x /opt/gradle/bin/gradle \
+    && rm -f /tmp/gradle.zip \
+    && rm -rf /var/lib/apt/lists/*
+
 FROM eclipse-temurin:8-jdk   AS jdk8
 FROM eclipse-temurin:11-jdk  AS jdk11
 FROM eclipse-temurin:17-jdk  AS jdk17
@@ -107,6 +130,9 @@ FROM maven:3.9-eclipse-temurin-25
 RUN apt-get update \
     && apt-get upgrade -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
+
+COPY --from=gradle /opt/gradle /opt/gradle
+ENV PATH="/opt/gradle/bin:${PATH}"
 
 COPY --from=jdk8  /opt/java/openjdk /opt/java/8
 COPY --from=jdk11 /opt/java/openjdk /opt/java/11

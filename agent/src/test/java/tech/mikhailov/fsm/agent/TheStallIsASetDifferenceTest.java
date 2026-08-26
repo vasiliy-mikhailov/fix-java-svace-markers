@@ -68,9 +68,13 @@ class TheStallIsASetDifferenceTest {
     void theSortDecidesWhatIsHonest() {
         Set<Symbols.Undefined> found = Symbols.undefinedIn(LOG);
 
-        assertTrue(found.contains(new Symbols.Undefined(Symbols.Sort.TYPE,
-                        "ru.nsd.ca2.transit.api.SampleController", "SampleResponse")),
-                "an absent class can be satisfied by an empty declaration");
+        // NO OWNER, AND THAT IS THE CORRECTION. javac says `location: class ...SampleController`
+        // here, but that is the class doing the USING — SampleResponse does not live inside it.
+        // This test asserted the use site as the owner until a Gradle probe made the mistake
+        // visible: the same type seen from its import line carries its real package, and with a
+        // fabricated owner the two never merge into the one thing they are.
+        assertTrue(found.contains(new Symbols.Undefined(Symbols.Sort.TYPE, "", "SampleResponse")),
+                "an absent class can be satisfied by an empty declaration: " + found);
         long members = found.stream()
                 .filter(u -> u.sort() != Symbols.Sort.TYPE).count();
         assertEquals(3, members,
@@ -183,6 +187,62 @@ class TheStallIsASetDifferenceTest {
         Set<Symbols.Undefined> whole = Symbols.undefinedIn(log, dir);
         assertEquals(Set.of(new Symbols.Undefined(Symbols.Sort.TYPE, "ru.nsd.other.pkg", "Thing")),
                 whole, "the prefix is a fact about the build machine, not about this tree");
+    }
+
+    /** Real output. Gradle does not wrap javac, so this is what the compiler itself printed. */
+    private static final List<String> GRADLE = List.of(
+            "> Task :compileJava FAILED",
+            "/tmp/gr/src/main/java/a/Uses.java:3: error: package ru.nsd.absent.pkg does not exist",
+            "import ru.nsd.absent.pkg.Missing;",
+            "                        ^",
+            "/tmp/gr/src/main/java/a/Uses.java:6: error: cannot find symbol",
+            "    void go(Missing m) {",
+            "            ^",
+            "  symbol:   class Missing",
+            "  location: class Uses",
+            "/tmp/gr/src/main/java/a/Uses.java:8: error: cannot find symbol",
+            "        int x = Helper.CONSTANT;",
+            "                ^",
+            "  symbol:   variable Helper",
+            "  location: class Uses",
+            "3 errors");
+
+    @Test
+    @DisplayName("gradle prints what javac printed, and a maven-only parser reads it as fine")
+    void gradleIsADifferentShape() {
+        // NO `[ERROR]` PREFIX AND NO COLUMN: `path:line: error: message`. Maven's compiler plugin
+        // reformats every diagnostic into `path:[line,column]` with a prefix; Gradle does not wrap
+        // javac at all. A parser that knew only the Maven shape returned an EMPTY set here — which
+        // is the worst available answer, because the loop then sees a failing build with nothing to
+        // fix, calls it a non-symbol failure and settles the module.
+        Set<Symbols.Undefined> found = Symbols.undefinedIn(GRADLE);
+        assertFalse(found.isEmpty(), "a Gradle build has diagnostics too");
+        assertTrue(found.contains(new Symbols.Undefined(Symbols.Sort.FIELD, "Uses", "Helper")),
+                "the continuation lines are javac's in both tools, so they parse the same: " + found);
+    }
+
+    @Test
+    @DisplayName("for a type, `location` is where it was used and never where it lives")
+    void locationIsNotAlwaysAnOwner(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir)
+            throws Exception {
+        // THE BUG A GRADLE PROBE MADE VISIBLE, and it was in the Maven path too. javac reports
+        // `symbol: class Missing` / `location: class Uses`, and Missing does not live in Uses —
+        // Uses is the file doing the using. Recorded as the owner it invents a package, and the
+        // same type seen from its own import line then never merges with it: three javac errors
+        // stay three entries when a person would write two files.
+        java.nio.file.Files.createDirectories(dir.resolve("src/main/java/a"));
+        java.nio.file.Files.writeString(dir.resolve("src/main/java/a/Uses.java"),
+                "package a;\n\nimport ru.nsd.absent.pkg.Missing;\n\nclass Uses {\n"
+                        + "    void go(Missing m) {\n        int x = Helper.CONSTANT;\n    }\n}\n");
+        java.nio.file.Path log = dir.resolve("gradle.log");
+        java.nio.file.Files.write(log, GRADLE);
+
+        Set<Symbols.Undefined> whole = Symbols.undefinedIn(log, dir);
+        assertEquals(2, whole.size(),
+                "one absent type and one absent member, from three diagnostics: " + whole);
+        assertTrue(whole.contains(new Symbols.Undefined(Symbols.Sort.TYPE,
+                        "ru.nsd.absent.pkg", "Missing")),
+                "and the type carries its REAL package, taken off the import line: " + whole);
     }
 
     @Test

@@ -63,9 +63,27 @@ final class Symbols {
         }
     }
 
-    /** {@code [ERROR] /path/Thing.java:[29,13] cannot find symbol} — the column is discarded. */
-    private static final Pattern AT = Pattern.compile(
+    /**
+     * MAVEN: {@code [ERROR] /path/Thing.java:[29,13] cannot find symbol} — the column is discarded.
+     */
+    private static final Pattern MAVEN_AT = Pattern.compile(
             "^(?:\\[(?:ERROR|WARNING)]\\s*)?(\\S+\\.java):\\[(\\d+),(\\d+)]\\s+(.*)$");
+
+    /**
+     * GRADLE: {@code /path/Thing.java:3: error: package ru.nsd.absent.pkg does not exist}.
+     *
+     * <p>A SECOND SHAPE, BECAUSE GRADLE DOES NOT WRAP javac AT ALL. Maven's compiler plugin
+     * reformats every diagnostic into its own {@code path:[line,column]} with an {@code [ERROR]}
+     * prefix; Gradle prints what the compiler printed — {@code path:line: error: message}, no
+     * column, no prefix. A parser that knew only the Maven shape read a Gradle build as having
+     * nothing wrong with it, which is the worst possible answer: the loop would see a failing
+     * build and an empty set of things to fix, call it a non-symbol failure, and settle the module.
+     *
+     * <p>The {@code symbol:} and {@code location:} continuation lines ARE the same in both, because
+     * in both cases they are javac's.
+     */
+    private static final Pattern GRADLE_AT = Pattern.compile(
+            "^(\\S+\\.java):(\\d+):\\s+error:\\s+(.*)$");
 
     /** {@code   symbol:   method value()} — the parenthesised signature is dropped. */
     private static final Pattern SYMBOL = Pattern.compile(
@@ -144,15 +162,16 @@ final class Symbols {
     private static Set<String> importsOf(List<String> lines, Path tree, String absent) {
         Set<String> types = new LinkedHashSet<>();
         Pattern site = Pattern.compile(
-                "^(?:\\[(?:ERROR|WARNING)]\\s*)?(\\S+\\.java):\\[(\\d+),\\d+]\\s+package\\s+"
-                        + Pattern.quote(absent) + "\\s+does not exist");
+                "^(?:\\[(?:ERROR|WARNING)]\\s*)?(\\S+\\.java):(?:\\[(\\d+),\\d+]|(\\d+):\\s+error:)"
+                        + "\\s+package\\s+" + Pattern.quote(absent) + "\\s+does not exist");
         for (String line : lines) {
             Matcher m = site.matcher(line);
             if (!m.find()) {
                 continue;
             }
             List<String> source = read(tree, m.group(1));
-            int at = Integer.parseInt(m.group(2)) - 1;
+            // Maven puts the line in group 2 and Gradle in group 3; exactly one of them matched.
+            int at = Integer.parseInt(m.group(2) != null ? m.group(2) : m.group(3)) - 1;
             if (at < 0 || at >= source.size()) {
                 continue;
             }
@@ -204,11 +223,10 @@ final class Symbols {
     static Set<Undefined> undefinedIn(List<String> lines) {
         Set<Undefined> found = new LinkedHashSet<>();
         for (int i = 0; i < lines.size(); i++) {
-            Matcher at = AT.matcher(lines.get(i));
-            if (!at.matches()) {
+            String said = messageAt(lines.get(i));
+            if (said == null) {
                 continue;
             }
-            String said = at.group(4).strip();
             Matcher absent = NO_PACKAGE.matcher(said);
             if (absent.find()) {
                 // A WHOLE PACKAGE, WHICH NAMES NO TYPE. javac stops at the package because it never
@@ -239,16 +257,36 @@ final class Symbols {
                     owner = location.group(1);
                     break;
                 }
-                if (AT.matcher(lines.get(j)).matches()) {
+                if (messageAt(lines.get(j)) != null) {
                     break;
                 }
             }
             if (name == null) {
                 continue;
             }
-            found.add(new Undefined(sortOf(kind), owner, name));
+            Sort sort = sortOf(kind);
+            // `location:` MEANS TWO DIFFERENT THINGS AND ONLY ONE OF THEM IS AN OWNER.
+            //
+            // For a member it is the type the member belongs to — `location: class
+            // ru.nsd...CaPermissionConstants` for a missing `CA_FORM` — which is exactly what has
+            // to be written. For a missing TYPE it is the class doing the USING: javac reports
+            // `symbol: class SampleResponse` / `location: class ...SampleController`, and
+            // SampleResponse does not live in SampleController. Recording it as the owner invents a
+            // package, and it also breaks the merge below, because the same type seen from its
+            // import line carries its real package and the two no longer look like one thing.
+            found.add(new Undefined(sort, sort == Sort.TYPE ? "" : owner, name));
         }
         return found;
+    }
+
+    /** The diagnostic on this line, whichever build tool printed it, or null. */
+    private static String messageAt(String line) {
+        Matcher maven = MAVEN_AT.matcher(line);
+        if (maven.matches()) {
+            return maven.group(4).strip();
+        }
+        Matcher gradle = GRADLE_AT.matcher(line);
+        return gradle.matches() ? gradle.group(3).strip() : null;
     }
 
     private static Sort sortOf(String kind) {
