@@ -95,6 +95,20 @@ final class ApiProjects {
             }
         }
 
+        // A SUBJECT THE REGISTRY NAMES AND THE QUEUE DOES NOT IS STILL A SUBJECT.
+        //
+        // Every entry above comes from a marker, so a project with no markers had no row at all —
+        // which made adding one to `projects.tsv` a change with no visible effect anywhere. That is
+        // exactly backwards for the thing the registry is FOR: a repository is onboarded, cloned and
+        // registered before any analyser has run over it, and the page whose job is "what is this
+        // run about" was the one place that could not say so.
+        //
+        // Their counts are all zero and the table draws a zero as a dash, so an unqueued project
+        // reads as what it is: here, known, and holding nothing yet.
+        for (Map.Entry<String, Projects.Project> e : registry.entrySet()) {
+            by.computeIfAbsent(Projects.nameOf(e.getKey()), name -> new Count(e.getKey()));
+        }
+
         long began = Pulse.beganAt(results);
         long newest = Pulse.lastEventAt(results);
         int settled = Run.settled(rows);

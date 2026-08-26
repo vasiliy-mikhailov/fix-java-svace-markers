@@ -177,6 +177,32 @@ class ThreeDocumentsAgreeAboutOneRunTest {
     }
 
     @Test
+    @DisplayName("a project the registry names and the queue does not is still on the page")
+    void registeredWithNothingQueued(@TempDir Path dir) throws Exception {
+        Path results = run(dir);
+        // A REPOSITORY IS ONBOARDED BEFORE AN ANALYSER HAS EVER RUN OVER IT. edo-biz-mon was cloned,
+        // pushed and registered with no markers at all, and the page whose whole job is "what is
+        // this run about" could not say it existed: every entry was built from a marker, so adding
+        // a row to projects.tsv was a change with no visible effect anywhere.
+        Files.writeString(results.resolve("projects.tsv"),
+                "# repo\tjdk\tbranch\n"
+                        + "https://gitlab.mikhailov.tech/root/edo-biz-mon.git\t11\n");
+        String registry = ApiProjects.projects(results.resolve("settlements.jsonl"));
+
+        assertTrue(registry.contains("\"name\":\"edo-biz-mon\""),
+                "registered, holding nothing, and therefore invisible: " + registry);
+        int at = registry.indexOf("\"name\":\"edo-biz-mon\"");
+        assertEquals(0, number(registry.substring(at), "markers"),
+                "zero, which the table draws as a dash — the row reads as what it is: here, known, "
+                        + "and holding nothing yet");
+        assertTrue(registry.contains("\"jdk\":\"11\""), registry);
+        // AND THE RUN IS UNCHANGED. A project with no markers contributes no markers, so every
+        // number the run block carries has to be exactly what it was.
+        assertEquals(4, number(registry, "total"),
+                "the four queued markers, and not five: " + registry);
+    }
+
+    @Test
     @DisplayName("the registry counts modules, and a single-module repository has one")
     void modulesCounted(@TempDir Path dir) throws Exception {
         String registry = ApiProjects.projects(run(dir).resolve("settlements.jsonl"));
